@@ -489,7 +489,6 @@ export function posterior(db: ContentDb, candidates: readonly Id[], observations
   const same = commonPrefix(memo, grouped);
   const scored = candidates.map(id => {
     const c = db.conditions[id];
-    const shares = sharesFor(db, id, ctx);
     const combos = combosOf(c, ctx);
     let run = memo.by.get(id);
     if (!run) {
@@ -499,11 +498,14 @@ export function posterior(db: ContentDb, candidates: readonly Id[], observations
     }
     const prior = run.prior;
     if (combos.length === 1) {
-      const set = [id, ...(c.requires ?? []), ...ctx.knownConditions];
-      const own = prior === 0 ? null : ownFindings(db, c, shares, ctx.unknowns);
       const xs = run.runs[0];
       if (xs.length > same + 1) xs.length = same + 1;
-      const table = xs.length - 1 < grouped.length ? fpTable(ctx, id) : undefined;
+      // всё досчитано — ни набора, ни долей не нужно
+      if (xs.length > grouped.length) return { id, p: xs[grouped.length] };
+      const shares = sharesFor(db, id, ctx);
+      const set = [id, ...(c.requires ?? []), ...ctx.knownConditions];
+      const own = prior === 0 ? null : ownFindings(db, c, shares, ctx.unknowns);
+      const table = fpTable(ctx, id);
       for (let i = xs.length - 1; i < grouped.length; i++) {
         const w = xs[i];
         if (w === 0) {
@@ -514,8 +516,8 @@ export function posterior(db: ContentDb, candidates: readonly Id[], observations
         let fp: number;
         if (own && !own.has(f)) fp = background(f);
         else {
-          const known = table!.get(f);
-          if (known === undefined) table!.set(f, (fp = findingProbability(db, f, set, ctx.knownRisks, unknownMiss(ctx, f, shares), ctx)));
+          const known = table.get(f);
+          if (known === undefined) table.set(f, (fp = findingProbability(db, f, set, ctx.knownRisks, unknownMiss(ctx, f, shares), ctx)));
           else fp = known;
         }
         xs.push(w * mix(e, fp));
@@ -525,6 +527,7 @@ export function posterior(db: ContentDb, candidates: readonly Id[], observations
     if (prior === 0) return { id, p: 0 };
     // фон признака без самого кандидата — от сочетания не зависит, считается один раз; без «без чего не бывает» и со
     // своими долями, которые признака не касаются, — общий фон (0.5.11): те же действия, и число то же
+    const shares = sharesFor(db, id, ctx);
     const others = [...(c.requires ?? []), ...ctx.knownConditions];
     const hit = c.requires && c.requires.length > 0 ? null : sharedOf(shares, ctx.unknowns);
     // фон каждого признака — один раз на вызов, для всех сочетаний
