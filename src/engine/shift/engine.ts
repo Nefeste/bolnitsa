@@ -842,13 +842,15 @@ function evict(s: ShiftState, p: ShiftPatient) {
   if (!s.flow) return;
   const c = p.closed;
   const end = p.status === 'left' ? 'left' : p.status === 'unseen' ? 'unseen' : p.status === 'done' ? 'done' : undefined;
-  // ваши приёмы — остаются (их разбор открывают), как и те, кого ждут обратно, кто лежит, и чей разбор не досчитан
-  if (!end || (c && (!c.by || c.review || c.outcome.returns || c.stay || STAYS.includes(c.plan.setting)))) return;
+  // ваши приёмы — остаются (их разбор открывают), как и те, кого ждут обратно и кто лежит; приём нанятого врача уходит и без
+  // разбора — его в потоке не считают
+  if (!end || (c && (!c.by || c.outcome.returns || c.stay || STAYS.includes(c.plan.setting)))) return;
   if (s.returns.some(r => r.of === p.id)) return;
   const row: GoneRow = {
     id: p.id, kind: p.kind, end, arriveT: p.arriveT, ...(p.calledT !== undefined ? { calledT: p.calledT } : {}), truth: p.patient.truth.conditions[0].id,
     ...(c?.by ? { by: c.by } : {}),
-    ...(c ? { diagnosis: c.diagnosis, verdict: c.verdict, overall: c.grades.overall, setting: c.plan.setting } : {}),
+    ...(c ? { diagnosis: c.diagnosis, verdict: c.verdict, ...(c.review ? {} : { overall: c.grades.overall }), setting: c.plan.setting } : {}),
+    ...(c && c.grades.safety !== 'A' ? { unsafe: true as const } : {}),
     ...(p.returnOf ? { returnOf: p.returnOf } : {}), ...(p.returnReason ? { returnReason: p.returnReason } : {}),
     ...(p.paid ? { paid: p.paid.paid } : {}),
   };
@@ -928,8 +930,9 @@ function returningPatient(db: ContentDb, s: ShiftState, ret: PlannedReturn) {
 
 function closeDay(db: ContentDb, s: ShiftState) {
   if (!s.dayOpen) return;
-  // итоги дня — полные: отложенные разборы приёмов нанятых врачей досчитываются (spec 2026-10-engine-speed, ч. 1)
-  settleReviews(db, s);
+  // итоги дня — полные: отложенные разборы приёмов нанятых врачей досчитываются (spec 2026-10-engine-speed, ч. 1); в потоке
+  // для ПК — нет: оценку считают только приёмам игрока (решение владельца 16.10.2026)
+  if (!s.flow) settleReviews(db, s);
   for (const p of Object.values(s.patients)) {
     if (p.status === 'waiting' || p.status === 'inRoom' || p.status === 'away' || p.status === 'coming') {
       if (p.status !== 'coming') s.summary.unseen++;
@@ -1467,6 +1470,12 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase
     c[closed.verdict]++;
     // общая оценка — когда досчитан разбор (`settleReviews`)
     if (!closed.review) c.grades[closed.grades.overall]++;
+    // поток для ПК: разбора нет — то, что известно без него (решение владельца 16.10.2026, spec 2026-10-engine-speed, ч. 1)
+    if (s.flow) {
+      if (STAYS.includes(closed.plan.setting)) c.admitted = (c.admitted ?? 0) + 1;
+      else if (closed.plan.setting !== 'home') c.referred = (c.referred ?? 0) + 1;
+      if (closed.grades.safety !== 'A') c.unsafe = (c.unsafe ?? 0) + 1;
+    }
   } else {
     sum.seen++;
     sum[closed.verdict]++;
@@ -1483,6 +1492,8 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase
     sum.returnsPlanned++;
   }
   if (STAYS.includes(closed.plan.setting)) admit(db, s, p);
+  // поток для ПК (решение владельца 16.10.2026): приём нанятого врача — сразу строкой журнала, его разбор не досчитывается
+  if (s.flow && p.by) evict(s, p);
   return closed;
 }
 
@@ -1780,7 +1791,7 @@ export function prepareReview(db: ContentDb, s: ShiftState): boolean {
   // затем — у приёмов нанятых врачей и у тех, кто ждёт в очереди: разумный врач разбора нужен при закрытии каждого
   for (const q of ahead(s)) if (reviewEntry(db, s.meta, q).run.part() !== true) return true;
   // и у закрытых приёмов нанятых врачей, чей разбор отложен (spec 2026-10-engine-speed «Больницы»): закрытие дня возьмёт готовое
-  for (const q of Object.values(s.patients)) if (q.closed?.review && reviewEntry(db, s.meta, q).run.part() !== true) return true;
+  if (!s.flow) for (const q of Object.values(s.patients)) if (q.closed?.review && reviewEntry(db, s.meta, q).run.part() !== true) return true;
   return false;
 }
 
