@@ -205,7 +205,7 @@ export function contextOf(db: ContentDb, patient: { sex: Sex; age: number; seaso
  * Неизвестное — одно на то, от чего оно зависит (spec 2026-10-engine-speed, ч. 4): пол, возраст, профессия, известные
  * факторы риска и болезни, жалобы и ответы о себе (`hx.`). От шага к шагу врача это обычно одно и то же, и тогда шаг
  * получает тот же объект — а с ним и всё, что запомнено по нему: доли кандидатов, их признаки, вероятности признаков
- * (`fpOf`). Числа те же: `unknownsOf` от тех же входов.
+ * (`fpTable`). Числа те же: `unknownsOf` от тех же входов.
  */
 const unknownsCache = new WeakMap<ContentDb, Map<string, Unknowns>>();
 const UNKNOWNS_KEEP = 256;
@@ -230,14 +230,12 @@ function sameUnknowns(db: ContentDb, observations: readonly Observation[], ctx: 
  * бывает»; '' — фон без кандидата; '~id' — фон без кандидата, но с его «без чего не бывает» и долями (`posterior`).
  */
 const fpCache = new WeakMap<Unknowns, Map<string, Map<Id, number>>>();
-function fpOf(ctx: InferContext, id: string, f: Id, compute: () => number): number {
+function fpTable(ctx: InferContext, id: string): Map<Id, number> {
   let byId = fpCache.get(ctx.unknowns);
   if (!byId) fpCache.set(ctx.unknowns, (byId = new Map()));
   let byF = byId.get(id);
   if (!byF) byId.set(id, (byF = new Map()));
-  let x = byF.get(f);
-  if (x === undefined) byF.set(f, (x = compute()));
-  return x;
+  return byF;
 }
 
 /** Жалобы среди наблюдений — по порядку, как пациент их назвал (`complaintObservations`). */
@@ -479,7 +477,12 @@ export function posterior(db: ContentDb, candidates: readonly Id[], observations
   // времени — меньше обследований, и ЭКГ при тахикардии оставалась несделанной; поэтому — только у болезней профосмотра
   const told = observations.filter(o => o.exam === 'complaint' && o.shown).map(o => o.f);
   // признак, которого кандидат не меняет, — с фоном, посчитанным один раз на все кандидаты (0.5.11): числа те же
-  const background = (f: Id): number => fpOf(ctx, '', f, () => findingProbability(db, f, ctx.knownConditions, ctx.knownRisks, unknownMiss(ctx, f, NO_SHARES), ctx));
+  const bgTable = fpTable(ctx, '');
+  const background = (f: Id): number => {
+    let x = bgTable.get(f);
+    if (x === undefined) bgTable.set(f, (x = findingProbability(db, f, ctx.knownConditions, ctx.knownRisks, unknownMiss(ctx, f, NO_SHARES), ctx)));
+    return x;
+  };
   // произведение по признакам — с того места, где наблюдения разошлись с прошлым шагом (spec 2026-10-engine-speed, ч. 4):
   // те же множители в том же порядке, поэтому и числа те же до бита
   const memo = posteriorMemoOf(ctx, `${ctx.season}|${told.join(',')}|${ctx.checkup ? 1 : 0}|${ctx.prior ? `${ctx.prior.x}:${ctx.prior.ids.join(',')}` : ''}`);
@@ -500,6 +503,7 @@ export function posterior(db: ContentDb, candidates: readonly Id[], observations
       const own = prior === 0 ? null : ownFindings(db, c, shares, ctx.unknowns);
       const xs = run.runs[0];
       if (xs.length > same + 1) xs.length = same + 1;
+      const table = xs.length - 1 < grouped.length ? fpTable(ctx, id) : undefined;
       for (let i = xs.length - 1; i < grouped.length; i++) {
         const w = xs[i];
         if (w === 0) {
@@ -507,7 +511,14 @@ export function posterior(db: ContentDb, candidates: readonly Id[], observations
           continue;
         }
         const { f, e } = grouped[i];
-        xs.push(w * mix(e, own && !own.has(f) ? background(f) : fpOf(ctx, id, f, () => findingProbability(db, f, set, ctx.knownRisks, unknownMiss(ctx, f, shares), ctx))));
+        let fp: number;
+        if (own && !own.has(f)) fp = background(f);
+        else {
+          const known = table!.get(f);
+          if (known === undefined) table!.set(f, (fp = findingProbability(db, f, set, ctx.knownRisks, unknownMiss(ctx, f, shares), ctx)));
+          else fp = known;
+        }
+        xs.push(w * mix(e, fp));
       }
       return { id, p: xs[grouped.length] };
     }
@@ -516,7 +527,24 @@ export function posterior(db: ContentDb, candidates: readonly Id[], observations
     // своими долями, которые признака не касаются, — общий фон (0.5.11): те же действия, и число то же
     const others = [...(c.requires ?? []), ...ctx.knownConditions];
     const hit = c.requires && c.requires.length > 0 ? null : sharedOf(shares, ctx.unknowns);
-    const otherOf = (f: Id) => (hit && !hit.has(f) ? background(f) : fpOf(ctx, `~${id}`, f, () => findingProbability(db, f, others, ctx.knownRisks, unknownMiss(ctx, f, shares), ctx)));
+    // фон каждого признака — один раз на вызов, для всех сочетаний
+    let table: Map<Id, number> | undefined;
+    const otherAt: number[] = [];
+    const otherOf = (i: number): number => {
+      const had = otherAt[i];
+      if (had !== undefined) return had;
+      const f = grouped[i].f;
+      let x: number;
+      if (hit && !hit.has(f)) x = background(f);
+      else {
+        table ??= fpTable(ctx, `~${id}`);
+        const known = table.get(f);
+        if (known === undefined) table.set(f, (x = findingProbability(db, f, others, ctx.knownRisks, unknownMiss(ctx, f, shares), ctx)));
+        else x = known;
+      }
+      otherAt[i] = x;
+      return x;
+    };
     let w = 0;
     combos.forEach((k, n) => {
       const xs = run.runs[n];
@@ -528,7 +556,7 @@ export function posterior(db: ContentDb, candidates: readonly Id[], observations
           continue;
         }
         const { f, e } = grouped[i];
-        const other = otherOf(f);
+        const other = otherOf(i);
         const cause = k.causes.get(f);
         // сочетание, которое признака не вызывает, — с тем же множителем, что у всех таких сочетаний (0.5.11)
         xs.push(x * (cause === undefined ? mix(e, 1 - (1 - other) * (1 - 0)) : mix(e, 1 - (1 - other) * (1 - cause))));
@@ -566,6 +594,8 @@ interface StepCache {
   owners?: { by: Map<Id, number[]>; all: number[]; total: number };
   /** сколько признак уточнит самое большее (`splitEntropy`) */
   split?: Map<Id, number>;
+  /** вероятности признаков кандидатов, запомненные на неизвестное (`fpTable`) */
+  tables?: Map<Id, number>[];
 }
 const stepCache = new WeakMap<readonly Belief[], StepCache>();
 
@@ -589,14 +619,23 @@ function candidateP(db: ContentDb, beliefs: readonly Belief[], ctx: InferContext
     // не меняет, — с фоном, посчитанным один раз: те же действия в том же порядке, и числа те же (0.5.11, NFR-PRF-1)
     const background = (): number => {
       let x = base.get(f);
-      if (x === undefined) base.set(f, (x = fpOf(ctx, '', f, () => findingProbability(db, f, ctx.knownConditions, ctx.knownRisks, unknownMiss(ctx, f, NO_SHARES), ctx))));
+      if (x === undefined) {
+        const t = fpTable(ctx, '');
+        x = t.get(f);
+        if (x === undefined) t.set(f, (x = findingProbability(db, f, ctx.knownConditions, ctx.knownRisks, unknownMiss(ctx, f, NO_SHARES), ctx)));
+        base.set(f, x);
+      }
       return x;
     };
+    const tables = (c.tables ??= beliefs.map(b => fpTable(ctx, b.id)));
     c.byFinding.set(f, (ps = sets.map((set, i) => {
       if (beliefs[i].p === 0) return 0;
       const mine = own[i];
       if (mine && !mine.has(f)) return background();
-      return fpOf(ctx, beliefs[i].id, f, () => findingProbability(db, f, set, ctx.knownRisks, unknownMiss(ctx, f, shares[i]), ctx));
+      const t = tables[i];
+      let x = t.get(f);
+      if (x === undefined) t.set(f, (x = findingProbability(db, f, set, ctx.knownRisks, unknownMiss(ctx, f, shares[i]), ctx)));
+      return x;
     })));
   }
   return ps;
