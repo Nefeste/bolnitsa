@@ -1,4 +1,4 @@
-// из anamnez: tools/test/perf.test.ts @ 96503ac
+// из anamnez: tools/test/perf.test.ts @ 96503ac, изменено: приём нанятого врача среди дня — через reviewedCase (spec 2026-10-engine-speed)
 // Быстродействие смены (0.5.11, NFR-PRF-1; spec 2026-10-performance): разбор приёма — и ваших, и нанятых врачей —
 // считается заранее, в паузах игры, и тот же, что подряд; время проматывается срезами — состояние то же, что одним
 // куском. С 0.5.16 разумный врач не считает пользу обследования, которое и с наибольшей возможной не обгонит лучшее.
@@ -10,7 +10,7 @@ import { Rng } from '../../src/engine/core/rng';
 import { complaintObservations, runExam } from '../../src/engine/med/exams';
 import { generatePatient } from '../../src/engine/med/generate';
 import { contextOf, expectedGain, gainBound, posterior } from '../../src/engine/med/infer';
-import { apply, candidatesOf, newSandbox, prepareReview, reviewOf } from '../../src/engine/shift/engine';
+import { apply, candidatesOf, newSandbox, prepareReview, reviewedCase, reviewOf } from '../../src/engine/shift/engine';
 import type { ShiftPatient, ShiftState } from '../../src/engine/shift/types';
 
 /** Амбулатория песочницы; первый пришедший — у вас в кабинете. */
@@ -120,8 +120,10 @@ describe('нанятый врач', () => {
     expect(theirs.length).toBeGreaterThan(3);
     for (const p of theirs) {
       const r = reviewOf(db, a, p, p.closed!.diagnosis).rational;
-      expect(p.closed!.rationalCost).toBe(r.cost);
-      expect(p.closed!.rationalMoney).toBe(r.money);
+      // разбор нанятого врача — по требованию (spec 2026-10-engine-speed): среди дня читается через reviewedCase
+      const closed = reviewedCase(db, a, p)!;
+      expect(closed.rationalCost).toBe(r.cost);
+      expect(closed.rationalMoney).toBe(r.money);
     }
   }, 60_000);
 });

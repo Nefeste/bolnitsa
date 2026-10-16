@@ -1,0 +1,62 @@
+[
+  {
+    "venue": "preset.city",
+    "seed": 1,
+    "atNoon": {
+      "count": 28,
+      "hash": "63b39b88ba4e853a"
+    },
+    "hired": 56,
+    "closed": "94ed2b83f5255eae"
+  },
+  {
+    "venue": "preset.city",
+    "seed": 2,
+    "atNoon": {
+      "count": 19,
+      "hash": "c4c33ddf7e9be114"
+    },
+    "hired": 46,
+    "closed": "688492db91256e9d"
+  },
+  {
+    "venue": "preset.city",
+    "seed": 3,
+    "atNoon": {
+      "count": 26,
+      "hash": "24a496b7d271a8e7"
+    },
+    "hired": 44,
+    "closed": "5ab88afede70fc09"
+  },
+  {
+    "venue": "bench.4",
+    "seed": 6,
+    "atNoon": {
+      "count": 29,
+      "hash": "cba4143ff03c90b8"
+    },
+    "hired": 55,
+    "closed": "3720f323f6bffcae"
+  },
+  {
+    "venue": "bench.4",
+    "seed": 4,
+    "atNoon": {
+      "count": 36,
+      "hash": "4f597ed35ac69fcf"
+    },
+    "hired": 59,
+    "closed": "46a3dfb6e5d8f8f"
+  },
+  {
+    "venue": "bench.4",
+    "seed": 5,
+    "atNoon": {
+      "count": 32,
+      "hash": "d147eaa3a6bef41c"
+    },
+    "hired": 53,
+    "closed": "6d2dbc9db86adb94"
+  }
+]

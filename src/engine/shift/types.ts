@@ -1,4 +1,4 @@
-// из anamnez: src/engine/shift/types.ts @ 96503ac
+// из anamnez: src/engine/shift/types.ts @ 96503ac, изменено: ClosedCase.review — разбор по требованию (spec 2026-10-engine-speed)
 // Смена в амбулатории (spec 2026-09-first-shift, «Движок»; `04-data-model.md` §2).
 //
 // Состояние — обычный сериализуемый объект: сохранение — снимок (ADR 0010). Случайность
@@ -198,6 +198,12 @@ export interface ClosedCase {
   rooms?: Id[];
   /** до решения была фибрилляция желудочков, её сняли разрядом под монитором (часть 39б) */
   arrest?: true;
+  /**
+   * разбор приёма нанятого врача ещё не досчитан (spec 2026-10-engine-speed, ч. 1): бережливость и общая оценка —
+   * предварительные, цена разумного пути — 0; `lenient` — разбор «Практиканта». Досчитывает `settleReviews`, читает
+   * `reviewedCase`
+   */
+  review?: 'due' | 'lenient';
 }
 
 export type ShiftEvent =
