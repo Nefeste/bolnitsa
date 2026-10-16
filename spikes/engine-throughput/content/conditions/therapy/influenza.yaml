@@ -1,0 +1,63 @@
+id: cond.influenza
+name: { ru: "Грипп" }
+icd10: J11.1
+department: dept.therapy
+system: airways
+kind: disease
+severity: moderate
+epidemiology:
+  prevalence: common
+  age: { min: 18 }
+  season: { winter: 3.0, spring: 1.0, summer: 0.1, autumn: 0.8 }
+  risks:
+    - { id: risk.sick_contact, x: 2 }
+course:
+  stages:
+    - { id: onset, days: [0, 2] }
+    - { id: peak, days: [2, 5] }
+    - { id: resolution, days: [5, 12] }
+  presentation: [1, 3]
+  untreated: { band: rarely, days: [3, 7] }
+  selfLimiting: true
+findings:
+  - { f: sym.abrupt_onset, band: usually }
+  - { f: sym.fever_hx, band: usually }
+  - { f: vital.fever, band: often }
+  - { f: sym.myalgia, band: usually }
+  - { f: sym.headache, band: usually }
+  - { f: sym.cough, band: usually, attrs: { character: { dry: 80, productive: 20 } } }
+  - { f: sym.chills, band: often }
+  - { f: sym.sore_throat, band: often }
+  - { f: sym.rhinorrhea, band: sometimes }
+  - { f: vital.tachycardia, band: sometimes }
+  - { f: sign.pharyngeal_hyperemia, band: often }
+  - { f: lab.flu_ag, band: always }
+  - { f: lab.wbc_high, band: rarely }
+  - { f: lab.crp_high, band: sometimes }
+  - { f: img.cxr_infiltrate, band: never }
+  # красное лицо и инъекция склер — общие признаки гриппа и ГЛПС (spec 2026-10-chapter-4, часть 52б; 347_2, приложение А3,
+  # дифференциальная диагностика); доли — игровая оценка. В конце списка — прежние больные остались прежними
+  - { f: sign.face_flushing, band: often }
+  - { f: sign.scleral_injection, band: sometimes }
+confirm: [exam.flu_rapid]
+treatment:
+  firstLine: [tx.rest_fluids]
+  acceptable: [tx.oseltamivir]
+  supportive: [tx.paracetamol, tx.ibuprofen, tx.nasal_saline]
+  notIndicated: [tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide, tx.steroid_systemic_short]
+  setting: { default: home }
+texts:
+  summary:
+    ru: >-
+      Острая вирусная инфекция с внезапным началом: высокая температура, ломота в теле,
+      головная боль, сухой кашель. Зимой и ранней весной — самая частая причина тяжёлого
+      самочувствия при «простуде».
+pearls:
+  - ru: "Внезапное начало с высокой температурой и ломотой в сезон гриппа — главный довод."
+  - ru: "Отрицательный экспресс-тест не исключает грипп: его чувствительность около 60 %."
+sources:
+  - { kind: guideline, title: "Грипп у взрослых", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/749_2", note: "ID 749_2, опубликованы 20.10.2025, применяются; сверено с рубрикатором 28.09.2026; частоты — черновик прототипа" }
+  - { kind: paper, title: "Call SA et al. Does this patient have influenza? JAMA 2005;293(8):987–997" }
+  - { kind: paper, title: "Chartrand C et al. Accuracy of rapid influenza diagnostic tests: a meta-analysis. Ann Intern Med 2012;156(7):500–511" }
+  - { kind: guideline, title: "Геморрагическая лихорадка с почечным синдромом", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/347_2", note: "ID 347_2, опубликованы 18.08.2025, применяются; сверено с рубрикатором 11.10.2026; приложение А3: общие с ГЛПС признаки гриппа — острое начало, интоксикация, высокая лихорадка, головные и мышечные боли, гиперемия лица, слизистой ротоглотки, инъецированность склер; при ГЛПС — эпиданамнез, рвота, боли в пояснице, нет катарального синдрома, тромбоцитопения; доли — игровая оценка" }
+review: draft

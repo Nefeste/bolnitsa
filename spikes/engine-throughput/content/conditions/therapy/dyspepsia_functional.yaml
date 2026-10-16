@@ -1,0 +1,47 @@
+id: cond.dyspepsia_functional
+name: { ru: "Функциональная диспепсия" }
+icd10: K30
+department: dept.therapy
+system: digestive
+group: grp.acid_dyspepsia
+kind: syndrome
+severity: minor
+epidemiology:
+  prevalence: uncommon
+  age: { min: 18 }
+  sex: { m: 0.8, f: 1 }
+course:
+  stages:
+    - { id: active, days: [0, 365] }
+  presentation: [14, 90]
+  untreated: { band: never, days: [7, 7] }   # без лечения не хуже, но и не проходит
+findings:
+  - { f: sym.epigastric_pain, band: usually }
+  - { f: sym.early_satiety, band: often }
+  - { f: sym.nausea, band: sometimes }
+  - { f: sym.heartburn, band: sometimes }
+  - { f: sym.regurgitation, band: rarely }
+  - { f: sym.anorexia, band: rarely }
+  - { f: sign.epigastric_tenderness, band: often }
+confirm: clinical
+treatment:
+  firstLine: [tx.ppi]
+  supportive: [tx.lifestyle, tx.antacid]
+  # H. pylori-позитивная диспепсия — уже гастрит (spec 2026-10-chapter-4, часть 53б; 708_2, разделы 1.6 и 3.1.4, Киотский
+  # консенсус): в игре у функциональной диспепсии инфекции нет, эрадикация не нужна
+  notIndicated: [tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide, tx.fluoroquinolone, tx.hp_eradication]
+  setting: { default: home }
+texts:
+  summary:
+    ru: >-
+      Боль или жжение под ложечкой, тяжесть и быстрое насыщение после еды без язвы и
+      других находок при обследовании. Очень частая причина жалоб на желудок; лечат ИПП
+      и режимом питания.
+pearls:
+  - ru: "Диспепсия — это боль под ложечкой и тяжесть после еды; изжога и отрыжка кислым больше говорят о рефлюксе, но тактика почти одинаковая."
+  - ru: "Регулярный приём обезболивающих — частая причина болей в желудке: спросите о лекарствах."
+simplified: "Диспепсия с H. pylori в игре — гастрит, ассоциированный с H. pylori: функциональную ставят, когда инфекции нет (708_2: и когда жалобы остались после успешной эрадикации). Прокинетиков и ребамипида нет; диспепсия без тревожных признаков лечится ИПН."
+sources:
+  - { kind: guideline, title: "Moayyedi P et al. ACG and CAG Clinical Guideline: Management of Dyspepsia. Am J Gastroenterol 2017;112(7):988–1013", url: "https://pubmed.ncbi.nlm.nih.gov/28631728/" }
+  - { kind: guideline, title: "Гастрит и дуоденит", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/708_2", note: "ID 708_2, опубликованы 10.07.2024, применяются; сверено с рубрикатором 11.10.2026; раздел 1.6: диспепсия, ассоциированная с H. pylori, — самостоятельная форма; жалобы, сохранившиеся после успешной эрадикации, — функциональная диспепсия; раздел 3.1.4: ИПН — симптоматическое лечение (УУР A, УДД 1)" }
+review: draft
