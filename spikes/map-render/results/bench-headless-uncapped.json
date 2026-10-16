@@ -1,0 +1,290 @@
+{
+  "browser": "141.0.7390.37",
+  "executablePath": "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+  "args": [
+    "--ignore-gpu-blocklist",
+    "--enable-unsafe-swiftshader",
+    "--use-angle=swiftshader",
+    "--disable-frame-rate-limit",
+    "--disable-gpu-vsync"
+  ],
+  "capped": false,
+  "runs": [
+    {
+      "renderer": "pixi",
+      "people": 50,
+      "frames": 178,
+      "fps": 8.9,
+      "frameMs": {
+        "mean": 112.02,
+        "p95": 516.9,
+        "max": 1147.9
+      },
+      "over33ms": 83,
+      "over100ms": 61,
+      "simMs": {
+        "mean": 0.02,
+        "p95": 0.1,
+        "max": 0.2
+      },
+      "drawCpuMs": {
+        "mean": 77.08,
+        "p95": 328.2,
+        "max": 1148.5
+      },
+      "astar": {
+        "searches": 1,
+        "avgMs": 0
+      },
+      "jsHeapMB": 7,
+      "processMB": null,
+      "gpu": "PixiJS webgl — WebGL2: ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    },
+    {
+      "renderer": "pixi",
+      "people": 100,
+      "frames": 175,
+      "fps": 8.8,
+      "frameMs": {
+        "mean": 115.18,
+        "p95": 400.8,
+        "max": 2031.4
+      },
+      "over33ms": 83,
+      "over100ms": 41,
+      "simMs": {
+        "mean": 0.05,
+        "p95": 0.1,
+        "max": 3.4
+      },
+      "drawCpuMs": {
+        "mean": 82.94,
+        "p95": 286.7,
+        "max": 2039
+      },
+      "astar": {
+        "searches": 6,
+        "avgMs": 0.05
+      },
+      "jsHeapMB": 6,
+      "processMB": null,
+      "gpu": "PixiJS webgl — WebGL2: ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    },
+    {
+      "renderer": "pixi",
+      "people": 200,
+      "frames": 227,
+      "fps": 11.4,
+      "frameMs": {
+        "mean": 89.06,
+        "p95": 253.6,
+        "max": 602.6
+      },
+      "over33ms": 136,
+      "over100ms": 74,
+      "simMs": {
+        "mean": 0.11,
+        "p95": 0.3,
+        "max": 4.7
+      },
+      "drawCpuMs": {
+        "mean": 69.65,
+        "p95": 220.5,
+        "max": 406.8
+      },
+      "astar": {
+        "searches": 35,
+        "avgMs": 0.083
+      },
+      "jsHeapMB": 6,
+      "processMB": null,
+      "gpu": "PixiJS webgl — WebGL2: ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    },
+    {
+      "renderer": "pixi",
+      "people": 400,
+      "frames": 221,
+      "fps": 11.1,
+      "frameMs": {
+        "mean": 85.74,
+        "p95": 269.7,
+        "max": 1705.3
+      },
+      "over33ms": 85,
+      "over100ms": 47,
+      "simMs": {
+        "mean": 0.11,
+        "p95": 0.3,
+        "max": 1.2
+      },
+      "drawCpuMs": {
+        "mean": 64.75,
+        "p95": 254,
+        "max": 1714.9
+      },
+      "astar": {
+        "searches": 37,
+        "avgMs": 0.041
+      },
+      "jsHeapMB": 6,
+      "processMB": null,
+      "gpu": "PixiJS webgl — WebGL2: ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    },
+    {
+      "renderer": "ck",
+      "people": 50,
+      "frames": 540,
+      "fps": 27,
+      "frameMs": {
+        "mean": 31.5,
+        "p95": 125.9,
+        "max": 3941.1
+      },
+      "over33ms": 70,
+      "over100ms": 34,
+      "simMs": {
+        "mean": 0.03,
+        "p95": 0.1,
+        "max": 4.4
+      },
+      "drawCpuMs": {
+        "mean": 38.18,
+        "p95": 126.9,
+        "max": 4159.7
+      },
+      "astar": {
+        "searches": 16,
+        "avgMs": 0.3
+      },
+      "jsHeapMB": 133,
+      "processMB": null,
+      "gpu": "CanvasKit GPU — WebGL2: ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    },
+    {
+      "renderer": "ck",
+      "people": 100,
+      "frames": 738,
+      "fps": 36.9,
+      "frameMs": {
+        "mean": 30.84,
+        "p95": 6.6,
+        "max": 5784.2
+      },
+      "over33ms": 12,
+      "over100ms": 6,
+      "simMs": {
+        "mean": 0.02,
+        "p95": 0.1,
+        "max": 0.3
+      },
+      "drawCpuMs": {
+        "mean": 32.9,
+        "p95": 2.8,
+        "max": 5939.2
+      },
+      "astar": {
+        "searches": 21,
+        "avgMs": 0.081
+      },
+      "jsHeapMB": 134,
+      "processMB": null,
+      "gpu": "CanvasKit GPU — WebGL2: ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    },
+    {
+      "renderer": "ck",
+      "people": 200,
+      "frames": 689,
+      "fps": 34.5,
+      "frameMs": {
+        "mean": 39.51,
+        "p95": 6,
+        "max": 5594.8
+      },
+      "over33ms": 11,
+      "over100ms": 6,
+      "simMs": {
+        "mean": 0.04,
+        "p95": 0.1,
+        "max": 2.8
+      },
+      "drawCpuMs": {
+        "mean": 32.13,
+        "p95": 3.1,
+        "max": 5602.1
+      },
+      "astar": {
+        "searches": 111,
+        "avgMs": 0.074
+      },
+      "jsHeapMB": 133,
+      "processMB": null,
+      "gpu": "CanvasKit GPU — WebGL2: ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    },
+    {
+      "renderer": "ck",
+      "people": 400,
+      "frames": 609,
+      "fps": 30.5,
+      "frameMs": {
+        "mean": 47.42,
+        "p95": 10.8,
+        "max": 5921
+      },
+      "over33ms": 15,
+      "over100ms": 9,
+      "simMs": {
+        "mean": 0.07,
+        "p95": 0.2,
+        "max": 2.4
+      },
+      "drawCpuMs": {
+        "mean": 37.24,
+        "p95": 4.2,
+        "max": 5921.1
+      },
+      "astar": {
+        "searches": 313,
+        "avgMs": 0.055
+      },
+      "jsHeapMB": 134,
+      "processMB": null,
+      "gpu": "CanvasKit GPU — WebGL2: ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    }
+  ],
+  "pages": [
+    {
+      "renderer": "pixi",
+      "startup": {
+        "firstFrameMs": 1410,
+        "ckLoadMs": 0,
+        "initMs": {
+          "pixi": 81
+        }
+      },
+      "viewport": {
+        "w": 1280,
+        "h": 720,
+        "dpr": 1
+      },
+      "cores": 4,
+      "chromium": "141.0.0.0"
+    },
+    {
+      "renderer": "ck",
+      "startup": {
+        "firstFrameMs": 842,
+        "ckLoadMs": 315,
+        "initMs": {
+          "ck": 46
+        }
+      },
+      "viewport": {
+        "w": 1280,
+        "h": 720,
+        "dpr": 1
+      },
+      "cores": 4,
+      "chromium": "141.0.0.0"
+    }
+  ]
+}

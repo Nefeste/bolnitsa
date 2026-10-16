@@ -1,0 +1,109 @@
+{
+  "browser": "141.0.7390.37",
+  "executablePath": "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+  "args": [
+    "--ignore-gpu-blocklist",
+    "--enable-unsafe-swiftshader",
+    "--use-angle=swiftshader"
+  ],
+  "capped": true,
+  "query": "hide=static",
+  "runs": [
+    {
+      "renderer": "pixi",
+      "people": 200,
+      "frames": 332,
+      "fps": 41.5,
+      "frameMs": {
+        "mean": 24.1,
+        "p95": 33.4,
+        "max": 66.7
+      },
+      "over33ms": 22,
+      "over100ms": 0,
+      "simMs": {
+        "mean": 0.06,
+        "p95": 0.2,
+        "max": 2.3
+      },
+      "drawCpuMs": {
+        "mean": 0.42,
+        "p95": 0.6,
+        "max": 7.4
+      },
+      "astar": {
+        "searches": 16,
+        "avgMs": 0.063
+      },
+      "jsHeapMB": 6,
+      "processMB": null,
+      "gpu": "PixiJS webgl — WebGL2: ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    },
+    {
+      "renderer": "ck",
+      "people": 200,
+      "frames": 343,
+      "fps": 42.9,
+      "frameMs": {
+        "mean": 23.32,
+        "p95": 33.4,
+        "max": 66.6
+      },
+      "over33ms": 14,
+      "over100ms": 0,
+      "simMs": {
+        "mean": 0.07,
+        "p95": 0.2,
+        "max": 2.6
+      },
+      "drawCpuMs": {
+        "mean": 0.55,
+        "p95": 1.2,
+        "max": 3.2
+      },
+      "astar": {
+        "searches": 19,
+        "avgMs": 0.226
+      },
+      "jsHeapMB": 133,
+      "processMB": null,
+      "gpu": "CanvasKit GPU — WebGL2: ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    }
+  ],
+  "pages": [
+    {
+      "renderer": "pixi",
+      "startup": {
+        "firstFrameMs": 1189,
+        "ckLoadMs": 0,
+        "initMs": {
+          "pixi": 77
+        }
+      },
+      "viewport": {
+        "w": 1280,
+        "h": 720,
+        "dpr": 1
+      },
+      "cores": 4,
+      "chromium": "141.0.0.0"
+    },
+    {
+      "renderer": "ck",
+      "startup": {
+        "firstFrameMs": 733,
+        "ckLoadMs": 274,
+        "initMs": {
+          "ck": 58
+        }
+      },
+      "viewport": {
+        "w": 1280,
+        "h": 720,
+        "dpr": 1
+      },
+      "cores": 4,
+      "chromium": "141.0.0.0"
+    }
+  ]
+}
