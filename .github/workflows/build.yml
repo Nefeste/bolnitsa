@@ -1,9 +1,11 @@
 # Сборка ПК-версии — только на тег версии vX.Y.Z (ADR студии 0019): слияние в main её не
 # запускает, ручного запуска нет. Тег ставит владелец.
 #
-# Пока игры нет, собирается проба карты spikes/map-render (docs/specs/2026-10-prototype.md,
-# «Пробы»): Electron, Windows (zip и portable .exe) и Linux (AppImage и tar.gz) — всё из Linux,
-# без wine (spikes/map-render/README.md, «Сборка»). Когда появится игра, сборка переедет на неё.
+# Пока игры нет, собирается проба 3D-вида spikes/render-3d (решение владельца 16.10.2026:
+# вид не хуже Project Hospital на Three.js; spikes/render-3d/README.md): Electron, Windows (zip и
+# portable .exe) и Linux (AppImage и tar.gz) — всё из Linux, без wine (как у пробы карты,
+# spikes/map-render/README.md, «Сборка»). Проба карты spikes/map-render (v0.0.1) больше не
+# собирается. Когда появится игра, сборка переедет на неё.
 # Файлы уходят в релиз на этот тег; версии 0.x — пре-релизы. Репозиторий закрыт: релиз видят
 # только участники.
 name: Сборка ПК
@@ -26,7 +28,7 @@ jobs:
     timeout-minutes: 40
     defaults:
       run:
-        working-directory: spikes/map-render
+        working-directory: spikes/render-3d
     steps:
       - uses: actions/checkout@v5
 
@@ -35,7 +37,7 @@ jobs:
         run: |
           V=$(node -p "require('./package.json').version")
           if [ "$GITHUB_REF_NAME" != "v$V" ]; then
-            echo "::error::Тег $GITHUB_REF_NAME, а в spikes/map-render/package.json версия $V."
+            echo "::error::Тег $GITHUB_REF_NAME, а в spikes/render-3d/package.json версия $V."
             exit 1
           fi
 
@@ -43,7 +45,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: spikes/map-render/package-lock.json
+          cache-dependency-path: spikes/render-3d/package-lock.json
 
       # Electron и инструменты electron-builder скачиваются один раз и кэшируются
       - uses: actions/cache@v4
@@ -51,7 +53,7 @@ jobs:
           path: |
             ~/.cache/electron
             ~/.cache/electron-builder
-          key: electron-${{ runner.os }}-${{ hashFiles('spikes/map-render/package-lock.json') }}
+          key: electron-${{ runner.os }}-${{ hashFiles('spikes/render-3d/package-lock.json') }}
 
       - run: npm ci --no-audit --no-fund
       - name: Типы
@@ -65,13 +67,14 @@ jobs:
       - name: Описание релиза
         run: |
           {
-            echo "Проба карты больницы на ПК: PixiJS против CanvasKit, Electron (spikes/map-render)."
+            echo "Проба 3D-вида больницы на ПК: Three.js, модели CC0, люди со скелетной анимацией, Electron (spikes/render-3d)."
             echo
-            echo "**Windows:** \`*-win-x64.zip\` — распаковать и запустить \`BolnitsaProbe.exe\`; \`*-win-x64.exe\` — то же одним файлом."
+            echo "**Windows:** \`*-win-x64.zip\` — распаковать и запустить \`BolnitsaProbe3D.exe\`; \`*-win-x64.exe\` — то же одним файлом."
             echo "**Linux:** \`*.AppImage\` или \`*.tar.gz\`."
             echo
             echo "Сборка не подписана: Windows может спросить «Запустить всё равно?»."
-            echo "Что делать с пробой — spikes/map-render/README.md, «Инструкция для владельца»."
+            echo "Что делать с пробой — spikes/render-3d/README.md, «Инструкция для владельца»."
+            echo "Модели — CC0 (Kenney, KayKit, Quaternius): spikes/render-3d/assets/LICENSES.md."
             echo
             echo "Собрано из коммита ${{ github.sha }}, сборка ${{ github.run_number }}."
           } > release.md
@@ -80,12 +83,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: Проба карты ${{ github.ref_name }}
-          body_path: spikes/map-render/release.md
+          name: Проба 3D ${{ github.ref_name }}
+          body_path: spikes/render-3d/release.md
           prerelease: ${{ startsWith(github.ref_name, 'v0.') }}
           fail_on_unmatched_files: true
           files: |
-            spikes/map-render/release/*.AppImage
-            spikes/map-render/release/*.tar.gz
-            spikes/map-render/release/*-win-x64.zip
-            spikes/map-render/release/*-win-x64.exe
+            spikes/render-3d/release/BolnitsaProbe3D-*.AppImage
+            spikes/render-3d/release/BolnitsaProbe3D-*.tar.gz
+            spikes/render-3d/release/BolnitsaProbe3D-*-win-x64.zip
+            spikes/render-3d/release/BolnitsaProbe3D-*-win-x64.exe

@@ -17,9 +17,10 @@
   Electron, Windows (zip и portable `.exe`) и Linux (AppImage и tar.gz) — всё на
   `ubuntu-24.04`, без wine; файлы — в релиз на тег, версии 0.x — пре-релизы. Тег сверяется с
   версией в `package.json`: `v0.0.2` при `0.0.1` останавливает сборку.
-- Пока игры нет, собирается проба карты (`spikes/map-render`), версия — в её `package.json`.
-  Установщика NSIS и своей иконки у `.exe` нет: без wine они не собираются
-  (`spikes/map-render/README.md`, «Сборка»).
+- Пока игры нет, собирается проба 3D-вида (`spikes/render-3d`, с версии `0.0.2`), версия — в
+  её `package.json`; файлы релиза — `BolnitsaProbe3D-…`. Проба карты (`spikes/map-render`,
+  `v0.0.1`) остаётся в репозитории, но больше не собирается. Установщика NSIS и своей иконки у
+  `.exe` нет: без wine они не собираются (`spikes/map-render/README.md`, «Сборка»).
 
 ## Пробы
 
