@@ -1,0 +1,929 @@
+{
+  "probe": "render-3d",
+  "when": "2026-10-16T20:57:15.456Z",
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) BolnitsaProbe3D/0.0.2 Chrome/152.0.7977.130 Electron/44.5.1 Safari/537.36",
+  "chromium": "152.0.7977.130",
+  "cores": 4,
+  "viewport": {
+    "w": 1600,
+    "h": 900,
+    "dpr": 1
+  },
+  "settings": {
+    "secs": 15,
+    "warm": 3,
+    "counts": [
+      50,
+      100,
+      200,
+      400
+    ],
+    "qualities": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "seed": 1,
+    "walls": "cut",
+    "camera": "перспектива 20°, наклон 52°, вся карта"
+  },
+  "scene": {
+    "cells": "60x40",
+    "rooms": 31,
+    "things": 206,
+    "furnitureItems": 259,
+    "furnitureTris": 71804,
+    "looks": [
+      {
+        "name": "Doctor_Male_Young",
+        "tris": 6498,
+        "lodTris": 1474,
+        "joints": 23
+      },
+      {
+        "name": "Doctor_Female_Young",
+        "tris": 8530,
+        "lodTris": 2540,
+        "joints": 23
+      },
+      {
+        "name": "Doctor_Male_Old",
+        "tris": 5006,
+        "lodTris": 1280,
+        "joints": 23
+      },
+      {
+        "name": "Doctor_Female_Old",
+        "tris": 6790,
+        "lodTris": 1584,
+        "joints": 23
+      },
+      {
+        "name": "Worker_Male",
+        "tris": 2524,
+        "lodTris": 770,
+        "joints": 23
+      },
+      {
+        "name": "Worker_Female",
+        "tris": 5856,
+        "lodTris": 1401,
+        "joints": 23
+      },
+      {
+        "name": "Casual_Male",
+        "tris": 6492,
+        "lodTris": 1450,
+        "joints": 23
+      },
+      {
+        "name": "Casual_Female",
+        "tris": 6624,
+        "lodTris": 1528,
+        "joints": 23
+      },
+      {
+        "name": "Casual2_Male",
+        "tris": 3216,
+        "lodTris": 910,
+        "joints": 23
+      },
+      {
+        "name": "Casual2_Female",
+        "tris": 6752,
+        "lodTris": 1546,
+        "joints": 23
+      },
+      {
+        "name": "Casual3_Male",
+        "tris": 4920,
+        "lodTris": 1268,
+        "joints": 23
+      },
+      {
+        "name": "Casual3_Female",
+        "tris": 8444,
+        "lodTris": 2454,
+        "joints": 23
+      },
+      {
+        "name": "Casual_Bald",
+        "tris": 2312,
+        "lodTris": 681,
+        "joints": 23
+      },
+      {
+        "name": "Suit_Male",
+        "tris": 6518,
+        "lodTris": 1458,
+        "joints": 23
+      },
+      {
+        "name": "Suit_Female",
+        "tris": 6810,
+        "lodTris": 1552,
+        "joints": 23
+      }
+    ],
+    "bakedFrames": 3525,
+    "boneTexture": "1024x317",
+    "seats": 83,
+    "toiletStalls": 49,
+    "sitShift": {
+      "z": -0.30489537745086703,
+      "y": -0.22647197391598972
+    },
+    "three": "186"
+  },
+  "startup": {
+    "firstFrameMs": 5547,
+    "loadMs": {
+      "furniture": 77,
+      "people": 440,
+      "scene": 238,
+      "total": 886
+    }
+  },
+  "electron": {
+    "electron": "44.5.1",
+    "chrome": "152.0.7977.130",
+    "node": "24.21.0",
+    "platform": "linux 6.18.44-fc-v139 x64",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cpuCount": 4,
+    "ramGB": 16,
+    "gpuFeatureStatus": {
+      "2d_canvas": "enabled",
+      "direct_rendering_display_compositor": "disabled_off_ok",
+      "gpu_compositing": "enabled",
+      "multiple_raster_threads": "enabled_on",
+      "opengl": "enabled_on",
+      "rasterization": "enabled",
+      "raw_draw": "disabled_off_ok",
+      "skia_graphite": "disabled_off",
+      "trees_in_viz": "disabled_off",
+      "video_decode": "enabled",
+      "video_encode": "disabled_software",
+      "vulkan": "disabled_off",
+      "webgl": "enabled",
+      "webgpu": "unavailable_software",
+      "webgpu_on_vk_via_gl_interop": "disabled_off",
+      "webnn": "disabled_off"
+    },
+    "gpu": {
+      "auxAttributes": {
+        "amdSwitchable": false,
+        "canSupportThreadedTextureMailbox": false,
+        "glImplementationParts": "(gl=none,angle=none)",
+        "glResetNotificationStrategy": 0,
+        "hardwareSupportsVulkan": false,
+        "inProcessGpu": true,
+        "initializationTime": 0,
+        "isAsan": false,
+        "isClangCoverage": false,
+        "jpegDecodeAcceleratorSupported": false,
+        "optimus": false,
+        "passthroughCmdDecoder": false,
+        "sandboxed": false,
+        "skiaBackendType": "None",
+        "subpixelFontRendering": true,
+        "targetCpuBits": 64,
+        "visibilityCallbackCallCount": 0
+      },
+      "gpuDevice": [
+        {
+          "active": false,
+          "deviceId": 0,
+          "gpuPreference": 0,
+          "vendorId": 0
+        }
+      ]
+    },
+    "vsync": true,
+    "startup": {
+      "processToReadyMs": 86,
+      "readyToShowMs": 244,
+      "firstFrameMs": 5547,
+      "processStartToFirstFrameMs": 5661
+    },
+    "blockedRequests": 0,
+    "memoryAtEnd": {
+      "workingSetMB": 924,
+      "privateMB": 0,
+      "byType": {
+        "Browser": 173,
+        "GPU": 433,
+        "Utility": 87,
+        "Tab": 232
+      }
+    }
+  },
+  "shots": [
+    {
+      "name": "bench-electron-2026-10-16T20-53-02-1-overview.png",
+      "title": "общий план, полдень",
+      "path": "/tmp/claude-0/e4/bench-electron-2026-10-16T20-53-02-1-overview.png"
+    },
+    {
+      "name": "bench-electron-2026-10-16T20-53-02-2-reception.png",
+      "title": "регистратура и ожидание крупно",
+      "path": "/tmp/claude-0/e4/bench-electron-2026-10-16T20-53-02-2-reception.png"
+    },
+    {
+      "name": "bench-electron-2026-10-16T20-53-02-3-ward.png",
+      "title": "палата крупно",
+      "path": "/tmp/claude-0/e4/bench-electron-2026-10-16T20-53-02-3-ward.png"
+    },
+    {
+      "name": "bench-electron-2026-10-16T20-53-02-4-evening.png",
+      "title": "вечер, средний план",
+      "path": "/tmp/claude-0/e4/bench-electron-2026-10-16T20-53-02-4-evening.png"
+    }
+  ],
+  "runs": [
+    {
+      "renderer": "three",
+      "quality": "low",
+      "people": 50,
+      "frames": 50,
+      "fps": 3.3,
+      "frameMs": {
+        "mean": 305.32,
+        "p95": 733.2,
+        "max": 833.3
+      },
+      "over33ms": 46,
+      "over100ms": 43,
+      "simMs": {
+        "mean": 0.25,
+        "p95": 0.8,
+        "max": 1.1
+      },
+      "drawCpuMs": {
+        "mean": 1.64,
+        "p95": 5.3,
+        "max": 6.3
+      },
+      "cpuMs": {
+        "mean": 1.89,
+        "p95": 5.4,
+        "max": 7.1
+      },
+      "astar": {
+        "searches": 31,
+        "avgMs": 0.032
+      },
+      "drawCalls": 30,
+      "triangles": 274287,
+      "peopleNear": 0,
+      "peopleFar": 50,
+      "gpuMemory": {
+        "geometries": 26,
+        "textures": 14,
+        "programs": 6
+      },
+      "renderPx": {
+        "w": 1200,
+        "h": 675
+      },
+      "preset": {
+        "scale": 0.75,
+        "antialias": false,
+        "shadowSize": 1024,
+        "peopleShadows": false,
+        "env": false,
+        "fullHalf": 0
+      },
+      "jsHeapMB": 72,
+      "processMB": 786,
+      "gpu": "WebGL2: ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    },
+    {
+      "renderer": "three",
+      "quality": "low",
+      "people": 100,
+      "frames": 42,
+      "fps": 2.8,
+      "frameMs": {
+        "mean": 359.11,
+        "p95": 716.6,
+        "max": 1116.5
+      },
+      "over33ms": 39,
+      "over100ms": 37,
+      "simMs": {
+        "mean": 0.2,
+        "p95": 0.3,
+        "max": 0.6
+      },
+      "drawCpuMs": {
+        "mean": 1.64,
+        "p95": 4.6,
+        "max": 5.5
+      },
+      "cpuMs": {
+        "mean": 1.84,
+        "p95": 4.8,
+        "max": 5.8
+      },
+      "astar": {
+        "searches": 42,
+        "avgMs": 0.029
+      },
+      "drawCalls": 32,
+      "triangles": 348473,
+      "peopleNear": 0,
+      "peopleFar": 100,
+      "gpuMemory": {
+        "geometries": 28,
+        "textures": 14,
+        "programs": 6
+      },
+      "renderPx": {
+        "w": 1200,
+        "h": 675
+      },
+      "preset": {
+        "scale": 0.75,
+        "antialias": false,
+        "shadowSize": 1024,
+        "peopleShadows": false,
+        "env": false,
+        "fullHalf": 0
+      },
+      "jsHeapMB": 57,
+      "processMB": 716,
+      "gpu": "WebGL2: ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    },
+    {
+      "renderer": "three",
+      "quality": "low",
+      "people": 200,
+      "frames": 35,
+      "fps": 2.3,
+      "frameMs": {
+        "mean": 437.12,
+        "p95": 833.2,
+        "max": 850
+      },
+      "over33ms": 32,
+      "over100ms": 30,
+      "simMs": {
+        "mean": 0.46,
+        "p95": 2.1,
+        "max": 3.2
+      },
+      "drawCpuMs": {
+        "mean": 1.43,
+        "p95": 3.3,
+        "max": 4.1
+      },
+      "cpuMs": {
+        "mean": 1.89,
+        "p95": 4,
+        "max": 4.4
+      },
+      "astar": {
+        "searches": 104,
+        "avgMs": 0.03
+      },
+      "drawCalls": 33,
+      "triangles": 498731,
+      "peopleNear": 0,
+      "peopleFar": 200,
+      "gpuMemory": {
+        "geometries": 29,
+        "textures": 14,
+        "programs": 6
+      },
+      "renderPx": {
+        "w": 1200,
+        "h": 675
+      },
+      "preset": {
+        "scale": 0.75,
+        "antialias": false,
+        "shadowSize": 1024,
+        "peopleShadows": false,
+        "env": false,
+        "fullHalf": 0
+      },
+      "jsHeapMB": 57,
+      "processMB": 718,
+      "gpu": "WebGL2: ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    },
+    {
+      "renderer": "three",
+      "quality": "low",
+      "people": 400,
+      "frames": 26,
+      "fps": 1.7,
+      "frameMs": {
+        "mean": 573.05,
+        "p95": 1033.3,
+        "max": 1350
+      },
+      "over33ms": 25,
+      "over100ms": 25,
+      "simMs": {
+        "mean": 0.58,
+        "p95": 0.9,
+        "max": 2.2
+      },
+      "drawCpuMs": {
+        "mean": 1.43,
+        "p95": 4,
+        "max": 5
+      },
+      "cpuMs": {
+        "mean": 2,
+        "p95": 4.7,
+        "max": 5.5
+      },
+      "astar": {
+        "searches": 212,
+        "avgMs": 0.021
+      },
+      "drawCalls": 33,
+      "triangles": 786611,
+      "peopleNear": 0,
+      "peopleFar": 400,
+      "gpuMemory": {
+        "geometries": 29,
+        "textures": 14,
+        "programs": 6
+      },
+      "renderPx": {
+        "w": 1200,
+        "h": 675
+      },
+      "preset": {
+        "scale": 0.75,
+        "antialias": false,
+        "shadowSize": 1024,
+        "peopleShadows": false,
+        "env": false,
+        "fullHalf": 0
+      },
+      "jsHeapMB": 57,
+      "processMB": 712,
+      "gpu": "WebGL2: ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    },
+    {
+      "renderer": "three",
+      "quality": "medium",
+      "people": 50,
+      "frames": 9,
+      "fps": 0.6,
+      "frameMs": {
+        "mean": 1875.86,
+        "p95": 4933.2,
+        "max": 4933.2
+      },
+      "over33ms": 9,
+      "over100ms": 8,
+      "simMs": {
+        "mean": 0.33,
+        "p95": 2.1,
+        "max": 2.1
+      },
+      "drawCpuMs": {
+        "mean": 2.03,
+        "p95": 4.9,
+        "max": 4.9
+      },
+      "cpuMs": {
+        "mean": 2.37,
+        "p95": 7,
+        "max": 7
+      },
+      "astar": {
+        "searches": 12,
+        "avgMs": 0.183
+      },
+      "drawCalls": 42,
+      "triangles": 342320,
+      "peopleNear": 0,
+      "peopleFar": 50,
+      "gpuMemory": {
+        "geometries": 27,
+        "textures": 15,
+        "programs": 10
+      },
+      "renderPx": {
+        "w": 1600,
+        "h": 900
+      },
+      "preset": {
+        "scale": 1,
+        "antialias": true,
+        "shadowSize": 2048,
+        "peopleShadows": true,
+        "env": true,
+        "fullHalf": 9
+      },
+      "jsHeapMB": 57,
+      "processMB": 809,
+      "gpu": "WebGL2: ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    },
+    {
+      "renderer": "three",
+      "quality": "medium",
+      "people": 100,
+      "frames": 9,
+      "fps": 0.6,
+      "frameMs": {
+        "mean": 1624.02,
+        "p95": 1816.6,
+        "max": 1816.6
+      },
+      "over33ms": 9,
+      "over100ms": 9,
+      "simMs": {
+        "mean": 1.4,
+        "p95": 6.1,
+        "max": 6.1
+      },
+      "drawCpuMs": {
+        "mean": 1.28,
+        "p95": 2,
+        "max": 2
+      },
+      "cpuMs": {
+        "mean": 2.68,
+        "p95": 6.9,
+        "max": 6.9
+      },
+      "astar": {
+        "searches": 31,
+        "avgMs": 0.155
+      },
+      "drawCalls": 46,
+      "triangles": 490692,
+      "peopleNear": 0,
+      "peopleFar": 100,
+      "gpuMemory": {
+        "geometries": 29,
+        "textures": 15,
+        "programs": 10
+      },
+      "renderPx": {
+        "w": 1600,
+        "h": 900
+      },
+      "preset": {
+        "scale": 1,
+        "antialias": true,
+        "shadowSize": 2048,
+        "peopleShadows": true,
+        "env": true,
+        "fullHalf": 9
+      },
+      "jsHeapMB": 57,
+      "processMB": 812,
+      "gpu": "WebGL2: ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    },
+    {
+      "renderer": "three",
+      "quality": "medium",
+      "people": 200,
+      "frames": 7,
+      "fps": 0.5,
+      "frameMs": {
+        "mean": 2164.2,
+        "p95": 4433.2,
+        "max": 4433.2
+      },
+      "over33ms": 6,
+      "over100ms": 6,
+      "simMs": {
+        "mean": 0.34,
+        "p95": 0.4,
+        "max": 0.4
+      },
+      "drawCpuMs": {
+        "mean": 2.76,
+        "p95": 7.5,
+        "max": 7.5
+      },
+      "cpuMs": {
+        "mean": 3.1,
+        "p95": 7.9,
+        "max": 7.9
+      },
+      "astar": {
+        "searches": 44,
+        "avgMs": 0.023
+      },
+      "drawCalls": 48,
+      "triangles": 791208,
+      "peopleNear": 0,
+      "peopleFar": 200,
+      "gpuMemory": {
+        "geometries": 30,
+        "textures": 15,
+        "programs": 10
+      },
+      "renderPx": {
+        "w": 1600,
+        "h": 900
+      },
+      "preset": {
+        "scale": 1,
+        "antialias": true,
+        "shadowSize": 2048,
+        "peopleShadows": true,
+        "env": true,
+        "fullHalf": 9
+      },
+      "jsHeapMB": 57,
+      "processMB": 814,
+      "gpu": "WebGL2: ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    },
+    {
+      "renderer": "three",
+      "quality": "medium",
+      "people": 400,
+      "frames": 5,
+      "fps": 0.3,
+      "frameMs": {
+        "mean": 2899.86,
+        "p95": 5233,
+        "max": 5233
+      },
+      "over33ms": 5,
+      "over100ms": 5,
+      "simMs": {
+        "mean": 0.62,
+        "p95": 0.8,
+        "max": 0.8
+      },
+      "drawCpuMs": {
+        "mean": 2.2,
+        "p95": 6,
+        "max": 6
+      },
+      "cpuMs": {
+        "mean": 2.82,
+        "p95": 6.7,
+        "max": 6.7
+      },
+      "astar": {
+        "searches": 75,
+        "avgMs": 0.024
+      },
+      "drawCalls": 48,
+      "triangles": 1366968,
+      "peopleNear": 0,
+      "peopleFar": 400,
+      "gpuMemory": {
+        "geometries": 30,
+        "textures": 15,
+        "programs": 10
+      },
+      "renderPx": {
+        "w": 1600,
+        "h": 900
+      },
+      "preset": {
+        "scale": 1,
+        "antialias": true,
+        "shadowSize": 2048,
+        "peopleShadows": true,
+        "env": true,
+        "fullHalf": 9
+      },
+      "jsHeapMB": 57,
+      "processMB": 815,
+      "gpu": "WebGL2: ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    },
+    {
+      "renderer": "three",
+      "quality": "high",
+      "people": 50,
+      "frames": 9,
+      "fps": 0.6,
+      "frameMs": {
+        "mean": 1883.26,
+        "p95": 4883.2,
+        "max": 4883.2
+      },
+      "over33ms": 9,
+      "over100ms": 9,
+      "simMs": {
+        "mean": 0.14,
+        "p95": 0.2,
+        "max": 0.2
+      },
+      "drawCpuMs": {
+        "mean": 2.23,
+        "p95": 8.8,
+        "max": 8.8
+      },
+      "cpuMs": {
+        "mean": 2.38,
+        "p95": 8.9,
+        "max": 8.9
+      },
+      "astar": {
+        "searches": 13,
+        "avgMs": 0.038
+      },
+      "drawCalls": 42,
+      "triangles": 342320,
+      "peopleNear": 0,
+      "peopleFar": 50,
+      "gpuMemory": {
+        "geometries": 27,
+        "textures": 15,
+        "programs": 10
+      },
+      "renderPx": {
+        "w": 1600,
+        "h": 900
+      },
+      "preset": {
+        "scale": 1,
+        "antialias": true,
+        "shadowSize": 4096,
+        "peopleShadows": true,
+        "env": true,
+        "fullHalf": 16
+      },
+      "jsHeapMB": 57,
+      "processMB": 908,
+      "gpu": "WebGL2: ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    },
+    {
+      "renderer": "three",
+      "quality": "high",
+      "people": 100,
+      "frames": 8,
+      "fps": 0.5,
+      "frameMs": {
+        "mean": 1810.35,
+        "p95": 3499.9,
+        "max": 3499.9
+      },
+      "over33ms": 7,
+      "over100ms": 6,
+      "simMs": {
+        "mean": 0.25,
+        "p95": 0.5,
+        "max": 0.5
+      },
+      "drawCpuMs": {
+        "mean": 1.76,
+        "p95": 3.5,
+        "max": 3.5
+      },
+      "cpuMs": {
+        "mean": 2.01,
+        "p95": 3.7,
+        "max": 3.7
+      },
+      "astar": {
+        "searches": 24,
+        "avgMs": 0.042
+      },
+      "drawCalls": 46,
+      "triangles": 490692,
+      "peopleNear": 0,
+      "peopleFar": 100,
+      "gpuMemory": {
+        "geometries": 29,
+        "textures": 15,
+        "programs": 10
+      },
+      "renderPx": {
+        "w": 1600,
+        "h": 900
+      },
+      "preset": {
+        "scale": 1,
+        "antialias": true,
+        "shadowSize": 4096,
+        "peopleShadows": true,
+        "env": true,
+        "fullHalf": 16
+      },
+      "jsHeapMB": 57,
+      "processMB": 911,
+      "gpu": "WebGL2: ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    },
+    {
+      "renderer": "three",
+      "quality": "high",
+      "people": 200,
+      "frames": 6,
+      "fps": 0.4,
+      "frameMs": {
+        "mean": 2394.35,
+        "p95": 2633.2,
+        "max": 2633.2
+      },
+      "over33ms": 6,
+      "over100ms": 6,
+      "simMs": {
+        "mean": 0.52,
+        "p95": 1,
+        "max": 1
+      },
+      "drawCpuMs": {
+        "mean": 2.55,
+        "p95": 6.3,
+        "max": 6.3
+      },
+      "cpuMs": {
+        "mean": 3.07,
+        "p95": 7.3,
+        "max": 7.3
+      },
+      "astar": {
+        "searches": 43,
+        "avgMs": 0.04
+      },
+      "drawCalls": 48,
+      "triangles": 791208,
+      "peopleNear": 0,
+      "peopleFar": 200,
+      "gpuMemory": {
+        "geometries": 30,
+        "textures": 15,
+        "programs": 10
+      },
+      "renderPx": {
+        "w": 1600,
+        "h": 900
+      },
+      "preset": {
+        "scale": 1,
+        "antialias": true,
+        "shadowSize": 4096,
+        "peopleShadows": true,
+        "env": true,
+        "fullHalf": 16
+      },
+      "jsHeapMB": 58,
+      "processMB": 913,
+      "gpu": "WebGL2: ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    },
+    {
+      "renderer": "three",
+      "quality": "high",
+      "people": 400,
+      "frames": 5,
+      "fps": 0.3,
+      "frameMs": {
+        "mean": 3029.88,
+        "p95": 3549.9,
+        "max": 3549.9
+      },
+      "over33ms": 5,
+      "over100ms": 5,
+      "simMs": {
+        "mean": 0.74,
+        "p95": 0.9,
+        "max": 0.9
+      },
+      "drawCpuMs": {
+        "mean": 1.18,
+        "p95": 2,
+        "max": 2
+      },
+      "cpuMs": {
+        "mean": 1.92,
+        "p95": 2.9,
+        "max": 2.9
+      },
+      "astar": {
+        "searches": 75,
+        "avgMs": 0.032
+      },
+      "drawCalls": 48,
+      "triangles": 1366968,
+      "peopleNear": 0,
+      "peopleFar": 400,
+      "gpuMemory": {
+        "geometries": 30,
+        "textures": 15,
+        "programs": 10
+      },
+      "renderPx": {
+        "w": 1600,
+        "h": 900
+      },
+      "preset": {
+        "scale": 1,
+        "antialias": true,
+        "shadowSize": 4096,
+        "peopleShadows": true,
+        "env": true,
+        "fullHalf": 16
+      },
+      "jsHeapMB": 57,
+      "processMB": 914,
+      "gpu": "WebGL2: ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    }
+  ]
+}
