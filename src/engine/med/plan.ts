@@ -1,0 +1,659 @@
+// из anamnez: src/engine/med/plan.ts @ 96503ac
+// План лечения и его проверка (`docs/10-medical-model.md` §8). План оценивается по правде:
+// роль каждого назначения при настоящем основном заболевании, где на самом деле надо
+// лечить и какие противопоказания нарушены — и знал ли о них врач.
+import { byParams, byRule, byValue, crosses, paramsHold, type ContentDb, type Effect, type Id, membersOf, type Setting, type Tactics, type Untreated } from '../../content/types';
+import { knownFacts, knownForRule } from './infer';
+import { checkRule } from './rules';
+import type { ActiveCondition, Observation, Patient } from './types';
+
+export interface Plan {
+  treatments: Id[];
+  setting: Setting;
+}
+
+/**
+ * Роль назначения при состоянии; не названное в тактике — «не показано». `prevent` — обязательная
+ * профилактика (часть 32г-2): анатоксин столбнячный, вакцина от бешенства; `require` — обязательно
+ * при лечении здесь (часть 38б): кислород через маску при сатурации ниже порога рекомендации;
+ * `beforeTransfer` — обязательно и при переводе, до него (часть 39а): тромболизис в окне.
+ */
+export type TxRole = 'firstLine' | 'acceptable' | 'supportive' | 'notIndicated' | 'harmful' | 'prevent' | 'require' | 'beforeTransfer';
+type ListRole = Exclude<TxRole, 'prevent' | 'require' | 'beforeTransfer'>;
+const ROLES: ListRole[] = ['firstLine', 'acceptable', 'supportive', 'notIndicated', 'harmful'];
+
+/**
+ * Насколько серьёзна помощь: чем выше, тем срочнее и сложнее; реанимация с ИВЛ (часть 47) — между ПИТ и операцией; бокс
+ * (spec 2026-10-chapter-4, часть 49а) — стационар с изоляцией: выше палаты, ниже скорой и ПИТ.
+ */
+export const SETTING_ORDER: Record<Setting, number> = { home: 0, ward: 1, admit: 1, box: 1.5, ambulance: 2, icu: 2, ricu: 2.5, surgery: 3, transfer: 3 };
+
+/** Где больного оставляют у себя: своя палата, операционная, ПИТ, реанимация (часть 47) и бокс (spec 2026-10-chapter-4, часть 49а). */
+export const STAYS: readonly Setting[] = ['admit', 'surgery', 'icu', 'ricu', 'box'];
+
+/**
+ * Что закрывает выбор врача (spec 2026-09-chapter-2, «Место лечения»): «Вызвать скорую» везёт
+ * в больницу, где сделают нужное, — и операцию, и центр, и палату интенсивной терапии; своя
+ * палата — стационар сразу, но не операцию, не центр и не ПИТ; своя ПИТ — и палату, и срочный
+ * стационар (spec 2026-10-chapter-3, часть 38а); своя реанимация (spec 2026-10-chapter-4, часть 47) — и ПИТ, а
+ * ПИТ кому нужна ИВЛ — меньше нужного. Бокс (часть 49а) — палата с изоляцией: закрывает и палату; заразного направить или
+ * перевести в инфекционную больницу — не ошибка, а положить в общую палату — меньше нужного.
+ */
+const COVERS: Record<Setting, readonly Setting[]> = {
+  home: ['home'],
+  ward: ['ward', 'box'],
+  ambulance: ['ambulance', 'surgery', 'transfer', 'icu', 'ricu', 'box'],
+  admit: ['ward', 'ambulance'],
+  surgery: ['surgery'],
+  transfer: ['ambulance', 'surgery', 'transfer', 'icu', 'ricu', 'box'],
+  icu: ['ward', 'ambulance', 'icu'],
+  ricu: ['ward', 'ambulance', 'icu', 'ricu'],
+  box: ['ward', 'ambulance', 'box'],
+};
+
+/**
+ * Подходит ли выбор к тому, что нужно пациенту: да, меньше нужного, больше нужного. `also` — ещё
+ * места, которые у этого больного не ошибка (часть 32б): перелом ключицы со смещением — операция
+ * или повязка дома.
+ */
+export function settingFit(need: Setting, chosen: Setting, also: readonly Setting[] = []): 'ok' | 'under' | 'over' {
+  if (COVERS[chosen].includes(need) || also.some(s => COVERS[chosen].includes(s))) return 'ok';
+  return SETTING_ORDER[chosen] < SETTING_ORDER[need] ? 'under' : 'over';
+}
+
+/**
+ * Что есть в больнице: свободная своя койка — стационар свой (часть 26); работает операционная с
+ * бригадой и аппаратами для нужной операции и есть койка после неё — операция своя (часть 28);
+ * свободная койка палаты интенсивной терапии под монитором — ПИТ своя (часть 38а); свободная койка
+ * реанимации с монитором и аппаратом ИВЛ — реанимация своя (spec 2026-10-chapter-4, часть 47).
+ */
+export interface Venue {
+  ward?: boolean;
+  or?: boolean;
+  icu?: boolean;
+  ricu?: boolean;
+  /** свободный бокс инфекционного отделения (spec 2026-10-chapter-4, часть 49а) */
+  box?: boolean;
+  /**
+   * аппараты у постели этого больного (spec 2026-10-chapter-3, часть 39а): лежит в смотровой
+   * приёмного под монитором с дефибриллятором — тромболизис можно; нет — в кабинете врача его нет
+   */
+  bedside?: readonly Id[];
+  /**
+   * минут от прихода до решения (часть 41а): окна по часам от начала болезни закрываются, пока
+   * идёт обследование, — тромболизис при инсульте делают в первые 4,5 часа
+   */
+  minutes?: number;
+  /**
+   * через сколько минут придёт результат обследования, если назначить его сейчас (часть 46б): очередь к аппарату,
+   * его скорость и люди этой больницы; нет — по записи в базе
+   */
+  ready?: (exam: Id) => number | undefined;
+  /**
+   * что этому больному уже сделали (spec 2026-10-chapter-4, часть 50а): пункцию сделали, а ликвор ещё не пришёл — вред
+   * при противопоказании уже есть; нет — по пришедшим результатам
+   */
+  done?: readonly Id[];
+  /**
+   * работающие кабинеты этой больницы — виды помещений (spec 2026-10-chapter-4, часть 53а): где работает эндоскопический
+   * кабинет, гемостаз делают у себя; нет — места из `without.rooms`
+   */
+  rooms?: readonly Id[];
+}
+
+/**
+ * Какого аппарата у постели не хватает лечению у постели (часть 39а); всё есть — undefined. Лечение своего
+ * места (spec 2026-10-chapter-4, часть 47) — ИВЛ — делают там: есть свободная койка реанимации — аппарат будет.
+ */
+export function bedsideLack(db: ContentDb, tx: Id, venue: Venue = {}): Id | undefined {
+  const t = db.treatments[tx];
+  if (t?.place === 'ricu' && venue.ricu) return undefined;
+  // лечение в кабинете (часть 53а): нет работающего кабинета — не хватает его
+  if (t?.room && venue.rooms?.includes(t.room) !== true) return t.room;
+  return t?.bedside?.equipment.find(e => venue.bedside?.includes(e) !== true);
+}
+
+/** Кабинеты, от которых зависит лечение или место (часть 53а), — один раз на базу. */
+const settingRoomCache = new WeakMap<ContentDb, ReadonlySet<Id>>();
+
+/**
+ * Из работающих кабинетов больницы — те, от которых зависит место или лечение (spec 2026-10-chapter-4, часть 53а):
+ * закрытый случай помнит только их — эндоскопический кабинет, а не каждую работающую лабораторию.
+ */
+export function settingRoomsOf(db: ContentDb, rooms: readonly Id[]): Id[] {
+  let matter = settingRoomCache.get(db);
+  if (!matter) {
+    const out = new Set<Id>();
+    for (const c of Object.values(db.conditions)) for (const r of c.treatment?.setting.without?.rooms ?? []) out.add(r);
+    for (const t of Object.values(db.treatments)) if (t.room) out.add(t.room);
+    settingRoomCache.set(db, (matter = out));
+  }
+  return rooms.filter(r => matter.has(r));
+}
+
+/**
+ * Спутники лечения при этой болезни (часть 39а): с частью 42б — у `companionsFor` только при названных
+ * болезнях: антикоагулянт рядом с кардиоверсией — при фибрилляции предсердий, при тахикардиях — нет. С частью 54б
+ * (spec 2026-10-chapter-4) — у `companionsIf` только тем, у кого это есть: о чём врач знает (`known` — факторы риска и
+ * хронические болезни) или без чего болезнь не бывает — глюкоза зависимому от алкоголя только с тиамином.
+ */
+export function companionsOf(db: ContentDb, tx: Id, condition: Id, known: readonly Id[] = []): (Id | Id[])[] {
+  const t = db.treatments[tx];
+  if (!t?.companions || (t.companionsFor && !t.companionsFor.includes(condition))) return [];
+  const has = (id: Id) => known.includes(id) || id === condition || (db.conditions[condition]?.requires ?? []).includes(id);
+  return t.companionsIf && !t.companionsIf.some(has) ? [] : t.companions;
+}
+
+/** Можно ли назначить здесь: лечению у постели (часть 39а) нужны его аппараты у постели больного. */
+export function txAvailable(db: ContentDb, tx: Id, venue: Venue = {}): boolean {
+  return bedsideLack(db, tx, venue) === undefined;
+}
+
+/**
+ * Что выбрать при такой нужде здесь: в амбулатории — направить или скорая, со своей палатой — в
+ * неё, со своей операционной — оперировать, со своей ПИТ — в неё; центра, которого в районе нет, и
+ * ПИТ, которой в больнице нет, — скорая. С частью 47 (spec 2026-10-chapter-4): ПИТ нет, а реанимация
+ * есть — в неё; кому нужна ИВЛ — в свою реанимацию, нет её — скорая («Перевести»). Заразному в стационаре (часть 49а) —
+ * свой бокс, нет его — скорая в инфекционную больницу.
+ */
+export function choiceFor(need: Setting, venue: Venue = {}): Setting {
+  if (need === 'home') return 'home';
+  if (need === 'box') return venue.box ? 'box' : 'ambulance';
+  if (need === 'icu') return venue.icu ? 'icu' : venue.ricu ? 'ricu' : 'ambulance';
+  if (need === 'ricu') return venue.ricu ? 'ricu' : 'ambulance';
+  if (need === 'ward' || need === 'ambulance') return venue.ward ? 'admit' : need;
+  if (need === 'surgery' && venue.or) return 'surgery';
+  return 'ambulance';
+}
+
+export interface Violation {
+  tx: Id;
+  /** противопоказание: фактор риска (аллергия) или состояние */
+  by: Id;
+  level: 'relative' | 'absolute';
+  /** врач знал о противопоказании (пациент сказал) */
+  known: boolean;
+  /** врач спрашивал об этом */
+  asked: boolean;
+}
+
+export interface PlanEval {
+  primary: Id;
+  roles: { tx: Id; role: TxRole }[];
+  /** `also` — ещё места, которые у этого больного не ошибка (часть 32б) */
+  setting: { chosen: Setting; recommended: Setting; also?: Setting[] };
+  /** противопоказания, которые у пациента на самом деле есть */
+  violations: Violation[];
+  /** есть ли в плане лечение, действующее на причину основного состояния */
+  effective: boolean;
+  /** назначено лечение с противопоказаниями, а о них не спросили — даже если их нет */
+  unaskedRisk: Id[];
+  /** к препарату выбора есть противопоказание, о котором врач знает, — замена оправдана */
+  firstLineBlocked: boolean;
+  /** что сделать до приезда скорой: первая линия состояния, которое лечат не дома (ОКС) */
+  preHospital: Id[];
+  /** обязательная профилактика по правде о пациенте, которой нет в плане (часть 32г-2) */
+  preventMissing: Id[];
+  /** обязательное при лечении здесь по правде о пациенте, чего нет в плане (часть 38б) */
+  requireMissing: Id[];
+  /** при каких значениях оно обязательно — для строки разбора: «при сатурации ниже 90 %» */
+  requireWhen: Record<Id, Record<string, string[]>>;
+  /**
+   * обязательное и при переводе, чего нет в плане, хотя здесь оно было возможно (часть 39а):
+   * тромболизис при инфаркте с подъёмом ST в первые 12 часов, если больной лежит под монитором
+   */
+  beforeTransferMissing: Id[];
+  /** при каких значениях оно обязательно — для строки разбора */
+  beforeTransferWhen: Record<Id, Record<string, string[]>>;
+  /** назначено без своих спутников (часть 39а): тромболизис — без клопидогрела или эноксапарина */
+  companionsMissing: { tx: Id; of: Id }[];
+  /**
+   * окно закрылось, пока шло обследование (часть 41а): при поступлении это было обязательно, а к
+   * решению — уже нет; `at` — минут от начала болезни до решения, `left` — сколько минут окна
+   * оставалось при поступлении
+   */
+  windowMissed: { tx: Id; at: number; left: number }[];
+  /**
+   * у тактики при этих значениях нет первой линии и операции нет (часть 41а): у инсульта — тромболизис по
+   * окну и место; у хирургической болезни первая линия — её операция
+   */
+  noFirstLine: boolean;
+  /**
+   * обследования, сделанные при противопоказании (spec 2026-10-chapter-4, часть 50а): пункты правила вреда, которые у
+   * больного есть, и знал ли о них врач к решению — хоть один показан
+   */
+  examHarms: ExamHarm[];
+}
+
+/** Обследование при противопоказании (часть 50а): люмбальная пункция при коме — вклинение мозга. */
+export interface ExamHarm {
+  exam: Id;
+  /** пункты правила, которые у больного есть */
+  by: Id[];
+  /** хоть один из них врач видел к решению */
+  known: boolean;
+}
+
+/**
+ * Обследования при противопоказании (spec 2026-10-chapter-4, часть 50а): сделано обследование с вредом (`harm`), а у
+ * больного по правде есть пункт его правила — какой бы ни была применимость правила: пункция при коме опасна и без
+ * менингеальных знаков. `done` — сделанные обследования; известно — по наблюдениям.
+ */
+export function examHarmsOf(db: ContentDb, patient: Patient, done: readonly Id[], observations: readonly Observation[]): ExamHarm[] {
+  const has = new Set(patient.truth.findings.map(f => f.f));
+  const shown = new Set(observations.filter(o => o.shown).map(o => o.f));
+  return [...new Set(done)].sort().flatMap(exam => {
+    const rule = db.exams[exam]?.harm ? db.rules[db.exams[exam].harm!.rule] : undefined;
+    const by = (rule?.any ?? []).filter(f => has.has(f));
+    return by.length > 0 ? [{ exam, by, known: by.some(f => shown.has(f)) }] : [];
+  });
+}
+
+export function primaryOf(patient: Patient) {
+  return patient.truth.conditions.find(c => c.role === 'primary') ?? patient.truth.conditions[0];
+}
+
+/**
+ * Диагноз — верно, частично или неверно (`10` §10): та же болезнь — верно; та же группа (ОРВИ и грипп) — частично.
+ * С частью 48а (spec 2026-10-chapter-4) — и источник: у сепсиса из пневмонии поставлена пневмония — частично: очаг
+ * найден, а органной дисфункции не увидели.
+ */
+export function verdictOf(db: ContentDb, diagnosis: Id, patient: Patient): 'correct' | 'partly' | 'wrong' {
+  const truth = primaryOf(patient);
+  if (diagnosis === truth.id) return 'correct';
+  const group = (id: Id) => db.conditions[id]?.group ?? id;
+  if (group(diagnosis) === group(truth.id)) return 'partly';
+  const source = db.conditions[truth.id]?.source;
+  return source && source.map[truth.params[source.param]] === diagnosis ? 'partly' : 'wrong';
+}
+
+/**
+ * Обязательное лечение человеку можно (часть 45б): в каждой группе обязательного и обязательного до
+ * перевода — хоть одно без противопоказания у него. Заданные пациенты первой смены главы — учебные:
+ * тромболизис при инфаркте и инсульте им можно.
+ */
+export function treatable(db: ContentDb, patient: Patient): boolean {
+  const c = primaryOf(patient);
+  const base = db.conditions[c.id]?.treatment;
+  const truly = new Set([...patient.truth.risks, ...patient.truth.conditions.map(x => x.id)]);
+  const free = (tx: Id) => !db.treatments[tx]?.contraindications.some(k => truly.has(k.id));
+  return [...requireOf(base, c.params), ...beforeTransferOf(base, c.params)].every(g => g.some(free));
+}
+
+/** Совпало ли условие по скрытым параметрам болезни (часть 30в): нет условия — совпало. */
+export function whenHolds(when: Record<string, string[]> | undefined, params: Record<string, string>): boolean {
+  return !when || Object.entries(when).every(([name, values]) => values.includes(params[name]));
+}
+
+/**
+ * Что из назначенного действует на причину у этого больного: `cure` на его болезнь — с условием
+ * по её скрытым параметрам (часть 30в: неоперативное лечение непроходимости — без ишемии кишки).
+ */
+export function curesOf(db: ContentDb, condition: Pick<ActiveCondition, 'id' | 'params'>, treatments: readonly Id[]): Effect[] {
+  return treatments.flatMap(tx => db.treatments[tx]?.effects.filter(e => e.on === condition.id && e.kind === 'cure' && whenHolds(e.when, condition.params)) ?? []);
+}
+
+/**
+ * Что из назначенного вредит при этой болезни (spec 2026-10-chapter-3, часть 41в): эффект `harm` с
+ * условием по её скрытым параметрам — тромболизис при кровоизлиянии в мозг. Течение — как реакция на
+ * противопоказание, с вероятностью `p`; с частью 42а вред бывает другой болезнью (`as`): кардиоверсия
+ * при фибрилляции предсердий 48 часов и дольше — инсульт на `days`-й день.
+ */
+export function harmsOf(db: ContentDb, condition: Pick<ActiveCondition, 'id' | 'params'>, treatments: readonly Id[]): { tx: Id; p: number; days: [number, number]; as?: Id }[] {
+  return treatments.flatMap(tx => (db.treatments[tx]?.effects ?? []).filter(e => e.on === condition.id && e.kind === 'harm' && whenHolds(e.when, condition.params)).map(e => ({ tx, p: e.p, days: e.days, ...(e.as ? { as: e.as } : {}) })));
+}
+
+/**
+ * Проходит ли болезнь у этого больного сама: у записи `selfLimiting` может быть условие по
+ * скрытому параметру (часть 30д: неосложнённый дивертикулит проходит и без антибиотиков, абсцесс — нет).
+ */
+export function selfLimits(db: ContentDb, condition: Pick<ActiveCondition, 'id' | 'params'>): boolean {
+  const c = db.conditions[condition.id];
+  return c?.selfLimiting === true && whenHolds(c.selfLimitingWhen, condition.params);
+}
+
+/** Что будет без действенного лечения у этого больного — запись `untreated`, если её условие совпало (часть 30д). */
+export function untreatedOf(db: ContentDb, condition: Pick<ActiveCondition, 'id' | 'params'>): Untreated | undefined {
+  // первая подошедшая запись (часть 41б): риск инсульта после ТИА — по группе ABCD2
+  return db.conditions[condition.id]?.untreated?.find(u => whenHolds(u.when, condition.params));
+}
+
+/**
+ * Обязательная профилактика при этих значениях скрытых параметров (часть 32г-2): общая и из
+ * подошедших записей `byParam`; без параметров — вся, какая бывает при этом состоянии.
+ */
+export function preventOf(t: Tactics | undefined, params?: Record<string, string>): Id[] {
+  if (!t) return [];
+  const over = (t.byParam ?? []).filter(b => !params || whenHolds(b.when, params));
+  return [...new Set([...(t.prevent ?? []), ...over.flatMap(b => b.prevent ?? [])])];
+}
+
+/**
+ * Обязательное при лечении здесь (часть 38б): общее и из подошедших записей `byParam`; без
+ * параметров — только общее: при других значениях у того же лечения может быть другая роль
+ * (кислород у ОКС при сатурации от 90 % — «не нужно»). Каждое — группа: одно лечение или «одно из»
+ * (часть 39в: антикоагулянт при ОКС без подъёма ST — фондапаринукс, эноксапарин или гепарин).
+ */
+export function requireOf(t: Tactics | undefined, params?: Record<string, string>): Id[][] {
+  return requireListOf(t, params).map(g => (typeof g === 'string' ? [g] : g));
+}
+
+/** То же списком записи: лечение — строкой, группа — списком (для `tacticsFor`). */
+function requireListOf(t: Tactics | undefined, params?: Record<string, string>): (Id | Id[])[] {
+  if (!t) return [];
+  const over = params ? (t.byParam ?? []).filter(b => whenHolds(b.when, params)) : [];
+  const all = [...(t.require ?? []), ...over.flatMap(b => b.require ?? [])];
+  const key = (g: Id | Id[]) => (typeof g === 'string' ? g : g.join());
+  return all.filter((g, i) => all.findIndex(x => key(x) === key(g)) === i);
+}
+
+/**
+ * Обязательное и при переводе (часть 39а): общее и из подошедших записей `byParam`; без параметров —
+ * только общее, как у `requireOf`. Группами (часть 42в): одно лечение — группой из одного, «одно из» —
+ * своей; хватит одного из группы.
+ */
+export function beforeTransferOf(t: Tactics | undefined, params?: Record<string, string>): Id[][] {
+  return beforeTransferListOf(t, params).map(g => (typeof g === 'string' ? [g] : g));
+}
+
+/** То же списком записи: лечение — строкой, группа — списком (для `tacticsFor`). */
+function beforeTransferListOf(t: Tactics | undefined, params?: Record<string, string>): (Id | Id[])[] {
+  if (!t) return [];
+  const over = params ? (t.byParam ?? []).filter(b => whenHolds(b.when, params)) : [];
+  const all = [...(t.beforeTransfer ?? []), ...over.flatMap(b => b.beforeTransfer ?? [])];
+  const key = (g: Id | Id[]) => (typeof g === 'string' ? g : g.join());
+  return all.filter((g, i) => all.findIndex(x => key(x) === key(g)) === i);
+}
+
+/**
+ * Что сделать до приезда скорой (часть 27; 32д-2) — хоть одно из этого: названное в подошедших
+ * записях `byParam` (обширный ожог — капельница до перевода, хотя место по умолчанию — дом); без
+ * них у того, что лечат не дома, — первая линия, кроме операции: её до приезда скорой не сделать.
+ */
+export function preHospitalOf(db: ContentDb, t: Tactics | undefined, params: Record<string, string>): Id[] {
+  if (!t) return [];
+  const own = (t.byParam ?? []).filter(b => whenHolds(b.when, params)).flatMap(b => b.preHospital ?? []);
+  if (own.length > 0) return [...new Set(own)];
+  return t.setting.default !== 'home' ? tacticsFor(t, params).firstLine.filter(tx => db.treatments[tx]?.kind !== 'surgery') : [];
+}
+
+/**
+ * Роль назначения при состоянии. `params` — скрытые параметры болезни у этого больного (часть 32):
+ * тактика по ним сильнее общей — у перелома со смещением репозиция — первая линия.
+ */
+export function txRole(db: ContentDb, condId: Id, tx: Id, params?: Record<string, string>): TxRole {
+  const t = db.conditions[condId]?.treatment;
+  if (preventOf(t, params).includes(tx)) return 'prevent';
+  if (requireOf(t, params).some(g => g.includes(tx))) return 'require';
+  if (beforeTransferOf(t, params).some(g => g.includes(tx))) return 'beforeTransfer';
+  const x = params && t?.byParam?.find(b => whenHolds(b.when, params) && ROLES.some(role => b[role].includes(tx)));
+  if (x) return ROLES.find(role => x[role].includes(tx))!;
+  // своя операция болезни — первая линия (часть 28); в тактике её нет: до приезда скорой её не сделать.
+  // Операция по параметру (часть 32б) — своя при этих значениях; без значений — любая из своих
+  const s = db.conditions[condId]?.surgery;
+  if (s && (params ? surgeryFor(db, condId, params) === tx : s.tx === tx || s.byParam?.some(b => b.tx === tx) === true)) return 'firstLine';
+  if (!t) return 'notIndicated';
+  return ROLES.find(role => t[role].includes(tx)) ?? 'notIndicated';
+}
+
+/**
+ * Операция, которой лечат это состояние при таких значениях скрытых параметров (часть 32б): у
+ * перелома шейки бедра без смещения — винты, со смещением — эндопротез; нет записи — не оперируют.
+ */
+export function surgeryFor(db: ContentDb, condId: Id, params: Record<string, string> = {}): Id | undefined {
+  const s = db.conditions[condId]?.surgery;
+  return s?.byParam?.find(b => whenHolds(b.when, params))?.tx ?? s?.tx;
+}
+
+/** Все операции состояния — главная и по параметру (часть 32б). */
+export function surgeriesOf(db: ContentDb, condId: Id): Id[] {
+  const s = db.conditions[condId]?.surgery;
+  return s ? [...new Set([s.tx, ...(s.byParam ?? []).map(b => b.tx)])] : [];
+}
+
+type SettingRule = Tactics['setting'];
+
+/** Запись «после обследования» (часть 40), если пришёл результат одного из её обследований. */
+function afterOf(rule: SettingRule, done: (exam: Id) => boolean): SettingRule['after'] {
+  return rule.after?.exams.some(done) ? rule.after : undefined;
+}
+
+/**
+ * Где лечить по записи места: по умолчанию, по скрытому параметру, при красном флаге и факторе
+ * риска — что выше. Пришёл результат обследования из `after` (часть 40) — вместо места по
+ * параметру и красного флага его место и его признаки: после КТ без крови сотрясение лечат дома,
+ * а оглушённого — в стационаре (734_2, приложение Б). Правда о больном или то, что знает врач, —
+ * решает тот, кто спрашивает. `bedside` — аппараты у постели больного (часть 42б): без монитора
+ * приступ наджелудочковой тахикардии не снять — место из `without`.
+ */
+export function settingOf(rule: SettingRule, redFlags: readonly Id[], o: { params: Record<string, string>; has: (f: Id) => boolean; risk: (id: Id) => boolean; done: (exam: Id) => boolean; bedside?: readonly Id[]; rooms?: readonly Id[] }): Setting {
+  let best: Setting = rule.default;
+  const raise = (s: Setting | undefined) => {
+    if (s && SETTING_ORDER[s] > SETTING_ORDER[best]) best = s;
+  };
+  const after = afterOf(rule, o.done);
+  if (after) {
+    raise(after.setting);
+    if (after.flags?.any.some(o.has)) raise(after.flags.setting);
+  } else {
+    if (rule.param) raise(rule.param.map[o.params[rule.param.name]]);
+    if (rule.redFlag && redFlags.some(o.has)) raise(rule.redFlag);
+  }
+  for (const r of rule.risks ?? []) if (o.risk(r.id)) raise(r.setting);
+  if (rule.without && lacksFor(rule, o.bedside, o.rooms)) raise(rule.without.setting);
+  return best;
+}
+
+/** Не хватает того, без чего место — из `without`: аппарата у постели (часть 42б) или работающего кабинета в больнице (часть 53а). */
+function lacksFor(rule: SettingRule, bedside: readonly Id[] = [], rooms: readonly Id[] = []): boolean {
+  return (rule.without?.equipment ?? []).some(e => !bedside.includes(e)) || (rule.without?.rooms ?? []).some(r => !rooms.includes(r));
+}
+
+/**
+ * Ещё места, которые у этого больного не ошибка, — по правде о его скрытых параметрах (часть 32б).
+ * Послабление — только к месту по параметру: красный флаг или фактор риска из правила места его
+ * отменяют (кожа натянута над отломком ключицы — только операция, `853_1`, раздел 6). После
+ * обследования из `after` (часть 40) отменяют его признаки: судороги после КТ без крови — не довод.
+ * `done` — обследования, результат которых пришёл. Нет того, без чего место — из `without` (spec 2026-10-chapter-4,
+ * часть 53а), — послабления нет: без эндоскопии ПИТ кровотечение из язвы не остановит, нужен перевод.
+ */
+export function alsoSettings(db: ContentDb, patient: Patient, done: readonly Id[] = [], bedside: readonly Id[] = [], rooms: readonly Id[] = []): Setting[] {
+  const primary = primaryOf(patient);
+  const cond = db.conditions[primary.id];
+  const rule = cond?.treatment?.setting;
+  if (!rule?.also) return [];
+  const has = new Set(patient.truth.findings.map(f => f.f));
+  const after = afterOf(rule, e => done.includes(e));
+  if (after ? after.flags?.any.some(f => has.has(f)) : rule.redFlag && (cond.redFlags ?? []).some(f => has.has(f))) return [];
+  if ((rule.risks ?? []).some(r => patient.truth.risks.includes(r.id))) return [];
+  if (rule.without && lacksFor(rule, bedside, rooms)) return [];
+  return [...new Set(rule.also.filter(a => whenHolds(a.when, primary.params)).flatMap(a => a.settings))];
+}
+
+/**
+ * Тактика при таких значениях скрытых параметров (часть 32): роли из подошедших записей `byParam`
+ * поверх общих списков; типичное назначение — их или общее. Без параметров — общая тактика.
+ */
+export function tacticsFor(t: Tactics, params: Record<string, string> = {}): Tactics {
+  const over = (t.byParam ?? []).filter(b => whenHolds(b.when, params));
+  if (over.length === 0) return t;
+  // обязательное по параметру (часть 38б) и до перевода (часть 39а) тоже названо: из общих списков оно уходит
+  const named = new Set(over.flatMap(b => [...ROLES.flatMap(role => b[role]), ...membersOf(b.require), ...membersOf(b.beforeTransfer)]));
+  const lists = Object.fromEntries(ROLES.map(role => [role, [...new Set([...over.flatMap(b => b[role]), ...t[role].filter(id => !named.has(id))])]])) as Record<ListRole, Id[]>;
+  const plan = over.find(b => b.plan)?.plan ?? t.plan?.filter(id => lists.firstLine.includes(id) || lists.acceptable.includes(id) || lists.supportive.includes(id));
+  const prevent = preventOf(t, params);
+  const require = requireListOf(t, params);
+  const beforeTransfer = beforeTransferListOf(t, params);
+  const preHospital = [...new Set(over.flatMap(b => b.preHospital ?? []))];
+  return {
+    ...lists, setting: t.setting, ...(plan && plan.length > 0 ? { plan } : {}), ...(prevent.length > 0 ? { prevent } : {}),
+    ...(require.length > 0 ? { require } : {}), ...(beforeTransfer.length > 0 ? { beforeTransfer } : {}), ...(preHospital.length > 0 ? { preHospital } : {}),
+  };
+}
+
+/**
+ * Где на самом деле надо лечить: место по умолчанию, по тяжести случая, при красном флаге; после
+ * обследования из `after` (часть 40) — его место. `done` — обследования, результат которых пришёл;
+ * `bedside` — аппараты у постели в момент решения (часть 42б): без монитора приступ не снять.
+ */
+export function recommendedSetting(db: ContentDb, patient: Patient, done: readonly Id[] = [], bedside: readonly Id[] = [], rooms: readonly Id[] = []): Setting {
+  const primary = primaryOf(patient);
+  const cond = db.conditions[primary.id];
+  const rule = cond.treatment?.setting;
+  if (!rule) return 'home';
+  const has = new Set(patient.truth.findings.map(f => f.f));
+  return settingOf(rule, cond.redFlags ?? [], { params: primary.params, has: f => has.has(f), risk: id => patient.truth.risks.includes(id), done: e => done.includes(e), bedside, rooms });
+}
+
+/**
+ * Может ли у пациента быть этот фактор риска — по полу и возрасту из базы. О беременности
+ * не спрашивают мужчину и женщину 64 лет, и оценка не ставит этого в вину (отзыв на 0.0.8:
+ * мужчине — «не спросили о беременности»).
+ */
+export function possibleFor(db: ContentDb, id: Id, patient: Pick<Patient, 'sex' | 'age'>): boolean {
+  const r = db.risks[id];
+  if (!r) return true;
+  return r.p[patient.sex] > 0 && patient.age >= (r.ageMin ?? 0) && patient.age <= (r.ageMax ?? 200);
+}
+
+/** Признаки, которыми противопоказание становится известно врачу (ответ на вопрос). */
+function tellingFindings(db: ContentDb, id: Id): Id[] {
+  return (db.risks[id]?.findings ?? db.conditions[id]?.findings ?? []).map(l => l.f).filter(f => f.startsWith('hx.'));
+}
+
+/**
+ * Параметры болезни, как их видит врач по шкале с баллами (spec 2026-10-chapter-3, часть 41б):
+ * шкалу считают по тому, что показали обследования, — давление при поступлении это то, что показал
+ * тонометр. Проверено всё, что меняет вывод, — значение по наблюдениям; иначе — настоящее. С частью
+ * 41в — и порог по измерению с `seen`: давление при кровоизлиянии снижают по тонометру; измеряли —
+ * по последнему числу. Параметры по другим параметрам пересчитываются по ним.
+ */
+export function asSeen(db: ContentDb, patient: Patient, observations: readonly Observation[]): Record<string, string> {
+  const primary = primaryOf(patient);
+  const derived = db.conditions[primary.id]?.derived ?? {};
+  const out = { ...primary.params };
+  let changed = false;
+  for (const [name, d] of Object.entries(derived)) {
+    if (byValue(d) && d.seen) {
+      const measured = observations.filter(o => o.f === d.f && o.value !== undefined);
+      const v = measured.length > 0 ? (crosses(d, measured[measured.length - 1].value!) ? 'yes' : 'no') : undefined;
+      if (v !== undefined && v !== out[name]) {
+        out[name] = v;
+        changed = true;
+      }
+      continue;
+    }
+    const r = byRule(d);
+    if (!r || !db.rules[r.rule]?.points) continue;
+    // врач, поставивший диагноз, считает его шкалу (часть 43б): условие, которое у болезни есть всегда, — найдено
+    const v = checkRule(db.rules[r.rule], patient, knownForRule(db.conditions[primary.id], db.rules[r.rule], observations), r.from).verdict;
+    if (v !== 'unknown' && v !== out[name]) {
+      out[name] = v;
+      changed = true;
+    }
+  }
+  if (!changed) return out;
+  for (const d of Object.entries(derived)) {
+    const [name, x] = d;
+    if (byParams(x)) out[name] = paramsHold(x, out) ? 'yes' : 'no';
+  }
+  return out;
+}
+
+/**
+ * Проверка плана по правде о пациенте. `before` — значения параметров при поступлении, которые к
+ * решению изменились (часть 41а, `freezeClock`): окно тромболизиса закрылось, пока шло обследование.
+ */
+export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observations: readonly Observation[], venue: Venue = {}, before: Readonly<Record<string, string>> = {}): PlanEval {
+  const primary = primaryOf(patient).id;
+  const known = knownFacts(db, observations);
+  const knownIds = new Set([...known.risks, ...known.conditions]);
+  const truly = new Set([...patient.truth.risks, ...patient.truth.conditions.map(c => c.id)]);
+  const askedF = new Set(observations.map(o => o.f));
+  const violations: Violation[] = [];
+  const unaskedRisk: Id[] = [];
+  for (const tx of plan.treatments) {
+    for (const k of db.treatments[tx]?.contraindications ?? []) {
+      const asked = tellingFindings(db, k.id).some(f => askedF.has(f));
+      if (!asked && possibleFor(db, k.id, patient) && !unaskedRisk.includes(k.id)) unaskedRisk.push(k.id);
+      if (truly.has(k.id)) violations.push({ tx, by: k.id, level: k.level, known: knownIds.has(k.id), asked });
+    }
+  }
+  const effective = curesOf(db, primaryOf(patient), plan.treatments).length > 0;
+  const params = primaryOf(patient).params;
+  const seenParams = asSeen(db, patient, observations);
+  const base = db.conditions[primary].treatment;
+  const tactics = base && tacticsFor(base, params);
+  // место — по пришедшим результатам (часть 40): после КТ без крови сотрясение лечат дома
+  const done = [...new Set(observations.map(o => o.exam))];
+  const also = alsoSettings(db, patient, done, venue.bedside, venue.rooms);
+  const firstLineBlocked = (tactics?.firstLine ?? [])
+    .some(tx => db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id)));
+  // противопоказано тем, о чём врач знает, — в вину не ставим; у постели нет аппарата — здесь не сделать
+  const blocked = (tx: Id) => db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id)) === true;
+  const can = (tx: Id) => !blocked(tx) && txAvailable(db, tx, venue);
+  // окно закрылось (часть 41а): обязательное по параметрам при поступлении, которого к решению уже нет
+  const onsetF = db.conditions[primary]?.onset?.f;
+  const onsetH = onsetF !== undefined ? patient.truth.values[onsetF] : undefined;
+  const wasParams = { ...params, ...before };
+  const single = (ps: Record<string, string>) => [...requireOf(base, ps), ...beforeTransferOf(base, ps)].filter(g => g.length === 1).map(g => g[0]);
+  const now = new Set(single(params));
+  const was = [...new Set(single(wasParams))];
+  // сколько минут окна оставалось при поступлении: из условий записи, по которой это было обязательно, —
+  // пороги по часам, что закрылись к решению
+  const leftOf = (tx: Id): number => {
+    const entry = (base?.byParam ?? []).find(b => whenHolds(b.when, wasParams) && (membersOf(b.require).includes(tx) || membersOf(b.beforeTransfer).includes(tx)));
+    const derived = db.conditions[primary]?.derived ?? {};
+    const lefts = Object.keys(entry?.when ?? {}).flatMap(k => {
+      const d = derived[k];
+      return k in before && byValue(d) && d.clock && d.below !== undefined ? [Math.round((d.below - (onsetH ?? 0)) * 60)] : [];
+    });
+    return lefts.length > 0 ? Math.min(...lefts) : 0;
+  };
+  const windowMissed = Object.keys(before).length > 0 && onsetH !== undefined
+    ? was.filter(tx => !now.has(tx) && can(tx)).sort().map(tx => ({ tx, at: Math.round(onsetH * 60 + (venue.minutes ?? 0)), left: leftOf(tx) }))
+    : [];
+  return {
+    primary,
+    // роли — по тому, что показали обследования (части 41б и 41в): давление снижают по тонометру
+    roles: plan.treatments.map(tx => ({ tx, role: txRole(db, primary, tx, seenParams) })),
+    setting: { chosen: plan.setting, recommended: recommendedSetting(db, patient, done, venue.bedside, venue.rooms), ...(also.length > 0 ? { also } : {}) },
+    violations,
+    effective,
+    unaskedRisk: unaskedRisk.sort(),
+    firstLineBlocked,
+    preHospital: preHospitalOf(db, base, params),
+    // профилактику, противопоказанную тем, о чём врач знает (аллергия на пенициллины), в вину не ставим
+    preventMissing: preventOf(base, params).filter(tx => !plan.treatments.includes(tx) && !db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id))).sort(),
+    // из группы хватит одного (часть 39в); противопоказанное тем, о чём врач знает, в вину не ставим —
+    // из группы называем первое, что можно
+    // и то, что здесь не сделать (часть 41а): тромболизис без монитора у постели — не в вину
+    // по шкале с баллами (часть 41б) — по тому, что показали обследования (`asSeen`)
+    requireMissing: requireOf(base, seenParams).flatMap(g => {
+      const ok = g.filter(can);
+      return ok.length > 0 && !g.some(tx => plan.treatments.includes(tx)) ? [ok[0]] : [];
+    }).sort(),
+    requireWhen: Object.fromEntries((base?.byParam ?? []).filter(b => whenHolds(b.when, seenParams)).flatMap(b => membersOf(b.require).map(tx => [tx, b.when] as const)).reverse()),
+    // до перевода (часть 39а) — то, что здесь можно было сделать: тромболизис у постели под монитором;
+    // по тому, что показали обследования (часть 41в): давление перед переводом снижают по тонометру;
+    // из группы (часть 42в) хватит одного — называем первое, что можно
+    beforeTransferMissing: beforeTransferOf(base, seenParams).flatMap(g => {
+      const ok = g.filter(tx => txAvailable(db, tx, venue) && !db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id)));
+      return ok.length > 0 && !g.some(tx => plan.treatments.includes(tx)) ? [ok[0]] : [];
+    }).sort(),
+    beforeTransferWhen: Object.fromEntries((base?.byParam ?? []).filter(b => whenHolds(b.when, seenParams)).flatMap(b => membersOf(b.beforeTransfer).map(tx => [tx, b.when] as const)).reverse()),
+    // спутники (часть 39а): тромболизис без клопидогрела и антикоагулянта — неполное лечение; из группы
+    // хватит одного, а противопоказанное тем, о чём врач знает, в вину не ставим
+    // при болезни, где они нужны (часть 42б): кардиоверсия при тахикардии — без антикоагулянта
+    companionsMissing: plan.treatments.flatMap(of => companionsOf(db, of, primary, [...knownIds]).flatMap(g => {
+      const group = typeof g === 'string' ? [g] : g;
+      const can = group.filter(tx => !db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id)));
+      return can.length > 0 && !group.some(tx => plan.treatments.includes(tx)) ? [{ tx: can[0], of }] : [];
+    })),
+    windowMissed,
+    // первая линия хирургической болезни — операция (часть 28): её выбирают местом, в тактике её нет
+    noFirstLine: (tactics?.firstLine.length ?? 0) === 0 && surgeryFor(db, primary, params) === undefined,
+    // пункция при противопоказании (часть 50а): и по сделанному, чей результат ещё не пришёл
+    examHarms: examHarmsOf(db, patient, [...done, ...(venue.done ?? [])], observations),
+  };
+}

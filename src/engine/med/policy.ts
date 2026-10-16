@@ -1,0 +1,762 @@
+// из anamnez: src/engine/med/policy.ts @ 96503ac
+// «Виртуальный врач» (`docs/11-content.md` §6, `docs/06-testing.md` §3): три стратегии,
+// которыми проверяется база. Шаг разумного врача (`nextStep`) — и нанятый врач своей больницы
+// (spec 2026-09-hired-doctors): тот делает шаги по одному, с порогами своего навыка.
+import { byParams, byValue, type ContentDb, type Exam, type Id, paramsOf, type Target } from '../../content/types';
+import { Rng } from '../core/rng';
+import { complaintObservations, examFits, runExam } from './exams';
+import { type Belief, contextOf, expectedGain, gainBound, knownFacts, likelyParams, paramBeliefs, paramGain, posterior, type Prior } from './infer';
+import { choiceFor, companionsOf, type Plan, possibleFor, settingOf, tacticsFor, txAvailable, type Venue, verdictOf, whenHolds } from './plan';
+import { checkRule, harmCheck, knownOf, openRuleExams, ruleExams, ruleFindings, type Who } from './rules';
+import type { Observation, Patient } from './types';
+
+export type Strategy = 'rational' | 'lazy' | 'shotgun';
+
+export interface DoctorResult {
+  diagnosis: Id;
+  correct: boolean;
+  /** верно с точностью до группы с одинаковой тактикой */
+  correctGroup: boolean;
+  /** уверенность в поставленном диагнозе в момент решения */
+  confidence: number;
+  exams: Id[];
+  money: number;
+  minutes: number;
+  /** план лечения, который врач выбрал бы для своего диагноза */
+  plan: Plan;
+  /** всё, что врач узнал: жалобы и результаты */
+  observations: Observation[];
+}
+
+export interface DoctorOptions {
+  candidates: Id[];
+  exams: Id[];
+  /** при какой уверенности разумный врач ставит диагноз; 0,9 — по прогону прототипа (spec 2026-09-spikes) */
+  threshold?: number;
+  /** польза ниже этой (биты) — обследование не назначается; по умолчанию `MIN_GAIN` */
+  minGain?: number;
+  /** пропустить вопрос перед лечением — нанятый врач невысокого навыка (spec 2026-09-hired-doctors) */
+  skipAsk?: (exam: Id) => boolean;
+  /** специалист на записанных к нему (spec 2026-10-chapter-4, часть 60а): болезни его профиля вероятнее */
+  prior?: Prior;
+}
+
+/** Польза ниже этой (биты) — обследование не показано: мерка разумного врача и экспертизы страховой. */
+export const MIN_GAIN = 0.02;
+
+/** Цена обследования в условных единицах: минуты, деньги, неприятность, облучение. */
+export function examCost(db: ContentDb, id: Id): number {
+  const e = db.exams[id];
+  const minutes = e.time.procedure + (e.time.report ?? 0) + (e.time.turnaround ?? 0) * 0.25;
+  const radiation = e.radiation === 'high' ? 40 : e.radiation === 'medium' ? 20 : e.radiation === 'low' ? 8 : 0;
+  return minutes + e.cost / 100 + e.discomfort * 5 + radiation;
+}
+
+/**
+ * Пользу сравниваем после округления: в ней логарифм, а его последний бит в Hermes, V8 и
+ * JSC может разниться. Разница порядка 1e-16 не должна менять выбор врача (ADR 0004).
+ */
+const quantize = (x: number) => Math.round(x * 1e9);
+
+/** Обследования, которые открывают противопоказание (вопрос об аллергиях), — самое дешёвое. */
+function askingExam(db: ContentDb, contraindication: Id): Id | undefined {
+  const telling = (db.risks[contraindication]?.findings ?? db.conditions[contraindication]?.findings ?? [])
+    .map(l => l.f).filter(f => f.startsWith('hx.'));
+  const exams = [...new Set(telling.flatMap(f => db.revealedBy[f] ?? []))];
+  return exams.sort((a, b) => examCost(db, a) - examCost(db, b) || (a < b ? -1 : 1))[0];
+}
+
+/**
+ * Типичное назначение и место лечения для своего диагноза: что нужно пациенту по тому, что
+ * известно, — и что это значит здесь (`venue`: своя палата со свободной койкой; нет —
+ * амбулатория). Препарат выбора без известных противопоказаний (иначе первая допустимая
+ * замена); место — по умолчанию или выше, если врач видел красный флаг этого состояния. Скрытый
+ * параметр болезни — по тому, что видно (часть 32): смещение на снимке — репозиция, нестабильный
+ * перелом — операция; производный — по правилу решения и возрасту `age` (часть 32г): показана КТ
+ * при сотрясении — перевод, а после КТ без крови — дома (часть 40). Операцию выбирают местом «В
+ * операционную», не в назначении.
+ */
+export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly Observation[], age: Who, venue: Venue = {}): Plan {
+  const base = db.conditions[diagnosis]?.treatment;
+  if (!base) return { treatments: [], setting: 'home' };
+  // окна по часам — на минуту решения (часть 41а): пришёл через 3 часа, и полтора часа ушло на обследование
+  const params = likelyParams(db, diagnosis, observations, age, venue.minutes ?? 0);
+  const t = tacticsFor(base, params);
+  const known = knownFacts(db, observations);
+  const blocked = new Set([...known.risks, ...known.conditions]);
+  // и только то, что здесь можно (часть 39а): тромболизис — у постели под монитором
+  const ok = (tx: Id) => !db.treatments[tx].contraindications.some(k => blocked.has(k.id)) && db.treatments[tx].kind !== 'surgery' && txAvailable(db, tx, venue);
+  const cures = (tx: Id) => db.treatments[tx].effects.some(e => e.on === diagnosis && e.kind === 'cure' && whenHolds(e.when, params));
+  // типичное назначение; если противопоказание убрало лечение причины — замена из первой линии и допустимых
+  const treatments = (t.plan ?? t.firstLine).filter(ok);
+  if (!treatments.some(cures)) {
+    const alt = [...t.firstLine, ...t.acceptable].filter(ok).find(cures);
+    if (alt && (t.plan ?? t.firstLine).some(cures)) treatments.push(alt);
+  }
+  // обязательная профилактика по вероятным значениям (часть 32г-2): о прививках спрашивает, пока не уверен
+  treatments.push(...(t.prevent ?? []).filter(ok));
+  // обязательное по вероятным значениям (часть 38б): кислород, если измеренная сатурация ниже порога;
+  // из группы (часть 39в) — первое, что можно: фондапаринукс, без него — эноксапарин
+  for (const g of t.require ?? []) {
+    const group = typeof g === 'string' ? [g] : g;
+    const pick = group.find(ok);
+    if (pick && !group.some(tx => treatments.includes(tx))) treatments.push(pick);
+  }
+  // обязательное и при переводе (часть 39а): тромболизис в окне, если здесь его можно сделать; из группы
+  // (часть 42в) — первое, что можно: атропин, не помогает при широких комплексах — стимуляция
+  for (const g of t.beforeTransfer ?? []) {
+    const group = typeof g === 'string' ? [g] : g;
+    const pick = group.find(ok);
+    if (pick && !group.some(tx => treatments.includes(tx))) treatments.push(pick);
+  }
+  // спутники назначенного (часть 39а): тромболизис — с клопидогрелом и антикоагулянтом; из группы — первое,
+  // что можно; с частью 42б — при болезни, где они нужны: кардиоверсия при тахикардии — без антикоагулянта
+  for (const tx of [...treatments]) {
+    for (const g of companionsOf(db, tx, diagnosis, [...known.risks, ...known.conditions])) {
+      const group = typeof g === 'string' ? [g] : g;
+      const pick = group.find(ok);
+      if (pick && !group.some(c => treatments.includes(c))) treatments.push(pick);
+    }
+  }
+  // место — по тому, что видно, и по пришедшим результатам (часть 40): после КТ без крови — дома
+  const seen = new Set(observations.filter(o => o.shown).map(o => o.f));
+  const did = new Set(observations.map(o => o.exam));
+  // и по аппаратам у постели (часть 42б): без монитора приступ наджелудочковой тахикардии не снять
+  const setting = settingOf(t.setting, db.conditions[diagnosis].redFlags ?? [], { params, has: f => seen.has(f), risk: id => known.risks.includes(id), done: e => did.has(e), bedside: venue.bedside ?? [], rooms: venue.rooms ?? [] });
+  return { treatments: [...new Set(treatments)].sort(), setting: choiceFor(setting, venue) };
+}
+
+/** Срок снят тем, что уже показали обследования (часть 44б): периферический парез лица — КТ не нужна. */
+const lifted = (t: Target, obs: readonly Observation[]) => t.except !== undefined && obs.some(o => o.shown && t.except!.includes(o.f));
+
+/**
+ * Срок на обследование идёт: по жалобе при поступлении или, у срока от находки (spec 2026-10-chapter-4, часть 54а), по
+ * показанной находке — диагностический парацентез после асцита на осмотре или УЗИ: жалоба «живот вырос» бывает и без него.
+ */
+const examTargetRuns = (t: Target, patient: Patient, obs: readonly Observation[]) =>
+  t.complaints.some(f => patient.complaints.includes(f)) || (t.from === 'finding' && obs.some(o => o.shown && t.findings.includes(o.f)));
+
+/**
+ * Обследования сроков по жалобам пациента (spec 2026-10-chapter-3, часть 37): ЭКГ при давящей боли
+ * в груди — в первые 10 минут от первого контакта с медиком, где бы он ни был (`157_5`, раздел 2.4).
+ * Срок оценивается только у лежащих в смотровой приёмного (`shift/targets.ts`), а делают первым везде.
+ * Срок, снятый находкой (часть 44б), — не в счёт; срок от находки (часть 54а) — когда её показали.
+ */
+export function targetExams(db: ContentDb, patient: Patient, obs: readonly Observation[] = []): Id[] {
+  return [...new Set(Object.values(db.targets).filter(t => examTargetRuns(t, patient, obs) && !lifted(t, obs)).flatMap(t => t.exams))].sort();
+}
+
+/** Срок первого контакта (часть 41а): что делают ещё до расспроса — ЭКГ при боли в груди, осмотр при инсульте. */
+const FIRST_CONTACT = 10;
+
+/**
+ * Запас срока (часть 46а): если до конца срока остаётся не больше времени его обследования и этих
+ * минут, обследование — сейчас, до расспроса: на назначение, очередь и дорогу в кабинет.
+ */
+const TIGHT_SLACK = 10;
+
+/** Назначить снимок или функциональное обследование — минуты врача, как в смене (spec 2026-10-chapter-3, часть 46б). */
+export const ORDER_MINUTES = 2;
+
+/**
+ * Сколько минут от назначения до результата: как в этой больнице (`venue.ready`: очередь к аппарату, его скорость), а
+ * без неё — у постели под монитором сама процедура, снимок и функциональное — ещё и назначить (`ORDER_MINUTES`).
+ */
+function leadMinutes(e: Exam, venue?: Venue): number {
+  const here = venue?.ready?.(e.id);
+  if (here !== undefined) return here;
+  if (e.bedside && e.bedside.equipment.every(q => venue?.bedside?.includes(q) === true)) return e.bedside.time.procedure;
+  return (e.kind === 'imaging' || e.kind === 'functional' ? ORDER_MINUTES : 0) + examMinutes(e);
+}
+
+/**
+ * Обследования срока `t` из `exams`, которые успеют к его концу, если назначить их через `elapsed` минут от прихода
+ * (часть 46б): КТ-ангиография с назначением и заключением — 32 минуты, и после осмотра и вопроса о начале её к
+ * 40-й минуте уже не успеть, а КТ — успеть.
+ */
+function inTime(db: ContentDb, t: Target, exams: readonly Id[], elapsed: number, venue?: Venue): Id[] {
+  return t.exams.filter(e => exams.includes(e) && db.exams[e] !== undefined && leadMinutes(db.exams[e], venue) <= t.minutes - elapsed);
+}
+
+/** Самое быстрое из обследований, поровну — дешевле. */
+function fastest(db: ContentDb, exams: readonly Id[], venue?: Venue): Id {
+  return [...exams].sort((a, b) => leadMinutes(db.exams[a], venue) - leadMinutes(db.exams[b], venue) || examCost(db, a) - examCost(db, b) || (a < b ? -1 : 1))[0];
+}
+
+/**
+ * Вопрос о часах от начала болезни `condId` (spec 2026-10-chapter-3, часть 46а), если их ещё не знают: от
+ * них зависят окна по часам (`clock`), а с окнами — что делать по сроку: при инсульте в первые 6 часов и
+ * NIHSS 6 и больше — КТ-ангиография, позже — КТ. Из тех, что и так задают каждому с его жалобой (расспрос об
+ * инсульте, а не о боли в груди), — самый дешёвый; нет такого — undefined.
+ */
+function clockQuestion(db: ContentDb, condId: Id | undefined, patient: Patient, obs: readonly Observation[], exams: readonly Id[], done: readonly Id[]): Id | undefined {
+  const clocks = Object.values((condId && db.conditions[condId]?.derived) || {}).flatMap(d => (byValue(d) && d.clock ? [d.f] : []));
+  const asking = [...new Set(clocks.filter(f => !obs.some(o => o.f === f)).flatMap(f => db.revealedBy[f] ?? []))]
+    .filter(id => exams.includes(id) && !done.includes(id) && db.exams[id].routineFor?.some(f => patient.complaints.includes(f)));
+  return asking.sort((a, b) => examCost(db, a) - examCost(db, b) || (a < b ? -1 : 1))[0];
+}
+
+const gatedCache = new WeakMap<ContentDb, ReadonlySet<Id>>();
+
+/**
+ * Обследования, которые выбирают по часам от начала болезни (spec 2026-10-chapter-4, часть 50б): у болезни есть
+ * производный параметр по параметрам вместе с часами (тромбэктомия — окклюзия, NIHSS и меньше 6 часов от начала), и
+ * обследование проверяет признак, который зависит от другого его параметра: окклюзию видит КТ-ангиография. КТ и МРТ — не
+ * такие: какую из них делать, часы не решают.
+ */
+function clockGated(db: ContentDb): ReadonlySet<Id> {
+  const cached = gatedCache.get(db);
+  if (cached) return cached;
+  const out = new Set<Id>();
+  for (const c of Object.values(db.conditions)) {
+    if (!c.derived) continue;
+    const clocks = new Set(Object.entries(c.derived).flatMap(([k, d]) => (byValue(d) && d.clock ? [k] : [])));
+    const gated = new Set(Object.values(c.derived).flatMap(d => {
+      if (!byParams(d)) return [];
+      const keys = Object.keys(paramsOf(d));
+      return keys.some(k => clocks.has(k)) ? keys.filter(k => !clocks.has(k)) : [];
+    }));
+    const shows = new Set(c.findings.filter(l => Object.keys(l.when ?? {}).some(k => gated.has(k))).map(l => l.f));
+    for (const e of Object.values(db.exams)) if (e.checks.some(k => shows.has(k.f))) out.add(e.id);
+  }
+  gatedCache.set(db, out);
+  return out;
+}
+
+/**
+ * Правило срока сказало «да» по тому, что известно (spec 2026-10-chapter-4, часть 48а): qSOFA 2 и больше у больного с
+ * признаками инфекции — сепсис можно предположить. С находками срока — и одна из них показана.
+ */
+function ruleRuns(db: ContentDb, t: Target, obs: readonly Observation[], who: { complaints: readonly Id[] } & Exclude<Who, number>): boolean {
+  const rule = t.rule === undefined ? undefined : db.rules[t.rule];
+  if (!rule || !rule.complaints.some(f => who.complaints.includes(f)) || who.age < (rule.ageMin ?? 0)) return false;
+  return checkRule(rule, who, knownOf(obs)).verdict === 'yes' && (t.findings.length === 0 || obs.some(o => o.shown && t.findings.includes(o.f)));
+}
+
+/** Сроки на лечение и место, что уже идут (часть 46а): от показанной находки, жалобы при поступлении или правила (часть 48а). */
+function runningTargets(db: ContentDb, obs: readonly Observation[], patient: Patient): Target[] {
+  const shown = new Set(obs.filter(o => o.shown).map(o => o.f));
+  return Object.values(db.targets).filter(t => (t.treatments.length > 0 || t.settings.length > 0) && !lifted(t, obs)
+    && (t.from === 'rule' ? ruleRuns(db, t, obs, patient) : t.findings.some(f => shown.has(f)) || t.complaints.some(f => patient.complaints.includes(f))));
+}
+
+/** Вероятность, с которой болезнь срока не пропускают (часть 46а): подъём ST — инфаркт, пока не доказано иное. */
+const RULE_IN = 0.1;
+
+/**
+ * Не пропустить (spec 2026-10-chapter-3, часть 46а): идёт срок на лечение или место — после ЭКГ с подъёмом
+ * ST у тромболизиса 10 минут, — а уверенности в диагнозе нет: решают за самую вероятную болезнь, которую
+ * этим и лечат, если её вероятность не ниже `RULE_IN`. Нет такой — undefined.
+ */
+function ruleIn(db: ContentDb, beliefs: readonly Belief[], obs: readonly Observation[], patient: Patient, venue?: Venue): Belief | undefined {
+  const running = runningTargets(db, obs, patient);
+  if (running.length === 0) return undefined;
+  return beliefs.find(b => b.p >= RULE_IN && running.some(t => {
+    const plan = choosePlan(db, b.id, obs, patient, venue);
+    return t.treatments.some(tx => plan.treatments.includes(tx)) || t.settings.includes(plan.setting);
+  }));
+}
+
+/**
+ * Вопросы о противопоказаниях к лечению идущего срока (spec 2026-10-chapter-3, часть 46а): после ЭКГ с
+ * подъёмом ST у тромболизиса 10 минут, и расспрос перед тромболизисом — в них. Срок идёт от находки,
+ * которую показали обследования, или от жалобы при поступлении. Только для лечения, которое здесь можно:
+ * в кабинете без монитора у постели тромболизиса нет — и спрашивать о нём некогда.
+ */
+function safetyExams(db: ContentDb, obs: readonly Observation[], patient: Patient, exams: readonly Id[], venue?: Venue): Id[] {
+  const txs = new Set(runningTargets(db, obs, patient).flatMap(t => t.treatments).filter(tx => txAvailable(db, tx, venue)));
+  const out: Id[] = [];
+  for (const tx of txs) {
+    for (const k of db.treatments[tx]?.contraindications ?? []) {
+      if (!possibleFor(db, k.id, patient)) continue;
+      const q = askingExam(db, k.id);
+      if (q && exams.includes(q) && !out.includes(q)) out.push(q);
+    }
+  }
+  return out.sort();
+}
+
+/**
+ * Что сделать по срокам сейчас (spec 2026-10-chapter-3, часть 41а): срок по жалобе не дольше `within`
+ * минут, который ещё не выполнило ни одно из его обследований, — по порядку минут; из его
+ * обследований — то, что больше уточнит тактику (`prefer`: КТ-ангиография при NIHSS 6 и больше в
+ * первые 6 часов вместо КТ), иначе дешевле. Снятый находкой срок (часть 44б: периферический парез лица) не
+ * торопит. С частью 46а — и срок дольше `within`, который иначе не успеть (`tight`): с прихода прошло
+ * `elapsed` минут, и до его конца остаётся не больше времени самого быстрого его обследования и `slack`. С
+ * частью 46б из его обследований — только те, что успеют к его концу; не успеет ни одно — самое быстрое. С частью 54а
+ * (spec 2026-10-chapter-4) — и срок от находки, когда её показали: диагностический парацентез после асцита.
+ */
+export function urgentExam(
+  db: ContentDb, patient: Patient, done: readonly Id[], exams: readonly Id[], within = Infinity, prefer: (exam: Id) => number = () => 0, obs: readonly Observation[] = [],
+  tight?: Tight,
+): Id | undefined {
+  return dueTarget(db, patient, done, exams, within, prefer, obs, tight)?.exam;
+}
+
+/**
+ * Срок поджимает (часть 46а): с прихода прошло `elapsed` минут, запас — `slack`; где больной — `venue` (часть 46б);
+ * `beyond` — только сроки дольше `within`: сроки первого контакта — отдельно.
+ */
+interface Tight { elapsed: number; slack: number; venue?: Venue; beyond?: boolean }
+
+/** Срок, по которому обследование сейчас, и само обследование (см. `urgentExam`). */
+function dueTarget(
+  db: ContentDb, patient: Patient, done: readonly Id[], exams: readonly Id[], within: number, prefer: (exam: Id) => number, obs: readonly Observation[],
+  tight?: Tight,
+): { target: Target; exam: Id } | undefined {
+  const pressing = (t: Target) => tight !== undefined && t.minutes - tight.elapsed <= tight.slack + Math.min(...t.exams.map(e => (db.exams[e] ? examMinutes(db.exams[e]) : Infinity)));
+  const due = Object.values(db.targets)
+    .filter(t => (tight?.beyond ? t.minutes > within && pressing(t) : t.minutes <= within || pressing(t)) && t.exams.length > 0 && examTargetRuns(t, patient, obs) && !t.exams.some(e => done.includes(e)) && !lifted(t, obs))
+    .sort((a, b) => a.minutes - b.minutes || (a.id < b.id ? -1 : 1));
+  for (const t of due) {
+    const own = t.exams.filter(e => exams.includes(e));
+    if (own.length === 0) continue;
+    const fit = tight ? inTime(db, t, own, tight.elapsed, tight.venue) : own;
+    const pool = fit.length > 0 ? fit : [fastest(db, own, tight?.venue)];
+    const score = new Map(pool.map(e => [e, quantize(prefer(e))]));
+    return { target: t, exam: pool.sort((a, b) => score.get(b)! - score.get(a)! || examCost(db, a) - examCost(db, b) || (a < b ? -1 : 1))[0] };
+  }
+  return undefined;
+}
+
+/** Польза обследования для тактики болезни `condId` (часть 41а): лучшая по её параметрам тактики, биты. */
+function tacticGain(db: ContentDb, condId: Id, examId: Id, obs: readonly Observation[], age: Who, minutes = 0): number {
+  return tacticParams(db, condId).reduce((best, name) => Math.max(best, paramGain(db, condId, name, examId, obs, age, minutes)), 0);
+}
+
+/**
+ * Срок решения по тому, что показали обследования (spec 2026-10-chapter-3, часть 39в): у сроков на
+ * назначение и место — меньший; подъём ST — тромболизис в первые 10 минут, перевод в первые 30. Нет
+ * такой находки — undefined. Обследований, которые дольше срока, разумный врач не ждёт: решение о
+ * тромболизисе и переводе не откладывают до тропонина (`157_5`, раздел 2.3). С частью 44в — и по жалобе
+ * при поступлении: судороги не прекращаются — противосудорожное за 5 минут от прихода, и из них уже
+ * прошло `elapsed`; КТ подождёт. С частью 46а — и от находки за вычетом прошедшего после неё (`since`):
+ * ЭКГ показала подъём ST — у тромболизиса 10 минут, а расспрос после неё их тратит. С частью 48а (spec
+ * 2026-10-chapter-4) — и от правила, которое сказало «да» (`who` — жалобы и возраст больного): антибиотик при
+ * сепсисе — в первый час от qSOFA 2 и больше; прошедшее — от первого показанного признака правила, с запасом.
+ */
+export function decisionLimit(
+  db: ContentDb, obs: readonly Observation[], complaints: readonly Id[] = [], elapsed = 0, since: (findings: readonly Id[]) => number = () => 0,
+  who?: Exclude<Who, number>,
+): number | undefined {
+  const shown = new Set(obs.filter(o => o.shown).map(o => o.f));
+  const limits = Object.values(db.targets)
+    .filter(t => (t.treatments.length > 0 || t.settings.length > 0) && !lifted(t, obs))
+    .flatMap(t => t.from === 'rule'
+      ? (who && ruleRuns(db, t, obs, { ...who, complaints }) ? [t.minutes - since([...ruleFindings(db.rules[t.rule!]), ...t.findings])] : [])
+      : [
+        ...(t.findings.some(f => shown.has(f)) ? [t.minutes - since(t.findings)] : []),
+        ...(t.complaints.some(f => complaints.includes(f)) ? [t.minutes - elapsed] : []),
+      ]);
+  return limits.length > 0 ? Math.min(...limits) : undefined;
+}
+
+/** Через сколько минут после назначения придёт последний результат: процедура, анализ, описание, повторный забор. */
+export function examMinutes(e: Exam): number {
+  return e.time.procedure + (e.time.turnaround ?? 0) + (e.time.report ?? 0) + (e.repeat?.minutes ?? 0);
+}
+
+/**
+ * Показано ли обследование сейчас: польза по тому, что уже известно, не ниже `MIN_GAIN` — так
+ * решает разумный врач, так проверяет назначение страховая (spec 2026-09-own-hospital, часть 9).
+ * Велит его положительное правило решения — показано всегда (часть 32д); отрицательное не
+ * запрещает: «снимок можно не делать» — не «нельзя». Правило ещё не решено, и обследование узнает
+ * то, что для него осталось, — тоже показано (часть 33а: шкала Уэллса меньше двух — D-димер).
+ */
+export function indicated(db: ContentDb, patient: Patient, obs: readonly Observation[], candidates: Id[], examId: Id, minutes = 0): boolean {
+  // противопоказание известно (spec 2026-10-chapter-4, часть 50а): пункция при коме не показана никогда
+  if (harmCheck(db, examId, knownOf(obs)).verdict === 'yes') return false;
+  // рекомендация велит его каждому с такой жалобой (часть 33а: снимок груди при травме груди, таза и
+  // бедра — при боли в бедре) — показано
+  const e = db.exams[examId];
+  if (e?.routine || e?.routineFor?.some(f => patient.complaints.includes(f))) return true;
+  // и каждому, у кого это увидели (часть 42б): неритмичный пульс или 150 и чаще — ЭКГ
+  if (e?.routineSeen?.some(f => obs.some(o => o.f === f && o.shown))) return true;
+  // срок по жалобе (часть 37): ЭКГ при давящей боли в груди — показана всегда
+  if (targetExams(db, patient, obs).includes(examId)) return true;
+  // велит положительное правило решения — показано, какой бы малой ни была польза (часть 32д)
+  if (ruleExams(db, patient, obs).includes(examId)) return true;
+  // правило ещё не решено — узнать, что осталось (часть 33а)
+  if (openRuleExams(db, patient, obs).includes(examId)) return true;
+  const ctx = contextOf(db, patient, obs);
+  const beliefs = posterior(db, candidates, obs, ctx);
+  if (quantize(expectedGain(db, examId, beliefs, ctx, new Set(obs.map(o => o.f)))) >= quantize(MIN_GAIN)) return true;
+  // уточняет тактику при самом вероятном диагнозе (часть 41а): окклюзию на КТ-ангиографии ищут при
+  // NIHSS 6 и больше в первые 6 часов — от неё зависит перевод на тромбэктомию
+  const top = beliefs[0];
+  return top !== undefined && quantize(tacticGain(db, top.id, examId, obs, patient, minutes)) >= quantize(MIN_GAIN);
+}
+
+/** Где разумный врач в приёме: ищет диагноз или, уже решив, спрашивает о противопоказаниях. */
+export interface DoctorPhase {
+  /** поставленный диагноз — дальше только вопросы перед лечением */
+  diagnosis?: Id;
+  /** уверенность в нём в момент решения */
+  confidence?: number;
+  /** вопросы перед лечением, которые осталось задать */
+  ask?: Id[];
+}
+
+export type DoctorStep = { kind: 'exam'; exam: Id } | { kind: 'decide'; diagnosis: Id; confidence: number; plan: Plan };
+
+export interface StepOptions {
+  candidates: Id[];
+  exams: Id[];
+  /** при какой уверенности ставит диагноз */
+  threshold: number;
+  /** польза ниже этой (биты) — обследование не назначается */
+  minGain: number;
+  /** пропустить вопрос перед лечением — так забывает нанятый врач невысокого навыка */
+  skipAsk?: (exam: Id) => boolean;
+  /** что есть в больнице: своя палата со свободной койкой — стационар в ней (часть 26) */
+  venue?: Venue;
+  /** специалист (spec 2026-10-chapter-4, часть 60а): у записанного к нему болезни его профиля вероятнее */
+  prior?: Prior;
+}
+
+/**
+ * Шаг по частям (0.5.13, NFR-PRF-1): между частями — `yield`, и шаг можно продолжить в следующем кадре; части — польза
+ * каждого обследования и уверенность во всех болезнях. Как у Бенеша: «Необходимо проверять десятки доступных видов
+ * анализов, поэтому в одном кадре обновление выполняется только для некоторых, и продолжается в следующем».
+ */
+export type Parts<T> = Generator<void, T, void>;
+export type StepResult = { step: DoctorStep; phase: DoctorPhase };
+
+/** Довести до конца — сразу. */
+export function whole<T>(parts: Parts<T>): T {
+  for (;;) {
+    const r = parts.next();
+    if (r.done) return r.value;
+  }
+}
+
+/**
+ * Запас к границе пользы (`gainBound`): польза и граница считаются разными действиями, и последние биты у них могут
+ * разойтись; округление пользы (`quantize`) — до 1e-9, расхождение — порядка 1e-13.
+ */
+const BOUND_SLACK = 1e-9;
+
+/**
+ * Самое полезное на единицу цены из несделанных; польза ниже `minGain` — не назначается. По обследованию за часть.
+ * Обследование, которое и с наибольшей возможной пользой (`gainBound`) не обгонит лучшее или не наберёт `minGain`, не
+ * считается (0.5.16): выбор тот же, а пользу считают почти вчетверо реже.
+ */
+function* bestExam(db: ContentDb, beliefs: Belief[], ctx: Parameters<typeof expectedGain>[3], obs: readonly Observation[], done: readonly Id[], opt: StepOptions): Parts<Id | undefined> {
+  const observed = new Set(obs.map(o => o.f));
+  let best: Id | undefined;
+  let bestScore = 0;
+  for (const id of opt.exams) {
+    if (done.includes(id)) continue;
+    const most = gainBound(db, id, beliefs, ctx, observed) + BOUND_SLACK;
+    if (quantize(most) < quantize(opt.minGain) || quantize(most / examCost(db, id)) <= bestScore) continue;
+    const gain = expectedGain(db, id, beliefs, ctx, observed);
+    yield;
+    if (quantize(gain) < quantize(opt.minGain)) continue;
+    const score = quantize(gain / examCost(db, id));
+    if (score > bestScore) {
+      bestScore = score;
+      best = id;
+    }
+  }
+  return best;
+}
+
+/**
+ * Скрытые параметры болезни, от которых зависит лечение (часть 32): место по параметру, тактика
+ * по параметру и операция по параметру (часть 32б) — смещение отломков, стабильность перелома.
+ */
+export function tacticParams(db: ContentDb, condId: Id): string[] {
+  const t = db.conditions[condId]?.treatment;
+  if (!t) return [];
+  const byOp = (db.conditions[condId]?.surgery?.byParam ?? []).flatMap(b => Object.keys(b.when));
+  return [...new Set([...(t.setting.param ? [t.setting.param.name] : []), ...(t.byParam ?? []).flatMap(b => Object.keys(b.when)), ...byOp])].sort();
+}
+
+/**
+ * Обследование, которое уточнит то, от чего зависит лечение при этом диагнозе (часть 32): пока
+ * значение параметра не достигло порога уверенности — самое полезное для него на единицу цены;
+ * польза ниже `minGain` — не назначается. Перелом со штыкообразной деформацией — ещё снимок:
+ * смещён он или нестабилен, решает он.
+ */
+function* tacticExam(db: ContentDb, diagnosis: Id, obs: readonly Observation[], age: Who, done: readonly Id[], opt: StepOptions): Parts<Id | undefined> {
+  let best: Id | undefined;
+  let bestScore = 0;
+  const minutes = opt.venue?.minutes ?? 0;
+  for (const name of tacticParams(db, diagnosis)) {
+    const top = paramBeliefs(db, diagnosis, name, obs, age, minutes).reduce((a, b) => Math.max(a, b.p), 0);
+    if (top >= opt.threshold) continue;
+    for (const id of opt.exams) {
+      if (done.includes(id)) continue;
+      const gain = paramGain(db, diagnosis, name, id, obs, age, minutes);
+      yield;
+      if (quantize(gain) < quantize(opt.minGain)) continue;
+      const score = quantize(gain / examCost(db, id));
+      if (score > bestScore) {
+        bestScore = score;
+        best = id;
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * Пункция и дренаж (часть 32в): их, как и операцию, не делают без подтверждающего снимка. С частью 56б (spec 2026-10-chapter-4)
+ * — и лечение, которое назначают по подтверждённому диагнозу: тиамазол — после ТТГ
+ */
+const invasive = (db: ContentDb, tx: Id) => db.treatments[tx]?.class?.startsWith('drainage.') === true || db.treatments[tx]?.confirmFirst === true;
+
+/**
+ * Нужна операция, пункция или дренаж — или лечение по подтверждённому диагнозу (часть 56б: тиамазол после ТТГ), — а
+ * подтверждающего обследования из рекомендации ещё нет —
+ * самое дешёвое из доступных (часть 32; пункцию и дренирование не выполняют, не убедившись в
+ * характере содержимого плевральной полости, — 728_2, раздел 2.4). Без них его не требуем: грипп
+ * лечат и без экспресс-теста.
+ */
+function confirmBeforeInvasive(db: ContentDb, diagnosis: Id, obs: readonly Observation[], age: Who, done: readonly Id[], exams: readonly Id[]): Id | undefined {
+  const c = db.conditions[diagnosis];
+  if (!c || c.confirm === 'clinical' || c.confirm.some(id => done.includes(id))) return undefined;
+  const plan = choosePlan(db, diagnosis, obs, age, { ward: true, or: true });
+  if (plan.setting !== 'surgery' && !plan.treatments.some(tx => invasive(db, tx))) return undefined;
+  return c.confirm.filter(id => exams.includes(id)).sort((a, b) => examCost(db, a) - examCost(db, b) || (a < b ? -1 : 1))[0];
+}
+
+/**
+ * Шаг разумного врача по тому, что уже известно: следующее обследование или решение. Сначала —
+ * вопросы, которые задают всем: польза вопроса о хронических болезнях в модели не видна
+ * (сопутствующие считаются известными), а без него обострение ХОБЛ не узнать. Затем — что велят
+ * правила решения и что нужно, чтобы они решились (часть 33а). Потом, пока уверенность ниже
+ * порога, — самое полезное на единицу цены. Решив, — вопросы о
+ * противопоказаниях к лечению (об аллергиях — перед антибиотиком; о беременности не
+ * спрашивают мужчину и женщину 64 лет), и план.
+ */
+export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observation[], done: readonly Id[], phase: DoctorPhase, options: StepOptions): StepResult {
+  return whole(stepParts(db, patient, obs, done, phase, options));
+}
+
+/** Тот же шаг по частям (0.5.13): так его делает нанятый врач, пока больница доживает время команды, и разбор заранее. */
+export function* stepParts(db: ContentDb, patient: Patient, obs: readonly Observation[], done: readonly Id[], phase: DoctorPhase, options: StepOptions): Parts<StepResult> {
+  // обследование с вредом при противопоказании (spec 2026-10-chapter-4, часть 50а): пункт правила известен — его не
+  // делают; пока не всё проверено — сначала самое дешёвое из того, что проверит оставшийся пункт: сознание и очаговые
+  // признаки — осмотром невролога, давление — тонометром, тромбоциты — анализом крови. Проверить нечем — делают:
+  // остальное в этой больнице не узнать. Нанятый врач невысокого навыка проверку забывает (`skipAsk`)
+  const known = knownOf(obs);
+  const exams = options.exams.filter(id => harmCheck(db, id, known).verdict !== 'yes');
+  const r = yield* nextStepFor(db, patient, obs, done, phase, { ...options, exams });
+  if (r.step.kind !== 'exam') return r;
+  const { verdict, left } = harmCheck(db, r.step.exam, known);
+  if (verdict !== 'unknown') return r;
+  const check = [...new Set(left.flatMap(f => db.revealedBy[f] ?? []))]
+    .filter(id => exams.includes(id) && !done.includes(id) && examFits(db.exams[id], patient) && !options.skipAsk?.(id))
+    .sort((a, b) => examCost(db, a) - examCost(db, b) || (a < b ? -1 : 1))[0];
+  return check ? { step: { kind: 'exam', exam: check }, phase } : r;
+}
+
+function* nextStepFor(db: ContentDb, patient: Patient, obs: readonly Observation[], done: readonly Id[], phase: DoctorPhase, options: StepOptions): Parts<StepResult> {
+  // о месячных и беременности мужчину не спрашивают: только то, что пациенту подходит; есть срок
+  // решения (часть 39в) — то, что успеет до него. С частью 46а — за вычетом минут, что прошли после
+  // находки (по обследованиям после того, что её показало), и с запасом на вопросы о противопоказаниях
+  // к лечению срока: их задают и тогда, когда на другое времени уже нет
+  const elapsed = options.venue?.minutes ?? 0;
+  const since = (fs: readonly Id[]) => {
+    const k = done.findIndex(id => obs.some(o => o.exam === id && o.shown && fs.includes(o.f)));
+    return k < 0 ? 0 : done.slice(k + 1).reduce((a, id) => a + (db.exams[id] ? examMinutes(db.exams[id]) : 0), 0);
+  };
+  // уверенность во всех болезнях — одна на шаг (0.5.13): её берут и срок, и тактика, и польза обследований; считают, когда
+  // нужна, — отдельной частью
+  let ctx: ReturnType<typeof contextOf> | undefined;
+  let all: Belief[] | undefined;
+  const ctxOf = () => (ctx ??= contextOf(db, patient, obs, options.prior));
+  const beliefsOf = () => (all ??= posterior(db, options.candidates, obs, ctxOf()));
+  let limit = decisionLimit(db, obs, patient.complaints, elapsed, since, patient);
+  // срок, который ничего не решает (часть 46а): подъём ST на ЭКГ у больного с ТИА, которого инфарктом
+  // не объяснить, — болезни, которую этим лечат, вероятнее `RULE_IN` нет, и обследование он не торопит
+  if (limit !== undefined) {
+    if (!all) {
+      beliefsOf();
+      yield;
+    }
+    if (!ruleIn(db, beliefsOf(), obs, patient, options.venue)) limit = undefined;
+  }
+  const safety = limit === undefined ? [] : safetyExams(db, obs, patient, options.exams, options.venue).filter(id => !done.includes(id));
+  const reserve = safety.reduce((a, id) => a + examMinutes(db.exams[id]), 0);
+  const opt = {
+    ...options,
+    exams: options.exams.filter(id => examFits(db.exams[id], patient) && (limit === undefined || safety.includes(id) || examMinutes(db.exams[id]) <= limit - reserve)),
+  };
+  let now = phase;
+  // какое обследование больше уточнит тактику самого вероятного диагноза (часть 41а): КТ-ангиография
+  // вместо КТ, если окклюзия её решает
+  const leadOf = (): Belief | undefined => beliefsOf()[0];
+  const preferTactic = (e: Id) => {
+    const top = leadOf();
+    return top ? tacticGain(db, top.id, e, obs, patient, elapsed) : 0;
+  };
+  if (now.diagnosis === undefined) {
+    // срок по жалобе (часть 37) — первым делом: при давящей боли в груди ЭКГ, ещё до расспроса; при
+    // признаках инсульта — осмотр с NIHSS (часть 41а)
+    const urgent = dueTarget(db, patient, done, opt.exams, FIRST_CONTACT, () => 0, obs);
+    // срок, который иначе не успеть (часть 46а): КТ при подозрении на инсульт — 40 минут от прихода, а с
+    // заключением она идёт 25, — сразу после осмотра, до расспроса: его вопросы подождут результата
+    const pressing = dueTarget(db, patient, done, opt.exams, FIRST_CONTACT, e => preferTactic(e), obs, { elapsed, slack: TIGHT_SLACK, venue: opt.venue, beyond: true });
+    // срок первого контакта уже не успеть, а поджимающий — ещё можно (часть 46б): врач освободился поздно, и осмотр
+    // при инсульте опоздал — сначала назначить КТ (пара минут, дальше она идёт сама), осмотр — сразу после
+    const late = urgent !== undefined && inTime(db, urgent.target, opt.exams, elapsed, opt.venue).length === 0;
+    if (urgent && !(late && pressing && inTime(db, pressing.target, opt.exams, elapsed, opt.venue).length > 0)) return { step: { kind: 'exam', exam: urgent.exam }, phase: now };
+    if (pressing) {
+      // только сначала — когда началось (пара минут): без часов от начала не выбрать между КТ и КТ-ангиографией. С
+      // частью 46б — если и после вопроса будет из чего выбрать: КТ-ангиография после него к концу срока уже не
+      // успеет — сразу КТ, а когда началось, спросят, пока она идёт. С частью 50б выбор — между тем, что выбирают по
+      // часам, и остальным: успеют КТ и МРТ, а КТ-ангиография — нет, и спрашивать незачем
+      const clock = clockQuestion(db, leadOf()?.id, patient, obs, opt.exams, done);
+      const after = clock === undefined ? [] : inTime(db, pressing.target, opt.exams, elapsed + examMinutes(db.exams[clock]), opt.venue);
+      const byClock = after.filter(e => clockGated(db).has(e));
+      const choice = byClock.length > 0 && byClock.length < after.length;
+      const exam = clock === undefined ? pressing.exam : choice ? clock : (after[0] ?? fastest(db, pressing.target.exams.filter(e => opt.exams.includes(e)), opt.venue));
+      return { step: { kind: 'exam', exam }, phase: now };
+    }
+    // вопросы всем и то, что делают каждому с такой жалобой (часть 32г-2: неврологический осмотр при ране головы)
+    const routine = opt.exams.find(id => (db.exams[id].routine || db.exams[id].routineFor?.some(f => patient.complaints.includes(f))) && !done.includes(id));
+    if (routine) return { step: { kind: 'exam', exam: routine }, phase: now };
+    // и каждому, у кого это увидели (часть 42б): неритмичный пульс или 150 и чаще — ЭКГ, тахикардию по
+    // пульсу без неё не различить
+    const flagged = opt.exams.find(id => db.exams[id].routineSeen?.some(f => obs.some(o => o.f === f && o.shown)) && !done.includes(id));
+    if (flagged) return { step: { kind: 'exam', exam: flagged }, phase: now };
+    // остальные сроки (часть 41а): КТ за 40 минут — уже зная, когда началось; КТ-ангиография вместо КТ —
+    // если окклюзия решает тактику при самом вероятном диагнозе
+    const later = urgentExam(db, patient, done, opt.exams, Infinity, e => preferTactic(e), obs);
+    if (later) return { step: { kind: 'exam', exam: later }, phase: now };
+    // положительное правило решения велит обследование — его делают (часть 32д): оттавские правила
+    // сказали «снимок нужен», и снимок делают, даже почти уверившись в ушибе
+    const ruled = ruleExams(db, patient, obs).find(id => opt.exams.includes(id) && !done.includes(id));
+    if (ruled) return { step: { kind: 'exam', exam: ruled }, phase: now };
+    // правило к жалобе ещё не решено — узнать, что осталось (часть 33а): то, что проверит больше
+    // оставшихся признаков, поровну — дешевле; при шкале Уэллса меньше двух — D-димер, и только
+    // повышенный ведёт на УЗИ
+    const open = openRuleExams(db, patient, obs, id => examCost(db, id)).find(id => opt.exams.includes(id) && !done.includes(id));
+    if (open) return { step: { kind: 'exam', exam: open }, phase: now };
+    if (!all) {
+      beliefsOf();
+      yield;
+    }
+    const beliefs = beliefsOf();
+    if (beliefs[0].p < opt.threshold) {
+      const best = yield* bestExam(db, beliefs, ctxOf(), obs, done, opt);
+      if (best) return { step: { kind: 'exam', exam: best }, phase: now };
+    }
+    // уверенности нет, а срок на лечение идёт (часть 46а) — за болезнь, которую этим лечат, если она не исключена
+    const top = beliefs[0].p < opt.threshold && limit !== undefined ? (ruleIn(db, beliefs, obs, patient, opt.venue) ?? beliefs[0]) : beliefs[0];
+    // диагноз ясен — уточняет то, от чего зависит лечение (часть 32): смещение отломков видно на снимке
+    const tactic = yield* tacticExam(db, top.id, obs, patient, done, opt);
+    if (tactic) return { step: { kind: 'exam', exam: tactic }, phase: now };
+    // перед операцией, пункцией и дренажом — подтверждающее обследование из рекомендации (части
+    // 32 и 32в): нестабильный перелом с деформацией не оперируют, пневмоторакс не дренируют без снимка
+    const confirm = confirmBeforeInvasive(db, top.id, obs, patient, done, opt.exams);
+    if (confirm) return { step: { kind: 'exam', exam: confirm }, phase: now };
+    // что здесь можно (часть 39а): о противопоказаниях тромболизиса спрашивают там, где его делают
+    const plan = choosePlan(db, top.id, obs, patient, opt.venue);
+    const risks = [...new Set(plan.treatments.flatMap(tx => db.treatments[tx].contraindications.map(k => k.id)))].sort();
+    const ask: Id[] = [];
+    for (const k of risks) {
+      if (!possibleFor(db, k, patient)) continue;
+      const q = askingExam(db, k);
+      if (q && !ask.includes(q) && opt.exams.includes(q) && !opt.skipAsk?.(q)) ask.push(q);
+    }
+    now = { diagnosis: top.id, confidence: top.p, ask };
+  }
+  const ask = (now.ask ?? []).filter(id => !done.includes(id));
+  if (ask.length > 0) return { step: { kind: 'exam', exam: ask[0] }, phase: { ...now, ask: ask.slice(1) } };
+  const diagnosis = now.diagnosis!;
+  return { step: { kind: 'decide', diagnosis, confidence: now.confidence ?? 0, plan: choosePlan(db, diagnosis, obs, patient, opt.venue) }, phase: { ...now, ask: [] } };
+}
+
+export function runDoctor(db: ContentDb, patient: Patient, strategy: Strategy, rng: Rng, opt: DoctorOptions): DoctorResult {
+  // шаги подряд — те же, что у нанятого врача по одному, и у разбора, который считают заранее (`startRational`)
+  if (strategy === 'rational') return startRational(db, patient, rng, opt).result();
+  const obs: Observation[] = complaintObservations(patient);
+  const done: Id[] = [];
+  const doExam = examining(db, patient, rng, obs, done);
+  // «всё подряд» спрашивает и назначает всё; ленивый решает по жалобам
+  if (strategy === 'shotgun') for (const id of opt.exams) if (examFits(db.exams[id], patient)) doExam(id);
+  const top = posterior(db, opt.candidates, obs, contextOf(db, patient, obs, opt.prior))[0];
+  return resultOf(db, patient, { diagnosis: top.id, confidence: top.p, plan: choosePlan(db, top.id, obs, patient) }, done, obs);
+}
+
+/**
+ * Разумный врач по шагу (0.5.11, NFR-PRF-1): `step` — один шаг, как у нанятого врача; `result` — итог, досчитав
+ * оставшиеся. Так разбор приёма считают заранее, пока игрок думает, — тем же зерном и теми же шагами, что подряд.
+ */
+export interface DoctorRun {
+  /** сделать шаг; true — решение уже принято */
+  step(): boolean;
+  /** часть шага (0.5.13, `stepParts`): undefined — шаг ещё идёт; иначе — как `step` */
+  part(): boolean | undefined;
+  /** решение принято — считать больше нечего (0.5.13) */
+  done(): boolean;
+  result(): DoctorResult;
+}
+
+export function startRational(db: ContentDb, patient: Patient, rng: Rng, opt: DoctorOptions): DoctorRun {
+  const threshold = opt.threshold ?? 0.9;
+  const minGain = opt.minGain ?? MIN_GAIN;
+  const obs: Observation[] = complaintObservations(patient);
+  const done: Id[] = [];
+  const doExam = examining(db, patient, rng, obs, done);
+  let phase: DoctorPhase = {};
+  let decision: { diagnosis: Id; confidence: number; plan: Plan } | undefined;
+  let out: DoctorResult | undefined;
+  let parts: Parts<StepResult> | undefined;
+  const part = (): boolean | undefined => {
+    if (decision) return true;
+    if (!parts) {
+      // сколько прошло с прихода (часть 41а): окно тромболизиса закрывается, пока идёт обследование
+      const minutes = done.reduce((a, id) => a + examMinutes(db.exams[id]), 0);
+      parts = stepParts(db, patient, obs, done, phase, {
+        candidates: opt.candidates, exams: opt.exams, threshold, minGain, ...(opt.skipAsk ? { skipAsk: opt.skipAsk } : {}), ...(opt.prior ? { prior: opt.prior } : {}), venue: { minutes },
+      });
+    }
+    const next = parts.next();
+    if (!next.done) return undefined;
+    parts = undefined;
+    const r = next.value;
+    phase = r.phase;
+    if (r.step.kind === 'decide') {
+      decision = r.step;
+      return true;
+    }
+    doExam(r.step.exam);
+    return false;
+  };
+  const step = (): boolean => {
+    for (;;) {
+      const r = part();
+      if (r !== undefined) return r;
+    }
+  };
+  return {
+    step,
+    part,
+    done: () => decision !== undefined,
+    result: () => {
+      while (!step());
+      return (out ??= resultOf(db, patient, decision!, done, obs));
+    },
+  };
+}
+
+/** Обследование врача: наблюдения — своей ветвью зерна по номеру и обследованию. */
+function examining(db: ContentDb, patient: Patient, rng: Rng, obs: Observation[], done: Id[]) {
+  return (id: Id) => {
+    obs.push(...runExam(db, patient, id, rng.fork(`exam:${done.length}:${id}`)));
+    done.push(id);
+  };
+}
+
+function resultOf(db: ContentDb, patient: Patient, decision: { diagnosis: Id; confidence: number; plan: Plan }, done: Id[], obs: Observation[]): DoctorResult {
+  const primary = patient.truth.conditions.find(c => c.role === 'primary')!.id;
+  const money = done.reduce((a, id) => a + db.exams[id].cost, 0);
+  const minutes = done.reduce((a, id) => a + db.exams[id].time.procedure + (db.exams[id].time.report ?? 0) + (db.exams[id].time.turnaround ?? 0), 0);
+  const { diagnosis, confidence, plan } = decision;
+  // «до группы» — и источник сепсиса (часть 48а): частично верный диагноз
+  return { diagnosis, correct: diagnosis === primary, correctGroup: verdictOf(db, diagnosis, patient) !== 'wrong', confidence, exams: done, money, minutes, plan, observations: obs };
+}

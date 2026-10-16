@@ -1,0 +1,150 @@
+// из anamnez: tools/test/infer.test.ts @ 96503ac
+// Вывод уверенности (`docs/10-medical-model.md` §10–12): пример из документа, посчитанный
+// руками, — маленькая база из четырёх состояний и двух признаков.
+import { describe, expect, test } from 'bun:test';
+import { NO_ECONOMY } from '../content/load';
+import type { Condition, ContentDb, Exam, Finding } from '../../src/content/types';
+import { contextOf, entropy, expectedGain, NO_UNKNOWNS, posterior } from '../../src/engine/med/infer';
+import type { Observation } from '../../src/engine/med/types';
+
+// кашель и температура — у всех четырёх: жалобы вывод не сдвигают, а крепитацию и инфильтрат по ним ждут (вопрос 33)
+const cond = (id: string, weight: number, crackles: number, infiltrate: number): Condition => ({
+  id, name: { ru: id }, department: 'dept.test', kind: 'disease', severity: 'minor', presenting: true,
+  weight, age: { min: 18, max: 100 }, stages: [{ id: 'all', days: [0, 30] }],
+  findings: [{ f: 'sym.cough', p: 10000 }, { f: 'sym.fever', p: 10000 }, { f: 'sign.crackles', p: crackles }, { f: 'img.infiltrate', p: infiltrate }],
+  confirm: 'clinical', texts: { summary: { ru: id } }, sources: [], review: 'draft',
+});
+const finding = (id: string, leak: number): Finding => ({
+  id, name: { ru: id }, kind: id.startsWith('img') ? 'img' : id.startsWith('sym') ? 'sym' : 'sign', leak, salience: 0, texts: { present: [{ ru: id }] }, review: 'draft',
+});
+const exam = (id: string, f: string, sens: number, spec: number): Exam => ({
+  id, name: { ru: id }, kind: 'physical', time: { procedure: 1 }, cost: 0, discomfort: 0,
+  checks: [{ f, sens, spec }], texts: { summary: { ru: id } }, sources: [], review: 'draft',
+});
+
+/** Числа — иллюстрация из документа: q в долях 1/10 000, априорные 45/25/15/15. */
+const db: ContentDb = {
+  contentVersion: 1, hash: 'test', risks: {}, jobs: {}, treatments: {}, rooms: {}, equipment: {}, roles: {}, presets: {}, economy: NO_ECONOMY, characters: {}, chapters: {}, tips: {}, achievements: {}, scores: {}, rules: {}, targets: {}, skills: {}, revealedBy: {},
+  conditions: {
+    'cond.arvi': cond('cond.arvi', 45, 200, 100),
+    'cond.bronchitis': cond('cond.bronchitis', 25, 1000, 200),
+    'cond.pneumonia': cond('cond.pneumonia', 15, 7500, 9500),
+    'cond.copd': cond('cond.copd', 15, 1500, 500),
+  },
+  findings: { 'sym.cough': finding('sym.cough', 0), 'sym.fever': finding('sym.fever', 0), 'sign.crackles': finding('sign.crackles', 200), 'img.infiltrate': finding('img.infiltrate', 100) },
+  exams: {
+    'exam.auscultation': exam('exam.auscultation', 'sign.crackles', 8000, 9500),
+    'exam.xray': exam('exam.xray', 'img.infiltrate', 8500, 9500),
+  },
+};
+const candidates = Object.keys(db.conditions);
+const ctx = { sex: 'm' as const, age: 67, season: 'winter' as const, knownRisks: [], knownConditions: [], unknowns: NO_UNKNOWNS, complaints: ['sym.cough', 'sym.fever'] };
+/** жалобы мужчины из примера — на кашель и температуру */
+const told: Observation[] = [{ f: 'sym.cough', shown: true, exam: 'complaint' }, { f: 'sym.fever', shown: true, exam: 'complaint' }];
+const p = (beliefs: { id: string; p: number }[], id: string) => beliefs.find(b => b.id === id)!.p;
+const crackles = (shown: boolean): Observation => ({ f: 'sign.crackles', shown, exam: 'exam.auscultation' });
+const infiltrate = (shown: boolean): Observation => ({ f: 'img.infiltrate', shown, exam: 'exam.xray' });
+
+describe('пример из 10-medical-model.md §12', () => {
+  test('априорные вероятности — 45/25/15/15', () => {
+    const b = posterior(db, candidates, told, ctx);
+    expect(p(b, 'cond.arvi')).toBeCloseTo(0.45, 6);
+    expect(p(b, 'cond.pneumonia')).toBeCloseTo(0.15, 6);
+  });
+
+  test('крепитация есть: пневмония 49 %', () => {
+    const b = posterior(db, candidates, [...told, crackles(true)], ctx);
+    expect(p(b, 'cond.pneumonia')).toBeCloseTo(0.4885, 3);
+    expect(p(b, 'cond.arvi')).toBeCloseTo(0.1895, 3);
+    expect(p(b, 'cond.bronchitis')).toBeCloseTo(0.1830, 3);
+    expect(p(b, 'cond.copd')).toBeCloseTo(0.1390, 3);
+  });
+
+  test('крепитации нет: пневмония падает до 7 %, но не до нуля', () => {
+    const b = posterior(db, candidates, [...told, crackles(false)], ctx);
+    expect(p(b, 'cond.pneumonia')).toBeCloseTo(0.0710, 3);
+    expect(p(b, 'cond.arvi')).toBeCloseTo(0.5108, 3);
+    expect(p(b, 'cond.pneumonia')).toBeGreaterThan(0);
+  });
+
+  test('крепитация и инфильтрат: пневмония 91 %', () => {
+    const b = posterior(db, candidates, [...told, crackles(true), infiltrate(true)], ctx);
+    expect(p(b, 'cond.pneumonia')).toBeCloseTo(0.9091, 3);
+    expect(b[0].id).toBe('cond.pneumonia');
+  });
+
+  test('польза: рентген после крепитации информативнее повторной аускультации', () => {
+    const b = posterior(db, candidates, [...told, crackles(true)], ctx);
+    const observed = new Set(['sym.cough', 'sym.fever', 'sign.crackles']);
+    const xray = expectedGain(db, 'exam.xray', b, ctx, observed);
+    const again = expectedGain(db, 'exam.auscultation', b, ctx, observed);
+    expect(xray).toBeGreaterThan(0.3);
+    expect(again).toBe(0); // уже наблюдалось — приближение среза считает только новое
+  });
+
+  test('два совпавших ответа об одном признаке — не две независимые улики', () => {
+    // Ошибки независимы только при известной правде: P = q·sens² + (1−q)·(1−spec)².
+    const q: Record<string, number> = { 'cond.arvi': 200, 'cond.bronchitis': 1000, 'cond.pneumonia': 7500, 'cond.copd': 1500 };
+    const prior: Record<string, number> = { 'cond.arvi': 45, 'cond.bronchitis': 25, 'cond.pneumonia': 15, 'cond.copd': 15 };
+    const joint = Object.fromEntries(candidates.map(id => {
+      const pf = 1 - (1 - 0.02) * (1 - q[id] / 10000);
+      return [id, prior[id] * (pf * 0.8 ** 2 + (1 - pf) * 0.05 ** 2)];
+    }));
+    const total = Object.values(joint).reduce((a, b) => a + b, 0);
+    const twice = posterior(db, candidates, [...told, crackles(true), crackles(true)], ctx);
+    for (const id of candidates) expect(p(twice, id)).toBeCloseTo(joint[id] / total, 9);
+    // сильнее одного ответа, но слабее «двух улик»
+    expect(p(twice, 'cond.pneumonia')).toBeGreaterThan(0.4885);
+    expect(p(twice, 'cond.pneumonia')).toBeLessThan(0.75);
+  });
+
+  test('признак, известный без ошибки, повторная проверка не сдвигает', () => {
+    const told: Observation = { f: 'sign.crackles', shown: true, exam: 'complaint' };
+    const base = posterior(db, candidates, [told], ctx);
+    for (const extra of [crackles(true), crackles(false)]) {
+      const b = posterior(db, candidates, [told, extra], ctx);
+      for (const id of candidates) expect(p(b, id)).toBeCloseTo(p(base, id), 9);
+    }
+  });
+
+  test('энтропия: уверенность в одном — ноль бит, равные шансы четырёх — два бита', () => {
+    expect(entropy([{ id: 'a', p: 1 }])).toBe(0);
+    expect(entropy(['a', 'b', 'c', 'd'].map(id => ({ id, p: 0.25 })))).toBeCloseTo(2, 9);
+  });
+});
+
+// С чем пришёл (spec 2026-10-chapter-4, часть 61а): хоть одна жалоба — от основной болезни, без жалоб приходят только на
+// профосмотр (`10-medical-model.md` §3 и §10)
+describe('с чем пришёл', () => {
+  const sym = (id: string): Finding => ({ id, name: { ru: id }, kind: 'sym', leak: 300, salience: 3, texts: { present: [{ ru: id }] }, review: 'draft' });
+  const of = (id: string, links: [string, number][], checkup = false): Condition => ({ ...cond(id, 50, 0, 0), findings: links.map(([f, q]) => ({ f, p: q })), ...(checkup ? { checkup } : {}) });
+  const mini: ContentDb = {
+    ...db,
+    conditions: {
+      'cond.gerd': of('cond.gerd', [['sym.heartburn', 7500], ['sym.cough', 2500]]),
+      'cond.cold': of('cond.cold', [['sym.cough', 7500]]),
+      'cond.htn': of('cond.htn', [['sign.bp_high', 9500]], true),
+    },
+    findings: { 'sym.heartburn': sym('sym.heartburn'), 'sym.cough': sym('sym.cough'), 'sign.bp_high': finding('sign.bp_high', 1000) },
+    exams: { 'exam.ask': exam('exam.ask', 'sym.heartburn', 10000, 10000) },
+  };
+  const all = Object.keys(mini.conditions);
+
+  test('болезнь профосмотра, которая ни одной из жалоб не даёт, — в 100 раз реже; то же, узнанное расспросом, — довод прежнего веса', () => {
+    const asked = posterior(mini, all, [{ f: 'sym.heartburn', shown: true, exam: 'exam.ask' }], ctx);
+    const said = posterior(mini, all, [{ f: 'sym.heartburn', shown: true, exam: 'complaint' }], ctx);
+    expect(p(said, 'cond.htn') / p(said, 'cond.gerd')).toBeCloseTo((0.01 * p(asked, 'cond.htn')) / p(asked, 'cond.gerd'), 9);
+    // остальных болезней это не касается
+    expect(p(said, 'cond.cold') / p(said, 'cond.gerd')).toBeCloseTo(p(asked, 'cond.cold') / p(asked, 'cond.gerd'), 9);
+    expect(said[0].id).toBe('cond.gerd');
+  });
+
+  test('пришёл без жалоб — на профосмотр: болезнь, с которой всегда приходят с жалобой, исключена', () => {
+    const checkup = contextOf(mini, { sex: 'm', age: 67, season: 'winter', complaints: [] }, []);
+    expect(checkup.checkup).toBe(true);
+    const b = posterior(mini, all, [], checkup);
+    expect([p(b, 'cond.htn'), p(b, 'cond.gerd'), p(b, 'cond.cold')]).toEqual([1, 0, 0]);
+    // с жалобой — не профосмотр
+    expect(contextOf(mini, { sex: 'm', age: 67, season: 'winter', complaints: ['sym.cough'] }, []).checkup).toBeUndefined();
+  });
+});

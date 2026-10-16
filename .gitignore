@@ -1,0 +1,4 @@
+node_modules/
+src/content/generated/
+tools/bench/out/
+*.cpuprofile
