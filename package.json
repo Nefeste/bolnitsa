@@ -1,0 +1,17 @@
+{
+  "name": "bolnitsa",
+  "private": true,
+  "description": "«Больница» — симулятор больницы для ПК студии «Горница»: движок и медицинская база (из «Анамнеза»)",
+  "scripts": {
+    "content": "bun tools/content/build.ts",
+    "typecheck": "bun tools/content/build.ts && tsc --noEmit",
+    "test": "bun tools/content/build.ts && bun test tools/test",
+    "bench": "bun tools/bench/bench.ts"
+  },
+  "devDependencies": {
+    "bun-types": "1.4.2",
+    "typescript": "6.0.3",
+    "yaml": "2.9.1",
+    "zod": "4.6.5"
+  }
+}

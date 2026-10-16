@@ -1,0 +1,20 @@
+id: exam.pregnancy_test
+name: { ru: "Тест на беременность" }
+kind: rapid
+time: { procedure: 2, turnaround: 5 }
+cost: 150
+discomfort: 0
+# кому: женщинам детородного возраста — мужчине и женщине после 50 не предлагается
+sex: f
+ageMin: 12
+ageMax: 50
+checks:
+  - { f: lab.hcg_positive, sens: 97, spec: 99 }
+texts:
+  hint:
+    ru: "Находит гормон беременности в моче за несколько минут. Нужен, когда от ответа зависит лечение, а женщина не уверена."
+  summary:
+    ru: "Тест-полоска с мочой на хорионический гонадотропин (ХГЧ)."
+sources:
+  - { kind: textbook, title: "Акушерство: национальное руководство", note: "черновик: точность — игровая оценка" }
+review: draft

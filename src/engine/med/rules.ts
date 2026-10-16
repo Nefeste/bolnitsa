@@ -1,0 +1,210 @@
+// из anamnez: src/engine/med/rules.ts @ 96503ac
+// Правила решения (spec 2026-09-chapter-2, часть 32): оттавские правила — хоть один признак, и снимок
+// нужен; с частью 32г — и правило КТ при лёгкой черепно-мозговой травме: основные признаки (хватит
+// одного), дополнительные (нужно не меньше двух), возраст как основной или дополнительный признак и
+// круг тех, к кому правило применимо (была потеря сознания, амнезия или оглушение). С частью 33а —
+// шкала Уэллса и D-димер при боли в ноге: признаки, при которых правило не применяют (тяж по ходу
+// подкожной вены — это тромбофлебит), и «правило ещё не решено — узнать, что осталось». Правило
+// считает по тому, что известно; диагноз оно не ставит. С частью 41б — шкала с баллами: у пункта
+// свой вес (ABCD2 после транзиторной ишемической атаки), правило выполнено от порога.
+import type { ContentDb, Id, Rule, RulePoints } from '../../content/types';
+import type { Observation, Sex } from './types';
+
+/**
+ * О ком правило (часть 42а): возраст и, если шкала считает пол, пол — CHA₂DS₂-VASc даёт балл
+ * женщине, и порог у неё свой. Число — только возраст: так считают правила без пола.
+ */
+export type Who = number | { age: number; sex?: Sex };
+
+export const whoOf = (w: Who): { age: number; sex?: Sex } => (typeof w === 'number' ? { age: w } : { age: w.age, ...(w.sex ? { sex: w.sex } : {}) });
+
+/**
+ * Полоса возраста шкалы (части 41б и 42а): последняя, до которой дорос, — с какого возраста, до
+ * какого (у последней верхней нет) и сколько баллов. Не дорос ни до одной — нет.
+ */
+export function ageBand(p: RulePoints, age: number): { from: number; to?: number; w: number } | undefined {
+  const bands = p.age ?? [];
+  let i = bands.length - 1;
+  while (i >= 0 && age < bands[i].from) i--;
+  if (i < 0) return undefined;
+  return { from: bands[i].from, ...(i + 1 < bands.length ? { to: bands[i + 1].from - 1 } : {}), w: bands[i].w };
+}
+
+/** Баллы за возраст: по полосе. */
+export function ageWeight(p: RulePoints, age: number): number {
+  return ageBand(p, age)?.w ?? 0;
+}
+
+/** Порог шкалы (часть 42а): свой у пола, иначе общий. */
+export function pointsFrom(p: RulePoints, sex?: Sex): number {
+  return (sex && p.fromSex?.[sex]) ?? p.from;
+}
+
+export type RuleVerdict = 'yes' | 'no' | 'unknown';
+
+export interface RuleCheck {
+  verdict: RuleVerdict;
+  /** правило к пациенту применимо; `undefined` — пока не проверили */
+  applies: boolean | undefined;
+  /** основные признаки, которые есть */
+  main: Id[];
+  /** возраст — основной признак */
+  ageMain: boolean;
+  /** дополнительные признаки, которые есть */
+  minor: Id[];
+  /** возраст — дополнительный признак */
+  ageMinor: boolean;
+  /** что ещё не проверено из того, что может изменить вывод */
+  left: Id[];
+  /**
+   * баллы шкалы (часть 41б): `min` — набрано при любом ответе на непроверенное, `max` — можно
+   * набрать; всё известно — они равны
+   */
+  points?: { min: number; max: number };
+}
+
+/** Что известно о признаке: есть, нет, не проверяли. */
+export type Known = (f: Id) => boolean | undefined;
+
+/** Известное по наблюдениям: показал хоть раз — есть; проверяли и не показал — нет. */
+export function knownOf(observations: readonly Observation[]): Known {
+  return f => {
+    let seen = false;
+    for (const o of observations) {
+      if (o.f !== f) continue;
+      if (o.shown) return true;
+      seen = true;
+    }
+    return seen ? false : undefined;
+  };
+}
+
+/**
+ * Баллы шкалы по известному (часть 41б): пункт считается, если признак есть и нет ни одного из его
+ * «не считается при». Непроверенные признаки перебираются: `min` и `max` — по всем ответам на них.
+ */
+export function pointsOf(p: RulePoints, who: Who, known: Known): { min: number; max: number; open: Id[] } {
+  const { age, sex } = whoOf(who);
+  const ids = [...new Set(p.items.flatMap(i => [i.f, ...(i.unless ?? [])]))];
+  const open = ids.filter(f => known(f) === undefined);
+  // возраст и пол известны всегда (часть 42а: женский пол — балл CHA₂DS₂-VASc)
+  const base = ageWeight(p, age) + (sex ? (p.sex?.[sex] ?? 0) : 0);
+  let min = Infinity;
+  let max = -Infinity;
+  for (let mask = 0; mask < 1 << open.length; mask++) {
+    const has = (f: Id) => {
+      const i = open.indexOf(f);
+      return i >= 0 ? (mask & (1 << i)) !== 0 : known(f) === true;
+    };
+    const sum = p.items.reduce((a, i) => a + (has(i.f) && !(i.unless ?? []).some(has) ? i.w : 0), base);
+    min = Math.min(min, sum);
+    max = Math.max(max, sum);
+  }
+  return { min, max, open };
+}
+
+/**
+ * Вывод правила: «да» — есть основной признак, не меньше `minor.count` дополнительных или баллов
+ * шкалы не меньше порога (часть 41б), и правило применимо; «нет» — неприменимо или уже никак не
+ * набрать; иначе — «пока неизвестно», и `left` — что проверить. Возраст известен всегда. Есть признак
+ * из `excludes` — правило не применяется (часть 33а); пока его не видели, правило считается
+ * применимым: ждать проверки всего не нужно. `from` — свой порог баллов вместо порога шкалы: высокий
+ * риск по ABCD2 — с 6 баллов, а двойная антиагрегантная терапия — с 4.
+ */
+export function checkRule(rule: Rule, who: Who, known: Known, own?: number): RuleCheck {
+  const { age, sex } = whoOf(who);
+  // порог: свой у параметра (ABCD2: высокий риск — с 6), иначе у шкалы — с части 42а и по полу
+  const from = own ?? (rule.points ? pointsFrom(rule.points, sex) : undefined);
+  const req = rule.requires ?? [];
+  const excluded = (rule.excludes ?? []).some(f => known(f) === true);
+  const applies = excluded ? false : req.length === 0 || req.some(f => known(f) === true) ? true : req.every(f => known(f) === false) ? false : undefined;
+  const ageMain = (rule.age?.main !== undefined && age > rule.age.main) || (rule.age?.from !== undefined && age >= rule.age.from);
+  const ageMinor = rule.age?.minor !== undefined && age >= rule.age.minor[0] && age <= rule.age.minor[1];
+  const main = rule.any.filter(f => known(f) === true);
+  const minorAll = rule.minor?.any ?? [];
+  const minor = minorAll.filter(f => known(f) === true);
+  const need = rule.minor?.count ?? Infinity;
+  const count = minor.length + (ageMinor ? 1 : 0);
+  const hit = ageMain || main.length > 0 || count >= need;
+  const mainOpen = rule.any.filter(f => known(f) === undefined);
+  const minorOpen = minorAll.filter(f => known(f) === undefined);
+  const minorCanReach = count + minorOpen.length >= need;
+  const pts = rule.points ? pointsOf(rule.points, who, known) : undefined;
+  const ptsHit = pts !== undefined && from !== undefined && pts.min >= from;
+  const ptsCan = pts !== undefined && from !== undefined && pts.max >= from;
+  const canHit = hit || ptsHit || mainOpen.length > 0 || minorCanReach || ptsCan;
+  const verdict: RuleVerdict = applies === false || !canHit ? 'no' : (hit || ptsHit) && applies === true ? 'yes' : 'unknown';
+  // пункты правила, которое проверяют только применимым (часть 39а), ждут, пока оно применится
+  const waits = rule.onlyIfApplies === true && applies !== true;
+  const left =
+    verdict !== 'unknown'
+      ? []
+      : [
+          ...(applies === undefined ? req.filter(f => known(f) === undefined) : []),
+          ...(hit || ptsHit || waits ? [] : [...mainOpen, ...(minorCanReach ? minorOpen : []), ...(ptsCan ? pts!.open : [])]),
+        ];
+  return { verdict, applies, main, ageMain, minor, ageMinor, left: [...new Set(left)], ...(pts ? { points: { min: pts.min, max: pts.max } } : {}) };
+}
+
+/** Все признаки, от которых зависит вывод правила. */
+export function ruleFindings(rule: Rule): Id[] {
+  return [...new Set([...(rule.requires ?? []), ...(rule.excludes ?? []), ...rule.any, ...(rule.minor?.any ?? []), ...(rule.points?.items.map(i => i.f) ?? [])])];
+}
+
+/** Правила к жалобам пациента: жалоба из правила и возраст не меньше `ageMin`; по порядку id. */
+export function rulesFor(db: ContentDb, patient: { complaints: readonly Id[]; age: number }): Rule[] {
+  return Object.keys(db.rules)
+    .sort()
+    .map(id => db.rules[id])
+    .filter(r => r.complaints.some(f => patient.complaints.includes(f)) && patient.age >= (r.ageMin ?? 0));
+}
+
+/**
+ * Обследования, которые велят сделать положительные правила (часть 32д): оттавские правила сказали
+ * «снимок нужен» — его делает разумный врач, даже почти уверенный в ушибе, и оплачивает страховая
+ * (832_2, раздел 2.4: правила решают, нужен ли снимок). Отрицательное правило снимок не запрещает:
+ * «можно не делать» — и разумный врач делает его, только если снимок что-то добавит к диагнозу.
+ */
+export function ruleExams(db: ContentDb, patient: { complaints: readonly Id[]; age: number; sex?: Sex }, observations: readonly Observation[]): Id[] {
+  const known = knownOf(observations);
+  return [...new Set(rulesFor(db, patient).filter(r => checkRule(r, patient, known).verdict === 'yes').flatMap(r => r.exams))];
+}
+
+/**
+ * Что узнать, чтобы правило решилось (часть 33а): правило к жалобе применимо, а вывода ещё нет —
+ * обследования, которые проверят хоть один из оставшихся признаков (`left`). Шкала Уэллса меньше
+ * двух, а D-димер неизвестен — D-димер (960_1, раздел 2.3, критерий качества 3: при низкой
+ * вероятности ТГВ — D-димер); при травме головы не знают об антикоагулянтах — вопрос о лекарствах.
+ * Сначала — то, что проверит больше оставшихся признаков: при боли в голеностопе — осмотр
+ * голеностопа (болезненность лодыжек и четыре шага), а не стопы (только четыре шага). Обследование
+ * правила уже сделано — решать, нужно ли оно, поздно: такое правило не доводят. Поровну — дешевле
+ * (`cost`), потом по идентификатору. Разумный врач делает первое из них, страховая их оплачивает.
+ */
+export function openRuleExams(db: ContentDb, patient: { complaints: readonly Id[]; age: number; sex?: Sex }, observations: readonly Observation[], cost: (exam: Id) => number = () => 0): Id[] {
+  const known = knownOf(observations);
+  const done = new Set(observations.map(o => o.exam));
+  const covers = new Map<Id, number>();
+  for (const r of rulesFor(db, patient)) {
+    if (r.exams.length > 0 && r.exams.every(e => done.has(e))) continue;
+    // правило о самом обследовании (часть 50а: «Можно ли пункцию») проверяют перед ним, а не каждому с жалобой
+    if (r.decides?.startsWith('exam.')) continue;
+    const x = checkRule(r, patient, known);
+    if (x.verdict !== 'unknown') continue;
+    for (const f of x.left) for (const e of db.revealedBy[f] ?? []) covers.set(e, (covers.get(e) ?? 0) + 1);
+  }
+  return [...covers.keys()].sort((a, b) => covers.get(b)! - covers.get(a)! || cost(a) - cost(b) || (a < b ? -1 : 1));
+}
+
+/**
+ * Можно ли обследование с вредом (spec 2026-10-chapter-4, часть 50а): «да» — пункт его правила известен, делать нельзя;
+ * «нет» — все пункты проверены и их нет (или у обследования вреда нет); иначе «пока неизвестно», и `left` — что
+ * осталось проверить. Применимость правила здесь не важна: пункция при коме опасна и без менингеальных знаков.
+ */
+export function harmCheck(db: ContentDb, exam: Id, known: Known): { verdict: RuleVerdict; left: Id[] } {
+  const h = db.exams[exam]?.harm;
+  const rule = h ? db.rules[h.rule] : undefined;
+  if (!rule) return { verdict: 'no', left: [] };
+  if (rule.any.some(f => known(f) === true)) return { verdict: 'yes', left: [] };
+  const left = rule.any.filter(f => known(f) === undefined);
+  return left.length > 0 ? { verdict: 'unknown', left } : { verdict: 'no', left: [] };
+}

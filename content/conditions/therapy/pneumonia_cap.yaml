@@ -1,0 +1,89 @@
+id: cond.pneumonia_cap
+name: { ru: "Внебольничная пневмония" }
+icd10: J18.9
+department: dept.therapy
+system: lungs
+kind: disease
+severity: serious
+epidemiology:
+  prevalence: uncommon
+  age: { min: 18, peak: [65, 100] }
+  season: { winter: 1.5, spring: 1.1, summer: 0.7, autumn: 1.0 }
+  risks:
+    - { id: risk.smoking, x: 1.5 }
+    - { id: cond.copd, x: 2 }
+params:
+  side: { right: 55, left: 35, both: 10 }
+  severity: { mild: 55, moderate: 35, severe: 10 }
+  # сатурация ниже 90 % — производный параметр по числу (часть 38б); доли — для вывода, пока сатурацию
+  # не мерили: игровая оценка по прогону генератора
+  spo2_below90: { no: 92, yes: 8 }
+derived:
+  # гипоксемия — SpO2 < 90 % (654_2: стандартная оксигенотерапия первой линии)
+  spo2_below90: { f: vital.spo2_low, below: 90 }
+course:
+  stages:
+    - { id: onset, days: [0, 2] }
+    - { id: peak, days: [2, 7] }
+    - { id: resolution, days: [7, 21], needs: treatment }
+  presentation: [2, 7]
+  untreated: { band: usually, days: [2, 5] }
+  # в стационаре при действенном лечении: критерии клинической стабильности — в среднем через
+  # 3–5 суток от начала лечения (654_2, раздел 3.2), а стабильность — первый критерий выписки (раздел 6)
+  stay: [3, 5]
+# возраст (FR-MED-1, spec 2026-10-age-sex, 0.5.10): «у лиц пожилого и старческого возраста типичные жалобы могут
+# отсутствовать, а на первый план в клинической картине заболевания выходит синдром интоксикации (сонливость или
+# беспокойство, спутанность сознания, анорексия, тошнота, рвота)» (654_2, раздел 1.6); пожилой — с 60 лет; множители —
+# игровая оценка
+findings:
+  - { f: sym.cough, band: usually, attrs: { character: { productive: 70, dry: 30 } }, older: { from: 60, x: 0.8 } }
+  - { f: sym.fever_hx, band: usually, older: { from: 60, x: 0.7 } }
+  - { f: vital.fever, band: often, older: { from: 60, x: 0.7 } }
+  - { f: sym.chills, band: often, older: { from: 60, x: 0.6 } }
+  - { f: sym.dyspnea, band: often }
+  - { f: sym.purulent_sputum, band: often, older: { from: 60, x: 0.8 } }
+  - { f: sym.cough_long, band: rarely }
+  - { f: sym.pleuritic_pain, band: sometimes, attrs: { side: $side }, older: { from: 60, x: 0.7 } }
+  - { f: sym.confusion, band: very_rarely, older: { from: 60, x: 6 } }
+  - { f: sym.nausea, band: rarely, older: { from: 60, x: 2 } }
+  - { f: sign.crackles_local, band: often, attrs: { side: $side } }
+  - { f: sign.dullness, band: sometimes, attrs: { side: $side } }
+  - { f: vital.tachycardia, band: often }
+  - { f: vital.tachypnea, band: often }
+  - { f: vital.spo2_low, band: usually, when: { severity: [severe] } }
+  - { f: vital.spo2_low, band: sometimes, when: { severity: [moderate] } }
+  - { f: lab.wbc_high, band: often }
+  - { f: lab.crp_high, band: usually }
+  - { f: img.cxr_infiltrate, band: always, attrs: { side: $side } }
+  - { f: sym.rhinorrhea, band: rarely }
+  - { f: sym.headache, band: sometimes }
+  - { f: sym.myalgia, band: sometimes }
+  - { f: sym.abrupt_onset, band: sometimes }
+confirm: [exam.xray_chest]
+redFlags: [vital.spo2_low]
+treatment:
+  firstLine: [tx.amoxicillin]
+  acceptable: [tx.amoxicillin_clavulanate, tx.macrolide]
+  supportive: [tx.paracetamol, tx.rest_fluids]
+  notIndicated: [tx.oseltamivir, tx.steroid_systemic_short]
+  # кислород (часть 38б): при SpO2 < 90 % — обязательно (654_2; критерий качества — «назначена
+  # оксигенотерапия при SpO2 <90%»), выше — не нужен
+  byParam:
+    - when: { spo2_below90: [yes] }
+      require: [tx.oxygen_mask]
+    - when: { spo2_below90: [no] }
+      notIndicated: [tx.oxygen_mask]
+  setting: { default: home, param: { name: severity, map: { mild: home, moderate: home, severe: ward } }, redFlag: ward }
+texts:
+  summary:
+    ru: >-
+      Воспаление лёгочной ткани, начавшееся вне больницы: кашель, лихорадка, одышка, боль в
+      груди при дыхании. Чаще у пожилых, курящих и людей с хроническими болезнями лёгких.
+      Подтверждается рентгеном; лечится антибиотиком.
+pearls:
+  - ru: "Чистые лёгкие при аускультации не исключают пневмонию — решает рентген."
+  - ru: "Нормальные температура, пульс и частота дыхания делают пневмонию маловероятной."
+sources:
+  - { kind: guideline, title: "Внебольничная пневмония у взрослых", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/654_2", note: "ID 654_2, опубликованы 23.12.2024, применяются; сверено с рубрикатором 28.09.2026; частоты — черновик прототипа" }
+  - { kind: paper, title: "Metlay JP, Kapoor WN, Fine MJ. Does this patient have community-acquired pneumonia? JAMA 1997;278(17):1440–1445" }
+review: draft

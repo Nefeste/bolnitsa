@@ -1,0 +1,28 @@
+id: exam.ask_headache
+name: { ru: "Расспрос: головная боль" }
+kind: ask
+time: { procedure: 2 }
+cost: 0
+discomfort: 0
+checks:
+  # внезапное начало, как удар (часть 41в): так начинается субарахноидальное кровоизлияние (523_3, раздел 1.6);
+  # точность — игровая оценка
+  - { f: sym.thunderclap, sens: 95, spec: 98 }
+  # сильная распирающая, нарастающая головная боль (spec 2026-10-chapter-4, часть 50а): менингит (1020_1, раздел 2.1);
+  # точность — игровая оценка
+  - { f: sym.headache_severe, sens: 95, spec: 98 }
+  - { f: sym.headache_unilateral, sens: 88, spec: 95 }
+  - { f: sym.headache_pressing, sens: 88, spec: 93 }
+  - { f: sym.photophobia, sens: 85, spec: 94 }
+  - { f: sym.aura, sens: 85, spec: 99 }
+  - { f: sym.recurrent_headache, sens: 92, spec: 97 }
+  - { f: sym.nausea, sens: 90, spec: 95 }
+texts:
+  hint:
+    ru: "Как началась боль, какая она, с одной стороны или с двух, есть ли тошнота, раздражают ли свет и звуки, была ли аура, бывало ли так раньше. Внезапная сильнейшая боль — не мигрень: сразу КТ."
+  summary:
+    ru: "Как началась боль, её характер и место, сколько длится приступ, тошнота, свет и звук, аура, как часто повторяется."
+sources:
+  - { kind: guideline, title: "Геморрагический инсульт", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/523_3", note: "ID 523_3, опубликованы 26.12.2025, применяются; сверено с рубрикатором 04.10.2026; раздел 1.6: внезапная сильная головная боль «по типу удара в голову» — типичное начало САК (70 %); точность — игровая оценка" }
+  - { kind: guideline, title: "Headache Classification Committee of the International Headache Society. The International Classification of Headache Disorders, 3rd edition. Cephalalgia 2018;38(1):1–211", note: "черновик: точность расспроса — игровая оценка" }
+review: draft
