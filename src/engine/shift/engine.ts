@@ -1779,6 +1779,8 @@ export function prepareReview(db: ContentDb, s: ShiftState): boolean {
   }
   // затем — у приёмов нанятых врачей и у тех, кто ждёт в очереди: разумный врач разбора нужен при закрытии каждого
   for (const q of ahead(s)) if (reviewEntry(db, s.meta, q).run.part() !== true) return true;
+  // и у закрытых приёмов нанятых врачей, чей разбор отложен (spec 2026-10-engine-speed «Больницы»): закрытие дня возьмёт готовое
+  for (const q of Object.values(s.patients)) if (q.closed?.review && reviewEntry(db, s.meta, q).run.part() !== true) return true;
   return false;
 }
 
