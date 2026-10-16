@@ -1,0 +1,58 @@
+id: cond.gerd
+name: { ru: "Гастроэзофагеальная рефлюксная болезнь" }
+icd10: K21.9
+department: dept.therapy
+system: digestive
+group: grp.acid_dyspepsia
+kind: disease
+severity: minor
+epidemiology:
+  prevalence: uncommon
+  age: { min: 18 }
+  risks:
+    - { id: risk.obesity, x: 2 }
+    - { id: risk.pregnancy, x: 3 }
+    - { id: risk.smoking, x: 1.3 }
+    - { id: risk.alcohol, x: 1.3 }
+params:
+  # кашель при рефлюксе — хронический: синдром рефлюксного кашля Монреальского определения (Vakil 2006); кашляет — и
+  # кашель держится долго (spec 2026-10-chapter-4, часть 61а). Без этого он кашлял, как при ОРВИ, и уходил в простуду
+  cough: { yes: 25, no: 75 }
+course:
+  stages:
+    - { id: active, days: [0, 365] }
+  presentation: [14, 90]
+  untreated: { band: never, days: [7, 7] }   # без лечения не хуже, но и не проходит
+findings:
+  - { f: sym.heartburn, band: usually }
+  - { f: sym.regurgitation, band: often }
+  - { f: sym.epigastric_pain, band: sometimes }
+  - { f: sym.cough, band: always, when: { cough: [yes] }, attrs: { character: { dry: 90, productive: 10 } } }
+  - { f: sym.cough_long, band: always, when: { cough: [yes] } }
+  - { f: sym.chronic_cough, band: rarely }
+  - { f: sym.sore_throat, band: rarely }
+  - { f: sym.nausea, band: rarely }
+  - { f: sym.early_satiety, band: rarely }
+  - { f: sign.epigastric_tenderness, band: sometimes }
+confirm: clinical
+treatment:
+  firstLine: [tx.ppi]
+  supportive: [tx.antacid, tx.lifestyle]
+  # без H. pylori эрадикация не нужна (spec 2026-10-chapter-4, часть 53б): в игре инфекция — у гастрита и язвы
+  notIndicated: [tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide, tx.fluoroquinolone, tx.hp_eradication]
+  plan: [tx.ppi, tx.lifestyle]
+  setting: { default: home }
+texts:
+  summary:
+    ru: >-
+      Заброс кислого содержимого желудка в пищевод: изжога, особенно после еды и лёжа,
+      отрыжка кислым, иногда кашель и боль за грудиной. Лечат ингибиторами протонной
+      помпы и изменением привычек; при тревожных признаках нужна гастроскопия.
+pearls:
+  - ru: "Изжога и отрыжка кислым — главные признаки рефлюксной болезни; если после ИПП они прошли, диагноз подтверждён."
+  - ru: "Затруднённое глотание, похудание, рвота кровью и анемия — тревожные признаки: нужна гастроскопия, а не ещё один курс таблеток."
+simplified: "Гастроскопия и тревожные признаки — позже, с эндоскопией; в игре ГЭРБ без тревожных признаков."
+sources:
+  - { kind: guideline, title: "Katz PO et al. ACG Clinical Guideline for the Diagnosis and Management of Gastroesophageal Reflux Disease. Am J Gastroenterol 2022;117(1):27–56", url: "https://pubmed.ncbi.nlm.nih.gov/34807007/" }
+  - { kind: paper, title: "Vakil N et al. The Montreal definition and classification of gastroesophageal reflux disease: a global evidence-based consensus. Am J Gastroenterol 2006;101(8):1900–20", url: "https://pubmed.ncbi.nlm.nih.gov/16928254/", note: "PMID 16928254, сверено 12.10.2026: внепищеводные синдромы ГЭРБ — среди них кашель; доля кашляющих — прежняя, игровая оценка" }
+review: draft

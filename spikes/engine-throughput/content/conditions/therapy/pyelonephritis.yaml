@@ -1,0 +1,77 @@
+id: cond.pyelonephritis
+name: { ru: "Острый пиелонефрит" }
+icd10: N10
+department: dept.therapy
+system: urinary
+kind: disease
+severity: serious
+epidemiology:
+  prevalence: uncommon
+  age: { min: 18 }
+  sex: { m: 0.15, f: 1 }
+  risks:
+    - { id: risk.pregnancy, x: 3 }
+params:
+  side: { right: 45, left: 40, both: 15 }
+  severity: { mild: 70, moderate: 22, severe: 8 }
+course:
+  stages:
+    - { id: onset, days: [0, 2] }
+    - { id: peak, days: [2, 7] }
+    - { id: resolution, days: [7, 14], needs: treatment }
+  presentation: [1, 4]
+  untreated: { band: usually, days: [2, 5] }
+findings:
+  - { f: sym.fever_hx, band: usually }
+  - { f: vital.fever, band: usually }
+  - { f: sym.chills, band: usually }
+  - { f: sym.flank_pain, band: usually, attrs: { side: $side } }
+  - { f: sign.cva_tenderness, band: usually }
+  - { f: sym.back_pain, band: sometimes }
+  - { f: sym.dysuria, band: often }
+  - { f: sym.frequency, band: often }
+  - { f: sym.nausea, band: often }
+  - { f: sym.vomiting, band: rarely }
+  - { f: sym.vomiting, band: usually, when: { severity: [severe] } }
+  - { f: vital.tachycardia, band: often }
+  - { f: vital.tachycardia, band: usually, when: { severity: [severe] } }
+  - { f: sym.fatigue, band: often }
+  - { f: sym.headache, band: sometimes }
+  - { f: sym.myalgia, band: sometimes }
+  - { f: sign.suprapubic_tenderness, band: sometimes }
+  - { f: lab.urine_leuk, band: always }
+  - { f: lab.urine_nitrite, band: often }
+  - { f: lab.urine_blood, band: often }
+  - { f: lab.wbc_high, band: usually }
+  - { f: lab.crp_high, band: usually }
+  # умеренная протеинурия (spec 2026-10-chapter-4, часть 52б; 347_2, приложение А3: дифференциальная диагностика с ГЛПС); доля —
+  # игровая оценка. В конце списка — прежние больные остались прежними
+  - { f: lab.urine_protein, band: often }
+confirm: [exam.urinalysis]
+redFlags: [sym.vomiting]
+treatment:
+  firstLine: [tx.fluoroquinolone]
+  acceptable: [tx.cephalosporin_oral, tx.amoxicillin_clavulanate]
+  supportive: [tx.paracetamol, tx.rest_fluids]
+  notIndicated: [tx.fosfomycin, tx.nitrofurantoin, tx.amoxicillin, tx.macrolide]
+  setting:
+    default: home
+    param: { name: severity, map: { mild: home, moderate: home, severe: ward } }
+    redFlag: ward
+    risks: [ { id: risk.pregnancy, setting: ward } ]
+texts:
+  summary:
+    ru: >-
+      Бактериальное воспаление почки: температура с ознобом, боль в пояснице с одной
+      стороны, положительный симптом поколачивания, часто — жжение при мочеиспускании и
+      тошнота. Нетяжёлый лечат дома антибиотиком; при рвоте, тяжёлом течении и у беременных —
+      в стационаре.
+pearls:
+  - ru: "Температура с ознобом и боль в пояснице при изменениях в моче — пиелонефрит, а не цистит: фосфомицин и нитрофурантоин до почки не доходят."
+  - ru: "Пиелонефрит у беременной лечат в стационаре; фторхинолоны при беременности противопоказаны — спросите о ней до назначения."
+sources:
+  - { kind: guideline, title: "EAU Guidelines on Urological Infections", org: "European Association of Urology", year: 2024, note: "частоты — черновик" }
+  - { kind: guideline, title: "Pyelonephritis (acute): antimicrobial prescribing. NICE guideline NG111", org: "NICE", year: 2018 }
+  - { kind: guideline, title: "Острый пиелонефрит", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/9_3", note: "ID 9_3, опубликованы 28.12.2024, применяются; сверено с рубрикатором 28.09.2026" }
+  - { kind: guideline, title: "Геморрагическая лихорадка с почечным синдромом", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/347_2", note: "ID 347_2, опубликованы 18.08.2025, применяются; сверено с рубрикатором 11.10.2026; приложение А3: при остром пиелонефрите — связь с переохлаждением, односторонняя боль в пояснице, быстрое снижение температуры на антибиотике, выраженная лейкоцитурия, умеренная протеинурия, лейкоцитоз со сдвигом влево; доля протеинурии — игровая оценка" }
+review: draft

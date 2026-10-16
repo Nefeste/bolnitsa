@@ -1,0 +1,67 @@
+id: cond.copd_exacerbation
+name: { ru: "Обострение ХОБЛ" }
+icd10: J44.1
+department: dept.therapy
+system: lungs
+kind: disease
+severity: serious
+epidemiology:
+  prevalence: common
+  age: { min: 40 }
+  requires: [cond.copd]
+  season: { winter: 1.5, spring: 1.0, summer: 0.7, autumn: 1.2 }
+  risks:
+    - { id: risk.smoking, x: 1.2 }
+params:
+  # сатурация 92 % и ниже — производный параметр по числу (часть 38б); доли — для вывода, пока
+  # сатурацию не мерили: игровая оценка по прогону генератора
+  spo2_le92: { no: 60, yes: 40 }
+derived:
+  # 603_3: «Кислородотерапия показана пациентам при значении SрO2 ≤92%» — ниже 93 % в целых числах
+  spo2_le92: { f: vital.spo2_low, below: 93 }
+course:
+  stages:
+    - { id: onset, days: [0, 2] }
+    - { id: peak, days: [2, 7] }
+    - { id: resolution, days: [7, 14] }
+  presentation: [1, 5]
+  untreated: { band: often, days: [2, 5] }
+findings:
+  - { f: sym.dyspnea, band: usually }
+  - { f: sym.cough, band: usually, attrs: { character: { productive: 80, dry: 20 } } }
+  - { f: sym.purulent_sputum, band: often }
+  - { f: sign.wheezes, band: usually }
+  - { f: vital.tachypnea, band: often }
+  - { f: vital.spo2_low, band: often }
+  - { f: vital.tachycardia, band: sometimes }
+  - { f: sym.fever_hx, band: sometimes }
+  - { f: vital.fever, band: rarely }
+  - { f: lab.wbc_high, band: sometimes }
+  - { f: lab.crp_high, band: sometimes }
+  - { f: sign.crackles_local, band: rarely, attrs: { side: { right: 30, left: 30, both: 40 } } }
+  - { f: img.cxr_infiltrate, band: never }
+confirm: clinical
+redFlags: [vital.spo2_low]
+treatment:
+  firstLine: [tx.salbutamol, tx.steroid_systemic_short]
+  acceptable: [tx.amoxicillin_clavulanate, tx.macrolide]
+  supportive: [tx.rest_fluids]
+  notIndicated: [tx.oseltamivir]
+  # кислород (часть 38б): при SpO2 ≤ 92 % — обязательно, цель 88–92 % (603_3), выше — не нужен
+  byParam:
+    - when: { spo2_le92: [yes] }
+      require: [tx.oxygen_mask]
+    - when: { spo2_le92: [no] }
+      notIndicated: [tx.oxygen_mask]
+  setting: { default: home, redFlag: ward }
+texts:
+  summary:
+    ru: >-
+      Усиление одышки, кашля и гнойности мокроты у человека с ХОБЛ, чаще на фоне
+      вирусной инфекции. Рентген нужен, чтобы не пропустить пневмонию.
+pearls:
+  - ru: "Обострение ХОБЛ — это усиление привычных одышки, кашля и мокроты у человека с ХОБЛ."
+  - ru: "У больных ХОБЛ пневмония частая: без рентгена её легко принять за обострение."
+sources:
+  - { kind: guideline, title: "Хроническая обструктивная болезнь легких", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/603_3", note: "ID 603_3, опубликованы 17.12.2024, применяются; сверено с рубрикатором 28.09.2026; частоты — черновик прототипа" }
+review: draft

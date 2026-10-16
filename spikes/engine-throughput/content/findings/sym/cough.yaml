@@ -1,0 +1,19 @@
+id: sym.cough
+name: { ru: "Кашель" }
+leak: { pct: 6 }
+salience: 3
+attrs:
+  character:
+    productive: { ru: "с мокротой" }
+    dry: { ru: "сухой" }
+texts:
+  hint:
+    ru: "Кашель — защитный рефлекс, который очищает дыхательные пути. Бывает при многих болезнях: важно, какой он и сколько длится."
+  complaint:
+    - ru: "Кашель {character}, никак не проходит"
+    - ru: "Беспокоит кашель, {character}"
+  present:
+    - ru: "Кашель {character}"
+  absent:
+    - ru: "Кашля нет"
+review: draft

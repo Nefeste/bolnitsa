@@ -1,0 +1,8 @@
+id: risk.sick_contact
+name: { ru: "Контакт с больным респираторной инфекцией" }
+prevalence: { m: 25, f: 30 }
+findings:
+  - { f: hx.sick_contact, band: always }
+sources:
+  - { kind: guideline, title: "Острые респираторные вирусные инфекции (ОРВИ) у взрослых", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/724_2", note: "ID 724_2, опубликованы 04.08.2025, применяются; сверено с рубрикатором 28.09.2026; доля пациентов с контактом — игровая оценка" }
+review: draft

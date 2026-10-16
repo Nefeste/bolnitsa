@@ -1,0 +1,14 @@
+id: sym.chills
+name: { ru: "Озноб" }
+leak: { pct: 2 }
+salience: 2
+texts:
+  hint:
+    ru: "Озноб — дрожь и чувство холода, когда температура быстро поднимается."
+  complaint:
+    - ru: "Знобит, трясёт"
+  present:
+    - ru: "Озноб"
+  absent:
+    - ru: "Озноба нет"
+review: draft
