@@ -24,7 +24,7 @@ import { heapStats } from 'bun:jsc';
 import { hospitalFor, type Layout } from './hospital';
 import type { ContentDb } from '../../src/content/types';
 import { generatePatient } from '../../src/engine/med/generate';
-import { apply, candidatesOf, catchUp, hospitalCtx, newSingle, SANDBOX_VENUE } from '../../src/engine/shift/engine';
+import { apply, candidatesOf, catchUp, hospitalCtx, newFlowShift, newSingle, reviewsDue, SANDBOX_VENUE, settleReviews } from '../../src/engine/shift/engine';
 import { DAY, SHIFT_END, SHIFT_START, type ShiftState } from '../../src/engine/shift/types';
 import { buildDb } from '../content/load';
 
@@ -116,11 +116,23 @@ console.log(`\nГенерация пациента (${gen.n} шт.): медиа�
 
 // --- больница и смена -----------------------------------------------------------------------------------------------
 
+/**
+ * Поток для ПК: сколько нужно в больнице одновременно → кабинеты и приток. Подобрано прогонами: нанятый терапевт ведёт
+ * около полутора больных сразу, а приём с обследованиями идёт около 50 минут — приток ≈ 1,4 × нагрузка в час.
+ */
+const EMERGENCY = flag('emergency');
+const flowOf = (load: number) => ({ desks: Math.ceil(load / 1.5), perHour: Math.round(1.4 * load), ambulancePerHour: EMERGENCY ? Math.max(1, Math.round(load / 50)) : 0 });
+
 function layoutFor(n: number): Layout {
-  return hospitalFor(db, n);
+  return MODE === 'flow' ? hospitalFor(db, flowOf(n).desks, 100, { emergency: EMERGENCY }) : hospitalFor(db, n);
 }
 
+let flowLoad = 0;
 function start(layout: Layout): ShiftState {
+  if (MODE === 'flow') {
+    const f = flowOf(flowLoad);
+    return newFlowShift(db, { seed: SEED, season: 'winter', hospital: layout.hospital, staff: layout.staff, flow: { perHour: f.perHour, ambulancePerHour: f.ambulancePerHour } });
+  }
   return newSingle(db, { seed: SEED, season: 'winter', venue: SANDBOX_VENUE, hospital: layout.hospital, staff: layout.staff });
 }
 
@@ -142,6 +154,9 @@ interface RunResult {
   /** закрытие дня и хэш после него */
   closeMs: number;
   closedHash: string;
+  /** к концу прогона: разборов ждут досчёта; ушедших — строками журнала (поток для ПК) */
+  due: number;
+  gone: number;
 }
 
 function run(layout: Layout, step: number, measureMemory: boolean): RunResult {
@@ -184,13 +199,15 @@ function run(layout: Layout, step: number, measureMemory: boolean): RunResult {
   const json = JSON.stringify(s);
   const c = census(s);
   const all = Object.values(s.patients);
+  const due = reviewsDue(s);
+  const gone = s.gone?.length ?? 0;
   // вечер: закрыть день — в нём и досчёт отложенного (разбор приёмов нанятых врачей, spec 2026-10-engine-speed, ч. 1)
   const e0 = performance.now();
   apply(db, s, { kind: 'closeDay' });
   const closeMs = performance.now() - e0;
   const closedHash = hashOf(s);
   return {
-    step, planMs, planned, steps, hashes, peak, maxEvents, totalMs, closeMs, closedHash,
+    step, planMs, planned, steps, hashes, peak, maxEvents, totalMs, closeMs, closedHash, due, gone,
     end: {
       snapshot: Buffer.byteLength(json), gzip: gzipSync(json).length, patients: all.length,
       done: all.filter(p => p.status === 'done' || p.closed).length, left: all.filter(p => p.status === 'left').length, admitted: c.admitted, stuck: c.stuck,
@@ -217,7 +234,12 @@ interface PartsResult {
   /** кадров сверх нужных, чтобы догнать к `UNTIL` */
   extraFrames: number;
   hashes: Map<number, string>;
+  /** хэш после закрытия дня */
   endHash: string;
+  /** разборов ждут досчёта в 14:00 и к концу прогона; закрытие дня (с досчётом остального) */
+  dueAtEnd: number;
+  due: number;
+  closeMs: number;
 }
 
 /**
@@ -234,6 +256,7 @@ function runParts(layout: Layout, sec: number): PartsResult {
   let maxLag = 0;
   let lagAtEnd = 0;
   let extraFrames = 0;
+  let dueAtEnd = 0;
   while (s.t < UNTIL || s.until !== undefined) {
     if (game < UNTIL) {
       game += sec;
@@ -246,13 +269,20 @@ function runParts(layout: Layout, sec: number): PartsResult {
       apply(db, s, { kind: 'advance', seconds: owed }, more);
       owed = 0;
     }
+    // часы догнали — остаток кадра на отложенные разборы (spec 2026-10-engine-speed, ч. 1), как сделает игра
+    if (s.until === undefined && more()) settleReviews(db, s, more);
     frames.push({ t: game, ms: performance.now() - b });
     const lag = game - s.t;
     maxLag = Math.max(maxLag, lag);
-    if (game % DAY === SHIFT_END) lagAtEnd = lag;
-    if (s.until === undefined && s.t % 3600 === 0) hashes.set(s.t, hashOf(s));
+    if (game % DAY === SHIFT_END) {
+      lagAtEnd = lag;
+      dueAtEnd = reviewsDue(s);
+    }
   }
-  return { frames, maxLag, lagAtEnd, extraFrames, hashes, endHash: hashOf(s) };
+  const due = reviewsDue(s);
+  const e0 = performance.now();
+  apply(db, s, { kind: 'closeDay' });
+  return { frames, maxLag, lagAtEnd, extraFrames, hashes, endHash: hashOf(s), dueAtEnd, due, closeMs: performance.now() - e0 };
 }
 
 /** Окно рабочей смены: с 09:00 (больница набрала поток) до конца приёма 14:00. */
@@ -265,7 +295,7 @@ interface Row {
   minute: { median: number; p95: number; max: number };
   perPatientMinute: number;
   frames?: Record<'x1' | 'x4', { median: number; p95: number; p99: number; max: number; over4: number; gameSec: number }>;
-  parts?: Record<'x1' | 'x4', { median: number; p95: number; p99: number; max: number; over4: number; maxLagMin: number; lagAtEndMin: number; extraFrames: number; same: boolean }>;
+  parts?: Record<'x1' | 'x4', { median: number; p95: number; p99: number; max: number; over4: number; maxLagMin: number; lagAtEndMin: number; extraFrames: number; same: boolean; dueAtEnd: number; due: number; closeMs: number }>;
   memory: { heapPeak: number; processPeak: number; snapshotPeak: number; gzipPeak: number; snapshotEnd: number; gzipEnd: number; patientsEnd: number };
   done: number; left: number; maxEvents: number; dayMs: number; closeMs: number; closedHash: string;
   deterministic: { same: boolean; compared: number; runs: string[] };
@@ -273,9 +303,12 @@ interface Row {
 
 const rows: Row[] = [];
 for (const desks of DESKS) {
+  flowLoad = desks;
   const layout = layoutFor(desks);
   const ctx = hospitalCtx(db, start(layout));
-  console.log(`\n=== Кабинетов нанятых врачей: ${desks} (участок ${layout.plot.join(' × ')}, помещений ${layout.rooms}, работают ${ctx.working.size}, стульев ${ctx.seats})`);
+  console.log(MODE === 'flow'
+    ? `\n=== Поток для ПК на ${desks} одновременно: кабинетов ${flowOf(desks).desks}, приходят ${flowOf(desks).perHour} в час${EMERGENCY ? `, скорая ${flowOf(desks).ambulancePerHour} в час` : ''} (участок ${layout.plot.join(' × ')}, помещений ${layout.rooms}, стульев ${ctx.seats})`
+    : `\n=== Кабинетов нанятых врачей: ${desks} (участок ${layout.plot.join(' × ')}, помещений ${layout.rooms}, работают ${ctx.working.size}, стульев ${ctx.seats})`);
   const main = run(layout, 60, true);
   const win = main.steps.filter(inShift);
   const msMin = win.map(x => x.ms);
@@ -283,7 +316,7 @@ for (const desks of DESKS) {
   console.log(`  розыгрыш дня: ${main.planned} пациентов за ${Math.round(main.planMs)} мс`);
   console.log(`  в больнице 09:00–14:00: медиана ${quantile(lives, 0.5)}, пик ${main.peak.live} в ${clock(main.peak.t)} (из них ждут игрока ${main.peak.stuck}); в палатах на пике ${main.peak.admitted}`);
   console.log(`  мс на игровую минуту 09:00–14:00: медиана ${f1(quantile(msMin, 0.5))}, p95 ${f1(quantile(msMin, 0.95))}, худшая ${f1(Math.max(...msMin))}`);
-  console.log(`  за день до ${clock(UNTIL)}: ${Math.round(main.totalMs)} мс; приёмов закрыто ${main.end.done}, ушли не дождавшись ${main.end.left}; событий в очереди до ${main.maxEvents}; закрытие дня ${Math.round(main.closeMs)} мс`);
+  console.log(`  за день до ${clock(UNTIL)}: ${Math.round(main.totalMs)} мс; приёмов закрыто ${main.end.done}, ушли не дождавшись ${main.end.left}; событий в очереди до ${main.maxEvents}; к ${clock(UNTIL)} ждут досчёта разбора ${main.due}, ушедших в журнале ${main.gone}; закрытие дня ${Math.round(main.closeMs)} мс`);
   console.log(`  память на пике: состояние в куче ${mb(main.peak.heap)} (вся куча процесса с базой и кэшами ${mb(main.peak.process)}), снимок ${kb(main.peak.snapshot)} (gzip ${kb(main.peak.gzip)}); к ${clock(UNTIL)}: снимок ${kb(main.end.snapshot)} (gzip ${kb(main.end.gzip)}), пациентов в состоянии ${main.end.patients}`);
 
   const runs: RunResult[] = [main];
@@ -310,8 +343,8 @@ for (const desks of DESKS) {
       const r = runParts(layout, sec);
       partHashes.push(r.hashes);
       const w = r.frames.filter(x => x.t % DAY > SHIFT_START + 3600 && x.t % DAY <= SHIFT_END).map(x => x.ms);
-      parts[key] = { median: quantile(w, 0.5), p95: quantile(w, 0.95), p99: quantile(w, 0.99), max: Math.max(...w), over4: w.filter(x => x > 4).length / w.length, maxLagMin: r.maxLag / 60, lagAtEndMin: r.lagAtEnd / 60, extraFrames: r.extraFrames, same: r.endHash === main.hashes.get(UNTIL) };
-      console.log(`  по частям ${key}: кадр медиана ${f2(parts[key].median)} мс, p95 ${f2(parts[key].p95)}, p99 ${f2(parts[key].p99)}, худший ${f1(parts[key].max)} мс, дольше 4 мс — ${(100 * parts[key].over4).toFixed(1)} %; часы отстали до ${f1(parts[key].maxLagMin)} игр. мин (в 14:00 — ${f1(parts[key].lagAtEndMin)}), догнать к ${clock(UNTIL)} — ещё ${r.extraFrames} кадров; итог ${parts[key].same ? 'тот же' : 'ДРУГОЙ'}`);
+      parts[key] = { median: quantile(w, 0.5), p95: quantile(w, 0.95), p99: quantile(w, 0.99), max: Math.max(...w), over4: w.filter(x => x > 4).length / w.length, maxLagMin: r.maxLag / 60, lagAtEndMin: r.lagAtEnd / 60, extraFrames: r.extraFrames, same: r.endHash === main.closedHash, dueAtEnd: r.dueAtEnd, due: r.due, closeMs: r.closeMs };
+      console.log(`  по частям ${key}: кадр медиана ${f2(parts[key].median)} мс, p95 ${f2(parts[key].p95)}, p99 ${f2(parts[key].p99)}, худший ${f1(parts[key].max)} мс, дольше 4 мс — ${(100 * parts[key].over4).toFixed(1)} %; часы отстали до ${f1(parts[key].maxLagMin)} игр. мин (в 14:00 — ${f1(parts[key].lagAtEndMin)}), догнать к ${clock(UNTIL)} — ещё ${r.extraFrames} кадров; разборов ждут досчёта в 14:00 — ${r.dueAtEnd}, к ${clock(UNTIL)} — ${r.due}, закрытие дня ${Math.round(r.closeMs)} мс; итог дня ${parts[key].same ? 'тот же' : 'ДРУГОЙ'}`);
     }
   }
   // детерминизм: прогоны с тем же зерном (и другими шагами времени) — тот же хэш состояния каждый час
@@ -325,8 +358,10 @@ for (const desks of DESKS) {
       if (other !== h) same = false;
     }
   }
+  // по частям — с досчётом разборов в свободное время: сравнивается итог дня
+  if (parts && (!parts.x1.same || !parts.x4.same)) same = false;
   const last = [...main.hashes.keys()].pop()!;
-  console.log(`  детерминизм: ${runs.length + partHashes.length} прогона (шаги ${runs.map(r => `${r.step} с`).join(', ')}${partHashes.length ? ', по частям ×1 и ×4' : ''}), сравнений по часам ${compared} — ${same ? 'хэши совпали' : 'ХЭШИ РАЗНЫЕ'}; хэш в ${clock(last)}: ${runs.map(r => r.hashes.get(last)).join(' / ')}; после закрытия дня: ${runs.map(r => r.closedHash).join(' / ')}`);
+  console.log(`  детерминизм: ${runs.length + partHashes.length} прогона (шаги ${runs.map(r => `${r.step} с`).join(', ')}${partHashes.length ? ', по частям ×1 и ×4' : ''}), сравнений по часам ${compared} — ${same ? 'хэши совпали' : 'ХЭШИ РАЗНЫЕ'}; хэш в ${clock(last)}: ${runs.map(r => r.hashes.get(last)).join(' / ')}; после закрытия дня: ${runs.map(r => r.closedHash).join(' / ')}${parts ? `; по частям — ${parts.x1.same && parts.x4.same ? 'тот же' : 'ДРУГОЙ'}` : ''}`);
 
   rows.push({
     desks, plot: layout.plot, rooms: layout.rooms, planned: main.planned, planMs: main.planMs,

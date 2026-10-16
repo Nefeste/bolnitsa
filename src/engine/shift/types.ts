@@ -222,7 +222,42 @@ export type ShiftEvent =
   | { kind: 'opEnd'; id: string }
   /** фибрилляция желудочков у лежащего в смотровой (spec 2026-10-chapter-3, часть 39б) */
   | { kind: 'arrest'; id: string }
+  /**
+   * поток для ПК (spec 2026-10-engine-speed, ч. 2): приходит следующий — пришёл сам (`walk`), привезла скорая (`amb`)
+   * или вернулся (`ret`, `of` — прежний приём); пациент генерируется сейчас
+   */
+  | { kind: 'flow'; stream: 'walk' | 'amb' | 'ret'; n: number; of?: string }
   | { kind: 'shiftEnd' };
+
+/** Поток пациентов для ПК (spec 2026-10-engine-speed, ч. 2): сколько приходит в час, не зависит от числа кабинетов. */
+export interface Flow {
+  /** приходят сами, человек в час (в часы приёма) */
+  perHour: number;
+  /** привозит скорая, машин в час — если в больнице работает смотровая приёмного */
+  ambulancePerHour?: number;
+}
+
+/** Ушедший из больницы — строка журнала дня вместо пациента в состоянии (spec 2026-10-engine-speed, ч. 2). */
+export interface GoneRow {
+  id: string;
+  kind: VisitKind;
+  /** чем кончилось: принят и отпущен, ушёл, не дождавшись, не успели принять */
+  end: 'done' | 'left' | 'unseen';
+  arriveT: number;
+  calledT?: number;
+  /** основное заболевание — правда */
+  truth: Id;
+  /** кто вёл: номер человека из штата; нет — вы */
+  by?: string;
+  diagnosis?: Id;
+  verdict?: ClosedCase['verdict'];
+  overall?: Grade;
+  setting?: Setting;
+  returnOf?: string;
+  returnReason?: ReturnReason;
+  /** оплачено за приём, ₽ */
+  paid?: number;
+}
 
 export type Command =
   | { kind: 'call'; id: string }
@@ -493,4 +528,8 @@ export interface ShiftState {
   campaign?: CampaignProgress;
   /** нанятые врачи: номер человека → до какого времени дописывает карту после приёма */
   desk?: Record<string, number>;
+  /** поток для ПК (spec 2026-10-engine-speed, ч. 2): приток в час; нет — запись по слотам кабинетов, как в «Анамнезе» */
+  flow?: Flow;
+  /** поток для ПК: ушедшие — строками, по дням; хранятся неделю, как принятые */
+  gone?: GoneRow[];
 }
