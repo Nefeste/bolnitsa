@@ -1,0 +1,83 @@
+{
+  "name": "bolnitsa-map-render-probe",
+  "productName": "BolnitsaProbe",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Проба 1 и 3: карта больницы на ПК (PixiJS против CanvasKit) и сборка Electron",
+  "main": "electron/main.cjs",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "serve": "node tools/serve.mjs",
+    "bench": "node tools/bench.mjs",
+    "electron": "npm run build && electron .",
+    "dist:linux": "npm run build && electron-builder --linux",
+    "dist:win": "npm run build && electron-builder --win",
+    "bench:electron": "npm run build && electron . --bench"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "canvaskit-wasm": "0.42.0",
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3",
+    "esbuild": "0.28.2",
+    "pixi.js": "8.22.0",
+    "playwright-core": "1.56.1",
+    "typescript": "6.0.3"
+  },
+  "author": "Горница",
+  "build": {
+    "appId": "games.gornitsa.probe.maprender",
+    "productName": "BolnitsaProbe",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "electron/**",
+      "package.json"
+    ],
+    "asar": true,
+    "electronLanguages": [
+      "ru",
+      "en-US"
+    ],
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "tar.gz",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Game"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "signAndEditExecutable": false
+    },
+    "publish": null
+  }
+}

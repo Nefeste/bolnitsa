@@ -1,0 +1,72 @@
+id: tx.paracetamol
+name: { ru: "Парацетамол" }
+kind: drug
+class: analgesic.paracetamol
+route: oral
+cost: 50
+effects:
+  - { on: cond.arvi, kind: relieve, band: usually, days: [0, 1] }
+  - { on: cond.influenza, kind: relieve, band: usually, days: [0, 1] }
+  - { on: cond.strep_pharyngitis, kind: relieve, band: usually, days: [0, 1] }
+  - { on: cond.acute_bronchitis, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.pneumonia_cap, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.covid19, kind: relieve, band: usually, days: [0, 1] }
+  - { on: cond.sinusitis_acute, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.sinusitis_bacterial, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.pyelonephritis, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.gastroenteritis, kind: relieve, band: sometimes, days: [0, 1] }
+  - { on: cond.appendicitis, kind: relieve, band: sometimes, days: [0, 1] }
+  - { on: cond.migraine, kind: cure, band: sometimes, days: [0, 1] }
+  - { on: cond.tension_headache, kind: cure, band: often, days: [0, 1] }
+  # травма (часть 32): обезболивание — НПВП и парацетамол (846_1 и 855_1, раздел 3.1; 832_2, раздел 3.1)
+  - { on: cond.distal_radius_fracture, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.ankle_fracture, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.ankle_sprain, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.wrist_contusion, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.mt5_fracture, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.foot_contusion, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.femoral_neck_fracture, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.hip_contusion, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.clavicle_fracture, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.shoulder_contusion, kind: relieve, band: often, days: [0, 1] }
+  # травма груди (часть 32в): анальгезия всем — НПВП (728_2, раздел 3, УУР C, УДД 5), парацетамол —
+  # в критерии качества 5. При переломе рёбер обезболивание и есть лечение: без него дыхание
+  # поверхностное и развивается пневмония (раздел 1.6); сращение — через 3–4 недели (раздел 7). Три
+  # ребра и больше — «обычно»: пневмония у поступивших — 17 % до 65 лет и 31 % старше (Bulger 2000)
+  - { on: cond.chest_contusion, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.rib_fracture, kind: cure, band: always, days: [21, 28], when: { ribs: [one_two] } }
+  - { on: cond.rib_fracture, kind: cure, band: usually, days: [21, 28], when: { ribs: [three_plus, flail] } }
+  - { on: cond.traumatic_pneumothorax, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.traumatic_hemothorax, kind: relieve, band: often, days: [0, 1] }
+  # травма головы (часть 32г): от головной боли при сотрясении — анальгетики, кроме опиоидов (734_2,
+  # раздел 3.1.1); при ушибе мягких тканей головы — N02B (733_2, раздел 3.2)
+  - { on: cond.concussion, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.head_bruise, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.hand_wound, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.head_wound, kind: relieve, band: often, days: [0, 1] }
+  # колено (часть 32д): НПВП и парацетамол — мультимодальная анальгезия (691_2, раздел 3.3, УУР A;
+  # критерий качества 3; 970_1, раздел 3.3); при ушибе — как при ушибах конечностей (832_2, раздел 3.1)
+  - { on: cond.knee_contusion, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.knee_ligament, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.patella_fracture, kind: relieve, band: often, days: [0, 1] }
+  # надрыв икроножной мышцы (часть 33а): ненаркотические анальгетики (832_2, раздел 3.1)
+  - { on: cond.calf_strain, kind: relieve, band: often, days: [0, 1] }
+  # тиреотоксический криз (spec 2026-10-chapter-4, часть 56б): «ликвидацию … гипертермии» (270_2, раздел 3.5, УУР С, УДД 4) —
+  # жаропонижающего в 270_2 нет; облегчение, игровая оценка
+  - { on: cond.thyroid_storm, kind: relieve, band: sometimes, days: [0, 1] }
+texts:
+  hint:
+    ru: "Снижает температуру и боль. Лечит не причину болезни, а самочувствие: после него температура нормальная, а пневмония — нет."
+sources:
+  - { kind: guideline, title: "Открытая рана запястья и кисти", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/688_2", note: "ID 688_2, опубликованы 18.12.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 3.3 (УУР C, УДД 5): «другие анальгетики и антипиретики» N02B — всем с болью в области раны; критерий качества 5" }
+  - { kind: guideline, title: "Открытые раны головы", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/733_2", note: "ID 733_2, опубликованы 13.11.2025, применяются; сверено с рубрикатором 29.09.2026; раздел 3.2 (УУР C, УДД 5): обезболивание — N02B" }
+  - { kind: guideline, title: "Острые респираторные вирусные инфекции (ОРВИ) у взрослых", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/724_2", note: "ID 724_2, опубликованы 04.08.2025, применяются; сверено с рубрикатором 28.09.2026" }
+  - { kind: guideline, title: "Закрытые повреждения мягких тканей конечностей", org: "Минздрав РФ", year: 2026, url: "https://cr.minzdrav.gov.ru/view-cr/832_2", note: "ID 832_2, опубликованы 13.01.2026, применяются; сверено с рубрикатором 29.09.2026; раздел 3.1: при ушибах и растяжениях — ненаркотические анальгетики (N02) и НПВП (M01A)" }
+  - { kind: guideline, title: "Переломы лодыжек", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/855_1", note: "ID 855_1, опубликованы 19.12.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 3.3.1: мультимодальная анальгезия — НПВП, парацетамол, габапентиноиды, опиоиды короткого действия" }
+  - { kind: guideline, title: "Закрытая травма груди", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/728_2", note: "ID 728_2, опубликованы 18.12.2025, применяются; сверено с рубрикатором 29.09.2026; раздел 3: всем с закрытой травмой груди — адекватная анальгезия, НПВП (M01A) (УУР C, УДД 5), обезболивание позволяет поддерживать вентиляцию, продуктивный кашель и дыхательные упражнения; критерий качества 5: лечение НПВП и (или) парацетамолом; раздел 7: сращение рёбер — через 3–4 недели" }
+  - { kind: paper, title: "Bulger EM, Arneson MA, Mock CN, Jurkovich GJ. Rib fractures in the elderly. J Trauma 2000;48(6):1040–1046", url: "https://pubmed.ncbi.nlm.nih.gov/10866248/", note: "PMID 10866248, сверено 29.09.2026: 277 больных 65 лет и старше и 187 моложе с переломами рёбер; пневмония — 31 и 17 %, смертность — 22 и 10 %; на каждое сломанное ребро — отношение шансов смерти 1,19, пневмонии — 1,16" }
+  - { kind: guideline, title: "Сотрясение головного мозга", org: "Минздрав РФ", year: 2026, url: "https://cr.minzdrav.gov.ru/view-cr/734_2", note: "ID 734_2, опубликованы 15.01.2026, применяются; сверено с рубрикатором 29.09.2026; раздел 3.1.1 (УУР C, УДД 5): при головной боли — сначала немедикаментозное лечение, затем анальгетики, за исключением опиоидов" }
+  - { kind: guideline, title: "Открытые раны головы", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/733_2", note: "ID 733_2, опубликованы 13.11.2025, применяются; сверено с рубрикатором 29.09.2026; раздел 3.2 (УУР C, УДД 5): обезболивание — другие анальгетики и антипиретики (N02B)" }
+  - { kind: guideline, title: "Ожоги термические и химические. Ожоги солнечные. Ожоги дыхательных путей.", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/687_3", note: "ID 687_3, опубликованы 31.08.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 3.1.2 (УУР C, УДД 5): обезболивание при ВАШ больше 3 баллов; на начальном этапе — «другие анальгетики и антипиретики» или НПВП, при нарастании боли — опиоиды; критерий качества первичной помощи 1 — назначены анальгетики" }
+  - { kind: guideline, title: "Тиреотоксикоз с диффузным зобом (болезнь Грейвса), узловым/многоузловым зобом", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/270_2", note: "ID 270_2, опубликованы 20.06.2025, применяются; сверено с рубрикатором 12.10.2026; раздел 3.5 (УУР С, УДД 4): при тиреотоксическом кризе — ликвидация гипертермии, жаропонижающее не названо; доли — игровая оценка" }
+review: draft

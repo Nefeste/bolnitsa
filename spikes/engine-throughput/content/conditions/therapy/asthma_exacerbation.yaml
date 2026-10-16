@@ -1,0 +1,74 @@
+id: cond.asthma_exacerbation
+name: { ru: "Обострение бронхиальной астмы" }
+icd10: J45.9
+department: dept.therapy
+system: lungs
+kind: disease
+severity: serious
+epidemiology:
+  prevalence: common
+  age: { min: 18 }
+  requires: [cond.asthma]
+  season: { winter: 1.2, spring: 1.3, summer: 0.8, autumn: 1.2 }
+  risks:
+    - { id: risk.sick_contact, x: 1.5 }
+params:
+  severity: { mild: 50, moderate: 40, severe: 10 }
+  # сатурация ниже 93 % — производный параметр по числу (часть 38б); доли — для вывода, пока сатурацию
+  # не мерили: игровая оценка по прогону генератора
+  spo2_below93: { no: 87, yes: 13 }
+derived:
+  # 359_3: кислород при снижении насыщения, чтобы держать 93–95 % у взрослых — ниже 93 % он нужен
+  spo2_below93: { f: vital.spo2_low, below: 93 }
+course:
+  stages:
+    - { id: onset, days: [0, 1] }
+    - { id: peak, days: [1, 4] }
+    - { id: resolution, days: [4, 10] }
+  presentation: [0, 3]
+  untreated: { band: often, days: [1, 4] }
+findings:
+  - { f: sym.dyspnea, band: usually }
+  - { f: sym.wheezing, band: usually }
+  - { f: sym.cough, band: usually, attrs: { character: { dry: 80, productive: 20 } } }
+  - { f: sym.chest_tightness, band: often }
+  - { f: sym.night_symptoms, band: often }
+  - { f: sign.wheezes, band: usually }
+  - { f: vital.pef_low, band: usually }
+  - { f: vital.tachypnea, band: sometimes }
+  - { f: vital.tachypnea, band: usually, when: { severity: [severe] } }
+  - { f: vital.spo2_low, band: rarely }
+  - { f: vital.spo2_low, band: usually, when: { severity: [severe] } }
+  - { f: vital.tachycardia, band: sometimes }
+  - { f: vital.tachycardia, band: usually, when: { severity: [severe] } }
+  - { f: sym.rhinorrhea, band: sometimes }
+  - { f: sym.fever_hx, band: rarely }
+  - { f: sym.purulent_sputum, band: rarely }
+  - { f: img.cxr_hyperinflation, band: sometimes }
+confirm: clinical
+redFlags: [vital.spo2_low]
+treatment:
+  firstLine: [tx.salbutamol, tx.steroid_systemic_short]
+  acceptable: [tx.ics_laba]
+  notIndicated: [tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide, tx.oseltamivir, tx.antihistamine]
+  # кислород (часть 38б): при SpO2 < 93 % — обязательно (359_3: среди препаратов первой линии
+  # обострения; цель 93–95 %), выше — не нужен
+  byParam:
+    - when: { spo2_below93: [yes] }
+      require: [tx.oxygen_mask]
+    - when: { spo2_below93: [no] }
+      notIndicated: [tx.oxygen_mask]
+  setting: { default: home, param: { name: severity, map: { mild: home, moderate: home, severe: ambulance } }, redFlag: ward }
+texts:
+  summary:
+    ru: >-
+      Усиление одышки, свистящего дыхания, кашля и стеснения в груди у человека с астмой —
+      после простуды, контакта с аллергеном или без лечения. Тяжесть оценивают по
+      разговору, частоте дыхания, сатурации и пикфлоуметрии.
+pearls:
+  - ru: "При приступе — сначала бронхолитик короткого действия; при среднетяжёлом обострении ещё и системный гормон коротким курсом."
+  - ru: "Пикфлоуметр показывает тяжесть приступа объективно: ощущения пациента и хрипы при аускультации её недооценивают."
+sources:
+  - { kind: guideline, title: "Global Initiative for Asthma. Global Strategy for Asthma Management and Prevention", org: "GINA", year: 2024, note: "частоты — черновик" }
+  - { kind: guideline, title: "Бронхиальная астма", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/359_3", note: "ID 359_3, опубликованы 15.11.2024, применяются; сверено с рубрикатором 28.09.2026" }
+review: draft

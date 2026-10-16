@@ -1,0 +1,20 @@
+id: tx.thiazide
+name: { ru: "Тиазидоподобные диуретики (индапамид)" }
+kind: drug
+class: antihypertensive.diuretic
+route: oral
+cost: 150
+effects:
+  - { on: cond.hypertension_new, kind: cure, band: often, days: [14, 60] }
+  # подъём давления без поражения органов (часть 43г; 62_3, раздел 3.7): снижать препаратами для приёма внутрь; как
+  # часто и за сколько дней — игровая оценка
+  - { on: cond.bp_uncontrolled, kind: cure, band: often, days: [3, 14] }
+contraindications:
+  - { id: risk.pregnancy, level: relative, reaction: never }
+texts:
+  hint:
+    ru: "Мочегонные в малой дозе: снижают давление, особенно у пожилых. Одна из основных групп при гипертонии, часто в сочетании с другими."
+sources:
+  - { kind: guideline, title: "Артериальная гипертензия у взрослых", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/62_3", note: "ID 62_3, опубликованы 03.10.2024, применяются; сверено с рубрикатором 28.09.2026" }
+  - { kind: guideline, title: "2023 ESH Guidelines for the management of arterial hypertension. J Hypertens 2023;41(12):1874–2071" }
+review: draft
