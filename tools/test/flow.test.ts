@@ -2,7 +2,7 @@
 // строками журнала; детерминизм — тот же хэш у двух смен с одним зерном и при другом шаге времени; «красных»,
 // повторных и привезённых скорой ведут нанятые врачи.
 import { describe, expect, test } from 'bun:test';
-import { apply, newFlowShift, reviewsDue, settleReviews } from '../../src/engine/shift/engine';
+import { apply, newFlowShift } from '../../src/engine/shift/engine';
 import { DAY, type ShiftState } from '../../src/engine/shift/types';
 import { buildDb } from '../content/load';
 import { hospitalFor } from '../bench/hospital';
@@ -45,27 +45,36 @@ describe('поток для ПК', () => {
     expect(hourly(13, 60)).not.toEqual(a);
   }, 180_000);
 
-  test('ушедшие — строками журнала: приём нанятого врача с досчитанным разбором уходит из состояния', () => {
+  test('приём нанятого врача — сразу строкой журнала, без разбора; итоги дня — то, что известно без него', () => {
     const s = start(14);
     liveUntil(db, s, 12);
-    const due = reviewsDue(s);
-    expect(due).toBeGreaterThan(0);
-    const before = Object.keys(s.patients).length;
-    settleReviews(db, s);
-    expect(reviewsDue(s)).toBe(0);
     const gone = s.gone ?? [];
-    expect(gone.length).toBeGreaterThan(0);
-    expect(Object.keys(s.patients).length).toBe(before - gone.length);
+    const hired = gone.filter(r => r.by !== undefined);
+    expect(hired.length).toBeGreaterThan(10);
     for (const r of gone) {
       expect(s.patients[r.id]).toBeUndefined();
       expect(s.events.some(e => 'id' in e.event && e.event.id === r.id)).toBe(false);
+    }
+    // общей оценки у приёма нанятого врача нет — разбор не считается
+    for (const r of hired) {
       expect(r.end).toBe('done');
-      expect(r.by).toBeDefined();
+      expect(r.overall).toBeUndefined();
+      expect(r.verdict).toBeDefined();
+    }
+    // в состоянии из приёмов нанятых врачей — только те, кого ждут обратно, и лежащие
+    for (const p of Object.values(s.patients)) {
+      if (p.closed?.by) expect(p.closed.outcome.returns !== undefined || p.status === 'admitted' || ['admit', 'icu', 'ricu', 'box', 'surgery'].includes(p.closed.plan.setting)).toBe(true);
     }
     liveUntil(db, s, 18);
     apply(db, s, { kind: 'closeDay' });
-    // к вечеру в состоянии — только те, кого ждут обратно, лежащие и ваши
-    for (const p of Object.values(s.patients)) expect(p.closed?.outcome.returns !== undefined || p.closed?.stay !== undefined || p.status === 'admitted' || ['admit', 'icu', 'ricu', 'box', 'surgery'].includes(p.closed?.plan.setting ?? '')).toBe(true);
+    const day = s.history[s.history.length - 1];
+    const cols = Object.values(day.colleagues ?? {});
+    const seen = cols.reduce((n, c) => n + c.seen, 0);
+    expect(seen).toBe((s.gone ?? []).filter(r => r.by !== undefined).length + Object.values(s.patients).filter(p => p.closed?.by).length);
+    // оценок нет — ни вечером, ни в остаток кадра; счётчики без разбора — есть
+    expect(cols.every(c => c.grades.A + c.grades.B + c.grades.C + c.grades.D === 0)).toBe(true);
+    expect(cols.reduce((n, c) => n + c.correct + c.partly + c.wrong, 0)).toBe(seen);
+    expect(cols.some(c => (c.admitted ?? 0) + (c.referred ?? 0) > 0)).toBe(true);
   }, 120_000);
 
   test('«красных», повторных и привезённых скорой ведут нанятые врачи — до конца дня никто не висит', () => {

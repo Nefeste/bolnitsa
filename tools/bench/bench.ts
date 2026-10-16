@@ -24,7 +24,7 @@ import { heapStats } from 'bun:jsc';
 import { hospitalFor, type Layout } from './hospital';
 import type { ContentDb } from '../../src/content/types';
 import { generatePatient } from '../../src/engine/med/generate';
-import { apply, candidatesOf, catchUp, hospitalCtx, newFlowShift, newSingle, reviewsDue, SANDBOX_VENUE, settleReviews } from '../../src/engine/shift/engine';
+import { apply, candidatesOf, catchUp, hospitalCtx, newFlowShift, newSingle, reviewsDue, SANDBOX_VENUE } from '../../src/engine/shift/engine';
 import { DAY, SHIFT_END, SHIFT_START, type ShiftState } from '../../src/engine/shift/types';
 import { buildDb } from '../content/load';
 
@@ -201,7 +201,7 @@ function run(layout: Layout, step: number, measureMemory: boolean): RunResult {
   const all = Object.values(s.patients);
   const due = reviewsDue(s);
   const gone = s.gone?.length ?? 0;
-  // вечер: закрыть день — в нём и досчёт отложенного (разбор приёмов нанятых врачей, spec 2026-10-engine-speed, ч. 1)
+  // вечер: закрыть день; в режиме desks — с досчётом отложенных разборов, как в «Анамнезе»; в потоке для ПК разбора нанятых нет
   const e0 = performance.now();
   apply(db, s, { kind: 'closeDay' });
   const closeMs = performance.now() - e0;
@@ -210,7 +210,7 @@ function run(layout: Layout, step: number, measureMemory: boolean): RunResult {
     step, planMs, planned, steps, hashes, peak, maxEvents, totalMs, closeMs, closedHash, due, gone,
     end: {
       snapshot: Buffer.byteLength(json), gzip: gzipSync(json).length, patients: all.length,
-      done: all.filter(p => p.status === 'done' || p.closed).length, left: all.filter(p => p.status === 'left').length, admitted: c.admitted, stuck: c.stuck,
+      done: all.filter(p => p.status === 'done' || p.closed).length + (s.gone ?? []).filter(r => r.end === 'done').length, left: all.filter(p => p.status === 'left').length + (s.gone ?? []).filter(r => r.end === 'left').length, admitted: c.admitted, stuck: c.stuck,
     },
   };
 }
@@ -269,8 +269,6 @@ function runParts(layout: Layout, sec: number): PartsResult {
       apply(db, s, { kind: 'advance', seconds: owed }, more);
       owed = 0;
     }
-    // часы догнали — остаток кадра на отложенные разборы (spec 2026-10-engine-speed, ч. 1), как сделает игра
-    if (s.until === undefined && more()) settleReviews(db, s, more);
     frames.push({ t: game, ms: performance.now() - b });
     const lag = game - s.t;
     maxLag = Math.max(maxLag, lag);
@@ -358,7 +356,7 @@ for (const desks of DESKS) {
       if (other !== h) same = false;
     }
   }
-  // по частям — с досчётом разборов в свободное время: сравнивается итог дня
+  // по частям — сравнивается итог дня
   if (parts && (!parts.x1.same || !parts.x4.same)) same = false;
   const last = [...main.hashes.keys()].pop()!;
   console.log(`  детерминизм: ${runs.length + partHashes.length} прогона (шаги ${runs.map(r => `${r.step} с`).join(', ')}${partHashes.length ? ', по частям ×1 и ×4' : ''}), сравнений по часам ${compared} — ${same ? 'хэши совпали' : 'ХЭШИ РАЗНЫЕ'}; хэш в ${clock(last)}: ${runs.map(r => r.hashes.get(last)).join(' / ')}; после закрытия дня: ${runs.map(r => r.closedHash).join(' / ')}${parts ? `; по частям — ${parts.x1.same && parts.x4.same ? 'тот же' : 'ДРУГОЙ'}` : ''}`);

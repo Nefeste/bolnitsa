@@ -54,8 +54,12 @@ Studio-wide rules are in the charter's `docs/05-rules.md`. In addition here:
   `apply(state, command)` and `advance(state, seconds)` (charter ADR 0004).
 - **No network.** The game works fully offline and sends nothing anywhere (charter ADR 0008,
   0014). Steam integration, when it comes, is a separate decision.
-- **No image generators yet.** The owner allowed them for the PC game (decision №77 in
-  `Nefeste/uprava`), but only after a studio ADR with the conditions; until then — art by code.
+- **Generators for graphics only, by studio ADR 0020**
+  ([`adr/0020-generators-pc.md`](https://github.com/Nefeste/gornitsa/blob/main/adr/0020-generators-pc.md)):
+  images, textures and 3D models may come from generators; every file goes into the project's
+  generation log (service, version, date, prompt, what was reworked) or it does not ship; the
+  owner approves generated graphics in batches before release; the Steam AI-content disclosure is
+  filled in honestly. Texts, rules, medical facts, music and sounds — never from generators.
 - Never press «Merge»; merging follows charter ADR 0018 (owner paths in `.github/CODEOWNERS`).
 
 ## Commands

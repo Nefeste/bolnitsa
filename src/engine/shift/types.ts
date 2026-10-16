@@ -251,7 +251,10 @@ export interface GoneRow {
   by?: string;
   diagnosis?: Id;
   verdict?: ClosedCase['verdict'];
+  /** общая оценка — только у приёма с разбором (ваш); у приёма нанятого врача в потоке её нет */
   overall?: Grade;
+  /** решение с замечанием безопасности — известно без разбора */
+  unsafe?: true;
   setting?: Setting;
   returnOf?: string;
   returnReason?: ReturnReason;
@@ -434,6 +437,13 @@ export interface ColleagueDay {
   grades: Record<Grade, number>;
   /** сколько его пациентов вы забрали себе (часть 19) */
   taken?: number;
+  /**
+   * поток для ПК, без разбора (spec 2026-10-engine-speed «Больницы», ч. 1): положил в свою палату, ПИТ, реанимацию, бокс или
+   * операционную; перевёл (скорая, стационар другой больницы); решение с замечанием безопасности (оценка не A)
+   */
+  admitted?: number;
+  referred?: number;
+  unsafe?: number;
 }
 
 export interface PlannedReturn {
