@@ -1,0 +1,962 @@
+{
+  "probe": "render-3d",
+  "when": "2026-10-16T21:37:39.471Z",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) BolnitsaProbe3D/0.0.2 Chrome/152.0.7977.130 Electron/44.5.1 Safari/537.36",
+  "chromium": "152.0.7977.130",
+  "cores": 12,
+  "viewport": {
+    "w": 1920,
+    "h": 1009,
+    "dpr": 1
+  },
+  "settings": {
+    "secs": 15,
+    "warm": 3,
+    "counts": [
+      50,
+      100,
+      200,
+      400
+    ],
+    "qualities": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "seed": 1,
+    "walls": "cut",
+    "camera": "перспектива 20°, наклон 52°, вся карта"
+  },
+  "scene": {
+    "cells": "60x40",
+    "rooms": 31,
+    "things": 206,
+    "furnitureItems": 259,
+    "furnitureTris": 71804,
+    "looks": [
+      {
+        "name": "Doctor_Male_Young",
+        "tris": 6498,
+        "lodTris": 1474,
+        "joints": 23
+      },
+      {
+        "name": "Doctor_Female_Young",
+        "tris": 8530,
+        "lodTris": 2540,
+        "joints": 23
+      },
+      {
+        "name": "Doctor_Male_Old",
+        "tris": 5006,
+        "lodTris": 1280,
+        "joints": 23
+      },
+      {
+        "name": "Doctor_Female_Old",
+        "tris": 6790,
+        "lodTris": 1584,
+        "joints": 23
+      },
+      {
+        "name": "Worker_Male",
+        "tris": 2524,
+        "lodTris": 770,
+        "joints": 23
+      },
+      {
+        "name": "Worker_Female",
+        "tris": 5856,
+        "lodTris": 1401,
+        "joints": 23
+      },
+      {
+        "name": "Casual_Male",
+        "tris": 6492,
+        "lodTris": 1450,
+        "joints": 23
+      },
+      {
+        "name": "Casual_Female",
+        "tris": 6624,
+        "lodTris": 1528,
+        "joints": 23
+      },
+      {
+        "name": "Casual2_Male",
+        "tris": 3216,
+        "lodTris": 910,
+        "joints": 23
+      },
+      {
+        "name": "Casual2_Female",
+        "tris": 6752,
+        "lodTris": 1546,
+        "joints": 23
+      },
+      {
+        "name": "Casual3_Male",
+        "tris": 4920,
+        "lodTris": 1268,
+        "joints": 23
+      },
+      {
+        "name": "Casual3_Female",
+        "tris": 8444,
+        "lodTris": 2454,
+        "joints": 23
+      },
+      {
+        "name": "Casual_Bald",
+        "tris": 2312,
+        "lodTris": 681,
+        "joints": 23
+      },
+      {
+        "name": "Suit_Male",
+        "tris": 6518,
+        "lodTris": 1458,
+        "joints": 23
+      },
+      {
+        "name": "Suit_Female",
+        "tris": 6810,
+        "lodTris": 1552,
+        "joints": 23
+      }
+    ],
+    "bakedFrames": 3525,
+    "boneTexture": "1024x317",
+    "seats": 83,
+    "toiletStalls": 49,
+    "sitShift": {
+      "z": -0.30489537745086703,
+      "y": -0.22647197391598972
+    },
+    "three": "186"
+  },
+  "startup": {
+    "firstFrameMs": 2435,
+    "loadMs": {
+      "furniture": 92,
+      "people": 291,
+      "scene": 127,
+      "total": 1420
+    }
+  },
+  "electron": {
+    "electron": "44.5.1",
+    "chrome": "152.0.7977.130",
+    "node": "24.21.0",
+    "platform": "win32 10.0.26200 x64",
+    "cpu": "12th Gen Intel(R) Core(TM) i5-12400F",
+    "cpuCount": 12,
+    "ramGB": 32,
+    "gpuFeatureStatus": {
+      "2d_canvas": "enabled",
+      "direct_rendering_display_compositor": "disabled_off_ok",
+      "gpu_compositing": "enabled",
+      "multiple_raster_threads": "enabled_on",
+      "opengl": "enabled_on",
+      "rasterization": "enabled",
+      "raw_draw": "disabled_off_ok",
+      "skia_graphite": "disabled_off",
+      "trees_in_viz": "disabled_off",
+      "video_decode": "enabled",
+      "video_encode": "enabled",
+      "webgl": "enabled",
+      "webgpu": "enabled",
+      "webnn": "disabled_off"
+    },
+    "gpu": {
+      "auxAttributes": {
+        "amdSwitchable": false,
+        "canSupportThreadedTextureMailbox": false,
+        "directMLFeatureLevel": "Not supported",
+        "dx12FeatureLevel": "Not supported",
+        "glImplementationParts": "(gl=none,angle=none)",
+        "glResetNotificationStrategy": 0,
+        "inProcessGpu": true,
+        "initializationTime": 0,
+        "isAsan": false,
+        "isClangCoverage": false,
+        "jpegDecodeAcceleratorSupported": false,
+        "optimus": false,
+        "overlayInfo": {
+          "bgra8OverlaySupport": "NONE",
+          "directComposition": false,
+          "nv12OverlaySupport": "NONE",
+          "p010OverlaySupport": "NONE",
+          "rgb10a2OverlaySupport": "NONE",
+          "supportsOverlays": false,
+          "yuy2OverlaySupport": "NONE"
+        },
+        "passthroughCmdDecoder": false,
+        "sandboxed": false,
+        "skiaBackendType": "None",
+        "subpixelFontRendering": true,
+        "supportsD3dSharedImages": false,
+        "supportsDirectML": false,
+        "supportsDx12": false,
+        "supportsVulkan": false,
+        "targetCpuBits": 64,
+        "visibilityCallbackCallCount": 0,
+        "vulkanVersion": "Not supported"
+      },
+      "gpuDevice": [
+        {
+          "active": false,
+          "deviceId": 9353,
+          "deviceString": "NVIDIA GeForce RTX 3060 Ti",
+          "driverVersion": "32.0.16.1088",
+          "gpuPreference": 2,
+          "revision": 161,
+          "subSysId": 612962526,
+          "vendorId": 4318
+        },
+        {
+          "active": false,
+          "deviceId": 9353,
+          "deviceString": "NVIDIA GeForce RTX 3060 Ti",
+          "driverVersion": "32.0.16.1088",
+          "gpuPreference": 0,
+          "revision": 161,
+          "subSysId": 612962526,
+          "vendorId": 4318
+        },
+        {
+          "active": false,
+          "deviceId": 140,
+          "deviceString": "Microsoft Basic Render Driver",
+          "driverVersion": "10.0.26100.7019",
+          "gpuPreference": 0,
+          "revision": 0,
+          "subSysId": 0,
+          "vendorId": 5140
+        }
+      ]
+    },
+    "vsync": true,
+    "startup": {
+      "processToReadyMs": 93,
+      "readyToShowMs": 593,
+      "firstFrameMs": 2435,
+      "processStartToFirstFrameMs": 2563
+    },
+    "blockedRequests": 0,
+    "memoryAtEnd": {
+      "workingSetMB": 573,
+      "privateMB": 841,
+      "byType": {
+        "Browser": 113,
+        "GPU": 194,
+        "Utility": 45,
+        "Tab": 221
+      }
+    }
+  },
+  "shots": [
+    {
+      "name": "bench-electron-2026-10-16T21-34-02-1-overview.png",
+      "title": "общий план, полдень"
+    },
+    {
+      "name": "bench-electron-2026-10-16T21-34-02-2-reception.png",
+      "title": "регистратура и ожидание крупно"
+    },
+    {
+      "name": "bench-electron-2026-10-16T21-34-02-3-ward.png",
+      "title": "палата крупно"
+    },
+    {
+      "name": "bench-electron-2026-10-16T21-34-02-4-evening.png",
+      "title": "вечер, средний план"
+    }
+  ],
+  "runs": [
+    {
+      "renderer": "three",
+      "quality": "low",
+      "people": 50,
+      "frames": 900,
+      "fps": 60,
+      "frameMs": {
+        "mean": 16.67,
+        "p95": 16.8,
+        "max": 17.5
+      },
+      "over33ms": 0,
+      "over100ms": 0,
+      "simMs": {
+        "mean": 0.04,
+        "p95": 0.1,
+        "max": 0.4
+      },
+      "drawCpuMs": {
+        "mean": 0.4,
+        "p95": 0.6,
+        "max": 1.2
+      },
+      "cpuMs": {
+        "mean": 0.44,
+        "p95": 0.7,
+        "max": 1.2
+      },
+      "astar": {
+        "searches": 13,
+        "avgMs": 0.046
+      },
+      "drawCalls": 30,
+      "triangles": 274287,
+      "peopleNear": 0,
+      "peopleFar": 50,
+      "gpuMemory": {
+        "geometries": 26,
+        "textures": 14,
+        "programs": 6
+      },
+      "renderPx": {
+        "w": 1440,
+        "h": 756
+      },
+      "preset": {
+        "scale": 0.75,
+        "antialias": false,
+        "shadowSize": 1024,
+        "peopleShadows": false,
+        "env": false,
+        "fullHalf": 0
+      },
+      "jsHeapMB": 60,
+      "processMB": 495,
+      "gpu": "WebGL2: ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    },
+    {
+      "renderer": "three",
+      "quality": "low",
+      "people": 100,
+      "frames": 900,
+      "fps": 60,
+      "frameMs": {
+        "mean": 16.67,
+        "p95": 16.8,
+        "max": 17
+      },
+      "over33ms": 0,
+      "over100ms": 0,
+      "simMs": {
+        "mean": 0.05,
+        "p95": 0.1,
+        "max": 0.3
+      },
+      "drawCpuMs": {
+        "mean": 0.4,
+        "p95": 0.6,
+        "max": 0.9
+      },
+      "cpuMs": {
+        "mean": 0.45,
+        "p95": 0.7,
+        "max": 1
+      },
+      "astar": {
+        "searches": 17,
+        "avgMs": 0.041
+      },
+      "drawCalls": 32,
+      "triangles": 348473,
+      "peopleNear": 0,
+      "peopleFar": 100,
+      "gpuMemory": {
+        "geometries": 28,
+        "textures": 14,
+        "programs": 6
+      },
+      "renderPx": {
+        "w": 1440,
+        "h": 756
+      },
+      "preset": {
+        "scale": 0.75,
+        "antialias": false,
+        "shadowSize": 1024,
+        "peopleShadows": false,
+        "env": false,
+        "fullHalf": 0
+      },
+      "jsHeapMB": 61,
+      "processMB": 498,
+      "gpu": "WebGL2: ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    },
+    {
+      "renderer": "three",
+      "quality": "low",
+      "people": 200,
+      "frames": 901,
+      "fps": 60.1,
+      "frameMs": {
+        "mean": 16.67,
+        "p95": 16.8,
+        "max": 16.9
+      },
+      "over33ms": 0,
+      "over100ms": 0,
+      "simMs": {
+        "mean": 0.08,
+        "p95": 0.2,
+        "max": 0.3
+      },
+      "drawCpuMs": {
+        "mean": 0.4,
+        "p95": 0.6,
+        "max": 1.1
+      },
+      "cpuMs": {
+        "mean": 0.48,
+        "p95": 0.7,
+        "max": 1.3
+      },
+      "astar": {
+        "searches": 39,
+        "avgMs": 0.026
+      },
+      "drawCalls": 33,
+      "triangles": 498731,
+      "peopleNear": 0,
+      "peopleFar": 200,
+      "gpuMemory": {
+        "geometries": 29,
+        "textures": 14,
+        "programs": 6
+      },
+      "renderPx": {
+        "w": 1440,
+        "h": 756
+      },
+      "preset": {
+        "scale": 0.75,
+        "antialias": false,
+        "shadowSize": 1024,
+        "peopleShadows": false,
+        "env": false,
+        "fullHalf": 0
+      },
+      "jsHeapMB": 61,
+      "processMB": 499,
+      "gpu": "WebGL2: ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    },
+    {
+      "renderer": "three",
+      "quality": "low",
+      "people": 400,
+      "frames": 900,
+      "fps": 60,
+      "frameMs": {
+        "mean": 16.67,
+        "p95": 16.8,
+        "max": 17.4
+      },
+      "over33ms": 0,
+      "over100ms": 0,
+      "simMs": {
+        "mean": 0.14,
+        "p95": 0.2,
+        "max": 0.4
+      },
+      "drawCpuMs": {
+        "mean": 0.39,
+        "p95": 0.6,
+        "max": 1.4
+      },
+      "cpuMs": {
+        "mean": 0.53,
+        "p95": 0.8,
+        "max": 1.6
+      },
+      "astar": {
+        "searches": 104,
+        "avgMs": 0.016
+      },
+      "drawCalls": 33,
+      "triangles": 786611,
+      "peopleNear": 0,
+      "peopleFar": 400,
+      "gpuMemory": {
+        "geometries": 29,
+        "textures": 14,
+        "programs": 6
+      },
+      "renderPx": {
+        "w": 1440,
+        "h": 756
+      },
+      "preset": {
+        "scale": 0.75,
+        "antialias": false,
+        "shadowSize": 1024,
+        "peopleShadows": false,
+        "env": false,
+        "fullHalf": 0
+      },
+      "jsHeapMB": 61,
+      "processMB": 501,
+      "gpu": "WebGL2: ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    },
+    {
+      "renderer": "three",
+      "quality": "medium",
+      "people": 50,
+      "frames": 900,
+      "fps": 60,
+      "frameMs": {
+        "mean": 16.67,
+        "p95": 16.8,
+        "max": 17.1
+      },
+      "over33ms": 0,
+      "over100ms": 0,
+      "simMs": {
+        "mean": 0.04,
+        "p95": 0.1,
+        "max": 0.2
+      },
+      "drawCpuMs": {
+        "mean": 0.4,
+        "p95": 0.6,
+        "max": 0.9
+      },
+      "cpuMs": {
+        "mean": 0.44,
+        "p95": 0.6,
+        "max": 1
+      },
+      "astar": {
+        "searches": 13,
+        "avgMs": 0.046
+      },
+      "drawCalls": 42,
+      "triangles": 342320,
+      "peopleNear": 0,
+      "peopleFar": 50,
+      "gpuMemory": {
+        "geometries": 27,
+        "textures": 15,
+        "programs": 10
+      },
+      "renderPx": {
+        "w": 1920,
+        "h": 1009
+      },
+      "preset": {
+        "scale": 1,
+        "antialias": true,
+        "shadowSize": 2048,
+        "peopleShadows": true,
+        "env": true,
+        "fullHalf": 9
+      },
+      "jsHeapMB": 60,
+      "processMB": 496,
+      "gpu": "WebGL2: ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    },
+    {
+      "renderer": "three",
+      "quality": "medium",
+      "people": 100,
+      "frames": 890,
+      "fps": 59.3,
+      "frameMs": {
+        "mean": 16.85,
+        "p95": 16.8,
+        "max": 66.7
+      },
+      "over33ms": 3,
+      "over100ms": 0,
+      "simMs": {
+        "mean": 0.06,
+        "p95": 0.1,
+        "max": 0.4
+      },
+      "drawCpuMs": {
+        "mean": 0.4,
+        "p95": 0.5,
+        "max": 1.7
+      },
+      "cpuMs": {
+        "mean": 0.46,
+        "p95": 0.6,
+        "max": 1.9
+      },
+      "astar": {
+        "searches": 17,
+        "avgMs": 0.029
+      },
+      "drawCalls": 46,
+      "triangles": 490692,
+      "peopleNear": 0,
+      "peopleFar": 100,
+      "gpuMemory": {
+        "geometries": 29,
+        "textures": 15,
+        "programs": 10
+      },
+      "renderPx": {
+        "w": 1920,
+        "h": 1009
+      },
+      "preset": {
+        "scale": 1,
+        "antialias": true,
+        "shadowSize": 2048,
+        "peopleShadows": true,
+        "env": true,
+        "fullHalf": 9
+      },
+      "jsHeapMB": 60,
+      "processMB": 502,
+      "gpu": "WebGL2: ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    },
+    {
+      "renderer": "three",
+      "quality": "medium",
+      "people": 200,
+      "frames": 900,
+      "fps": 60,
+      "frameMs": {
+        "mean": 16.67,
+        "p95": 16.8,
+        "max": 17.2
+      },
+      "over33ms": 0,
+      "over100ms": 0,
+      "simMs": {
+        "mean": 0.1,
+        "p95": 0.2,
+        "max": 0.2
+      },
+      "drawCpuMs": {
+        "mean": 0.42,
+        "p95": 0.6,
+        "max": 1.2
+      },
+      "cpuMs": {
+        "mean": 0.51,
+        "p95": 0.7,
+        "max": 1.2
+      },
+      "astar": {
+        "searches": 42,
+        "avgMs": 0.024
+      },
+      "drawCalls": 48,
+      "triangles": 791208,
+      "peopleNear": 0,
+      "peopleFar": 200,
+      "gpuMemory": {
+        "geometries": 30,
+        "textures": 15,
+        "programs": 10
+      },
+      "renderPx": {
+        "w": 1920,
+        "h": 1009
+      },
+      "preset": {
+        "scale": 1,
+        "antialias": true,
+        "shadowSize": 2048,
+        "peopleShadows": true,
+        "env": true,
+        "fullHalf": 9
+      },
+      "jsHeapMB": 60,
+      "processMB": 522,
+      "gpu": "WebGL2: ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    },
+    {
+      "renderer": "three",
+      "quality": "medium",
+      "people": 400,
+      "frames": 900,
+      "fps": 60,
+      "frameMs": {
+        "mean": 16.67,
+        "p95": 16.8,
+        "max": 17.4
+      },
+      "over33ms": 0,
+      "over100ms": 0,
+      "simMs": {
+        "mean": 0.15,
+        "p95": 0.2,
+        "max": 0.4
+      },
+      "drawCpuMs": {
+        "mean": 0.4,
+        "p95": 0.5,
+        "max": 1.1
+      },
+      "cpuMs": {
+        "mean": 0.55,
+        "p95": 0.7,
+        "max": 1.4
+      },
+      "astar": {
+        "searches": 103,
+        "avgMs": 0.019
+      },
+      "drawCalls": 48,
+      "triangles": 1366968,
+      "peopleNear": 0,
+      "peopleFar": 400,
+      "gpuMemory": {
+        "geometries": 30,
+        "textures": 15,
+        "programs": 10
+      },
+      "renderPx": {
+        "w": 1920,
+        "h": 1009
+      },
+      "preset": {
+        "scale": 1,
+        "antialias": true,
+        "shadowSize": 2048,
+        "peopleShadows": true,
+        "env": true,
+        "fullHalf": 9
+      },
+      "jsHeapMB": 61,
+      "processMB": 523,
+      "gpu": "WebGL2: ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    },
+    {
+      "renderer": "three",
+      "quality": "high",
+      "people": 50,
+      "frames": 901,
+      "fps": 60.1,
+      "frameMs": {
+        "mean": 16.67,
+        "p95": 16.8,
+        "max": 17
+      },
+      "over33ms": 0,
+      "over100ms": 0,
+      "simMs": {
+        "mean": 0.04,
+        "p95": 0.1,
+        "max": 0.3
+      },
+      "drawCpuMs": {
+        "mean": 0.4,
+        "p95": 0.6,
+        "max": 1.1
+      },
+      "cpuMs": {
+        "mean": 0.43,
+        "p95": 0.6,
+        "max": 1.2
+      },
+      "astar": {
+        "searches": 13,
+        "avgMs": 0.038
+      },
+      "drawCalls": 42,
+      "triangles": 342320,
+      "peopleNear": 0,
+      "peopleFar": 50,
+      "gpuMemory": {
+        "geometries": 27,
+        "textures": 15,
+        "programs": 10
+      },
+      "renderPx": {
+        "w": 1920,
+        "h": 1009
+      },
+      "preset": {
+        "scale": 1,
+        "antialias": true,
+        "shadowSize": 4096,
+        "peopleShadows": true,
+        "env": true,
+        "fullHalf": 16
+      },
+      "jsHeapMB": 62,
+      "processMB": 505,
+      "gpu": "WebGL2: ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    },
+    {
+      "renderer": "three",
+      "quality": "high",
+      "people": 100,
+      "frames": 901,
+      "fps": 60.1,
+      "frameMs": {
+        "mean": 16.67,
+        "p95": 16.8,
+        "max": 18.2
+      },
+      "over33ms": 0,
+      "over100ms": 0,
+      "simMs": {
+        "mean": 0.06,
+        "p95": 0.1,
+        "max": 0.7
+      },
+      "drawCpuMs": {
+        "mean": 0.41,
+        "p95": 0.6,
+        "max": 1.2
+      },
+      "cpuMs": {
+        "mean": 0.47,
+        "p95": 0.7,
+        "max": 1.3
+      },
+      "astar": {
+        "searches": 17,
+        "avgMs": 0.071
+      },
+      "drawCalls": 46,
+      "triangles": 490692,
+      "peopleNear": 0,
+      "peopleFar": 100,
+      "gpuMemory": {
+        "geometries": 29,
+        "textures": 15,
+        "programs": 10
+      },
+      "renderPx": {
+        "w": 1920,
+        "h": 1009
+      },
+      "preset": {
+        "scale": 1,
+        "antialias": true,
+        "shadowSize": 4096,
+        "peopleShadows": true,
+        "env": true,
+        "fullHalf": 16
+      },
+      "jsHeapMB": 62,
+      "processMB": 505,
+      "gpu": "WebGL2: ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    },
+    {
+      "renderer": "three",
+      "quality": "high",
+      "people": 200,
+      "frames": 900,
+      "fps": 60,
+      "frameMs": {
+        "mean": 16.67,
+        "p95": 16.8,
+        "max": 16.8
+      },
+      "over33ms": 0,
+      "over100ms": 0,
+      "simMs": {
+        "mean": 0.08,
+        "p95": 0.2,
+        "max": 0.8
+      },
+      "drawCpuMs": {
+        "mean": 0.4,
+        "p95": 0.6,
+        "max": 1.1
+      },
+      "cpuMs": {
+        "mean": 0.49,
+        "p95": 0.7,
+        "max": 1.3
+      },
+      "astar": {
+        "searches": 39,
+        "avgMs": 0.026
+      },
+      "drawCalls": 48,
+      "triangles": 791208,
+      "peopleNear": 0,
+      "peopleFar": 200,
+      "gpuMemory": {
+        "geometries": 30,
+        "textures": 15,
+        "programs": 10
+      },
+      "renderPx": {
+        "w": 1920,
+        "h": 1009
+      },
+      "preset": {
+        "scale": 1,
+        "antialias": true,
+        "shadowSize": 4096,
+        "peopleShadows": true,
+        "env": true,
+        "fullHalf": 16
+      },
+      "jsHeapMB": 62,
+      "processMB": 507,
+      "gpu": "WebGL2: ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    },
+    {
+      "renderer": "three",
+      "quality": "high",
+      "people": 400,
+      "frames": 900,
+      "fps": 60,
+      "frameMs": {
+        "mean": 16.67,
+        "p95": 16.8,
+        "max": 16.8
+      },
+      "over33ms": 0,
+      "over100ms": 0,
+      "simMs": {
+        "mean": 0.14,
+        "p95": 0.2,
+        "max": 0.9
+      },
+      "drawCpuMs": {
+        "mean": 0.4,
+        "p95": 0.6,
+        "max": 1.1
+      },
+      "cpuMs": {
+        "mean": 0.54,
+        "p95": 0.8,
+        "max": 1.3
+      },
+      "astar": {
+        "searches": 101,
+        "avgMs": 0.017
+      },
+      "drawCalls": 48,
+      "triangles": 1366968,
+      "peopleNear": 0,
+      "peopleFar": 400,
+      "gpuMemory": {
+        "geometries": 30,
+        "textures": 15,
+        "programs": 10
+      },
+      "renderPx": {
+        "w": 1920,
+        "h": 1009
+      },
+      "preset": {
+        "scale": 1,
+        "antialias": true,
+        "shadowSize": 4096,
+        "peopleShadows": true,
+        "env": true,
+        "fullHalf": 16
+      },
+      "jsHeapMB": 62,
+      "processMB": 508,
+      "gpu": "WebGL2: ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti (0x00002489) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    }
+  ]
+}
