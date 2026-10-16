@@ -60,4 +60,21 @@ Studio-wide rules are in the charter's `docs/05-rules.md`. In addition here:
 
 ## Commands
 
-Appear with the first code (probes, `docs/specs/2026-10-prototype.md`, «Технология»).
+The engine and the medical database are copied from Anamnez (`docs/02-architecture.md`); tests run in Bun
+(CI: Bun 1.3.11, like Anamnez). Run the first four before every push — `pr.yml` runs the same on every PR.
+
+```bash
+npm ci                             # dependencies (yaml, zod, typescript, bun-types)
+npm run content                    # build and validate content/ → src/content/generated/bundle.json (not in git)
+npm run typecheck                  # content + tsc --noEmit (src, tools)
+npm test                           # content + bun test tools/test (~4 min)
+npm run bench -- --mode flow --quick           # time per game minute at 50/100/200/300 patients (PC flow)
+npm run bench -- --mode desks --quick          # the same with Anamnez's appointment slots
+bun --cpu-prof --cpu-prof-dir=tools/bench/out/prof tools/bench/bench.ts --mode flow --only 200 --quick --until 11
+bun tools/bench/profile.ts tools/bench/out/prof/<file>.cpuprofile 30 --under catchUp
+bun tools/test/make-review-fixture.ts          # only with the ORIGINAL engine: fingerprints of the eager review
+```
+
+If the environment sets `BUN_OPTIONS=--smol`, unset it for the bench (`env -u BUN_OPTIONS …`). Any change to
+`src/engine/` re-runs the bench and compares with `docs/reports/2026-10-engine-speed.md`; a change to inference must
+keep `tools/test/infer-speed.test.ts` and the golden fingerprints green (same numbers to the bit).
