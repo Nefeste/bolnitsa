@@ -1,0 +1,906 @@
+// Прежняя реализация вывода — для сверки ускоренной до бита (spec 2026-10-engine-speed, ч. 4). Не менять.
+// из anamnez: src/engine/med/infer.ts @ 96503ac
+// Уверенность так, как её считал бы идеальный врач на месте игрока, — только по
+// открытому (`docs/10-medical-model.md` §10). Нужна подсказкам, оценке и разбору.
+//
+// По пользе обследования решают страховая песочницы и нанятые врачи — а это меняет состояние
+// партии, поэтому логарифм здесь свой, из `core/math.ts` (ADR 0004): одинаковый в Hermes, V8 и
+// JavaScriptCore.
+import { byParams, byPresence, byRule, byValue, crosses, linkP, type LinkWho, paramsOf, type Condition, type ContentDb, type DerivedByParams, type DerivedByValue, type ExamCheck, type Id, type Link, type Rule, type Season, whoMatters } from '../../../src/content/types';
+import { log2 } from '../../../src/engine/core/math';
+import { P_ONE } from '../../../src/engine/core/rng';
+import { expectedFindings, falseRate } from '../../../src/engine/med/exams';
+import { chronicChance, presentingWeight } from '../../../src/engine/med/generate';
+import { riskShare } from '../../../src/engine/med/jobs';
+import { checkRule, type Known, knownOf, type RuleVerdict, type Who, whoOf } from '../../../src/engine/med/rules';
+import type { Observation, Sex } from '../../../src/engine/med/types';
+
+export interface InferContext {
+  sex: Sex;
+  age: number;
+  season: Season;
+  /** кем работает (spec 2026-10-occupation): знают с регистратуры — доли вредностей по профессии; нет — по записям */
+  job?: Id;
+  /** что известно о пациенте наверняка: факторы риска и хронические болезни, о которых он сказал */
+  knownRisks: Id[];
+  knownConditions: Id[];
+  /** чего о нём не знают — хронические болезни и факторы риска с их долей (`unknownsOf`) */
+  unknowns: Unknowns;
+  /** что известно о записи (spec 2026-10-chapter-4, часть 60а): к специалисту записываются с болезнями его профиля */
+  prior?: Prior;
+  /**
+   * пришёл без жалоб — на профосмотр (часть 61а): у него то, что находят на профосмотре; болезнь, с которой всегда
+   * приходят с жалобой, исключена
+   */
+  checkup?: boolean;
+  /** жалобы, как пациент их назвал, — по ним ждут находки осмотра, снимков и ЭКГ (вопрос 33); нет — жалоб нет */
+  complaints?: readonly Id[];
+}
+
+/** Болезни, которые у этого пациента вероятнее во столько раз, — профиль специалиста, к которому он записан. */
+export interface Prior {
+  ids: readonly Id[];
+  x: number;
+}
+
+/**
+ * Неизвестное о пациенте (spec 2026-09-chapter-2, часть 30): хронические болезни и факторы
+ * риска, о которых он не сказал, — каждый с долей у такого человека. Камни в желчном пузыре
+ * есть у каждого восьмого: найденные на УЗИ, они довод за колику, только если сравнить их с
+ * этой долей; у пьющего панкреатит в 18 раз чаще — и, пока врач не спросил, в среднем по доле
+ * пьющих.
+ */
+export interface Unknowns {
+  /** доля у такого человека: пол, возраст, известные факторы риска и ответы «нет» о себе */
+  share: ReadonlyMap<Id, number>;
+  /** кто из них вызывает признак и с какой вероятностью (вопросы о себе — нет: их учла доля) */
+  causes: ReadonlyMap<Id, readonly { id: Id; p: number }[]>;
+}
+
+export const NO_UNKNOWNS: Unknowns = { share: new Map(), causes: new Map() };
+
+export interface Belief {
+  id: Id;
+  p: number;
+}
+
+/** Доля параметров случая, при которых связь действует (усреднение по скрытым параметрам). */
+function linkWeight(cond: Condition | undefined, link: Link): number {
+  if (!link.when || !cond?.params) return 1;
+  let share = 1;
+  for (const [param, allowed] of Object.entries(link.when)) {
+    const dist = cond.params[param];
+    if (!dist) continue;
+    const total = Object.values(dist).reduce((a, b) => a + b, 0);
+    const ok = allowed.reduce((a, v) => a + (dist[v] ?? 0), 0);
+    share *= total > 0 ? ok / total : 0;
+  }
+  return share;
+}
+
+/** Вероятность вызвать признак хотя бы одной связью причины (без учёта стадии) — у человека этого пола и возраста. */
+function causeProbability(links: Link[], f: Id, cond?: Condition, who?: LinkWho): number {
+  let miss = 1;
+  for (const l of links) if (l.f === f) miss *= 1 - (linkP(l, who) / P_ONE) * linkWeight(cond, l);
+  return 1 - miss;
+}
+
+/**
+ * То же по таблице: связи записи не меняются, а вывод спрашивает о них на каждом признаке каждого кандидата. У записи с
+ * множителями пола и возраста (FR-MED-1) — своя таблица на пол и возраст, у остальных — одна. Всё о записи — в одном
+ * месте: таблицу спрашивают десятки тысяч раз за шаг врача, и лишний поиск в словаре там заметен (0.5.11, NFR-PRF-1).
+ */
+interface CauseTables {
+  /** есть ли у связей множители пола и возраста */
+  matters: boolean;
+  /** одна на всех — без множителей или без человека */
+  plain?: Map<Id, number>;
+  /** с множителями — на пол и возраст */
+  byWho?: Map<string, Map<Id, number>>;
+}
+const causeTables = new WeakMap<readonly Link[], CauseTables>();
+
+function tablesOf(links: readonly Link[]): CauseTables {
+  let t = causeTables.get(links);
+  if (!t) causeTables.set(links, (t = { matters: whoMatters(links) }));
+  return t;
+}
+
+/** Ключ пола и возраста — у связей с множителями; у остальных и без человека — пустой. */
+const whoKey = (links: readonly Link[], who: LinkWho | undefined): string => (who && tablesOf(links).matters ? `${who.sex}${who.age}` : '');
+
+function causeTable(links: Link[], cond: Condition | undefined, who: LinkWho | undefined): Map<Id, number> {
+  const table = new Map<Id, number>();
+  for (const l of links) if (!table.has(l.f)) table.set(l.f, causeProbability(links, l.f, cond, who));
+  return table;
+}
+
+function causeOf(links: Link[], f: Id, cond?: Condition, who?: LinkWho): number {
+  const t = tablesOf(links);
+  let table: Map<Id, number> | undefined;
+  if (t.matters && who) {
+    const key = `${who.sex}${who.age}`;
+    const byWho = (t.byWho ??= new Map());
+    table = byWho.get(key);
+    if (!table) byWho.set(key, (table = causeTable(links, cond, who)));
+  } else table = t.plain ??= causeTable(links, cond, undefined);
+  return table.get(f) ?? 0;
+}
+
+/**
+ * P(признак есть | набор состояний и факторов риска) — noisy-OR с фоном. `unknown` — P(признака
+ * нет) от того, чего о пациенте не знают (`unknownMiss`); нет — только известное.
+ */
+export function findingProbability(db: ContentDb, f: Id, conditions: readonly Id[], risks: readonly Id[], unknown = 1, who?: LinkWho): number {
+  let miss = (1 - (db.findings[f]?.leak ?? 0) / P_ONE) * unknown;
+  for (const id of conditions) {
+    const c = db.conditions[id];
+    // чего при состоянии не бывает (часть 39а), того нет, откуда бы оно ни шло
+    if (c?.masks?.includes(f)) return 0;
+    if (c) miss *= 1 - causeOf(c.findings, f, c, who);
+  }
+  for (const id of risks) {
+    const r = db.risks[id];
+    if (r) miss *= 1 - causeOf(r.findings, f, undefined, who);
+  }
+  return 1 - miss;
+}
+
+/**
+ * Доли неизвестного у кандидата: то, без чего он не бывает, в наборе наверняка (0 — не фон);
+ * фактор риска с множителем у кандидата — чаще: P(фактор | кандидат) = p·x / (p·x + 1 − p).
+ */
+export function sharesFor(db: ContentDb, id: Id, ctx: InferContext): ReadonlyMap<Id, number> {
+  let byDb = sharesCache.get(db);
+  if (!byDb) sharesCache.set(db, (byDb = new WeakMap()));
+  let cache = byDb.get(ctx.unknowns);
+  if (!cache) byDb.set(ctx.unknowns, (cache = new Map()));
+  let out = cache.get(id);
+  if (!out) cache.set(id, (out = candidateShares(db, id, ctx)));
+  return out;
+}
+
+/**
+ * Доли кандидата считаются один раз на базу и на то, что известно о пациенте: польза
+ * обследований спрашивает их часто. Пустое неизвестное (`NO_UNKNOWNS`) одно на все базы — поэтому
+ * ключ и по базе.
+ */
+const sharesCache = new WeakMap<ContentDb, WeakMap<Unknowns, Map<Id, ReadonlyMap<Id, number>>>>();
+
+function candidateShares(db: ContentDb, id: Id, ctx: InferContext): Map<Id, number> {
+  const c = db.conditions[id];
+  const out = new Map<Id, number>();
+  for (const r of c?.requires ?? []) out.set(r, 0);
+  for (const r of c?.risks ?? []) {
+    const p = ctx.unknowns.share.get(r.id);
+    if (p !== undefined && !out.has(r.id)) out.set(r.id, (p * r.x) / (p * r.x + 1 - p));
+  }
+  return out;
+}
+
+/** P(признака нет) от неизвестного — с долями этого кандидата (`sharesFor`). */
+export function unknownMiss(ctx: InferContext, f: Id, shares: ReadonlyMap<Id, number>): number {
+  let miss = 1;
+  for (const u of ctx.unknowns.causes.get(f) ?? []) miss *= 1 - (shares.get(u.id) ?? ctx.unknowns.share.get(u.id) ?? 0) * u.p;
+  return miss;
+}
+
+/**
+ * Всё, что вывод знает о пациенте: пол, возраст, сезон, что он сказал о себе, и доли того, чего не сказал; у специалиста
+ * — ещё и к кому записан (`prior`, часть 60а).
+ */
+export function contextOf(db: ContentDb, patient: { sex: Sex; age: number; season: Season; job?: Id; complaints?: readonly Id[] }, observations: readonly Observation[], prior?: Prior): InferContext {
+  const known = knownFacts(db, observations);
+  const base = { sex: patient.sex, age: patient.age, season: patient.season, ...(patient.job ? { job: patient.job } : {}), knownRisks: known.risks, knownConditions: known.conditions };
+  const told = complaintsOf(observations);
+  return {
+    ...base,
+    unknowns: unknownsOf(db, observations, base),
+    ...(prior ? { prior } : {}),
+    ...(patient.complaints?.length === 0 ? { checkup: true } : {}),
+    ...(told.length > 0 ? { complaints: told } : {}),
+  };
+}
+
+/** Жалобы среди наблюдений — по порядку, как пациент их назвал (`complaintObservations`). */
+const complaintsOf = (observations: readonly Observation[]): Id[] => observations.filter(o => o.exam === 'complaint').map(o => o.f);
+
+/** Находки, которых ждут по жалобам среди наблюдений (вопрос 33): у движка — по жалобам пациента, здесь — по тем же. */
+const expectedOf = (db: ContentDb, observations: readonly Observation[]) => expectedFindings(db, complaintsOf(observations));
+
+/**
+ * Неизвестные хронические болезни и факторы риска: доля у такого человека — как при рождении
+ * пациента (пол, возраст, факторы риска: известные — множителем, неизвестные — в среднем), —
+ * поправленная его ответами о себе: «о камнях не знает» — реже, чем у всех. Вопросы о себе
+ * входят в долю, а не в фон признаков.
+ */
+export function unknownsOf(db: ContentDb, observations: readonly Observation[], ctx: Omit<InferContext, 'unknowns'>): Unknowns {
+  const grouped = byFinding(observations);
+  const expected = expectedOf(db, observations);
+  const share = new Map<Id, number>();
+  const causes = new Map<Id, { id: Id; p: number }[]>();
+  const add = (id: Id, p: number, links: Link[], cond?: Condition) => {
+    if (p <= 0) return;
+    let q = p;
+    for (const f of new Set(links.map(l => l.f))) {
+      const cause = causeOf(links, f, cond, ctx);
+      const obs = grouped.get(f);
+      if (f.startsWith('hx.')) {
+        if (!obs) continue;
+        const leak = (db.findings[f]?.leak ?? 0) / P_ONE;
+        const yes = observationsLikelihood(db, obs, 1 - (1 - leak) * (1 - cause), expected);
+        const no = observationsLikelihood(db, obs, leak, expected);
+        q = (q * yes) / (q * yes + (1 - q) * no);
+      } else {
+        const list = causes.get(f);
+        if (list) list.push({ id, p: cause });
+        else causes.set(f, [{ id, p: cause }]);
+      }
+    }
+    share.set(id, q);
+  };
+  for (const id of Object.keys(db.risks).sort()) {
+    const r = db.risks[id];
+    if (ctx.knownRisks.includes(id) || ctx.age < (r.ageMin ?? 18) || ctx.age > (r.ageMax ?? 200)) continue;
+    // доля — как при рождении пациента: у профессии, что его называет (spec 2026-10-occupation), — её
+    add(id, riskShare(db, id, ctx.sex, ctx.job) / P_ONE, r.findings);
+  }
+  for (const id of Object.keys(db.conditions).sort()) {
+    const c = db.conditions[id];
+    if (!c.chronic || ctx.knownConditions.includes(id) || ctx.age < (c.chronic.ageMin ?? c.age.min)) continue;
+    // известный фактор риска — множителем (как при рождении пациента), неизвестный — в среднем по его доле
+    let p = chronicChance(c, ctx.knownRisks) / P_ONE;
+    for (const r of c.chronic.risks ?? []) {
+      const q = share.get(r.id);
+      if (q !== undefined) p *= 1 - q + q * r.x;
+    }
+    add(id, Math.min(p, 0.95), c.findings, c);
+  }
+  return { share, causes };
+}
+
+/**
+ * Чувствительность и специфичность, с которыми наблюдение получено. Жалоба — без ошибок. Ложная находка осмотра, снимка
+ * и ЭКГ, которой по жалобам не ждут (`expected`), — реже, как у движка (`falseRate`, вопрос 33).
+ */
+function accuracy(db: ContentDb, o: Observation, expected: ReadonlySet<Id>): { sens: number; spec: number } {
+  if (o.exam === 'complaint') return { sens: 1, spec: 1 };
+  const exam = db.exams[o.exam];
+  const check = exam?.checks.find(c => c.f === o.f);
+  return check ? { sens: check.sens / P_ONE, spec: 1 - falseRate(exam, o.f, check.spec, expected) / P_ONE } : { sens: 1, spec: 1 };
+}
+
+/**
+ * Правдоподобие всех наблюдений одного признака, если он есть с вероятностью `p`. Ошибки
+ * обследований независимы только при известной правде о признаке, поэтому скрытое «есть/нет»
+ * суммируется один раз на признак: иначе два совпавших ответа об одном признаке считались бы
+ * двумя уликами.
+ */
+function observationsLikelihood(db: ContentDb, obs: readonly Observation[], p: number, expected: ReadonlySet<Id>): number {
+  return mix(evidenceOf(db, obs, expected), p);
+}
+
+/** Наблюдения одного признака: насколько они вероятны, если он есть и если его нет, — от кандидата не зависит. */
+interface Evidence {
+  ifPresent: number;
+  ifAbsent: number;
+}
+
+function evidenceOf(db: ContentDb, obs: readonly Observation[], expected: ReadonlySet<Id>): Evidence {
+  let ifPresent = 1;
+  let ifAbsent = 1;
+  for (const o of obs) {
+    const { sens, spec } = accuracy(db, o, expected);
+    ifPresent *= o.shown ? sens : 1 - sens;
+    ifAbsent *= o.shown ? 1 - spec : spec;
+  }
+  return { ifPresent, ifAbsent };
+}
+
+const mix = (e: Evidence, p: number) => p * e.ifPresent + (1 - p) * e.ifAbsent;
+
+function byFinding(observations: readonly Observation[]): Map<Id, Observation[]> {
+  const m = new Map<Id, Observation[]>();
+  for (const o of observations) {
+    const list = m.get(o.f);
+    if (list) list.push(o);
+    else m.set(o.f, [o]);
+  }
+  return m;
+}
+
+/** Априорный вес кандидата с учётом того, что о пациенте известно и с какой долей — неизвестное. */
+export function priorWeight(db: ContentDb, id: Id, ctx: InferContext): number {
+  const c = db.conditions[id];
+  const assumed = [...ctx.knownConditions, ...(c.requires ?? [])];
+  let w = presentingWeight(c, { sex: ctx.sex, age: ctx.age, season: ctx.season, risks: ctx.knownRisks, chronic: assumed });
+  const share = (x: Id) => ctx.unknowns.share.get(x) ?? 0;
+  // требуемая хроническая болезнь, о которой не знают, — с её долей у этого человека
+  for (const req of c.requires ?? []) if (!ctx.knownConditions.includes(req)) w *= share(req);
+  // «впервые выявленная» бывает только у тех, у кого этого ещё нет
+  for (const ex of c.excludes ?? []) if (!ctx.knownConditions.includes(ex)) w *= 1 - share(ex);
+  // множитель риска, о котором не знают, — в среднем по его доле (часть 30)
+  for (const r of c.risks ?? []) {
+    if (ctx.knownRisks.includes(r.id) || assumed.includes(r.id)) continue;
+    w *= 1 - share(r.id) + share(r.id) * r.x;
+  }
+  // записан к специалисту (часть 60а) — болезни его профиля вероятнее
+  if (ctx.prior?.ids.includes(id)) w *= ctx.prior.x;
+  // пришёл на профосмотр (часть 61а): с этой болезнью без жалобы не приходят (`ensureManifest`)
+  if (ctx.checkup && !c.checkup && complains(db, c)) return 0;
+  return w;
+}
+
+const complainsCache = new WeakMap<Condition, boolean>();
+
+/**
+ * Приходят ли с болезнью всегда с жалобой (часть 61а): у неё есть заметный симптом без условий — его генератор даёт
+ * каждому, кто не пришёл с ней на профосмотр (`ensureManifest`).
+ */
+function complains(db: ContentDb, c: Condition): boolean {
+  let x = complainsCache.get(c);
+  if (x === undefined) {
+    x = c.findings.some(l => l.p > 0 && !l.when && !l.stages && db.findings[l.f]?.kind === 'sym' && db.findings[l.f].salience >= 2);
+    complainsCache.set(c, x);
+  }
+  return x;
+}
+
+/** Сочетание значений скрытых параметров болезни: доля и вероятность каждого признака от её связей. */
+interface Combo {
+  share: number;
+  causes: ReadonlyMap<Id, number>;
+}
+
+const comboCache = new WeakMap<Condition, Map<string, Combo[]>>();
+
+/**
+ * Сочетания значений тех скрытых параметров, от которых зависят признаки болезни (часть 33а), — с
+ * долями. Признаки одного значения идут вместе: у тромбоза глубоких вен с тромбофлебитом есть и
+ * тяж, и тромб в подкожной вене, и её ствол; в среднем по долям каждый из них по отдельности
+ * говорил бы против тромбоза, хотя вместе они — его картина. Без таких параметров — одно сочетание.
+ */
+function combosOf(c: Condition, who?: LinkWho): Combo[] {
+  // у болезни с множителями пола и возраста (FR-MED-1) — свои сочетания на пол и возраст
+  const key = whoKey(c.findings, who);
+  let byWho = comboCache.get(c);
+  if (!byWho) comboCache.set(c, (byWho = new Map()));
+  const cached = byWho.get(key);
+  if (cached) return cached;
+  const names = [...new Set(c.findings.flatMap(l => Object.keys(l.when ?? {})))].filter(n => c.params?.[n]).sort();
+  let combos: { values: Record<string, string>; share: number }[] = [{ values: {}, share: 1 }];
+  for (const n of names) {
+    const dist = c.params![n];
+    const total = Object.values(dist).reduce((a, b) => a + b, 0);
+    combos = combos.flatMap(k => Object.entries(dist).filter(([, w]) => w > 0).map(([v, w]) => ({ values: { ...k.values, [n]: v }, share: (k.share * w) / total })));
+  }
+  const out = combos.map(k => {
+    const causes = new Map<Id, number>();
+    for (const l of c.findings) {
+      if (l.when && !Object.entries(l.when).every(([p, allowed]) => !c.params?.[p] || allowed.includes(k.values[p]))) continue;
+      causes.set(l.f, 1 - (1 - (causes.get(l.f) ?? 0)) * (1 - linkP(l, key ? who : undefined) / P_ONE));
+    }
+    return { share: k.share, causes };
+  });
+  byWho.set(key, out);
+  return out;
+}
+
+/**
+ * Во сколько раз реже болезнь профосмотра, ни одна жалоба от которой не названа (часть 61а): с ней приходят на профосмотр или
+ * со своей жалобой — чужие жалобы при ней бывают, только если её жалобу вытеснили три жалобы сопутствующих.
+ */
+const UNTOLD = 0.01;
+
+/**
+ * Апостериорные вероятности кандидатов. Предположение — одно основное заболевание плюс
+ * известные сопутствующие (`docs/10-medical-model.md` §10). У болезни со скрытыми параметрами,
+ * от которых зависят признаки, правдоподобие — сумма по сочетаниям их значений (часть 33а): так
+ * признаки одного значения считаются вместе, а не порознь.
+ */
+export function posterior(db: ContentDb, candidates: readonly Id[], observations: readonly Observation[], ctx: InferContext): Belief[] {
+  // не улика (часть 39а): «плохо стало N ч назад» о болезни не говорит — только число для окна
+  const expected = expectedOf(db, observations);
+  const grouped = [...byFinding(observations)].filter(([f]) => db.findings[f]?.evidence !== false).map(([f, obs]) => ({ f, e: evidenceOf(db, obs, expected) }));
+  // с чем пришёл (часть 61а): с болезнью профосмотра приходят без жалоб или со своей (`pickComplaints`); пришёл с жалобами, и
+  // ни одна не от неё — она в 100 раз реже: давление, случайно высокое на приёме у человека с изжогой, — не гипертензия.
+  // Тот же довод верен и для остальных болезней (`ensureManifest`), но у них он делал разумного врача увереннее раньше
+  // времени — меньше обследований, и ЭКГ при тахикардии оставалась несделанной; поэтому — только у болезней профосмотра
+  const told = observations.filter(o => o.exam === 'complaint' && o.shown).map(o => o.f);
+  // признак, которого кандидат не меняет, — с фоном, посчитанным один раз на все кандидаты (0.5.11): числа те же
+  const bases = new Map<Id, number>();
+  const background = (f: Id): number => {
+    let x = bases.get(f);
+    if (x === undefined) bases.set(f, (x = findingProbability(db, f, ctx.knownConditions, ctx.knownRisks, unknownMiss(ctx, f, NO_SHARES), ctx)));
+    return x;
+  };
+  const scored = candidates.map(id => {
+    const c = db.conditions[id];
+    const shares = sharesFor(db, id, ctx);
+    const prior = priorWeight(db, id, ctx) * (told.length > 0 && c.checkup && !c.findings.some(l => l.p > 0 && told.includes(l.f)) ? UNTOLD : 1);
+    const combos = combosOf(c, ctx);
+    if (combos.length === 1) {
+      const set = [id, ...(c.requires ?? []), ...ctx.knownConditions];
+      const own = prior === 0 ? null : ownFindings(db, c, shares, ctx.unknowns);
+      let w = prior;
+      for (const { f, e } of grouped) {
+        if (w === 0) break;
+        w *= mix(e, own && !own.has(f) ? background(f) : findingProbability(db, f, set, ctx.knownRisks, unknownMiss(ctx, f, shares), ctx));
+      }
+      return { id, p: w };
+    }
+    if (prior === 0) return { id, p: 0 };
+    // фон признака без самого кандидата — от сочетания не зависит, считается один раз; без «без чего не бывает» и со
+    // своими долями, которые признака не касаются, — общий фон (0.5.11): те же действия, и число то же
+    const others = [...(c.requires ?? []), ...ctx.knownConditions];
+    const hit = c.requires && c.requires.length > 0 ? null : sharedOf(shares, ctx.unknowns);
+    const bg = grouped.map(({ f, e }) => {
+      const other = hit && !hit.has(f) ? background(f) : findingProbability(db, f, others, ctx.knownRisks, unknownMiss(ctx, f, shares), ctx);
+      // сочетание, которое признака не вызывает, — с тем же множителем: он один на все такие сочетания (0.5.11)
+      return { f, e, other, fixed: mix(e, 1 - (1 - other) * (1 - 0)) };
+    });
+    let w = 0;
+    for (const k of combos) {
+      let x = prior * k.share;
+      for (const { f, e, other, fixed } of bg) {
+        if (x === 0) break;
+        const cause = k.causes.get(f);
+        x *= cause === undefined ? fixed : mix(e, 1 - (1 - other) * (1 - cause));
+      }
+      w += x;
+    }
+    return { id, p: w };
+  });
+  const total = scored.reduce((a, b) => a + b.p, 0);
+  return scored.map(b => ({ id: b.id, p: total > 0 ? b.p / total : 0 })).sort((a, b) => b.p - a.p || (a.id < b.id ? -1 : 1));
+}
+
+export function entropy(beliefs: readonly Belief[]): number {
+  let h = 0;
+  for (const b of beliefs) if (b.p > 0) h -= b.p * log2(b.p);
+  return h;
+}
+
+/**
+ * P(признак есть | кандидат) по каждому кандидату — один раз на шаг врача: польза всех обследований
+ * шага (`bestExam`) спрашивает одни и те же признаки у одних и тех же кандидатов при той же
+ * уверенности. Числа — те же, что без запоминания.
+ */
+interface StepCache {
+  db: ContentDb;
+  ctx: InferContext;
+  sets: Id[][];
+  shares: ReadonlyMap<Id, number>[];
+  /** признаки, которые кандидат меняет против фона (`ownFindings`); null — все: у него есть «без чего не бывает» */
+  own: (ReadonlySet<Id> | null)[];
+  byFinding: Map<Id, readonly number[]>;
+  /** фон признака — как у кандидата, который его не меняет */
+  base: Map<Id, number>;
+  /** живые гипотезы, которые меняют признак против фона (`ownersOf`): по признаку и те, что меняют всё */
+  owners?: { by: Map<Id, number[]>; all: number[]; total: number };
+  /** сколько признак уточнит самое большее (`splitEntropy`) */
+  split?: Map<Id, number>;
+}
+const stepCache = new WeakMap<readonly Belief[], StepCache>();
+
+function stepOf(db: ContentDb, beliefs: readonly Belief[], ctx: InferContext): StepCache {
+  let c = stepCache.get(beliefs);
+  if (!c || c.db !== db || c.ctx !== ctx) {
+    const sets = beliefs.map(b => [b.id, ...(db.conditions[b.id].requires ?? []), ...ctx.knownConditions]);
+    const shares = beliefs.map(b => sharesFor(db, b.id, ctx));
+    const own = beliefs.map((b, i) => ownFindings(db, db.conditions[b.id], shares[i], ctx.unknowns));
+    stepCache.set(beliefs, (c = { db, ctx, sets, shares, own, byFinding: new Map(), base: new Map() }));
+  }
+  return c;
+}
+
+function candidateP(db: ContentDb, beliefs: readonly Belief[], ctx: InferContext, f: Id): readonly number[] {
+  const c = stepOf(db, beliefs, ctx);
+  let ps = c.byFinding.get(f);
+  if (!ps) {
+    const { sets, shares, own, base } = c;
+    // гипотеза с уверенностью ровно 0 в пользу не входит — её вероятность признака не нужна; кандидат, который признака
+    // не меняет, — с фоном, посчитанным один раз: те же действия в том же порядке, и числа те же (0.5.11, NFR-PRF-1)
+    const background = (): number => {
+      let x = base.get(f);
+      if (x === undefined) base.set(f, (x = findingProbability(db, f, ctx.knownConditions, ctx.knownRisks, unknownMiss(ctx, f, NO_SHARES), ctx)));
+      return x;
+    };
+    c.byFinding.set(f, (ps = sets.map((set, i) => {
+      if (beliefs[i].p === 0) return 0;
+      const mine = own[i];
+      if (mine && !mine.has(f)) return background();
+      return findingProbability(db, f, set, ctx.knownRisks, unknownMiss(ctx, f, shares[i]), ctx);
+    })));
+  }
+  return ps;
+}
+
+const NO_SHARES: ReadonlyMap<Id, number> = new Map();
+
+/**
+ * Признаки, вероятность которых кандидат меняет против фона: его связи, маски и признаки неизвестного, доля которого у
+ * него своя (`sharesFor`). У кандидата с «без чего не бывает» меняется всё — null: такой считается без сокращений. Доли
+ * кандидата запоминаются на то, что известно о пациенте, — по ним и набор.
+ */
+const ownCache = new WeakMap<ReadonlyMap<Id, number>, ReadonlySet<Id>>();
+function ownFindings(db: ContentDb, c: Condition, shares: ReadonlyMap<Id, number>, unknowns: Unknowns): ReadonlySet<Id> | null {
+  if (c.requires && c.requires.length > 0) return null;
+  if (shares.size === 0) return plainOwn(c);
+  let out = ownCache.get(shares);
+  if (!out) ownCache.set(shares, (out = new Set([...plainOwn(c), ...sharedOf(shares, unknowns)])));
+  return out;
+}
+
+/** Признаки неизвестного, доля которого у кандидата своя (`sharesFor`): их вероятность у него не фоновая. */
+const sharedCache = new WeakMap<ReadonlyMap<Id, number>, ReadonlySet<Id>>();
+const NO_FINDINGS: ReadonlySet<Id> = new Set();
+function sharedOf(shares: ReadonlyMap<Id, number>, unknowns: Unknowns): ReadonlySet<Id> {
+  if (shares.size === 0) return NO_FINDINGS;
+  let out = sharedCache.get(shares);
+  if (!out) {
+    const set = new Set<Id>();
+    const caused = causedBy(unknowns);
+    for (const id of shares.keys()) for (const f of caused.get(id) ?? []) set.add(f);
+    sharedCache.set(shares, (out = set));
+  }
+  return out;
+}
+
+/** Признаки, с которыми у болезни есть связь, и те, которых при ней не бывает (маски). */
+const plainOwnCache = new WeakMap<Condition, ReadonlySet<Id>>();
+function plainOwn(c: Condition): ReadonlySet<Id> {
+  let out = plainOwnCache.get(c);
+  if (!out) plainOwnCache.set(c, (out = new Set([...c.findings.map(l => l.f), ...(c.masks ?? [])])));
+  return out;
+}
+
+/** Обратное к `unknowns.causes`: какие признаки вызывает каждое неизвестное. */
+const causedCache = new WeakMap<Unknowns, ReadonlyMap<Id, readonly Id[]>>();
+function causedBy(unknowns: Unknowns): ReadonlyMap<Id, readonly Id[]> {
+  let out = causedCache.get(unknowns);
+  if (!out) {
+    const m = new Map<Id, Id[]>();
+    for (const [f, list] of unknowns.causes) for (const u of list) (m.get(u.id) ?? m.set(u.id, []).get(u.id)!).push(f);
+    causedCache.set(unknowns, (out = m));
+  }
+  return out;
+}
+
+/** Номера гипотез с уверенностью больше нуля — одни на все обследования шага (0.5.11). */
+const lives = new WeakMap<readonly Belief[], readonly number[]>();
+function liveOf(beliefs: readonly Belief[]): readonly number[] {
+  let out = lives.get(beliefs);
+  if (!out) {
+    const list: number[] = [];
+    for (let i = 0; i < beliefs.length; i++) if (beliefs[i].p > 0) list.push(i);
+    lives.set(beliefs, (out = list));
+  }
+  return out;
+}
+
+/** Энтропия уверенности шага — одна на все обследования шага (0.5.11). */
+const entropies = new WeakMap<readonly Belief[], number>();
+function entropyOf(beliefs: readonly Belief[]): number {
+  let h = entropies.get(beliefs);
+  if (h === undefined) entropies.set(beliefs, (h = entropy(beliefs)));
+  return h;
+}
+
+/** Живые гипотезы шага, меняющие признак против фона (`ownFindings`), — по признакам; одни на все обследования. */
+function ownersOf(c: StepCache, beliefs: readonly Belief[]): NonNullable<StepCache['owners']> {
+  if (!c.owners) {
+    const by = new Map<Id, number[]>();
+    const all: number[] = [];
+    let total = 0;
+    for (const i of liveOf(beliefs)) {
+      total += beliefs[i].p;
+      const mine = c.own[i];
+      if (!mine) all.push(i);
+      else for (const f of mine) (by.get(f) ?? by.set(f, []).get(f)!).push(i);
+    }
+    c.owners = { by, all, total };
+  }
+  return c.owners;
+}
+
+/**
+ * Больше чего признак не уточнит (0.5.16, NFR-PRF-1): у гипотез, которые его не меняют, вероятность признака одна — фон
+ * (`candidateP`), и исход его проверки их между собой не различит. Польза признака — не больше энтропии деления «верна
+ * одна из тех, что его меняют, — или любая из остальных»; у признака, который меняют немногие гипотезы, она мала.
+ */
+function splitEntropy(db: ContentDb, beliefs: readonly Belief[], ctx: InferContext, f: Id): number {
+  const c = stepOf(db, beliefs, ctx);
+  const split = (c.split ??= new Map());
+  let h = split.get(f);
+  if (h === undefined) {
+    const { by, all, total } = ownersOf(c, beliefs);
+    h = 0;
+    let rest = total;
+    for (const list of [all, by.get(f) ?? []]) {
+      for (const i of list) {
+        rest -= beliefs[i].p;
+        h -= beliefs[i].p * log2(beliefs[i].p);
+      }
+    }
+    if (rest > 0) h -= rest * log2(rest);
+    split.set(f, h);
+  }
+  return h;
+}
+
+/**
+ * Сколько обследование уточнит самое большее (0.5.16, NFR-PRF-1): по каждому признаку — не больше бита и не больше
+ * энтропии деления (`splitEntropy`); вероятностей признаков для этого не нужно. Польза (`expectedGain`) не больше этой
+ * границы — с точностью до последних битов логарифма: обследование, которое и с ней не обгонит лучшее, разумный врач не
+ * считает (`bestExam`), и выбор тот же.
+ */
+export function gainBound(db: ContentDb, examId: Id, beliefs: readonly Belief[], ctx: InferContext, observed: ReadonlySet<Id>): number {
+  let most = 0;
+  for (const check of db.exams[examId].checks) {
+    if (observed.has(check.f) || db.findings[check.f]?.evidence === false) continue;
+    most += Math.min(1, splitEntropy(db, beliefs, ctx, check.f));
+  }
+  return most;
+}
+
+/**
+ * Ожидаемая польза обследования в битах. Приближение среза: сумма пользы каждого
+ * проверяемого признака по отдельности при текущей уверенности — точный перебор всех
+ * сочетаний исходов стоит 2^k и для «виртуального врача» на тысячах пациентов дорог.
+ */
+export function expectedGain(db: ContentDb, examId: Id, beliefs: readonly Belief[], ctx: InferContext, observed: ReadonlySet<Id>): number {
+  const exam = db.exams[examId];
+  const h0 = entropyOf(beliefs);
+  // P(«есть» | кандидат) для каждого кандидата; ложная находка, которой по жалобам не ждут, — реже (вопрос 33)
+  const expected = expectedFindings(db, ctx.complaints ?? []);
+  const yesOf = (check: ExamCheck) => {
+    const fp = falseRate(exam, check.f, check.spec, expected) / P_ONE;
+    return candidateP(db, beliefs, ctx, check.f).map(p => (check.sens / P_ONE) * p + fp * (1 - p));
+  };
+  // гипотезы с уверенностью ровно 0 ничего не прибавляют — их и не перебирать (0.5.11): числа те же
+  const live = liveOf(beliefs);
+  const shownP = (yes: readonly number[]) => {
+    let a = 0;
+    for (const i of live) a += beliefs[i].p * yes[i];
+    return a;
+  };
+  let gain = 0;
+  for (const check of exam.checks) {
+    if (observed.has(check.f) || db.findings[check.f]?.evidence === false) continue;
+    const yes = yesOf(check);
+    const pYes = shownP(yes);
+    // энтропия после исхода — как `entropy`, без промежуточного списка
+    const hGiven = (shown: boolean) => {
+      const norm = shown ? pYes : 1 - pYes;
+      if (norm <= 0) return 0;
+      let h = 0;
+      for (const i of live) {
+        const p = (beliefs[i].p * (shown ? yes[i] : 1 - yes[i])) / norm;
+        if (p > 0) h -= p * log2(p);
+      }
+      return h;
+    };
+    // уточнение (часть 41в) скажет что-то, только если покажут признак, после которого его проверяют
+    const base = check.given !== undefined ? exam.checks.find(c => c.f === check.given) : undefined;
+    gain += (h0 - (pYes * hGiven(true) + (1 - pYes) * hGiven(false))) * (base ? shownP(yesOf(base)) : 1);
+  }
+  return Math.max(0, gain);
+}
+
+/**
+ * P(признак | болезнь, параметр `name` = `value`) — связи с этим значением, остальные параметры —
+ * в среднем по долям; плюс фон признака.
+ */
+function findingGivenParam(db: ContentDb, c: Condition, f: Id, name: string, value: string, who?: LinkWho): number {
+  let miss = 1 - (db.findings[f]?.leak ?? 0) / P_ONE;
+  for (const l of c.findings) {
+    if (l.f !== f || (l.when?.[name] && !l.when[name].includes(value))) continue;
+    const others = l.when && Object.fromEntries(Object.entries(l.when).filter(([k]) => k !== name));
+    miss *= 1 - (linkP(l, who) / P_ONE) * linkWeight(c, others ? { ...l, when: others } : l);
+  }
+  return 1 - miss;
+}
+
+/** Пол и возраст из `Who` правил — для множителей связи; без пола — без множителей. */
+const linkWhoOf = (age: Who): LinkWho | undefined => {
+  const w = whoOf(age);
+  return w.sex ? { sex: w.sex, age: w.age } : undefined;
+};
+
+/** Признаки болезни, связи которых зависят от параметра, — только они различают его значения. */
+const tellingOf = (c: Condition, name: string): Id[] => [...new Set(c.findings.filter(l => l.when?.[name]).map(l => l.f))];
+
+/**
+ * Скрытый параметр болезни по тому, что видно (spec 2026-09-chapter-2, часть 32): вероятность
+ * каждого значения при этом диагнозе — его доля, умноженная на правдоподобие наблюдений тех
+ * признаков, чьи связи от параметра зависят (смещение на снимке); остальные признаки значений не
+ * различают. Порядок — как объявлены. Производный параметр (часть 32г) — по правилу решения на
+ * известных признаках и возрасте пациента `age` (`derivedBeliefs`).
+ */
+export function paramBeliefs(db: ContentDb, condId: Id, name: string, observations: readonly Observation[], age: Who, minutes = 0): { value: string; p: number }[] {
+  const c = db.conditions[condId];
+  const dist = c?.params?.[name];
+  if (!dist) return [];
+  const derived = c.derived?.[name];
+  // по правилу или баллам его шкалы (часть 41б) — по выводу на известном
+  const rule = byRule(derived);
+  if (rule) return derivedBeliefs(dist, checkRule(db.rules[rule.rule], age, knownForRule(c, db.rules[rule.rule], observations), rule.from).verdict);
+  // по другим параметрам (часть 41а): «yes» — вероятность, что у каждого из них нужное значение; или (часть 43в)
+  // хоть у одного
+  if (byParams(derived)) {
+    const yes = holds(db, condId, derived, observations, age, minutes);
+    return Object.keys(dist).map(value => ({ value, p: value === 'yes' ? yes : 1 - yes }));
+  }
+  if (byValue(derived)) return derivedBeliefs(dist, valueVerdict(derived, observations, minutes));
+  // по признаку (часть 44а): проверили — есть он или нет; не проверяли — по долям
+  if (byPresence(derived)) return derivedBeliefs(dist, presenceVerdict(derived.has, observations));
+  // атрибут показанного признака взят из этого параметра (часть 42в): ЭКГ показала, какие комплексы у
+  // выскальзывающего ритма, — это и есть вид блокады
+  const seen = attrParam(c, name, observations);
+  if (seen !== undefined && seen in dist) return Object.keys(dist).map(value => ({ value, p: value === seen ? 1 : 0 }));
+  const grouped = byFinding(observations);
+  const expected = expectedOf(db, observations);
+  const telling = tellingOf(c, name).filter(f => grouped.has(f));
+  const weighted = Object.entries(dist).map(([value, share]) => {
+    let w = share;
+    for (const f of telling) w *= mix(evidenceOf(db, grouped.get(f)!, expected), findingGivenParam(db, c, f, name, value, linkWhoOf(age)));
+    return { value, p: w };
+  });
+  const total = weighted.reduce((a, b) => a + b.p, 0);
+  return weighted.map(x => ({ value: x.value, p: total > 0 ? x.p / total : 0 }));
+}
+
+/**
+ * Значение параметра по атрибуту показанного признака, взятому из этого параметра (spec 2026-10-chapter-3,
+ * часть 42в): у последнего такого наблюдения; сторона напротив (часть 41в) — наоборот. Нет — undefined.
+ */
+function attrParam(c: Condition, name: string, observations: readonly Observation[]): string | undefined {
+  for (const l of c.findings) {
+    for (const [k, spec] of Object.entries(l.attrs ?? {})) {
+      if (!('param' in spec) || spec.param !== name) continue;
+      const o = [...observations].reverse().find(x => x.f === l.f && x.shown && x.attrs?.[k] !== undefined);
+      if (!o) continue;
+      const v = o.attrs![k];
+      return spec.opposite ? ({ right: 'left', left: 'right' } as Record<string, string>)[v] ?? v : v;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Порог на измерении (часть 38б): число измерили — «yes», если последнее измеренное ниже порога;
+ * не измеряли — пока неизвестно.
+ */
+function valueVerdict(d: DerivedByValue, observations: readonly Observation[], minutes = 0): RuleVerdict {
+  const measured = observations.filter(o => o.f === d.f && o.value !== undefined);
+  if (measured.length === 0) return 'unknown';
+  // с ходом времени (часть 41а): часы от начала — плюс часы от прихода до решения
+  return crosses(d, measured[measured.length - 1].value! + (d.clock ? minutes / 60 : 0)) ? 'yes' : 'no';
+}
+
+/** Есть ли признак по обследованиям (часть 44а): найден — «yes», проверяли и не нашли — «no», не проверяли — неизвестно. */
+function presenceVerdict(f: Id, observations: readonly Observation[]): RuleVerdict {
+  const seen = observations.filter(o => o.f === f);
+  if (seen.length === 0) return 'unknown';
+  return seen.some(o => o.shown) ? 'yes' : 'no';
+}
+
+/**
+ * Вероятность «yes» производного по параметрам: у каждого из `all` — одно из названных значений (часть 41а) —
+ * произведение; хоть у одного из `any` (часть 43в) — дополнение произведения «не»; параметры считаются
+ * независимыми. С `skip` — без него: насколько от него одного зависит ответ — для `all` — вероятность, что
+ * остальные уже такие, для `any` — что ни один из остальных не такой.
+ */
+function holds(db: ContentDb, condId: Id, d: DerivedByParams, observations: readonly Observation[], age: Who, minutes: number, skip?: string): number {
+  let all = 1, none = 1;
+  for (const [k, values] of Object.entries(paramsOf(d))) {
+    if (k === skip) continue;
+    const p = paramBeliefs(db, condId, k, observations, age, minutes).filter(b => values.includes(b.value)).reduce((a, b) => a + b.p, 0);
+    all *= p;
+    none *= 1 - p;
+  }
+  if (d.all) return all;
+  return skip === undefined ? 1 - none : none;
+}
+
+/**
+ * Известное для правила, по которому выводят параметр болезни (spec 2026-10-chapter-3, часть 43б): врач,
+ * поставивший диагноз, считает шкалу этой болезни. Условие применения, которое у болезни есть всегда,
+ * по определению, — тромбы на КТ-ангиографии при ТЭЛА, фибрилляция на ЭКГ, кровь на КТ, — считается
+ * найденным, даже если обследование его пропустило: при ТЭЛА, которую КТ-ангиография не показала, sPESI
+ * всё равно решает, где лечить.
+ */
+export function knownForRule(c: Condition | undefined, rule: Rule, observations: readonly Observation[]): Known {
+  const known = knownOf(observations);
+  const always = new Set((c?.findings ?? []).filter(l => !l.when && l.p >= P_ONE).map(l => l.f));
+  const assumed = new Set((rule.requires ?? []).filter(f => always.has(f)));
+  return assumed.size === 0 ? known : f => (assumed.has(f) ? true : known(f));
+}
+
+/**
+ * Производный параметр (часть 32г): правило выполнено — «yes» наверняка, выполниться уже не может —
+ * «no»; пока неизвестно — доли из записи (игровая оценка: сколько таких больных с показанием).
+ */
+function derivedBeliefs(dist: Record<string, number>, verdict: RuleVerdict): { value: string; p: number }[] {
+  const total = Object.values(dist).reduce((a, b) => a + b, 0);
+  return Object.entries(dist).map(([value, share]) => ({ value, p: verdict !== 'unknown' ? (value === verdict ? 1 : 0) : total > 0 ? share / total : 0 }));
+}
+
+/**
+ * Самое вероятное значение каждого скрытого параметра болезни (часть 32); ничего такого не видно —
+ * самое частое, при равенстве — объявленное раньше. `age` — возраст пациента: от него зависят
+ * правила производных параметров (часть 32г).
+ */
+export function likelyParams(db: ContentDb, condId: Id, observations: readonly Observation[], age: Who, minutes = 0): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const name of Object.keys(db.conditions[condId]?.params ?? {})) {
+    let best: { value: string; p: number } | undefined;
+    for (const b of paramBeliefs(db, condId, name, observations, age, minutes)) if (!best || b.p > best.p) best = b;
+    if (best) out[name] = best.value;
+  }
+  return out;
+}
+
+/**
+ * Польза обследования для скрытого параметра, биты (часть 32): насколько оно в среднем уточнит
+ * значение при этом диагнозе — сумма по проверяемым признакам, как у `expectedGain`. У производного
+ * параметра (часть 32г) — приближение: вывод правила станет известен, когда проверят всё, что
+ * осталось (`left`), поэтому польза — неопределённость, умноженная на долю оставшегося, которую
+ * обследование проверит.
+ */
+export function paramGain(db: ContentDb, condId: Id, name: string, examId: Id, observations: readonly Observation[], age: Who, minutes = 0): number {
+  const c = db.conditions[condId];
+  const exam = db.exams[examId];
+  if (!c || !exam) return 0;
+  const beliefs = paramBeliefs(db, condId, name, observations, age, minutes);
+  if (beliefs.length < 2) return 0;
+  const derived = c.derived?.[name];
+  // по другим параметрам (часть 41а) — приближение: польза для каждого из них, умноженная на
+  // вероятность, что остальные уже такие, как нужно; окклюзию ищут, только если NIHSS 6 и больше и
+  // окно ещё открыто. «Хоть один» (часть 43в) — на вероятность, что остальные ответа не дают
+  if (byParams(derived)) {
+    return Object.keys(paramsOf(derived)).reduce((sum, k) => sum + paramGain(db, condId, k, examId, observations, age, minutes) * holds(db, condId, derived, observations, age, minutes, k), 0);
+  }
+  const rule = byRule(derived);
+  if (rule) {
+    const { left } = checkRule(db.rules[rule.rule], age, knownForRule(c, db.rules[rule.rule], observations), rule.from);
+    const covered = left.filter(f => exam.checks.some(k => k.f === f)).length;
+    return left.length > 0 ? (entropy(beliefs.map(b => ({ id: b.value, p: b.p }))) * covered) / left.length : 0;
+  }
+  // порог на измерении (часть 38б): обследование, которое меряет число, снимает всю неопределённость
+  if (byValue(derived)) return exam.checks.some(k => k.f === derived.f) ? entropy(beliefs.map(b => ({ id: b.value, p: b.p }))) : 0;
+  // по признаку (часть 44а): обследование, которое его проверяет, — тоже
+  if (byPresence(derived)) return exam.checks.some(k => k.f === derived.has) ? entropy(beliefs.map(b => ({ id: b.value, p: b.p }))) : 0;
+  const observed = new Set(observations.map(o => o.f));
+  const telling = new Set(tellingOf(c, name));
+  const expected = expectedOf(db, observations);
+  const h0 = entropy(beliefs.map(b => ({ id: b.value, p: b.p })));
+  let gain = 0;
+  for (const check of exam.checks) {
+    if (observed.has(check.f) || !telling.has(check.f)) continue;
+    const sens = check.sens / P_ONE;
+    const fp = falseRate(exam, check.f, check.spec, expected) / P_ONE;
+    const yes = beliefs.map(b => {
+      const q = findingGivenParam(db, c, check.f, name, b.value, linkWhoOf(age));
+      return sens * q + fp * (1 - q);
+    });
+    let pYes = 0;
+    beliefs.forEach((b, i) => (pYes += b.p * yes[i]));
+    const hGiven = (shown: boolean) => {
+      const norm = shown ? pYes : 1 - pYes;
+      if (norm <= 0) return 0;
+      return entropy(beliefs.map((b, i) => ({ id: b.value, p: (b.p * (shown ? yes[i] : 1 - yes[i])) / norm })));
+    };
+    gain += h0 - (pYes * hGiven(true) + (1 - pYes) * hGiven(false));
+  }
+  return Math.max(0, gain);
+}
+
+/** Что известно о пациенте наверняка — из ответов на вопросы (`hx.*`, связанных с риском или болезнью). */
+export function knownFacts(db: ContentDb, observations: readonly Observation[]): { risks: Id[]; conditions: Id[] } {
+  const shownHx = new Set(observations.filter(o => o.shown && o.f.startsWith('hx.')).map(o => o.f));
+  const risks = Object.keys(db.risks).filter(id => db.risks[id].findings.some(l => shownHx.has(l.f))).sort();
+  const conditions = Object.keys(db.conditions).filter(id => db.conditions[id].chronic && db.conditions[id].findings.some(l => shownHx.has(l.f))).sort();
+  return { risks, conditions };
+}

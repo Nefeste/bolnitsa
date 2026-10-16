@@ -1,4 +1,4 @@
-// из anamnez: src/engine/med/infer.ts @ 96503ac
+// из anamnez: src/engine/med/infer.ts @ 96503ac, изменено: неизвестное, вероятности признаков и произведения правдоподобия запоминаются между шагами (spec 2026-10-engine-speed, ч. 4)
 // Уверенность так, как её считал бы идеальный врач на месте игрока, — только по
 // открытому (`docs/10-medical-model.md` §10). Нужна подсказкам, оценке и разбору.
 //
@@ -194,11 +194,50 @@ export function contextOf(db: ContentDb, patient: { sex: Sex; age: number; seaso
   const told = complaintsOf(observations);
   return {
     ...base,
-    unknowns: unknownsOf(db, observations, base),
+    unknowns: sameUnknowns(db, observations, base),
     ...(prior ? { prior } : {}),
     ...(patient.complaints?.length === 0 ? { checkup: true } : {}),
     ...(told.length > 0 ? { complaints: told } : {}),
   };
+}
+
+/**
+ * Неизвестное — одно на то, от чего оно зависит (spec 2026-10-engine-speed, ч. 4): пол, возраст, профессия, известные
+ * факторы риска и болезни, жалобы и ответы о себе (`hx.`). От шага к шагу врача это обычно одно и то же, и тогда шаг
+ * получает тот же объект — а с ним и всё, что запомнено по нему: доли кандидатов, их признаки, вероятности признаков
+ * (`fpOf`). Числа те же: `unknownsOf` от тех же входов.
+ */
+const unknownsCache = new WeakMap<ContentDb, Map<string, Unknowns>>();
+const UNKNOWNS_KEEP = 256;
+
+function sameUnknowns(db: ContentDb, observations: readonly Observation[], ctx: Omit<InferContext, 'unknowns'>): Unknowns {
+  let byKey = unknownsCache.get(db);
+  if (!byKey) unknownsCache.set(db, (byKey = new Map()));
+  let key = `${ctx.sex}|${ctx.age}|${ctx.job ?? ''}|${ctx.knownRisks.join(',')}|${ctx.knownConditions.join(',')}|${complaintsOf(observations).join(',')}`;
+  for (const o of observations) if (o.f.startsWith('hx.')) key += `|${JSON.stringify(o)}`;
+  let out = byKey.get(key);
+  if (!out) {
+    // память — не правда: забытое посчитается заново тем же
+    if (byKey.size >= UNKNOWNS_KEEP) byKey.clear();
+    byKey.set(key, (out = unknownsOf(db, observations, ctx)));
+  }
+  return out;
+}
+
+/**
+ * P(признак есть | кандидат, всё известное) — запомненная на неизвестное (`sameUnknowns`): от него зависят и набор
+ * состояний кандидата, и известные факторы риска, и доли, и пол с возрастом. `id` — кандидат вместе с его «без чего не
+ * бывает»; '' — фон без кандидата; '~id' — фон без кандидата, но с его «без чего не бывает» и долями (`posterior`).
+ */
+const fpCache = new WeakMap<Unknowns, Map<string, Map<Id, number>>>();
+function fpOf(ctx: InferContext, id: string, f: Id, compute: () => number): number {
+  let byId = fpCache.get(ctx.unknowns);
+  if (!byId) fpCache.set(ctx.unknowns, (byId = new Map()));
+  let byF = byId.get(id);
+  if (!byF) byId.set(id, (byF = new Map()));
+  let x = byF.get(f);
+  if (x === undefined) byF.set(f, (x = compute()));
+  return x;
 }
 
 /** Жалобы среди наблюдений — по порядку, как пациент их назвал (`complaintObservations`). */
@@ -392,6 +431,39 @@ function combosOf(c: Condition, who?: LinkWho): Combo[] {
 const UNTOLD = 0.01;
 
 /**
+ * Произведения правдоподобия прошлого шага (spec 2026-10-engine-speed, ч. 4): на то же неизвестное (`sameUnknowns`) и
+ * тот же вариант (жалобы, профосмотр, запись) — признаки с их уликами по порядку и у каждого кандидата его априорный
+ * вес и произведение после каждого признака (по сочетаниям значений скрытых параметров).
+ */
+interface PosteriorMemo {
+  fs: Id[];
+  es: Evidence[];
+  by: Map<Id, { prior: number; runs: number[][] }>;
+}
+const posteriorMemos = new WeakMap<Unknowns, Map<string, PosteriorMemo>>();
+
+function posteriorMemoOf(ctx: InferContext, variant: string): PosteriorMemo {
+  let byVariant = posteriorMemos.get(ctx.unknowns);
+  if (!byVariant) posteriorMemos.set(ctx.unknowns, (byVariant = new Map()));
+  let m = byVariant.get(variant);
+  if (!m) byVariant.set(variant, (m = { fs: [], es: [], by: new Map() }));
+  return m;
+}
+
+/**
+ * Сколько первых признаков с уликами совпадает с прошлым шагом; запомнить нынешние. Произведения всех кандидатов — и
+ * тех, кого в этот раз не спросят, — укорачиваются до общего начала: дальше они считались по другим признакам.
+ */
+function commonPrefix(m: PosteriorMemo, grouped: readonly { f: Id; e: Evidence }[]): number {
+  let n = 0;
+  while (n < m.fs.length && n < grouped.length && m.fs[n] === grouped[n].f && m.es[n].ifPresent === grouped[n].e.ifPresent && m.es[n].ifAbsent === grouped[n].e.ifAbsent) n++;
+  if (n < m.fs.length) for (const run of m.by.values()) for (const xs of run.runs) if (xs.length > n + 1) xs.length = n + 1;
+  m.fs = grouped.map(g => g.f);
+  m.es = grouped.map(g => g.e);
+  return n;
+}
+
+/**
  * Апостериорные вероятности кандидатов. Предположение — одно основное заболевание плюс
  * известные сопутствующие (`docs/10-medical-model.md` §10). У болезни со скрытыми параметрами,
  * от которых зависят признаки, правдоподобие — сумма по сочетаниям их значений (часть 33а): так
@@ -407,47 +479,62 @@ export function posterior(db: ContentDb, candidates: readonly Id[], observations
   // времени — меньше обследований, и ЭКГ при тахикардии оставалась несделанной; поэтому — только у болезней профосмотра
   const told = observations.filter(o => o.exam === 'complaint' && o.shown).map(o => o.f);
   // признак, которого кандидат не меняет, — с фоном, посчитанным один раз на все кандидаты (0.5.11): числа те же
-  const bases = new Map<Id, number>();
-  const background = (f: Id): number => {
-    let x = bases.get(f);
-    if (x === undefined) bases.set(f, (x = findingProbability(db, f, ctx.knownConditions, ctx.knownRisks, unknownMiss(ctx, f, NO_SHARES), ctx)));
-    return x;
-  };
+  const background = (f: Id): number => fpOf(ctx, '', f, () => findingProbability(db, f, ctx.knownConditions, ctx.knownRisks, unknownMiss(ctx, f, NO_SHARES), ctx));
+  // произведение по признакам — с того места, где наблюдения разошлись с прошлым шагом (spec 2026-10-engine-speed, ч. 4):
+  // те же множители в том же порядке, поэтому и числа те же до бита
+  const memo = posteriorMemoOf(ctx, `${ctx.season}|${told.join(',')}|${ctx.checkup ? 1 : 0}|${ctx.prior ? `${ctx.prior.x}:${ctx.prior.ids.join(',')}` : ''}`);
+  const same = commonPrefix(memo, grouped);
   const scored = candidates.map(id => {
     const c = db.conditions[id];
     const shares = sharesFor(db, id, ctx);
-    const prior = priorWeight(db, id, ctx) * (told.length > 0 && c.checkup && !c.findings.some(l => l.p > 0 && told.includes(l.f)) ? UNTOLD : 1);
     const combos = combosOf(c, ctx);
+    let run = memo.by.get(id);
+    if (!run) {
+      const prior = priorWeight(db, id, ctx) * (told.length > 0 && c.checkup && !c.findings.some(l => l.p > 0 && told.includes(l.f)) ? UNTOLD : 1);
+      run = { prior, runs: combos.length === 1 ? [[prior]] : prior === 0 ? [] : combos.map(k => [prior * k.share]) };
+      memo.by.set(id, run);
+    }
+    const prior = run.prior;
     if (combos.length === 1) {
       const set = [id, ...(c.requires ?? []), ...ctx.knownConditions];
       const own = prior === 0 ? null : ownFindings(db, c, shares, ctx.unknowns);
-      let w = prior;
-      for (const { f, e } of grouped) {
-        if (w === 0) break;
-        w *= mix(e, own && !own.has(f) ? background(f) : findingProbability(db, f, set, ctx.knownRisks, unknownMiss(ctx, f, shares), ctx));
+      const xs = run.runs[0];
+      if (xs.length > same + 1) xs.length = same + 1;
+      for (let i = xs.length - 1; i < grouped.length; i++) {
+        const w = xs[i];
+        if (w === 0) {
+          xs.push(0);
+          continue;
+        }
+        const { f, e } = grouped[i];
+        xs.push(w * mix(e, own && !own.has(f) ? background(f) : fpOf(ctx, id, f, () => findingProbability(db, f, set, ctx.knownRisks, unknownMiss(ctx, f, shares), ctx))));
       }
-      return { id, p: w };
+      return { id, p: xs[grouped.length] };
     }
     if (prior === 0) return { id, p: 0 };
     // фон признака без самого кандидата — от сочетания не зависит, считается один раз; без «без чего не бывает» и со
     // своими долями, которые признака не касаются, — общий фон (0.5.11): те же действия, и число то же
     const others = [...(c.requires ?? []), ...ctx.knownConditions];
     const hit = c.requires && c.requires.length > 0 ? null : sharedOf(shares, ctx.unknowns);
-    const bg = grouped.map(({ f, e }) => {
-      const other = hit && !hit.has(f) ? background(f) : findingProbability(db, f, others, ctx.knownRisks, unknownMiss(ctx, f, shares), ctx);
-      // сочетание, которое признака не вызывает, — с тем же множителем: он один на все такие сочетания (0.5.11)
-      return { f, e, other, fixed: mix(e, 1 - (1 - other) * (1 - 0)) };
-    });
+    const otherOf = (f: Id) => (hit && !hit.has(f) ? background(f) : fpOf(ctx, `~${id}`, f, () => findingProbability(db, f, others, ctx.knownRisks, unknownMiss(ctx, f, shares), ctx)));
     let w = 0;
-    for (const k of combos) {
-      let x = prior * k.share;
-      for (const { f, e, other, fixed } of bg) {
-        if (x === 0) break;
+    combos.forEach((k, n) => {
+      const xs = run.runs[n];
+      if (xs.length > same + 1) xs.length = same + 1;
+      for (let i = xs.length - 1; i < grouped.length; i++) {
+        const x = xs[i];
+        if (x === 0) {
+          xs.push(0);
+          continue;
+        }
+        const { f, e } = grouped[i];
+        const other = otherOf(f);
         const cause = k.causes.get(f);
-        x *= cause === undefined ? fixed : mix(e, 1 - (1 - other) * (1 - cause));
+        // сочетание, которое признака не вызывает, — с тем же множителем, что у всех таких сочетаний (0.5.11)
+        xs.push(x * (cause === undefined ? mix(e, 1 - (1 - other) * (1 - 0)) : mix(e, 1 - (1 - other) * (1 - cause))));
       }
-      w += x;
-    }
+      w += xs[grouped.length];
+    });
     return { id, p: w };
   });
   const total = scored.reduce((a, b) => a + b.p, 0);
@@ -502,14 +589,14 @@ function candidateP(db: ContentDb, beliefs: readonly Belief[], ctx: InferContext
     // не меняет, — с фоном, посчитанным один раз: те же действия в том же порядке, и числа те же (0.5.11, NFR-PRF-1)
     const background = (): number => {
       let x = base.get(f);
-      if (x === undefined) base.set(f, (x = findingProbability(db, f, ctx.knownConditions, ctx.knownRisks, unknownMiss(ctx, f, NO_SHARES), ctx)));
+      if (x === undefined) base.set(f, (x = fpOf(ctx, '', f, () => findingProbability(db, f, ctx.knownConditions, ctx.knownRisks, unknownMiss(ctx, f, NO_SHARES), ctx))));
       return x;
     };
     c.byFinding.set(f, (ps = sets.map((set, i) => {
       if (beliefs[i].p === 0) return 0;
       const mine = own[i];
       if (mine && !mine.has(f)) return background();
-      return findingProbability(db, f, set, ctx.knownRisks, unknownMiss(ctx, f, shares[i]), ctx);
+      return fpOf(ctx, beliefs[i].id, f, () => findingProbability(db, f, set, ctx.knownRisks, unknownMiss(ctx, f, shares[i]), ctx));
     })));
   }
   return ps;
