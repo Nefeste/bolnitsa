@@ -12,9 +12,14 @@
   пути владельца — в [`.github/CODEOWNERS`](../.github/CODEOWNERS).
 - Проверки на PR (`pr.yml`) появятся вместе с первым кодом: типы, тесты движка, тесты базы
   (ADR студии [0019](https://github.com/Nefeste/gornitsa/blob/main/adr/0019-ci-on-pr.md)).
-- Сборка игры для ПК — только на тег версии `vX.Y.Z`, как APK у мобильных игр; ручного
-  запуска нет. Как именно собирается установщик — решат пробы
-  ([`specs/2026-10-prototype.md`](specs/2026-10-prototype.md), «Технология»).
+- Сборка для ПК — только на тег версии `vX.Y.Z`, как APK у мобильных игр; ручного запуска
+  нет. Тег ставит владелец. Workflow — [`.github/workflows/build.yml`](../.github/workflows/build.yml):
+  Electron, Windows (zip и portable `.exe`) и Linux (AppImage и tar.gz) — всё на
+  `ubuntu-24.04`, без wine; файлы — в релиз на тег, версии 0.x — пре-релизы. Тег сверяется с
+  версией в `package.json`: `v0.0.2` при `0.0.1` останавливает сборку.
+- Пока игры нет, собирается проба карты (`spikes/map-render`), версия — в её `package.json`.
+  Установщика NSIS и своей иконки у `.exe` нет: без wine они не собираются
+  (`spikes/map-render/README.md`, «Сборка»).
 
 ## Пробы
 

@@ -1,0 +1,91 @@
+# Сборка ПК-версии — только на тег версии vX.Y.Z (ADR студии 0019): слияние в main её не
+# запускает, ручного запуска нет. Тег ставит владелец.
+#
+# Пока игры нет, собирается проба карты spikes/map-render (docs/specs/2026-10-prototype.md,
+# «Пробы»): Electron, Windows (zip и portable .exe) и Linux (AppImage и tar.gz) — всё из Linux,
+# без wine (spikes/map-render/README.md, «Сборка»). Когда появится игра, сборка переедет на неё.
+# Файлы уходят в релиз на этот тег; версии 0.x — пре-релизы. Репозиторий закрыт: релиз видят
+# только участники.
+name: Сборка ПК
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Windows и Linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: spikes/map-render
+    steps:
+      - uses: actions/checkout@v5
+
+      # тег — та же версия, что в package.json пробы: v0.0.2 при 0.0.1 — ошибка, а не чужой релиз
+      - name: Тег и версия
+        run: |
+          V=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_NAME" != "v$V" ]; then
+            echo "::error::Тег $GITHUB_REF_NAME, а в spikes/map-render/package.json версия $V."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: spikes/map-render/package-lock.json
+
+      # Electron и инструменты electron-builder скачиваются один раз и кэшируются
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+          key: electron-${{ runner.os }}-${{ hashFiles('spikes/map-render/package-lock.json') }}
+
+      - run: npm ci --no-audit --no-fund
+      - name: Типы
+        run: npm run typecheck
+      - name: Страница
+        run: npm run build
+      - name: Windows и Linux
+        run: npx electron-builder --linux --win --publish never
+      - run: ls -la release
+
+      - name: Описание релиза
+        run: |
+          {
+            echo "Проба карты больницы на ПК: PixiJS против CanvasKit, Electron (spikes/map-render)."
+            echo
+            echo "**Windows:** \`*-win-x64.zip\` — распаковать и запустить \`BolnitsaProbe.exe\`; \`*-win-x64.exe\` — то же одним файлом."
+            echo "**Linux:** \`*.AppImage\` или \`*.tar.gz\`."
+            echo
+            echo "Сборка не подписана: Windows может спросить «Запустить всё равно?»."
+            echo "Что делать с пробой — spikes/map-render/README.md, «Инструкция для владельца»."
+            echo
+            echo "Собрано из коммита ${{ github.sha }}, сборка ${{ github.run_number }}."
+          } > release.md
+
+      - name: Релиз ${{ github.ref_name }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Проба карты ${{ github.ref_name }}
+          body_path: spikes/map-render/release.md
+          prerelease: ${{ startsWith(github.ref_name, 'v0.') }}
+          fail_on_unmatched_files: true
+          files: |
+            spikes/map-render/release/*.AppImage
+            spikes/map-render/release/*.tar.gz
+            spikes/map-render/release/*-win-x64.zip
+            spikes/map-render/release/*-win-x64.exe

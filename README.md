@@ -13,7 +13,9 @@
 
 ## Как запустить
 
-Появится с первым кодом (пробы, [`docs/specs/2026-10-prototype.md`](docs/specs/2026-10-prototype.md)).
+Игры пока нет — есть пробы в [`spikes/`](spikes/): у каждой свой `README.md` с командами.
+Готовая сборка пробы карты для Windows и Linux — в релизе на тег версии
+([`docs/05-process.md`](docs/05-process.md)).
 
 ## Версии
 
