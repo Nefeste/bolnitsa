@@ -1,0 +1,7 @@
+node_modules/
+dist/
+release/
+results/*.tmp
+*.log
+/bench-electron-*
+results/*.png
