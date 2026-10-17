@@ -328,7 +328,6 @@ export class Game {
   /** Новая больница из потока (стройка, найм, убрали освободившееся). */
   private applyWorld(w: World) {
     if (w.works) this.works = w.works;
-    this.broken = new Set(w.broken ?? []);
     this.hospital = w.hospital;
     this.staff = w.staff;
     if (this.fresh) {
@@ -346,7 +345,10 @@ export class Game {
     this.t = s.buf[H.t];
     this.day = s.buf[H.day];
     // новая больница — раньше людей: номера помещений в срезе — по её списку
+    if (s.broken) this.broken = new Set(s.broken);
     if (s.world) this.applyWorld(s.world);
+    // сломанные аппараты (в 08:00, при загрузке) — причины «не работает» заново, сцена та же
+    if (s.broken) this.texts();
     if (s.path && s.path.id === this.watching) this.path = s.path;
     this.pop.sync(s.buf, s.names);
     for (const n of s.notices) {

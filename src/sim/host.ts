@@ -34,7 +34,9 @@ export function createSim(db: ContentDb): SimHost {
   let owed = 0;
   const handles = new Handles();
   // номера помещений и штата в срезе — по спискам больницы; меняются вместе с ними
-  let shown: { hospital: unknown; staff: unknown; broken?: unknown } = { hospital: undefined, staff: undefined };
+  let shown: { hospital: unknown; staff: unknown } = { hospital: undefined, staff: undefined };
+  /** список сломанных аппаратов, который окно уже получило; null — ещё никакого */
+  let sentBroken: unknown = null;
   /** чей путь показывает окно и каким он был отправлен */
   let watch: string | null = null;
   let sentPath: string | undefined;
@@ -44,11 +46,17 @@ export function createSim(db: ContentDb): SimHost {
   const desk = new DoctorDesk(db);
   const slice = (notices: Notice[], refused?: DoctorOut['refused']): FromSim => {
     let world: World | undefined;
-    if (s!.hospital !== shown.hospital || s!.staff !== shown.staff || s!.broken !== shown.broken) {
-      shown = { hospital: s!.hospital, staff: s!.staff, broken: s!.broken };
+    if (s!.hospital !== shown.hospital || s!.staff !== shown.staff) {
+      shown = { hospital: s!.hospital, staff: s!.staff };
       rooms = new Map((s!.hospital?.rooms ?? []).map((r, i) => [r.id, i]));
       staff = new Map((s!.staff ?? []).map((m, i) => [m.id, i]));
-      if (s!.hospital) world = { hospital: s!.hospital, staff: s!.staff ?? [], ...(s!.works ? { works: { spent: s!.works.spent, undo: s!.works.undo.length } } : {}), ...(s!.broken?.length ? { broken: [...s!.broken] } : {}) };
+      if (s!.hospital) world = { hospital: s!.hospital, staff: s!.staff ?? [], ...(s!.works ? { works: { spent: s!.works.spent, undo: s!.works.undo.length } } : {}) };
+    }
+    // сломанные аппараты — отдельно от больницы: новый список в 08:00 не пересобирает сцену окна
+    let broken: string[] | undefined;
+    if (s!.broken !== sentBroken) {
+      sentBroken = s!.broken;
+      broken = [...(s!.broken ?? [])];
     }
     // путь, который показывает окно: шагов стало больше, путь кончился, его убрали — заново
     let path: PathView | undefined;
@@ -62,12 +70,13 @@ export function createSim(db: ContentDb): SimHost {
     }
     const lag = owed + (s!.until !== undefined ? s!.until - s!.t : 0);
     const { buf, names } = packSlice(s!, sliceOf(s!, officeOf(db, s!)), lag, handles, rooms, staff);
-    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
+    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
   };
   const fresh = () => {
     owed = 0;
     handles.reset();
     shown = { hospital: undefined, staff: undefined };
+    sentBroken = null;
     sentPath = undefined;
     desk.reset();
   };

@@ -49,8 +49,6 @@ export interface World {
   staff: StaffMember[];
   /** стройка ПК (spec 2026-10-build): потрачено на стройку, ₽, и сколько действий можно отменить */
   works?: { spent: number; undo: number };
-  /** сломанные с утра аппараты — «помещение:место» (spec 2026-10-flow-ui: «не работает: аппарат сломан») */
-  broken?: string[];
 }
 
 /** Путь пациента, которого показывает окно (`watch`); пути нет — null (не поток для ПК или путь уже убран). */
@@ -62,9 +60,11 @@ export interface PathView {
 export type FromSim =
   /**
    * после каждого tick и command: упакованный срез (`buf`, src/sim/pack.ts), строки новых людей, извещения, на сколько
-   * часы смены отстали от часов игры (игровых секунд); `world` — если больница или штат изменились
+   * часы смены отстали от часов игры (игровых секунд); `world` — если больница или штат изменились; `broken` — сломанные
+   * с утра аппараты, «помещение:место», когда список изменился (spec 2026-10-flow-ui: «не работает: аппарат сломан»; меняется
+   * в 08:00 — без пересборки сцены)
    */
-  | ({ kind: 'slice'; buf: Int32Array; names: NameRow[]; notices: Notice[]; lag: number; world?: World; path?: PathView } & DoctorOut)
+  | ({ kind: 'slice'; buf: Int32Array; names: NameRow[]; notices: Notice[]; lag: number; world?: World; path?: PathView; broken?: string[] } & DoctorOut)
   | { kind: 'state'; state: ShiftState }
   | { kind: 'error'; message: string };
 
