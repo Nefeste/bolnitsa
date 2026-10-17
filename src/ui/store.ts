@@ -6,6 +6,7 @@ import type { Lang } from '../i18n';
 import type { PersonInfo } from '../render/population';
 import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
+import type { DoctorAction, DoctorHud } from './doctor/types';
 
 export type Speed = 0 | 1 | 2 | 4;
 export type Tab = 'patients' | 'staff' | 'asks' | 'journal' | 'reports' | 'goals';
@@ -92,6 +93,8 @@ export interface Hud {
   gpuMs: number | null;
   people: number;
   version: string;
+  /** режим врача (spec docs/specs/2026-10-doctor-mode.md): окно врача, карта пациента, просьбы */
+  doctor?: DoctorHud;
 }
 
 export const initial: Hud = {
@@ -168,6 +171,8 @@ export interface Actions {
   dismiss(id: string): void;
   /** начало игры: пустое здание или готовая больница */
   startGame(kind: 'empty' | 'preset'): void;
+  /** режим врача (spec docs/specs/2026-10-doctor-mode.md) */
+  doctor(a: DoctorAction): void;
 }
 
 export function useHud(store: Store): Hud {

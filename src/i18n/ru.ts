@@ -1,4 +1,6 @@
 // Строки игры по-русски (устав, docs/05-rules.md: все строки для игрока — здесь). Английский — en.ts, того же вида.
+import { doctorRu } from './doctor.ru';
+
 export const ru = {
   app: {
     title: 'Больница',
@@ -176,7 +178,7 @@ export const ru = {
     needs: 'Нужно',
     posts: 'Должности',
     vacant: 'никого',
-    you: 'вы — с режимом врача (часть 4)',
+    you: 'вы — ваш кабинет',
     hire: (name: string, salary: string) => `Нанять: ${name} — ${salary} в смену`,
     dismiss: 'Уволить',
     demolish: (back: string) => `Снести — вернётся ${back}`,
@@ -204,7 +206,6 @@ export const ru = {
     ambulance: 'скорая привезла пациента',
     resultsReady: 'готовы результаты',
     arrest: 'фибрилляция: разряд под монитором',
-    consult: 'просят посмотреть',
     morning: 'планёрка: итоги суток',
     shiftEnd: 'приём закончен',
   },
@@ -227,6 +228,8 @@ export const ru = {
     closeCam: 'крупный план',
   },
   shots: { overview: 'общий план, день', reception: 'регистратура и зал ожидания', ward: 'палата', evening: 'вечер, средний план' },
+  // режим врача (spec docs/specs/2026-10-doctor-mode.md): карта пациента и разбор — `case`, окно врача — `doctor`
+  ...doctorRu,
 };
 
 function years(n: number): string {

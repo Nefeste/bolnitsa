@@ -81,7 +81,8 @@ npm test                           # content + bun test tools/test (~5 min)
 npm run build                      # content + page and worker (esbuild) → dist/ (not in git)
 npm run electron                   # build + the game window
 npm run e2e                        # after build: the game in headless Chromium, real clicks (preset; then building six rooms
-                                   # by mouse in the empty building); screenshots in tools/app/out/; `-- --only 1|2` for one part
+                                   # by mouse in the empty building; then the doctor mode: a consult, a whole case, «Take the
+                                   # case», «My office»); screenshots in tools/app/out/; `-- --only 1|2|4` for one part
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
 npm run dist:win                   # build + Windows x64 zip → release/ (from Linux, no wine) — the only release file for now
@@ -117,7 +118,9 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   24-hour day of the PC flow is ours as well: `shift/day.ts` (outpatient hours, arrivals by hour of day), the 08:00
   meeting and the morning round in `engine.ts`, shapes in `content/hospital/day.yaml` — `docs/specs/2026-10-day.md`.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`), Web Worker
-  (`worker.ts`) and its client in the window (`client.ts`). The window never runs the engine.
+  (`worker.ts`) and its client in the window (`client.ts`). The window never runs the engine. The doctor mode
+  (`docs/specs/2026-10-doctor-mode.md`): `caseView.ts` (a copy of Anamnez's player view of a case) and `doctor.ts` build the
+  patient card and the doctor's lists here and send them ready-made — the window never sees a patient's truth.
 - `src/app/` — the game in the window: loads the database and models, starts with the empty building or the preset,
   frame loop, clock, input, build tools (`build.ts`), room labels (`labels.ts`), auto-bench (`bench.ts`).
 - `src/render/` — the 3D view (Three.js): `layout.ts` places template items on the engine plan, `catalog.ts` maps
@@ -125,9 +128,10 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   (MSAA + GTAO), `stage.ts`, build ghosts `ghost.ts`; people: `bake.ts` (animations baked into a texture), `cast.ts`
   (the one table of heights, role colours and looks), `place.ts`, `path.ts`, `crowd.ts`, `population.ts`. People exist
   only in rendering: the engine never sees them.
-- `src/ui/` — panels (React) and their store; `src/i18n/` — every player-facing string, Russian and English (English
-  typed as the Russian); `tools/test/i18n.test.ts` fails on Cyrillic in strings elsewhere in `src/app`, `src/ui`,
-  `src/render`, `src/sim`.
+- `src/ui/` — panels (React) and their store; `src/ui/doctor/` — the patient card window, the doctor's panel and the
+  «Просят посмотреть» tab, driven by `src/app/doctor.ts`; `src/i18n/` — every player-facing string, Russian and English
+  (English typed as the Russian; the medical database is Russian-only for now and shows as is in English mode);
+  `tools/test/i18n.test.ts` fails on Cyrillic in strings elsewhere in `src/app`, `src/ui`, `src/render`, `src/sim`.
 - `electron/` — the main process (window, `app://`, no network) and preload; `app/index.html` — the page.
 - `assets/` — CC0 models and `LICENSES.md` (sources, licenses, SHA-256); never add a model without its line there.
 - `tools/app/` — page build, model preparation, browser scenario, headless bench; `tools/test/` — Bun tests;
