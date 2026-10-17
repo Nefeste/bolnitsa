@@ -7,15 +7,16 @@
 // приходят, их принимают. Часть 3 — люди и поток (spec docs/specs/2026-10-flow-ui.md): готовая больница к 13:00 —
 // пациенты ходят, значки «ждёт долго» и «недоволен», значки помещений; вкладка «Пациенты» (Tab) — фильтр, клик — камера
 // летит к человеку, в карточке — путь с причиной ожидания; «Ушли» — путь ушедшего и почему; слой «Очереди и загрузка» (L);
-// ушедший, не дождавшись, идёт к выходу со значком. Часть 4 — режим врача: tools/app/e2e-doctor.mjs. Ошибок в консоли и
-// запросов наружу нет.
+// ушедший, не дождавшись, идёт к выходу со значком. Часть 4 — режим врача: tools/app/e2e-doctor.mjs. Часть 5 — касса,
+// планёрка, обход: tools/app/e2e-economy.mjs. Ошибок в консоли и запросов наружу нет.
 // Снимки — tools/app/out/e2e.png, e2e-build-*.png и e2e-flow-*.png; `--shots high` — снимки частей 2 и 3 в этом качестве
 // (на время снимка).
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|3|4] [--shots low|medium|high] [--port 8093]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|3|4|5] [--shots low|medium|high] [--port 8093]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { doctorPart } from './e2e-doctor.mjs';
+import { economyPart } from './e2e-economy.mjs';
 import { findChromium } from './e2e-lib.mjs';
 import { serve } from './serve.mjs';
 
@@ -83,6 +84,8 @@ try {
   if (run(3)) await partThree();
   // часть 4 — режим врача (spec docs/specs/2026-10-doctor-mode.md): tools/app/e2e-doctor.mjs
   if (run(4)) await doctorPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  // часть 5 — касса, планёрка, обход (spec docs/specs/2026-10-economy.md): tools/app/e2e-economy.mjs
+  if (run(5)) await economyPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);
@@ -95,7 +98,8 @@ try {
 }
 
 async function partOne() {
-  await page.goto(`http://127.0.0.1:${port}/index.html?q=${arg('q', 'low')}&lang=ru&hospital=preset`);
+  // поток — числами сцены (6 в час, скорая 1 в час), как до потока от больницы части 5б: та же толпа, что прежде
+  await page.goto(`http://127.0.0.1:${port}/index.html?q=${arg('q', 'low')}&lang=ru&hospital=preset&flow=6,1`);
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
   ok('страница загрузилась, первый кадр нарисован');
   // дать потоку расчёта и людям пожить: ×4 на несколько секунд — и до первого пациента (без видеокарты и при занятом
@@ -395,7 +399,7 @@ async function partTwo() {
 
 async function partThree() {
   // готовая больница: один терапевт на поток — к 13:00 очередь, долгие ожидания, первый ушедший (12:52)
-  await page.goto(`http://127.0.0.1:${port}/index.html?q=${arg('q', 'low')}&lang=ru&hospital=preset&start=13`);
+  await page.goto(`http://127.0.0.1:${port}/index.html?q=${arg('q', 'low')}&lang=ru&hospital=preset&start=13&flow=6,1`);
   await page.waitForFunction(() => window.__started === true, null, { timeout: 240000 });
   const until = (fn, a, ms = 20000) => page.waitForFunction(fn, a, { timeout: ms });
   ok(`люди и поток: ${await page.textContent('#clock')}`);

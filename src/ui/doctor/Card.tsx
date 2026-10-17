@@ -16,6 +16,7 @@ import { BODY_PLACES, type ExamPlace, placeOf, SHELVES } from './places';
 import { SECTIONS, sectionOf } from './sections';
 import type { DoctorHud } from './types';
 import { db } from './db';
+import { Round } from './Round';
 
 /** Ключ для id в DOM: точки в номерах базы мешают селекторам. */
 export const dom = (id: string) => id.replace(/\./g, '_');
@@ -116,6 +117,8 @@ function CardWindow({ v, level, meanwhile, next, actions }: P) {
           </button>
         </div>
       ) : null}
+      {/* ваш лежащий — обход (spec docs/specs/2026-10-economy.md): заново, когда сменили лечение */}
+      {v.round ? <Round key={v.round.current.join(',')} id={v.id} r={v.round} actions={actions} /> : null}
       {v.decision ? (
         <Review v={v} next={next} actions={actions} explain={setTerm} />
       ) : (

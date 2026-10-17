@@ -13,8 +13,8 @@ import type { CardView, DoctorState, Refusal } from './doctor';
 import type { NameRow } from './pack';
 
 export type ToSim =
-  /** новая смена с потоком для ПК */
-  | { kind: 'start'; seed: number; season: Season; hospital: HospitalState; staff: StaffMember[]; flow: Flow }
+  /** новая смена с потоком для ПК; `economy` — касса начала (spec docs/specs/2026-10-economy.md), нет — без кассы */
+  | { kind: 'start'; seed: number; season: Season; hospital: HospitalState; staff: StaffMember[]; flow: Flow; economy?: { cash: number } }
   /** открыть сохранение — снимок состояния */
   | { kind: 'load'; state: ShiftState }
   /** действие игрока: вопрос, обследование, стройка, найм… — как `apply` */

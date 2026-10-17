@@ -37,9 +37,18 @@ import { Chips } from './chips';
 import { Doctor } from './doctor';
 import { dur, moodOf, pathCard, type PatientRow, patientRows, roomChip, roomLoads, tintOf } from './flow';
 import { Labels } from './labels';
+import { Money } from './money';
+import { startCash } from '../engine/shift/money';
+import type { Flow } from '../engine/shift/types';
 
-/** Больница и поток части 2а — вопросы к гейм-дизайну в спецификации, «Вопросы к гейм-дизайну». */
+/**
+ * Больница и поток части 2а — вопросы к гейм-дизайну в спецификации, «Вопросы к гейм-дизайну». С частью 5б поток игры — от
+ * больницы (`AUTO`, spec docs/specs/2026-10-economy.md); числа сцены — для авто-бенча и снимков (та же толпа, что прежде) и
+ * для сценария в браузере (`?flow=6,1`).
+ */
 export const SCENE = { preset: 'preset.city', seed: 1, season: 'winter' as Season, flow: { perHour: 6, ambulancePerHour: 1 } };
+/** Поток от больницы (spec docs/specs/2026-10-economy.md): кабинеты, места смотровой, репутация. */
+export const AUTO: Flow = { perHour: 0, auto: true };
 
 /** С чего начать (spec docs/specs/2026-10-build.md, «Начало игры»): пустое здание или готовая больница 2а. */
 export type Start = 'empty' | 'preset';
@@ -101,6 +110,10 @@ export class Game {
   readonly builder = new Builder(this);
   /** режим врача (spec docs/specs/2026-10-doctor-mode.md): карта пациента, окно врача, фигура */
   readonly doctor = new Doctor(this);
+  /** касса и планёрка (spec docs/specs/2026-10-economy.md) */
+  readonly money = new Money(this);
+  /** поток: от больницы или числа (авто-бенч, снимки, `?flow=`) */
+  flow: Flow = AUTO;
   /** стройка: потрачено и сколько действий можно отменить */
   works = { spent: 0, undo: 0 };
   start: Start = 'preset';
@@ -151,12 +164,13 @@ export class Game {
   ) {}
 
   /** База, модели, больница, поток — и первый кадр. */
-  static async create(host: HTMLElement, store: Store, version: string, quality: Quality, start: Start = 'preset'): Promise<Game> {
+  static async create(host: HTMLElement, store: Store, version: string, quality: Quality, start: Start = 'preset', flow: Flow = AUTO): Promise<Game> {
     const t0 = performance.now();
     store.set({ status: T.app.loading, version });
     const db = (await (await fetch('./content.json')).json()) as ContentDb;
     const g = new Game(db, store, host, version);
     g.start = start;
+    g.flow = flow;
     g.load.content = Math.round(performance.now() - t0);
     await g.build(quality);
     g.load.total = Math.round(performance.now() - t0);
@@ -194,8 +208,10 @@ export class Game {
     this.client.onError = m => store.set({ error: m });
     // зерно смены — из адреса (`?seed=`; сценарий в браузере берёт смену, где просьба приходит рано), иначе — сцены
     const seed = Number(new URLSearchParams(location.search).get('seed')) || SCENE.seed;
-    this.client.start({ kind: 'start', seed, season: SCENE.season, hospital: this.hospital, staff: this.staff, flow: SCENE.flow });
+    // касса (spec docs/specs/2026-10-economy.md): пустое здание — бюджет песочницы, готовая больница — его доля
+    this.client.start({ kind: 'start', seed, season: SCENE.season, hospital: this.hospital, staff: this.staff, flow: this.flow, economy: { cash: startCash(this.db, this.start) } });
     this.doctor.start();
+    this.money.start();
     // пустое здание — часы стоят, пока игрок не пустит их
     if (this.start === 'empty') this.speed = 0;
     this.bindInput();
@@ -341,6 +357,8 @@ export class Game {
   // ---------------------------------------------------------------- поток расчёта
 
   private onSlice(s: Slice) {
+    // скорость до автопауз этого среза — к ней вернёт «Продолжить» планёрки (spec 2026-10-economy); «До утра» — ×1
+    const was: Speed = this.ff ? 1 : this.speed;
     this.lastSlice = s;
     this.t = s.buf[H.t];
     this.day = s.buf[H.day];
@@ -359,6 +377,8 @@ export class Game {
     if (this.ff && this.ffStop(s.notices)) this.setSpeed(0);
     // режим врача: состояние, карта, автопауза — после «До утра», чтобы автопауза её остановила
     this.doctor.onSlice(s);
+    // касса и планёрка (spec docs/specs/2026-10-economy.md): автопауза планёрки — тоже после «До утра»
+    this.money.onSlice(s, was);
     if (s.doctor || s.card !== undefined || s.refused) this.hud();
   }
 
@@ -377,15 +397,19 @@ export class Game {
       : n.kind === 'arrest' ? T.notices.arrest
       : n.kind === 'consult' ? this.doctor.consultText(n)
       : n.kind === 'morning' ? T.notices.morning
+      : n.kind === 'worse' ? this.doctor.worseText(n.id)
       : T.notices.shiftEnd;
     this.notices.unshift({ t: this.t, text });
     if (this.notices.length > 60) this.notices.length = 60;
   }
 
-  /** «До утра» останавливается на срочном: «красный», скорая; и в 20:00. */
+  /**
+   * «До утра» (spec docs/specs/2026-10-economy.md) — до планёрки в 08:00; останавливается на событиях автопаузы (геймдизайн
+   * §2): «красный», просьба нанятого врача, ваш лежащий стал хуже, планёрка. Скорая — не повод: её ведут нанятые врачи.
+   */
   private ffStop(notices: Notice[]): boolean {
     if (this.t >= this.ffUntil) return true;
-    return notices.some(n => n.kind === 'ambulance' || (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'consult');
+    return notices.some(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'consult' || n.kind === 'morning' || n.kind === 'worse');
   }
 
   // ---------------------------------------------------------------- кадр
@@ -397,9 +421,10 @@ export class Game {
     this.last = ts;
     this.onFrame?.(ts);
     if (!this.manual) {
-      // «до утра»: столько, сколько поток успевает, — новый кусок, только когда прежний почти досчитан
+      // «до утра»: столько, сколько поток успевает, — новый кусок, только когда прежний почти досчитан; последний — ровно до
+      // 08:00, чтобы планёрка открылась в 08:00 (spec 2026-10-economy)
       const lag = this.lastSlice?.lag ?? 0;
-      const game = this.ff ? (!this.client.busy && lag < 300 ? 600 : 0) : this.speed * GAME_PER_REAL * dt;
+      const game = this.ff ? (!this.client.busy && lag < 300 ? Math.max(0, Math.min(600, this.ffUntil - this.t - lag)) : 0) : this.speed * GAME_PER_REAL * dt;
       this.client.frame(game, this.ff ? 14 : 10);
     }
     this.edgePan(dt);
@@ -461,6 +486,7 @@ export class Game {
       people: this.crowd.walkers.size,
       selected: this.selected && sel ? { key: this.selected, info: sel } : undefined,
       doctor: { ...this.doctor.hud },
+      economy: this.money.view(),
     });
   }
 
@@ -564,16 +590,16 @@ export class Game {
 
   readonly actions: Actions = {
     setSpeed: s => {
-      // карта пациента открыта — мир стоит (spec 2026-10-doctor-mode, «Время в карте»)
-      if (this.doctor.open) return;
+      // карта пациента открыта — мир стоит (spec 2026-10-doctor-mode, «Время в карте»); планёрка — «Продолжить» (spec 2026-10-economy)
+      if (this.doctor.open || this.money.open) return;
       this.setSpeed(s);
       this.hud();
     },
     untilMorning: () => {
-      if (this.doctor.open) return;
-      // заглушка: промотка как можно быстрее — до 20:00 или до первого срочного (геймдизайн §2, «До утра»)
+      if (this.doctor.open || this.money.open) return;
+      // до планёрки в 08:00 (геймдизайн §2, «До утра»; spec 2026-10-economy) — как можно быстрее, до первого события автопаузы
       const day = Math.floor(this.t / 86400) * 86400;
-      this.ffUntil = this.t % 86400 < 20 * 3600 ? day + 20 * 3600 : day + 86400 + 8 * 3600;
+      this.ffUntil = this.t % 86400 < 8 * 3600 ? day + 8 * 3600 : day + 86400 + 8 * 3600;
       this.ff = true;
       this.hud();
     },
@@ -663,6 +689,7 @@ export class Game {
       this.hud();
     },
     doctor: a => this.doctor.dispatch(a),
+    money: a => this.money.dispatch(a),
   };
 
   /** Карточка помещения по клику на пол. */
@@ -741,6 +768,7 @@ export class Game {
   /** Esc и ПКМ без протяжки: в стройке — призрак, инструмент, стройка; иначе — снять выбор. */
   private cancel() {
     if (this.doctor.close()) return;
+    if (this.money.open) return this.money.dispatch({ kind: 'close' });
     if (this.builder.cancel()) this.hud();
     else this.actions.select(undefined);
   }

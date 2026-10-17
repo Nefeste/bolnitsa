@@ -460,7 +460,7 @@ export const doctorRu = {
       empty: 'Никто не просит. Когда нанятый врач не уверен, просьба появится здесь — с автопаузой.',
       by: (role: string, skill: number) => `${role}, навык ${skill}`,
       about: (who: string) => `просит посмотреть: ${who}`,
-      why: { unsure: 'не уверен', close: 'две гипотезы рядом' } as Record<string, string>,
+      why: { unsure: 'не уверен', close: 'две гипотезы рядом', long: 'долго: 4 ч без решения' } as Record<string, string>,
       thinks: (name: string, p: number) => `думает: ${name} — ${p} %`,
       second: (name: string, p: number) => `рядом: ${name} — ${p} %`,
       until: (at: string) => `ждёт ответа до ${at}`,
@@ -469,7 +469,7 @@ export const doctorRu = {
       refer: 'Направить к …',
       referTo: (role: string, skill: number) => `${role}, навык ${skill}`,
       noRefer: 'других врачей сегодня нет',
-      autopause: 'Автопауза: просьба и результаты ваших больных',
+      autopause: 'Автопауза: просьбы, результаты и ухудшение ваших больных',
     },
     who: (name: string, sex: 'm' | 'f', age: number) => `${name}, ${age} ${pluralRu(age, 'год', 'года', 'лет')}${sex === 'f' ? ', ж' : ', м'}`,
     office2: {

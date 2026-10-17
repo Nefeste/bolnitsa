@@ -69,6 +69,9 @@ export function whyText(db: ContentDb, site: Site | undefined, e: SiteError): st
       return T.site.busy;
     case 'mode':
       return T.site.mode;
+    // касса (spec docs/specs/2026-10-economy.md): трата увела бы кассу ниже предела минуса
+    case 'money':
+      return T.money.short(money(e.need));
     default:
       return T.site.unknown;
   }
@@ -101,6 +104,12 @@ export class Builder {
 
   private get site(): Site | undefined {
     return this.g.hospital?.site;
+  }
+
+  /** Касса (spec docs/specs/2026-10-economy.md): чего не хватит на трату `cost` до предела минуса; хватает — 0. */
+  private short(cost: number): number {
+    const { cash, limit } = this.g.money.hud;
+    return cash === undefined || cost <= 0 ? 0 : Math.max(0, cost - (cash + limit));
   }
 
   /** Для панелей. */
@@ -339,8 +348,10 @@ export class Builder {
         }
         const r = rectOf(this.drag, hover);
         const c = checkRoom(db, site, this.roomType, r);
-        gh.room(r, c.ok);
-        this.ghost = c.ok ? { ok: true, text: T.build.ghostRoom(name, r.w, r.h, money(c.cost)) } : { ok: false, text: T.build.ghostBad(`${name} ${r.w} × ${r.h}`, whyText(db, site, c.error)) };
+        const need = c.ok ? this.short(c.cost) : 0;
+        gh.room(r, c.ok && need === 0);
+        this.ghost = c.ok && need > 0 ? { ok: false, text: T.build.ghostBad(T.build.ghostRoom(name, r.w, r.h, money(c.cost)), T.money.short(money(need))) }
+          : c.ok ? { ok: true, text: T.build.ghostRoom(name, r.w, r.h, money(c.cost)) } : { ok: false, text: T.build.ghostBad(`${name} ${r.w} × ${r.h}`, whyText(db, site, c.error)) };
         break;
       }
       case 'item': {
@@ -360,8 +371,10 @@ export class Builder {
         const thing: Thing = {
           kind: this.item.kind, room: -1, type: spec.type, cell: hover, cells: spec.cells, face: [fx, fy], yaw: yawOf(fx, fy), ...(this.item.eq ? { equipment: this.item.eq } : {}),
         };
-        gh.item(thing, spec.ok);
-        this.ghost = spec.ok
+        const need = spec.ok && !this.moving ? this.short(spec.cost) : 0;
+        gh.item(thing, spec.ok && need === 0);
+        this.ghost = need > 0 ? { ok: false, text: T.build.ghostBad(T.build.ghostItem(name, money(spec.cost)), T.money.short(money(need))) }
+          : spec.ok
           ? { ok: true, text: this.moving ? T.build.ghostMove(name) : T.build.ghostItem(name, money(spec.cost || priceOf(db, this.item.kind, this.item.eq))) }
           : { ok: false, text: T.build.ghostBad(name, whyText(db, site, spec.why!)) };
         break;
@@ -373,9 +386,11 @@ export class Builder {
           this.ghost = { ok: true, text: T.build.hintDoor };
           break;
         }
-        gh.door(d.cells, FACE[d.side], d.ok);
+        const need = d.ok ? this.short(d.cost) : 0;
+        gh.door(d.cells, FACE[d.side], d.ok && need === 0);
         const two = this.tool === 'door2';
-        this.ghost = d.ok ? { ok: true, text: T.build.ghostDoor(two, money(d.cost)) } : { ok: false, text: T.build.ghostBad(T.build.ghostDoor(two, money(DOOR_PRICE[two ? 2 : 1])), whyText(db, site, d.why ?? { kind: 'unknown' })) };
+        this.ghost = need > 0 ? { ok: false, text: T.build.ghostBad(T.build.ghostDoor(two, money(d.cost)), T.money.short(money(need))) }
+          : d.ok ? { ok: true, text: T.build.ghostDoor(two, money(d.cost)) } : { ok: false, text: T.build.ghostBad(T.build.ghostDoor(two, money(DOOR_PRICE[two ? 2 : 1])), whyText(db, site, d.why ?? { kind: 'unknown' })) };
         break;
       }
       case 'demolish': {

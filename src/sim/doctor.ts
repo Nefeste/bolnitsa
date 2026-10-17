@@ -1,13 +1,14 @@
 // Режим врача в потоке расчёта (spec docs/specs/2026-10-doctor-mode.md, «Поток расчёта: вид приёма — там, где движок») —
 // своё; вид карты больного — части из src/state/session.ts «Анамнеза» @ 1f80da6 (buildCaseView, settingOptions, orOption,
-// targetLines, decisionFor, seenAt, arrivedOf, outcomeKnown), изменено: строки — `T.case`, без портретов, «Похоже на» —
+// targetLines, decisionFor, seenAt, arrivedOf, outcomeKnown; обход — roundsView, fmtVital, replanChoices — spec
+// docs/specs/2026-10-economy.md, «Обход»), изменено: строки — `T.case` и `T.round`, без портретов, «Похоже на» —
 // по уровню из окна. Окно не видит правды о больном: оно получает отсюда готовый вид карты (caseView.ts) и состояние
 // врача — списки больных словами. Чистые функции состояния смены и одна обёртка (`DoctorDesk`), которая помнит, что
 // окно уже получило: смена от неё не меняется.
 import type { BodySystem, ContentDb, Id, Setting } from '../content/types';
 import { askMinutes } from '../engine/career/skills';
 import { complaintObservations } from '../engine/med/exams';
-import { evaluatePlan } from '../engine/med/plan';
+import { evaluatePlan, primaryOf } from '../engine/med/plan';
 import type { Grade } from '../engine/med/score';
 import { complaintText } from '../engine/med/text';
 import { type Block, doctorRoom, examWhere, type Problem } from '../engine/hospital/requirements';
@@ -15,13 +16,15 @@ import {
   atDoctor, bedsideEquipment, bedsideOf, boxBeds, brokenOf, colleaguesOf, forPlayer, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, type HospitalCtx,
   hospitalCtx, icuBeds, moreUrgent, observationsOf, operationOf, type OrBlock, orBlock, reviewedCase, reviewFor, ricuBeds, targetPlace, wardBeds,
 } from '../engine/shift/engine';
+import { inBox, inIcu, inRicu, orQueueOf, stayEquipment } from '../engine/shift/engine';
 import { minutesTo, targetStart, targetsFor } from '../engine/shift/targets';
 import { type ClosedCase, type Command, type ConsultWhy, DAY, type Difficulty, type ShiftPatient, type ShiftState, type Triage } from '../engine/shift/types';
-import { daysIn, stayNorm, type WardState, wardState } from '../engine/shift/ward';
+import { daysIn, stayNorm, vitalOn, WARD_VITALS, type WardState, wardState } from '../engine/shift/ward';
 import { genitive, type Lang, lang as currentLang, named, setLang, T } from '../i18n';
 import {
   type Arrival, type CaseTarget, type Decision, decisionOf, hhmm, makeCaseView, patientName, type SettingOption, useDb, type VisitView,
 } from './caseView';
+import { suggestedTreatments, treatmentGroupsFor } from './caseView';
 
 /** Уровни медицины (геймдизайн §10) — от лёгкого к трудному; по умолчанию — «Студент» (spec «Сложность»). */
 export const LEVELS: readonly Difficulty[] = ['trainee', 'student', 'resident', 'doctor'];
@@ -46,14 +49,42 @@ export interface PatientRow {
   ready?: number;
 }
 
-/** Ваш лежащий — для обхода. */
+/** Ваш лежащий — для обхода (spec docs/specs/2026-10-economy.md, «Обход»; как карточка обхода «Анамнеза», `RoundCard`). */
 export interface WardRow extends PatientRow {
   diagnosis: string;
   days: number;
   norm: number;
   state: WardState;
+  /** как идёт — словами; реакция — на что и чем */
+  stateText: string;
+  /** динамика: температура и то, что выходило за норму, — по суткам за последние пять, «38,9 → 38,1 → 37,4 °C» */
+  vitals: { label: string; values: string }[];
+  /** назначенное сейчас — названиями; ничего — «не назначено» */
+  treatments: string;
+  /** где лежит: ПИТ, реанимация (под монитором, на ИВЛ), бокс; в палате — нет */
+  unit?: string;
+  /** операция: ждёт, идёт до…, после операции */
+  op?: string;
+  /** «В операционную»: у диагноза есть операция, её ещё не было — что за операция; нельзя — почему */
+  operate?: { hint: string; disabled?: boolean };
+  /** на столе — ни выписать, ни перевести; ждёт операции — только перевести (как движок) */
+  canDischarge: boolean;
+  canTransfer: boolean;
   /** на столе или ждёт операции — ни выписать, ни перевести с обхода (движок откажет) */
   busy: boolean;
+  /** что случилось за сутки: фибрилляцию сняли разрядом под монитором */
+  event?: string;
+}
+
+/**
+ * Блок обхода в карте вашего лежащего (spec «Обход», «Сменить лечение»): как идёт, динамика, что можно у его койки — по
+ * группам, что база называет при диагнозе — сверху; назначенное сейчас отмечено.
+ */
+export interface RoundView {
+  row: WardRow;
+  current: Id[];
+  suggested: Id[];
+  groups: VisitView['treatmentGroups'];
 }
 
 /** Ваш закрытый сегодня приём — для разбора. */
@@ -118,6 +149,8 @@ export interface CardView extends VisitView {
   where?: 'waiting' | 'away' | 'done' | 'admitted' | 'gone' | 'other';
   /** ждёт вас и вы свободны — можно позвать */
   callable?: boolean;
+  /** ваш лежащий — блок обхода: как идёт, динамика, смена лечения (spec 2026-10-economy, «Обход») */
+  round?: RoundView;
 }
 
 /** Сколько строк общей очереди показывать. */
@@ -176,12 +209,7 @@ export function doctorState(db: ContentDb, s: ShiftState): DoctorState {
       if (p.closed.by) continue;
       const c = p.closed;
       if (p.status === 'admitted' && p.stay) {
-        const days = daysIn(p.stay, s.day);
-        const op = p.stay.op;
-        ward.push({
-          ...rowOf(db, p), diagnosis: db.conditions[c.diagnosis]?.name.ru ?? c.diagnosis, days, norm: stayNorm(db, c.diagnosis), state: wardState(p.stay, days),
-          busy: !!op && !op.done,
-        });
+        ward.push(wardRow(db, s, p));
       } else if (closedDay(p) === s.day) {
         closed.push({ ...rowOf(db, p), diagnosis: db.conditions[c.diagnosis]?.name.ru ?? c.diagnosis, verdict: c.verdict, overall: c.grades.overall, at: c.at });
       }
@@ -225,6 +253,71 @@ export function doctorState(db: ContentDb, s: ShiftState): DoctorState {
     mine: [...(s.meta.mine ?? [])],
     dayOpen: s.dayOpen,
   };
+}
+
+// --- обход (spec docs/specs/2026-10-economy.md, «Обход»; roundsView «Анамнеза») ------------------------------------------
+
+/** Значение витального словами: «37,4», давление — «150/95». */
+function fmtVital(db: ContentDb, f: Id, v: number): string {
+  const spec = db.findings[f]!.value!;
+  const main = v.toFixed(spec.decimals).replace('.', currentLang === 'en' ? '.' : ',');
+  const dia = spec.derived?.dia;
+  return dia ? `${main}/${Math.round(v * dia)}` : main;
+}
+
+/**
+ * Ваш лежащий на обходе: сутки и обычный срок, как идёт, динамика витальных за последние пять суток (температура — всегда,
+ * остальное — если выходило за норму), лечение, где лежит, операция, что можно: выписать, перевести, в операционную.
+ */
+export function wardRow(db: ContentDb, s: ShiftState, p: ShiftPatient): WardRow {
+  const c = p.closed!;
+  const stay = p.stay!;
+  const t = T.round;
+  const days = daysIn(stay, s.day);
+  const state = wardState(stay, days);
+  const from = Math.max(0, days - 5);
+  const range = Array.from({ length: days - from + 1 }, (_, i) => from + i);
+  const vitals = WARD_VITALS.flatMap(f => {
+    const spec = db.findings[f]?.value;
+    const series = range.map(d => vitalOn(db, p.patient, stay, f, d));
+    if (!spec || series.some(v => v === undefined)) return [];
+    const off = series.some(v => v! < spec.ref[0] || v! > spec.ref[1]);
+    if (f !== 'vital.fever' && !off) return [];
+    return [{ label: t.vital[f] ?? f, values: `${series.map(v => fmtVital(db, f, v!)).join(' → ')}\u00a0${spec.unit}` }];
+  });
+  const op = stay.op;
+  const opName = op ? named(db.treatments[op.tx]?.name, op.tx) : '';
+  const stage = op?.complicated ? db.conditions[primaryOf(p.patient).id]?.complication?.name.ru : undefined;
+  const opLine = !op ? undefined
+    : op.done ? `${t.opDone(opName)}${stage ? ` · ${t.opStage(stage)}` : ''}${op.complication ? ` · ${t.opComplication}` : ''}`
+      : op.start !== undefined ? t.opOn(opName, hhmm(minuteOfDay(op.end ?? op.start))) : t.opWaiting(opName, orQueueOf(s).findIndex(x => x.id === p.id) + 1);
+  const hasOr = hospitalCtx(db, s).plan.rooms.some(r => r.type === 'room.or');
+  const dxOp = !op && hasOr ? operationOf(db, p, c.diagnosis) : undefined;
+  const block = dxOp ? orBlock(db, s, dxOp) : null;
+  const reaction = stay.reaction;
+  const stateText = state === 'reaction' && reaction?.as
+    ? t.harmAs(named(db.conditions[reaction.as]?.name, reaction.as), named(db.treatments[reaction.tx]?.name, reaction.tx))
+    : state === 'reaction' && reaction
+      ? t.reaction(named(db.treatments[reaction.tx]?.name, reaction.tx), named(db.risks[reaction.by]?.name ?? db.conditions[reaction.by]?.name, reaction.by))
+      : T.case.ward.state[state];
+  const unit = inRicu(db, s, p) ? (stay.plan.treatments.some(tx => db.treatments[tx]?.place === 'ricu') ? t.onVent : t.inRicu) : inIcu(db, s, p) ? t.inIcu : inBox(db, s, p) ? t.inBox : undefined;
+  return {
+    ...rowOf(db, p), diagnosis: named(db.conditions[c.diagnosis]?.name, c.diagnosis), days, norm: stayNorm(db, c.diagnosis), state, stateText, vitals,
+    treatments: stay.plan.treatments.length > 0 ? stay.plan.treatments.map(tx => named(db.treatments[tx]?.name, tx)).join(', ') : t.noTreatment,
+    ...(unit ? { unit } : {}), ...(opLine ? { op: opLine } : {}),
+    ...(dxOp ? { operate: block ? { hint: orBlockText(db, block), disabled: true } : { hint: named(db.treatments[dxOp].name, dxOp) } } : {}),
+    canDischarge: !op || op.done === true, canTransfer: !op || op.done === true || op.start === undefined, busy: !!op && !op.done,
+    ...(stay.shock !== undefined && days === stay.shock + 1 ? { event: t.shock } : {}),
+  };
+}
+
+/** Блок обхода в карте: лечение по группам — что можно у его койки, с тем, что о нём известно (`replanChoices` «Анамнеза»). */
+function roundOf(db: ContentDb, s: ShiftState, p: ShiftPatient): RoundView {
+  const current = p.stay!.plan.treatments.filter(tx => db.treatments[tx]?.kind !== 'surgery');
+  const groups = treatmentGroupsFor(observationsOf(p), stayEquipment(db, s, p), hospitalCtx(db, s).rooms);
+  const all = new Set(groups.flatMap(g => g.items.map(x => x.id)));
+  const suggested = [...suggestedTreatments(p.closed!.diagnosis, current)].filter(id => all.has(id)).sort();
+  return { row: wardRow(db, s, p), current, suggested, groups };
 }
 
 // --- «Взять случай» -----------------------------------------------------------------------------------------------------
@@ -469,7 +562,9 @@ export function cardView(db: ContentDb, s: ShiftState, id: string, level: Diffic
   const where: CardView['where'] = mine && !p.closed ? undefined
     : yours === 'waiting' ? 'waiting' : yours === 'away' ? 'away' : p.status === 'admitted' ? 'admitted' : p.closed ? 'done'
       : p.status === 'left' || p.status === 'unseen' ? 'gone' : 'other';
-  return { ...view, id, active: mine && !p.closed, ...(where ? { where } : {}), ...(where === 'waiting' && !s.current ? { callable: true } : {}) };
+  // ваш лежащий — блок обхода (spec 2026-10-economy)
+  const round = p.status === 'admitted' && p.stay && p.closed && !p.closed.by ? roundOf(db, s, p) : undefined;
+  return { ...view, id, active: mine && !p.closed, ...(where ? { where } : {}), ...(where === 'waiting' && !s.current ? { callable: true } : {}), ...(round ? { round } : {}) };
 }
 
 /** Подпись того, от чего зависит вид карты: изменилась — карту пересчитать. */
@@ -479,6 +574,8 @@ function cardKey(s: ShiftState, id: string): string {
   return [
     p.step, p.results.length, p.pending.length, p.status, p.closed ? `${p.closed.at}:${p.closed.outcome.kind}` : '', s.current ?? '', s.until ?? '', p.out?.back ?? '',
     JSON.stringify(p.draft), Math.floor(s.t / 60), s.day, s.dayOpen, p.by ?? '', (s.consults ?? []).length,
+    // обход (spec 2026-10-economy): сменили лечение, операция пошла
+    p.stay ? `${p.stay.replans}:${p.stay.op?.start ?? ''}:${p.stay.op?.done ?? ''}` : '',
   ].join('|');
 }
 

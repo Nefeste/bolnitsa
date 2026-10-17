@@ -8,6 +8,7 @@ import type { PersonInfo } from '../render/population';
 import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
 import type { DoctorAction, DoctorHud } from './doctor/types';
+import type { EconomyHud, MoneyAction } from '../app/money';
 
 export type Speed = 0 | 1 | 2 | 4;
 export type Tab = 'patients' | 'staff' | 'asks' | 'journal' | 'reports' | 'goals';
@@ -104,6 +105,8 @@ export interface Hud {
   version: string;
   /** режим врача (spec docs/specs/2026-10-doctor-mode.md): окно врача, карта пациента, просьбы */
   doctor?: DoctorHud;
+  /** касса, репутация, планёрка, часы приёма (spec docs/specs/2026-10-economy.md) */
+  economy?: EconomyHud;
 }
 
 export const initial: Hud = {
@@ -191,6 +194,8 @@ export interface Actions {
   toggleQueues(): void;
   /** режим врача (spec docs/specs/2026-10-doctor-mode.md) */
   doctor(a: DoctorAction): void;
+  /** касса и планёрка (spec docs/specs/2026-10-economy.md): экран планёрки, автопауза, часы приёма, кредит */
+  money(a: MoneyAction): void;
 }
 
 export function useHud(store: Store): Hud {

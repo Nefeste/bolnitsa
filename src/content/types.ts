@@ -1,4 +1,4 @@
-// из anamnez: src/content/types.ts @ 96503ac, изменено: ContentDb.consults — «Просят посмотреть» (spec 2026-10-consults); ContentDb.day — сутки целиком (spec 2026-10-day)
+// из anamnez: src/content/types.ts @ 96503ac, изменено: ContentDb.consults — «Просят посмотреть» (spec 2026-10-consults); ContentDb.day — сутки целиком (spec 2026-10-day); ContentDb.inflow и ContentDb.money, Consults.long — поток от больницы, касса ПК, долгий случай (spec 2026-10-economy)
 // Типы собранной медицинской базы (`docs/04-data-model.md` §1).
 //
 // Исходник — YAML в content/, собирает tools/content/build.ts. Здесь — то, что получает
@@ -1290,6 +1290,34 @@ export interface Consults {
   close: number;
   /** сколько игровых минут ждёт ответа, потом решает сам */
   wait: number;
+  /**
+   * долгий случай (spec docs/specs/2026-10-economy.md): сколько игровых часов с первого вызова врач ведёт больного без
+   * диагноза, прежде чем попросить посмотреть с причиной «долго»; уже просил — после этого решает тем, что знает
+   */
+  long: number;
+}
+
+/**
+ * Поток от больницы «Больницы» (spec docs/specs/2026-10-economy.md), поток для ПК: сколько приходят сами и сколько машин
+ * везёт скорая — от того, что в больнице работает, и от репутации. Игровые числа — гипотезы.
+ */
+export interface Inflow {
+  /** сами: человек в час на работающий кабинет нанятого врача, который принимает пришедших, — в среднем за час приёма */
+  walkIn: number;
+  /** скорая: машин в сутки на место работающей смотровой приёмного */
+  ambulance: number;
+  /** поток сами при репутации 0 и 100 меньше и больше на столько процентов */
+  reputation: number;
+  /** ориентиры геймдизайна §5: больница с этими кабинетами и местами — сколько в сутки (проверяет сборка) */
+  targets: { name: string; offices: number; bays: number; day: [number, number]; ambulance: [number, number] }[];
+}
+
+/** Касса ПК «Больницы» (spec docs/specs/2026-10-economy.md): предел минуса для стройки и кредит банка ниже него. */
+export interface Money {
+  /** до какого минуса касса оплачивает стройку, ₽ */
+  overdraft: number;
+  /** кредит: сумма — до нуля кассы, вверх до `step`; вернуть за `days` суток равными долями; надбавка `fee` % */
+  loan: { step: number; days: number; fee: number };
 }
 
 /**
@@ -1326,6 +1354,10 @@ export interface ContentDb {
   consults?: Consults;
   /** сутки целиком в потоке для ПК (spec 2026-10-day); нет (база тестов) — ровный поток в часы приёма геймдизайна */
   day?: Day;
+  /** поток от больницы (spec 2026-10-economy); нет (база тестов) — поток только числами `perHour` */
+  inflow?: Inflow;
+  /** касса ПК (spec 2026-10-economy): предел минуса и кредит; нет (база тестов) — без предела и кредита */
+  money?: Money;
   characters: Record<Id, Character>;
   chapters: Record<Id, Chapter>;
   tips: Record<Id, Tip>;

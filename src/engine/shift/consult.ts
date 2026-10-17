@@ -1,6 +1,7 @@
 // «Просят посмотреть» (spec docs/specs/2026-10-consults.md): нанятый врач в потоке для ПК выбрал диагноз, но не уверился — и
 // зовёт вас, а не решает сам. Правило — чистая функция того, что врач знает: уверенности вывода в болезнях (`posterior`,
-// только по открытому) и его навыка. Правды о больном оно не видит. Пороги — content/hospital/consults.yaml.
+// только по открытому) и его навыка. Правды о больном оно не видит. Пороги — content/hospital/consults.yaml. Долгий случай
+// (spec docs/specs/2026-10-economy.md): `long` часов без диагноза — просит с причиной «долго» (`askLong`).
 import type { ContentDb, Id } from '../../content/types';
 import { type Belief, contextOf, posterior, type Prior } from '../med/infer';
 import { decisionLimit } from '../med/policy';
@@ -59,6 +60,28 @@ const skillAt = (skill: number) => Math.min(5, Math.max(1, skill)) - 1;
 export function askWhy(db: ContentDb, skill: number, dx: Id, beliefs: readonly Belief[]): Ask | undefined {
   const c = db.consults;
   if (!c) return undefined;
+  const { p1, p2, other, lead } = groupsOf(db, dx, beliefs);
+  const why: ConsultWhy[] = [];
+  if (p1 * 100 < c.unsure[skillAt(skill)]) why.push('unsure');
+  if (other !== undefined && p2 * 100 >= c.close * p1) why.push('close');
+  if (why.length === 0) return undefined;
+  return { why, lead };
+}
+
+/**
+ * Долгий случай (spec docs/specs/2026-10-economy.md, решение владельца 17.10.2026): врач `long` часов ведёт больного без
+ * диагноза — просит посмотреть с причиной «долго»; что он думает — его ведущая болезнь и вторая группа по тому, что знает.
+ */
+export function askLong(db: ContentDb, x: Pick<AskInput, 'candidates' | 'obs' | 'patient' | 'prior'>): Ask {
+  const beliefs = posterior(db, x.candidates, x.obs, contextOf(db, x.patient, x.obs, x.prior));
+  return { why: ['long'], lead: groupsOf(db, beliefs[0].id, beliefs).lead };
+}
+
+/**
+ * Уверенность по группам болезней: в группе диагноза `dx` (`p1`), самая вероятная другая группа (`other`, `p2`) и что врач
+ * думает — его диагноз и лучшая болезнь второй группы с уверенностью во всей группе каждого.
+ */
+function groupsOf(db: ContentDb, dx: Id, beliefs: readonly Belief[]): { p1: number; p2: number; other?: Id; lead: Belief[] } {
   const group = (id: Id) => db.conditions[id]?.group ?? id;
   // уверенность в группе — сумма по её болезням; лучшая болезнь группы — первая: уверенности идут по убыванию
   const mass = new Map<Id, number>();
@@ -78,9 +101,5 @@ export function askWhy(db: ContentDb, skill: number, dx: Id, beliefs: readonly B
       p2 = p;
     }
   }
-  const why: ConsultWhy[] = [];
-  if (p1 * 100 < c.unsure[skillAt(skill)]) why.push('unsure');
-  if (other !== undefined && p2 * 100 >= c.close * p1) why.push('close');
-  if (why.length === 0) return undefined;
-  return { why, lead: [{ id: dx, p: p1 }, ...(other !== undefined ? [{ id: best.get(other)!, p: p2 }] : [])] };
+  return { p1, p2, ...(other !== undefined ? { other } : {}), lead: [{ id: dx, p: p1 }, ...(other !== undefined ? [{ id: best.get(other)!, p: p2 }] : [])] };
 }

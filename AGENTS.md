@@ -83,7 +83,8 @@ npm run electron                   # build + the game window
 npm run e2e                        # after build: the game in headless Chromium, real clicks (preset; then building six rooms
                                    # by mouse in the empty building; people and flow at 13:00 — icons, «Пациенты», the
                                    # patient's path, the queues overlay; then the doctor mode: a consult, a whole case, «Take
-                                   # the case», «My office»); screenshots in tools/app/out/; `-- --only 1|2|3|4` for one part
+                                   # the case», «My office»; then money: building from cash, «Until morning» to the 08:00
+                                   # meeting, the «Обход» list); screenshots in tools/app/out/; `-- --only 1|2|3|4|5` for one part
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
 npm run dist:win                   # build + Windows x64 zip → release/ (from Linux, no wine) — the only release file for now
@@ -93,6 +94,7 @@ npm run bench -- --mode desks --quick          # the same with Anamnez's appoint
 npm run bench -- --mode flow --day             # the whole day to 10:00 of day 2: day and night minutes, 08:00 meeting, 09:00 round
 npm run bench -- --mode flow --quick --flat    # flat arrivals by hour: the same patients as before the 24-hour day, to compare
 bun tools/bench/consults.ts                    # «Просят посмотреть»: share of hired doctors' cases that ask you (--probe: why these thresholds)
+bun tools/sim/economy.ts --seeds 1,2,3         # economy simulator: scripted hospitals for 7 days, cash, flow, reputation and the criteria
 bun --cpu-prof --cpu-prof-dir=tools/bench/out/prof tools/bench/bench.ts --mode flow --only 200 --quick --until 11
 bun tools/bench/profile.ts tools/bench/out/prof/<file>.cpuprofile 30 --under catchUp
 bun tools/test/make-review-fixture.ts          # only with the ORIGINAL engine: fingerprints of the eager review
@@ -120,6 +122,9 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   meeting and the morning round in `engine.ts`, shapes in `content/hospital/day.yaml` — `docs/specs/2026-10-day.md`.
   `shift/journey.ts` is ours: the patient's path with the reason of every wait (PC flow only; one-line hooks in
   `engine.ts`) — `docs/specs/2026-10-flow-ui.md`.
+  Money of the PC flow is ours: `shift/money.ts` (cash now, wages and upkeep by the hour, building from cash, the
+  overdraft limit, the loan), `shift/inflow.ts` (the flow from the hospital), `shift/meeting.ts` (the day's bottlenecks,
+  «стало хуже»), numbers in `content/hospital/inflow.yaml` and `money.yaml` — `docs/specs/2026-10-economy.md`.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`), Web Worker
   (`worker.ts`) and its client in the window (`client.ts`). The window never runs the engine. The doctor mode
   (`docs/specs/2026-10-doctor-mode.md`): `caseView.ts` (a copy of Anamnez's player view of a case) and `doctor.ts` build the

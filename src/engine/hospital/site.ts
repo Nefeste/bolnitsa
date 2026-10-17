@@ -305,6 +305,16 @@ export function roomPrice(db: ContentDb, type: Id, w: number, h: number): number
   return Math.round((r.smallest.cost * w * h) / (r.smallest.w * r.smallest.h) / 100) * 100;
 }
 
+/**
+ * Содержание помещения в сутки (spec docs/specs/2026-10-economy.md): содержание наименьшего размера, пересчитанное на площадь,
+ * как цена; до рубля.
+ */
+export function roomUpkeep(db: ContentDb, type: Id, w: number, h: number): number {
+  const r = rulesOf(db, type);
+  if (!r) return 0;
+  return Math.round((r.smallest.upkeep * w * h) / (r.smallest.w * r.smallest.h));
+}
+
 /** Половина цены — при сносе (`economy.refund`). */
 export const refundOf = (db: ContentDb, price: number) => Math.floor((price * db.economy.refund) / 100);
 
@@ -498,7 +508,9 @@ export type SiteError =
   | { kind: 'noFit' }
   | { kind: 'nothing' }
   | { kind: 'inUse' }
-  | { kind: 'busy' };
+  | { kind: 'busy' }
+  /** касса ПК (spec docs/specs/2026-10-economy.md): действие увело бы кассу ниже предела — не хватает `need` ₽ */
+  | { kind: 'money'; need: number };
 
 export type Check = { ok: true; cost: number } | { ok: false; error: SiteError };
 const fail = (error: SiteError): { ok: false; error: SiteError } => ({ ok: false, error });

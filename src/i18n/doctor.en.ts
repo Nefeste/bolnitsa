@@ -447,7 +447,7 @@ export const doctorEn: DoctorStrings = {
       empty: 'Nobody is asking. When a hired doctor is unsure, the request appears here — with an autopause.',
       by: (role: string, skill: number) => `${role}, skill ${skill}`,
       about: (who: string) => `asks you to look at: ${who}`,
-      why: { unsure: 'unsure', close: 'two hypotheses close' } as Record<string, string>,
+      why: { unsure: 'unsure', close: 'two hypotheses close', long: 'long: 4 h without a decision' } as Record<string, string>,
       thinks: (name: string, p: number) => `thinks: ${name} — ${p} %`,
       second: (name: string, p: number) => `close: ${name} — ${p} %`,
       until: (at: string) => `waits for an answer until ${at}`,
@@ -456,7 +456,7 @@ export const doctorEn: DoctorStrings = {
       refer: 'Refer to …',
       referTo: (role: string, skill: number) => `${role}, skill ${skill}`,
       noRefer: 'no other doctors today',
-      autopause: 'Autopause: requests and your patients’ results',
+      autopause: 'Autopause: requests, results and worsening of your patients',
     },
     who: (name: string, sex: 'm' | 'f', age: number) => `${name}, ${age} ${plural(age, 'year', 'years')}, ${sex === 'f' ? 'F' : 'M'}`,
     office2: {

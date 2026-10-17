@@ -95,11 +95,19 @@ export class Doctor {
       const line = this.meanwhileText(n);
       if (line) this.hud.meanwhile = [...this.hud.meanwhile, line];
     }
+    // «стало хуже» (spec docs/specs/2026-10-economy.md, «Обход»): строки обхода отмечены до следующей планёрки
+    if (n.kind === 'morning') this.hud.worse = [];
+    if (n.kind === 'worse') this.hud.worse = [...(this.hud.worse ?? []), n.id];
     if (!this.hud.autopause || this.open) return;
     if (n.kind === 'consult') {
       this.g.setSpeed(0);
       this.g.store.set({ tab: 'asks' });
     } else if (n.kind === 'resultsReady') this.g.setSpeed(0);
+    else if (n.kind === 'worse') {
+      // автопауза и окно врача раскрыто: обход — в нём
+      this.g.setSpeed(0);
+      this.hud.folded = false;
+    }
   }
 
   private meanwhileText(n: Notice): string | undefined {
@@ -116,6 +124,8 @@ export class Doctor {
         return T.notices.arrest;
       case 'left':
         return T.notices.left;
+      case 'worse':
+        return this.worseText(n.id);
       default:
         return undefined;
     }
@@ -125,6 +135,12 @@ export class Doctor {
   consultText(n: Extract<Notice, { kind: 'consult' }>): string {
     const m = this.g.staff.find(x => x.id === n.by);
     return T.doctor.notices.consult(m ? named(this.g.db.roles[m.role]?.name, m.role) : '');
+  }
+
+  /** Строка журнала: вашему лежащему стало хуже (spec 2026-10-economy). */
+  worseText(id: string): string {
+    const row = this.hud.state?.ward.find(r => r.id === id);
+    return T.round.worse(row?.who ?? id);
   }
 
   /** Строка журнала: готовы результаты вашего больного. */
@@ -216,6 +232,9 @@ export class Doctor {
         break;
       case 'ward':
         client.command({ kind: a.how, id: a.id } as Command);
+        break;
+      case 'replan':
+        client.command({ kind: 'replan', id: a.id, treatments: a.treatments });
         break;
       case 'fold':
         this.hud.folded = a.folded;

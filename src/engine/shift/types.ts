@@ -1,4 +1,4 @@
-// из anamnez: src/engine/shift/types.ts @ 96503ac, изменено: ClosedCase.review — разбор по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults); стройка ПК — команда, событие, извещение и счётчики (spec 2026-10-build); сутки целиком — часы приёма, планёрка и обход (spec 2026-10-day); путь пациента — поле `journeys` (spec 2026-10-flow-ui)
+// из anamnez: src/engine/shift/types.ts @ 96503ac, изменено: ClosedCase.review — разбор по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults); стройка ПК — команда, событие, извещение и счётчики (spec 2026-10-build); сутки целиком — часы приёма, планёрка и обход (spec 2026-10-day); путь пациента — поле `journeys` (spec 2026-10-flow-ui); касса и поток от больницы, планёрка, обход, долгий случай (spec 2026-10-economy)
 // Смена в амбулатории (spec 2026-09-first-shift, «Движок»; `04-data-model.md` §2).
 //
 // Состояние — обычный сериализуемый объект: сохранение — снимок (ADR 0010). Случайность
@@ -243,7 +243,8 @@ export type ShiftEvent =
   | { kind: 'rounds' };
 
 /** Почему нанятый врач просит посмотреть (spec 2026-10-consults): не уверен в своём диагнозе; две гипотезы рядом. */
-export type ConsultWhy = 'unsure' | 'close';
+/** `long` — 4 часа без диагноза, решение владельца 17.10.2026 (spec 2026-10-economy, «Долгий случай»). */
+export type ConsultWhy = 'unsure' | 'close' | 'long';
 
 /**
  * «Просят посмотреть» (spec 2026-10-consults «Больницы», поток для ПК): нанятый врач после своих обследований не уверен и
@@ -273,6 +274,32 @@ export interface Flow {
   ambulancePerHour?: number;
   /** часы амбулаторного приёма, если игрок их менял (команда `hours`): с какого часа и до какого; нет — `hours` базы */
   hours?: [number, number];
+  /**
+   * поток от больницы (spec 2026-10-economy): сами — по кабинетам нанятых врачей и репутации, скорая — по местам смотровой
+   * приёмного (`content/hospital/inflow.yaml`); `perHour` и `ambulancePerHour` тогда не действуют
+   */
+  auto?: true;
+}
+
+/**
+ * Узкие места суток (spec 2026-10-economy, «Планёрка»), поток для ПК: что движок видел за 24 часа — для экрана планёрки.
+ */
+export interface DayLoad {
+  /** ждали врача: больше всего в общей очереди сразу; дольше всего ждали вызова, минут (считается на планёрке) */
+  queue: number;
+  wait: number;
+  /** кабинеты обследований с очередью: номер помещения → больше всего впереди, дольше всего ждали у кабинета (минут), сколько обследований */
+  rooms?: Record<string, { queue: number; wait: number; n: number }>;
+  /** скорая: больше всего ждали у входа сразу — мест в смотровой не было */
+  door?: number;
+  /** стационар: больше всего лежало в палатах сразу и сколько там коек (на планёрке) */
+  beds?: { peak: number; of: number };
+}
+
+/** Кредит банка (spec 2026-10-economy, «Предел минуса и кредит»): сколько осталось вернуть и по сколько на планёрке, ₽. */
+export interface Loan {
+  left: number;
+  perDay: number;
 }
 
 /** Ушедший из больницы — строка журнала дня вместо пациента в состоянии (spec 2026-10-engine-speed, ч. 2). */
@@ -356,7 +383,9 @@ export type Command =
   /** стройка ПК (spec 2026-10-build): в любой момент, в потоке для ПК */
   | { kind: 'site'; cmd: SiteCommand }
   /** поток для ПК (spec 2026-10-day): часы амбулаторного приёма — с `open` до `close`, целые часы; сразу */
-  | { kind: 'hours'; open: number; close: number };
+  | { kind: 'hours'; open: number; close: number }
+  /** касса ПК (spec 2026-10-economy): взять кредит, который банк предложил на планёрке */
+  | { kind: 'loan' };
 
 /** Что случилось — для интерфейса: звук, автопауза, сводка «за это время». */
 export type Notice =
@@ -376,7 +405,9 @@ export type Notice =
    * поток для ПК (spec 2026-10-day): планёрка в 08:00 — итог прошедших суток и что сломалось с утра («помещение:место»);
    * для экрана планёрки и автопаузы
    */
-  | { kind: 'morning'; summary: DaySummary; broken?: string[] };
+  | { kind: 'morning'; summary: DaySummary; broken?: string[] }
+  /** поток для ПК (spec 2026-10-economy, «Обход»): ваш лежащий в 08:00 стал хуже или реагирует на лечение — автопауза */
+  | { kind: 'worse'; id: string };
 
 export interface DaySummary {
   day: number;
@@ -394,7 +425,10 @@ export interface DaySummary {
   /** сколько повторных обращений пришло сегодня */
   returnsToday: number;
   /** песочница: касса за день, остаток вечером, как изменилась репутация */
-  economy?: { ledger: Ledger; cash: number; reputation: RepChange; level: { level: number; rooms: Id[] } };
+  /** поток для ПК (spec 2026-10-economy): ещё кредит — сколько осталось — и предложение банка ниже предела, ₽ */
+  economy?: { ledger: Ledger; cash: number; reputation: RepChange; level: { level: number; rooms: Id[] }; loan?: Loan; offer?: number };
+  /** поток для ПК (spec 2026-10-economy): узкие места суток — для планёрки */
+  load?: DayLoad;
   /** сколько раз назначен антибиотик, который не показан (задание главы 1) */
   needlessAntibiotic?: number;
   /** кампания: какие задания выполнены за день и какие письма пришли */
@@ -583,7 +617,12 @@ export interface ShiftState {
   /** своя больница — только в песочнице; практика идёт в готовой амбулатории каталога */
   hospital?: HospitalState;
   /** песочница: касса, ₽; репутация 0–100; касса текущего дня (нет — сохранение 0.0.20–0.0.21) */
-  economy?: { cash: number; reputation?: number; ledger?: Ledger };
+  /**
+   * поток для ПК (spec 2026-10-economy): `cash` — на последней планёрке, а касса сейчас — с кассой суток (`cashNow`);
+   * `accrued` — до какого часа зарплаты и содержание записаны в кассу суток; `loan` — кредит; `offer` — предложение банка
+   * с планёрки, ₽
+   */
+  economy?: { cash: number; reputation?: number; ledger?: Ledger; accrued?: number; loan?: Loan; offer?: number };
   /** «Отменить» на экране стройки: прежние больница и касса, последние UNDO_DEPTH */
   undo?: Built[];
   /** штат песочницы; в практике — штат готовой амбулатории */
