@@ -84,7 +84,7 @@ export const ru = {
     cutsOff: (name: string) => `отрежет от входа: ${name}`,
     cutsOffAmbulance: 'отрежет вход скорой',
     notInRoom: 'только внутри помещения',
-    notHere: (gen: string) => `не из каталога ${gen}`,
+    notHere: 'не из каталога этого помещения',
     occupied: (what: string) => `здесь уже ${what}`,
     doorway: 'перед дверью',
     blocks: 'перекроет проход',

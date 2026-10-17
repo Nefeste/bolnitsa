@@ -11,7 +11,7 @@ import { demolishRefund, emptySite, furnishOf, hospitalOf, priceOf, rulesOf, typ
 import { siteOfPreset } from '../engine/hospital/site-preset';
 import { presetStaff, salaryOf, type StaffMember, staffingOf } from '../engine/hospital/staff';
 import type { Notice } from '../engine/shift/types';
-import { clock, type Lang, money, named, setLang, T } from '../i18n';
+import { clock, genitive, type Lang, money, named, setLang, T } from '../i18n';
 import { bakeLook, lodOf, packPeople, type People } from '../render/bake';
 import { CATALOG, EXTRA_MODELS } from '../render/catalog';
 import { Crowd } from '../render/crowd';
@@ -256,7 +256,7 @@ export class Game {
     if (!this.hospital.site) return undefined;
     const b = openBlocks(db, plan, this.working, this.staffed)[0];
     if (!b) return undefined;
-    const gen = named(db.rooms[b.room]?.gen, b.room);
+    const gen = genitive(db.rooms[b.room], b.room);
     if (b.kind === 'down') return T.problem.roomDown(named(db.rooms[b.room]?.name, b.room), this.problemText(b.problem));
     return T.problem.noRoom(gen);
   }
@@ -280,7 +280,7 @@ export class Game {
       case 'noEquipment':
         return T.problem.noEquipment;
       case 'noStaff':
-        return T.problem.noStaff(named(db.roles[p.role]?.gen, p.role));
+        return T.problem.noStaff(genitive(db.roles[p.role], p.role));
       case 'noPlace':
         return T.problem.noPlace;
     }

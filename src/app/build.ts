@@ -44,7 +44,7 @@ export function whyText(db: ContentDb, site: Site | undefined, e: SiteError): st
     case 'notInRoom':
       return T.site.notInRoom;
     case 'notHere':
-      return T.site.notHere('');
+      return T.site.notHere;
     case 'occupied':
       return T.site.occupied(T.objects[e.item as keyof typeof T.objects] ?? e.item);
     case 'doorway':

@@ -24,6 +24,12 @@ export function named(n: { ru: string; en?: string } | undefined, fallback = '')
   return (lang === 'en' && n.en) || n.ru;
 }
 
+/** Название в родительном падеже («нет регистратуры»); по-английски падежа нет — то же название. */
+export function genitive(n: { name: { ru: string; en?: string }; gen: { ru: string; en?: string } } | undefined, fallback = ''): string {
+  if (!n) return fallback;
+  return lang === 'en' ? named(n.name, fallback) : named(n.gen, fallback);
+}
+
 /** Часы смены: «08:05». */
 export function clock(t: number): string {
   const s = ((t % 86400) + 86400) % 86400;

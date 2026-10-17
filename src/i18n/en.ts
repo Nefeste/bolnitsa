@@ -86,7 +86,7 @@ export const en: Strings = {
     cutsOff: (name: string) => `cuts off from the entrance: ${name}`,
     cutsOffAmbulance: 'cuts off the ambulance entrance',
     notInRoom: 'only inside a room',
-    notHere: (gen: string) => `not in this room’s catalog (${gen})`,
+    notHere: 'not in this room’s catalog',
     occupied: (what: string) => `a ${what} is already here`,
     doorway: 'in front of the door',
     blocks: 'would block the way',
