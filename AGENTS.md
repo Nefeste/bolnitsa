@@ -87,6 +87,7 @@ npm run dist:win                   # build + Windows zip and portable .exe → r
 npm run assets -- <sources dir>    # rebuild assets/models/*.glb from the CC0 packs (byte-identical; see assets/LICENSES.md)
 npm run bench -- --mode flow --quick           # engine: time per game minute at 50/100/200/300 patients (PC flow)
 npm run bench -- --mode desks --quick          # the same with Anamnez's appointment slots
+bun tools/bench/consults.ts                    # «Просят посмотреть»: share of hired doctors' cases that ask you (--probe: why these thresholds)
 bun --cpu-prof --cpu-prof-dir=tools/bench/out/prof tools/bench/bench.ts --mode flow --only 200 --quick --until 11
 bun tools/bench/profile.ts tools/bench/out/prof/<file>.cpuprofile 30 --under catchUp
 bun tools/test/make-review-fixture.ts          # only with the ORIGINAL engine: fingerprints of the eager review

@@ -1,4 +1,4 @@
-// из anamnez: src/engine/shift/engine.ts @ 96503ac, изменено: разбор приёма нанятого врача — по требованию (spec 2026-10-engine-speed)
+// из anamnez: src/engine/shift/engine.ts @ 96503ac, изменено: разбор приёма нанятого врача — по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults)
 // Движок смены: приход пациентов, сортировка, очередь, терпение, обследования со своими
 // сроками, закрытие случая и дня (spec 2026-09-first-shift, «Движок»; ADR 0005).
 //
@@ -33,6 +33,7 @@ import {
   type ClosedCase, type ColleagueDay, type Command, DAY, type Flow, type GoneRow, type DaySummary, type Difficulty, easyLevel, type Notice, type PlannedReturn, REGISTRATION, SHIFT_END, SHIFT_SCHEMA_VERSION,
   SHIFT_START, type ShiftEvent, type ShiftPatient, type ShiftState, TRIAGE, type Triage, type VisitKind, type WardDay, type AmbulanceDay, type SurgeryDay,
 } from './types';
+import { type Ask, askFor } from './consult';
 import { COMPLICATION_DAYS, complicationAt, complicationsOf, deathsOf, onsetHours, operationFor } from './surgery';
 import { dueIn, type TargetPlace, targetResults } from './targets';
 import { type Bed, daysIn, type StayEnd, stayNorm, wardCourse, wardState } from './ward';
@@ -530,6 +531,8 @@ function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       return [];
     case 'takeOver':
       return takeOver(db, s, cmd.id);
+    case 'consult':
+      return answerConsult(db, s, cmd);
     case 'discharge':
     case 'transfer':
       return leaveWard(db, s, cmd.id, cmd.kind);
@@ -933,6 +936,8 @@ function closeDay(db: ContentDb, s: ShiftState) {
   // итоги дня — полные: отложенные разборы приёмов нанятых врачей досчитываются (spec 2026-10-engine-speed, ч. 1); в потоке
   // для ПК — нет: оценку считают только приёмам игрока (решение владельца 16.10.2026)
   if (!s.flow) settleReviews(db, s);
+  // просьбы «Просят посмотреть» без ответа — с днём: больные остались не принятыми (spec 2026-10-consults)
+  delete s.consults;
   for (const p of Object.values(s.patients)) {
     if (p.status === 'waiting' || p.status === 'inRoom' || p.status === 'away' || p.status === 'coming') {
       if (p.status !== 'coming') s.summary.unseen++;
@@ -2510,7 +2515,7 @@ function handle(db: ContentDb, s: ShiftState, ev: ShiftEvent, notices: Notice[])
     case 'flow':
       return flowArrive(db, s, ev, notices);
     case 'colleague':
-      return colleagueStep(db, s, s.patients[ev.id], ev);
+      return colleagueStep(db, s, s.patients[ev.id], ev, notices);
     case 'nurse':
       return nurse(db, s, s.patients[ev.id], notices);
     case 'opEnd':
@@ -2833,6 +2838,8 @@ function releaseWaiting(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffM
 function takeOver(db: ContentDb, s: ShiftState, id: string): Notice[] {
   const p = s.patients[id];
   if (!s.dayOpen || !p?.by || p.closed || !(p.status === 'inRoom' || p.status === 'waiting' || p.status === 'away')) return [];
+  // врач просил посмотреть (spec 2026-10-consults) — вы забрали: просьба исполнена
+  closeConsult(s, id);
   const by = p.by;
   delete p.by;
   delete p.phase;
@@ -2892,14 +2899,25 @@ export function examsHere(db: ContentDb, s: ShiftState): Id[] {
  * навыка. Обследование — как у вас, следующий шаг — когда придут результаты; решение — приём
  * закрыт, пара минут на карту, и врач зовёт следующего.
  */
-function colleagueStep(db: ContentDb, s: ShiftState, p: ShiftPatient, ev?: ShiftEvent) {
+function colleagueStep(db: ContentDb, s: ShiftState, p: ShiftPatient, ev?: ShiftEvent, notices: Notice[] = []) {
   const m = colleagueOf(db, s, p);
   if (!m) return;
+  // просил посмотреть, а ответа нет до срока (spec 2026-10-consults) — продолжает сам: это его шаг после просьбы
+  if (ev) closeConsult(s, p.id);
   const pct = speedOf(db, m);
   // считался по частям, пока больница доживала время команды (0.5.13), — готовый или досчитать; нет — сейчас, тем же счётом
   const job = colleagueJobs.get(s);
   const r = job && job.event === ev ? (job.result ?? whole(job.parts)) : whole(colleagueParts(db, s, p, m));
   colleagueJobs.delete(s);
+  // поток для ПК: выбрал диагноз — дальше только вопросы перед лечением и решение, — но не уверен: просит вас посмотреть, а
+  // больной ждёт у него (spec 2026-10-consults). О больном просят один раз
+  if (s.flow && !p.asked && r.phase.diagnosis !== undefined && p.phase?.diagnosis === undefined) {
+    const ask = askOf(db, s, p, m, r.phase.diagnosis, r.phase.confidence);
+    if (ask) {
+      p.phase = r.phase;
+      return openConsult(db, s, p, m, ask, notices);
+    }
+  }
   p.phase = r.phase;
   if (r.step.kind === 'exam') {
     const cost = orderExam(db, s, p, r.step.exam, pct) ?? 0;
@@ -2927,6 +2945,82 @@ function colleagueStep(db: ContentDb, s: ShiftState, p: ShiftPatient, ev?: Shift
   p.spent.seconds += paper;
   (s.desk ??= {})[m.id] = s.t + paper;
   schedule(s, s.t + paper, { kind: 'free', by: m.id });
+}
+
+// --- «Просят посмотреть» (spec 2026-10-consults, поток для ПК) -------------------------------------------------------
+
+/**
+ * Попросит ли нанятый врач `m` посмотреть больного, выбрав диагноз `dx`, — по тому, что знает сам: тот же вывод, что у его
+ * шага (он только что посчитан для тех же наблюдений и запомнен, поэтому почти даром).
+ */
+function askOf(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffMember, dx: Id, confidence?: number): Ask | undefined {
+  const profile = p.to === m.id ? db.roles[m.role]?.profile : undefined;
+  return askFor(db, {
+    skill: m.skill, dx, ...(confidence !== undefined ? { confidence } : {}), candidates: candidatesOf(db, p.departments ?? s.meta.department), obs: observationsOf(p), patient: p.patient,
+    minutes: Math.round((s.t - p.arriveT) / 60), ...(profile ? { prior: { ids: profile, x: PROFILE_PRIOR } } : {}),
+  });
+}
+
+/**
+ * Нанятый врач просит посмотреть: больной ждёт у него в кабинете, его следующий шаг — вопросы перед лечением и решение —
+ * к сроку ответа (`wait` минут), а ответите раньше — раньше. Извещение — для звука и автопаузы.
+ */
+function openConsult(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffMember, ask: Ask, notices: Notice[]) {
+  const until = s.t + db.consults!.wait * MIN;
+  p.asked = true;
+  (s.consults ??= []).push({ id: p.id, by: m.id, at: s.t, until, why: ask.why, lead: ask.lead });
+  const day = colleagueDay(s, m.id);
+  day.asked = (day.asked ?? 0) + 1;
+  p.spent.seconds += until - s.t;
+  schedule(s, until, { kind: 'colleague', id: p.id });
+  notices.push({ kind: 'consult', id: p.id, by: m.id });
+}
+
+/** Просьба о больном `id` закрыта — ответом или сроком; просьб не осталось — поля нет. */
+function closeConsult(s: ShiftState, id: string) {
+  if (!s.consults) return;
+  const rest = s.consults.filter(c => c.id !== id);
+  if (rest.length === s.consults.length) return;
+  if (rest.length > 0) s.consults = rest;
+  else delete s.consults;
+}
+
+/**
+ * Ответ на просьбу: `look` — больной ваш, как «Забрать» (`takeOver`); `self` — врач продолжает сейчас, своим навыком:
+ * вопросы перед лечением и решение тем диагнозом, что выбрал; `refer` — к другому нанятому врачу, который сегодня
+ * принимает: тот позовёт его первым, когда освободится, и рассудит заново, своим навыком, а этот свободен. Просьбы нет —
+ * ничего.
+ */
+function answerConsult(db: ContentDb, s: ShiftState, cmd: Extract<Command, { kind: 'consult' }>): Notice[] {
+  const p = s.patients[cmd.id];
+  const m = p && s.consults?.some(c => c.id === p.id) ? colleagueOf(db, s, p) : undefined;
+  if (!m) return [];
+  if (cmd.answer === 'look') return takeOver(db, s, p.id);
+  const to = cmd.answer === 'refer' ? colleaguesOf(db, s).find(x => x.id === cmd.to && x.id !== m.id) : undefined;
+  if (cmd.answer === 'refer' && !to) return [];
+  closeConsult(s, p.id);
+  // шаг, назначенный к сроку ответа, — не нужен; ожидание — до сейчас
+  const step = s.events.find(e => e.event.kind === 'colleague' && e.event.id === p.id);
+  if (step) {
+    p.spent.seconds -= Math.max(0, step.t - s.t);
+    s.events = s.events.filter(e => e !== step);
+  }
+  if (!to) {
+    const notices: Notice[] = [];
+    colleagueStep(db, s, p, undefined, notices);
+    return notices;
+  }
+  p.by = to.id;
+  p.phase = {};
+  p.status = 'waiting';
+  p.queuedT = s.t;
+  p.wait++;
+  delete p.out;
+  // минута — передать карту, и этот врач свободен
+  (s.desk ??= {})[m.id] = s.t + MIN;
+  schedule(s, s.t + MIN, { kind: 'free', by: m.id });
+  staffDesks(db, s);
+  return [];
 }
 
 /** Чей это приём, если врач его ведёт: день открыт, пациент у него в кабинете, врач в штате. */
