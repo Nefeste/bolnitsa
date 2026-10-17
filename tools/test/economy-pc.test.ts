@@ -356,10 +356,13 @@ describe('обход ваших лежащих', () => {
     if (after.kind !== 'state') throw new Error(after.kind);
     expect(after.state.patients[p.id].stay!.replans).toBe(replans + 1);
     expect(after.state.patients[p.id].stay!.plan.treatments).toContain(tx.id);
+    // стационар платит при выписке: случай — в кассе суток (тариф — код «Анамнеза», `wardIncome`)
+    const cases = after.state.economy!.ledger!.ward?.cases ?? 0;
     send({ kind: 'command', cmd: { kind: 'discharge', id: p.id } });
     const done = send({ kind: 'save' });
     if (done.kind !== 'state') throw new Error(done.kind);
     expect(done.state.patients[p.id].status).toBe('done');
+    expect(done.state.economy!.ledger!.ward?.cases).toBe(cases + 1);
     expect(doctorState(db, done.state).ward.some(r => r.id === p.id)).toBe(false);
   });
 });
