@@ -2721,7 +2721,7 @@ function results(s: ShiftState, p: ShiftPatient, notices: Notice[]) {
  * Кто из нанятых врачей сегодня принимает: терапевт в работающем кабинете врача — не в вашем
  * и с местом в ординаторской. Порядок — по номеру кабинета, затем человека.
  */
-function colleaguesOf(db: ContentDb, s: ShiftState): StaffMember[] {
+export function colleaguesOf(db: ContentDb, s: ShiftState): StaffMember[] {
   if (!s.hospital || !s.staff) return [];
   const ctx = hospitalCtx(db, s);
   const mine = doctorRoom(ctx.plan);
@@ -2789,9 +2789,12 @@ export function routeOf(db: ContentDb, s: ShiftState, p: ShiftPatient): BodySyst
   return r;
 }
 
-/** Новый больной — «ваш» (часть 76): его группа — среди выбранных в настройках. */
+/**
+ * Новый больной — «ваш» (часть 76): его группа — среди выбранных в настройках. Больница ПК без вашего кабинета («Не
+ * принимаю», spec 2026-10-doctor-mode «Больницы») — ваших нет: всех ведут нанятые врачи.
+ */
 export function forPlayer(db: ContentDb, s: ShiftState, p: ShiftPatient): boolean {
-  return (s.meta.mine?.length ?? 0) > 0 && s.meta.mine!.includes(routeOf(db, s, p));
+  return (s.meta.mine?.length ?? 0) > 0 && s.meta.mine!.includes(routeOf(db, s, p)) && (!s.hospital?.site || doctorRoom(hospitalCtx(db, s).plan) !== undefined);
 }
 
 /**

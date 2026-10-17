@@ -10,6 +10,7 @@ import { GpuTimer } from './gpu';
 import { buildLamps, type Lamps } from './lamps';
 import { type Layout, roomAt } from './layout';
 import { type Paint, PeopleView } from './people';
+import { YOU } from './population';
 import { Post } from './post';
 import { createRenderer, Daylight, gpuString, IsoCamera, PRESETS, type Quality } from './view';
 import type { FloorKind, FloorTex } from './textures';
@@ -27,6 +28,8 @@ export interface StageInit {
 
 /** Цвет значка над головой: «красный» и «жёлтый» по сортировке. */
 const MARK = { red: new THREE.Color(0xd8392b), yellow: new THREE.Color(0xe7b416) };
+/** Метка вашей фигуры — синяя: не путается со срочностью (красный, жёлтый). */
+const YOU_MARK = 0x2f7fe0;
 
 export class Stage {
   readonly scene = new THREE.Scene();
@@ -46,6 +49,8 @@ export class Stage {
   private aniso: number;
   private marks: THREE.InstancedMesh;
   private ring: THREE.Mesh;
+  /** метка вашей фигуры */
+  private you: THREE.Mesh;
   quality: Quality;
   wallMode: WallMode = 'cut';
   gpu: GpuTimer;
@@ -89,6 +94,10 @@ export class Stage {
     this.ring = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.52, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x2fb5c9, transparent: true, opacity: 0.9, depthWrite: false }));
     this.ring.visible = false;
     this.scene.add(this.ring);
+    // ваша фигура (spec docs/specs/2026-10-doctor-mode.md): синяя стрелка остриём вниз над головой
+    this.you = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.34, 4).rotateX(Math.PI), new THREE.MeshBasicMaterial({ color: YOU_MARK }));
+    this.you.visible = false;
+    this.scene.add(this.you);
     this.applyQuality(init.quality);
     this.walls.setMode(this.wallMode);
   }
@@ -171,6 +180,7 @@ export class Stage {
     const cull = cam.half * Math.max(1, cam.aspect) * 1.25 + 3;
     this.view.update(crowd, paint, cam.target, cull, cam.half <= PRESETS[this.quality].fullHalf);
     this.updateMarks(crowd, triageOf, selected);
+    this.updateYou(crowd);
     this.draw();
   }
 
@@ -200,6 +210,17 @@ export class Stage {
     this.marks.count = n;
     this.marks.instanceMatrix.needsUpdate = true;
     if (this.marks.instanceColor) this.marks.instanceColor.needsUpdate = true;
+  }
+
+  /** Метка над вашей фигурой: покачивается, чтобы её было видно и на общем плане. */
+  private updateYou(crowd: Crowd) {
+    const w = crowd.walkers.get(YOU);
+    this.you.visible = !!w;
+    if (!w) return;
+    const sitting = w.state === 'sit' || w.state === 'sitDown' || w.state === 'standUp';
+    const bob = Math.sin(performance.now() / 300) * 0.06;
+    this.you.position.set(w.x, (sitting ? w.y + 1.65 : w.y + 2.15) + bob, w.z);
+    this.you.rotation.y = (performance.now() / 900) % (Math.PI * 2);
   }
 
   private draw() {

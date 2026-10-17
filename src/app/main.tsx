@@ -45,6 +45,7 @@ const actions: Actions = {
   demolish: later('demolish'),
   hire: later('hire'),
   dismiss: later('dismiss'),
+  doctor: later('doctor'),
   startGame: kind => {
     store.set({ choose: false });
     chosen?.(kind);

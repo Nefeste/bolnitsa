@@ -6,10 +6,12 @@
 // призрак на занятом, R, взять и переставить, снос, Ctrl+Z, Esc, ПКМ; двойная дверь палаты; часы идут — пациенты
 // приходят, их принимают. Ошибок в консоли и запросов наружу нет.
 // Снимки — tools/app/out/e2e.png и e2e-build-*.png; `--shots high` — снимки стройки в этом качестве (на время снимка).
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2] [--shots low|medium|high]
+// Часть 4 — режим врача: tools/app/e2e-doctor.mjs.
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|4] [--shots low|medium|high]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { doctorPart } from './e2e-doctor.mjs';
 import { findChromium } from './e2e-lib.mjs';
 import { serve } from './serve.mjs';
 
@@ -70,8 +72,10 @@ const PROTO = [
 
 const only = arg('only', '');
 try {
-  if (only !== '2') await partOne();
-  if (only !== '1') await partTwo();
+  if (only !== '2' && only !== '4') await partOne();
+  if (only !== '1' && only !== '4') await partTwo();
+  // часть 4 — режим врача (spec docs/specs/2026-10-doctor-mode.md): tools/app/e2e-doctor.mjs
+  if (!only || only === '4') await doctorPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);
