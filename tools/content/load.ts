@@ -1,4 +1,4 @@
-// из anamnez: tools/content/load.ts @ 96503ac
+// из anamnez: tools/content/load.ts @ 96503ac, изменено: hospital/consults.yaml — «Просят посмотреть» (spec 2026-10-consults)
 // Сборка медицинской базы из YAML в память: схема, ссылки, полосы → числа
 // (`docs/11-content.md` §6, `docs/04-data-model.md` §1). Используют build.ts, тесты и
 // «виртуальный врач» — все читают одну и ту же базу.
@@ -20,6 +20,7 @@ import {
   type LinkSrc, PREVALENCE, type PresetSrc, presetSchema, type ProbabilitySrc, type ProfessionSrc, professionSchema, type RiskSrc, type RoleSrc, riskSchema, roleSchema, type RoomSrc, roomSchema,
   type TipSrc, tipSchema, type TreatmentSrc, treatmentSchema, versionSchema, type AchievementSrc, achievementSchema, type ScoreSrc, scoreSchema,
   type RuleSrc, ruleSchema, type TargetSrc, targetSchema, type SkillSrc, skillSchema,
+  type ConsultsSrc, consultsSchema,
 } from './schema';
 
 export const CONTENT_DIR = join(import.meta.dir, '../../content');
@@ -155,6 +156,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   const targets: Record<string, TargetSrc> = {};
   const skills: Record<string, SkillSrc> = {};
   let economy: EconomySrc | undefined;
+  let consults: ConsultsSrc | undefined;
   let contentVersion = 0;
 
   for (const file of files) {
@@ -216,6 +218,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       if (p) { expectId(p.id, 'preset'); put(presets, p); }
     } else if (rel === 'hospital/economy.yaml') {
       economy = check(economySchema);
+    } else if (rel === 'hospital/consults.yaml') {
+      consults = check(consultsSchema);
     } else if (top === 'campaign' && rel.split('/')[1] === 'characters') {
       const c = check(characterSchema);
       if (c) { expectId(c.id, 'char'); put(characters, c); }
@@ -241,11 +245,14 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       const x = check(skillSchema);
       if (x) { expectId(x.id, 'skill'); put(skills, x); }
     } else {
-      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, people/professions, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, campaign/characters, campaign/chapters, campaign/tips, achievements, scores, rules, targets, career/skills)`);
+      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, people/professions, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, hospital/consults.yaml, campaign/characters, campaign/chapters, campaign/tips, achievements, scores, rules, targets, career/skills)`);
     }
   }
   if (!contentVersion) errors.push('version.yaml: нет contentVersion');
   if (!economy) errors.push('hospital/economy.yaml: нет баланса больницы');
+  // «Просят посмотреть» (spec 2026-10-consults): слабый врач сомневается не реже сильного — порог не растёт с навыком
+  if (!consults) errors.push('hospital/consults.yaml: нет порогов «Просят посмотреть»');
+  else if (consults.unsure.some((x, i) => i > 0 && x > consults!.unsure[i - 1])) errors.push(`hospital/consults.yaml: unsure ${consults.unsure.join(', ')} — порог растёт с навыком, а сильный врач сомневается не чаще слабого`);
 
   // --- ссылки ---
   const hasF = (id: string) => id in findings;
@@ -882,6 +889,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     economy: economy
       ? { ...economy, sandbox: { ...economy.sandbox, corridor: rects(economy.sandbox.corridor) } }
       : NO_ECONOMY,
+    // без порогов (ошибка сборки всё равно будет) врачи не просят
+    ...(consults ? { consults } : {}),
     revealedBy,
   };
   for (const c of Object.values(conditions).sort((a, b) => (a.id < b.id ? -1 : 1))) {

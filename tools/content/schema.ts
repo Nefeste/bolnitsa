@@ -1,4 +1,4 @@
-// из anamnez: tools/content/schema.ts @ 96503ac
+// из anamnez: tools/content/schema.ts @ 96503ac, изменено: hospital/consults.yaml — «Просят посмотреть» (spec 2026-10-consults)
 // Схема исходных записей медицинской базы (YAML в content/, `docs/11-content.md` §4).
 // Строгие объекты: опечатка в имени поля — ошибка сборки, а не молча пропущенное поле.
 import { z } from 'zod';
@@ -854,6 +854,17 @@ export const economySchema = z.strictObject({
   }),
 });
 
+/**
+ * «Просят посмотреть» «Больницы» (spec docs/specs/2026-10-consults.md): нанятый врач в потоке для ПК не уверен и зовёт
+ * игрока. По навыку 1–5 — ниже какой уверенности в своём диагнозе (с болезнями той же группы) просит, %; вторая группа
+ * болезней не меньше этой доли первой — «рядом», %; сколько игровых минут ждёт ответа.
+ */
+export const consultsSchema = z.strictObject({
+  unsure: z.tuple([pct, pct, pct, pct, pct]),
+  close: z.number().int().min(1).max(100),
+  wait: z.number().int().min(1).max(24 * 60),
+});
+
 // --- кампания (spec 2026-09-campaign) ---------------------------------------------------------
 
 const slug = z.string().regex(/^[a-z][a-zA-Z0-9]*$/);
@@ -1164,6 +1175,7 @@ export type EquipmentSrc = z.infer<typeof equipmentSchema>;
 export type RoleSrc = z.infer<typeof roleSchema>;
 export type PresetSrc = z.infer<typeof presetSchema>;
 export type EconomySrc = z.infer<typeof economySchema>;
+export type ConsultsSrc = z.infer<typeof consultsSchema>;
 export type CharacterSrc = z.infer<typeof characterSchema>;
 export type ChapterSrc = z.infer<typeof chapterSchema>;
 export type TipSrc = z.infer<typeof tipSchema>;
