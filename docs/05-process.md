@@ -15,13 +15,13 @@
   там не скачивается: установщики собирает только сборка по тегу.
 - Сборка для ПК — только на тег версии `vX.Y.Z`, как APK у мобильных игр; ручного запуска
   нет. Тег ставит владелец. Workflow — [`.github/workflows/build.yml`](../.github/workflows/build.yml):
-  Electron, Windows (zip и portable `.exe`) и Linux (AppImage и tar.gz) — всё на
-  `ubuntu-24.04`, без wine; файлы — в релиз на тег, версии 0.x — пре-релизы. Тег сверяется с
+  Electron, **пока только Windows x64 одним zip** (решение владельца 17.10.2026: проще и быстрее) — на
+  `ubuntu-24.04`, без wine; файл — в релиз на тег, версии 0.x — пре-релизы. Linux и одиночный `.exe` вернутся,
+  когда понадобятся (не позже демо): Steam Deck запускает сборку для Windows через Proton. Тег сверяется с
   версией в корневом `package.json`: `v0.0.4` при `0.0.3` останавливает сборку.
 - С версии `0.0.3` собирается **игра из корня** (оболочка и 3D-вид над движком,
-  [`specs/2026-10-shell-3d.md`](specs/2026-10-shell-3d.md)); файлы релиза — `Bolnitsa-<версия>-win-x64.zip`,
-  `…-win-x64.exe`, `…-linux-x86_64.AppImage`, `…-linux-x64.tar.gz`. `Bolnitsa` — рабочее имя файлов, марку решит
-  владелец. Пробы (`spikes/map-render` — `v0.0.1`, `spikes/render-3d` — `v0.0.2`) остаются в репозитории, но больше
+  [`specs/2026-10-shell-3d.md`](specs/2026-10-shell-3d.md)); файл релиза — `Bolnitsa-<версия>-win-x64.zip`
+  (распаковать, запустить `Bolnitsa.exe`). `Bolnitsa` — рабочее имя файлов, марку решит владелец. Пробы (`spikes/map-render` — `v0.0.1`, `spikes/render-3d` — `v0.0.2`) остаются в репозитории, но больше
   не собираются. Установщика NSIS и своей иконки у `.exe` нет: без wine они не собираются
   (`spikes/map-render/README.md`, «Сборка»).
 
@@ -31,8 +31,8 @@
 npm ci                 # с Electron (~100 МБ); для одних проверок — ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci
 npm run build          # база + страница и поток расчёта → dist/
 npm run electron       # окно игры
-npm run dist:linux     # AppImage и tar.gz → release/
-npm run dist:win       # zip и portable .exe → release/ (из Linux, без wine)
+npm run dist:linux     # AppImage и tar.gz → release/ — только для проверки собранной игры в контейнере, в релиз не идёт
+npm run dist:win       # zip для Windows x64 → release/ (из Linux, без wine) — то же, что в релизе
 ```
 
 `dist/` и `release/` в репозиторий не попадают. Модели лежат в `assets/models/` готовыми; заново их делает
