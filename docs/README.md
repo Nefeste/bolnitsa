@@ -23,7 +23,8 @@
    действуют здесь.
 10. [`journal/`](journal/) — журнал по месяцам.
 11. [`reports/`](reports/) — отчёты: [`2026-10-engine-speed.md`](reports/2026-10-engine-speed.md) — движок
-    до и после ускорения; [`2026-10-3d-generators.md`](reports/2026-10-3d-generators.md) — какие генераторы
+    до и после ускорения, повторный замер после частей 3 и 5б;
+    [`2026-10-3d-generators.md`](reports/2026-10-3d-generators.md) — какие генераторы
     3D-моделей поднимут вид; снимки оболочки и 3D-вида — [`2026-10-shell-3d/`](reports/2026-10-shell-3d/), стройки —
     [`2026-10-build/`](reports/2026-10-build/), режима врача — [`2026-10-doctor-mode/`](reports/2026-10-doctor-mode/), людей
     и потока — [`2026-10-flow-ui/`](reports/2026-10-flow-ui/), кассы, планёрки и обхода —
