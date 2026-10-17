@@ -17,6 +17,12 @@
 // bun tools/bench/bench.ts --seed 7 --until 18 — зерно смены и до какого часа жить
 // bun tools/bench/bench.ts --only 200 --quick  — одна больница (для профиля: bun --cpu-prof --cpu-prof-dir=… …)
 // bun tools/bench/bench.ts --json tools/bench/out/result.json — итог ещё и в JSON
+//
+// Сутки целиком (spec docs/specs/2026-10-day.md), только --mode flow:
+// bun tools/bench/bench.ts --mode flow --day   — до 10:00 вторых суток: минута днём (09–14, 14–20), ночью (20–08) и утром
+//                                                вторых суток, планёрка в 08:00 и обход в 09:00 — отдельно
+// bun tools/bench/bench.ts --mode flow --flat  — ровная форма потока по часам: до 14:00 приходят те же, что до суток целиком,
+//                                                — сравнение с прежним движком в окне 09:00–14:00
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { gzipSync } from 'bun';
@@ -36,7 +42,8 @@ const flag = (name: string) => process.argv.includes(`--${name}`);
 const MODE = arg('mode', 'desks') as 'desks' | 'flow';
 const DESKS = (flag('only') ? arg('only', '') : MODE === 'desks' ? arg('desks', '33,66,132') : arg('load', '50,100,200,300')).split(',').map(Number);
 const SEED = Number(arg('seed', '1'));
-const UNTIL = Number(arg('until', '18')) * 3600;
+const DAY_RUN = flag('day');
+const UNTIL = Number(arg('until', DAY_RUN ? '34' : '18')) * 3600;
 const QUICK = flag('quick');
 const FRAMES = !QUICK && !flag('no-frames');
 const PARTS = !QUICK && !flag('no-parts');
@@ -93,6 +100,8 @@ if (errors.length) {
   console.error(errors.join('\n'));
   process.exit(1);
 }
+// ровная форма потока по часам (spec 2026-10-day): в окне 09:00–14:00 — тот же приток, что прежде, для сравнения до и после
+if (flag('flat') && db.day) db.day = { ...db.day, walk: Array<number>(24).fill(100), ambulance: Array<number>(24).fill(100) };
 const therapy = candidatesOf(db, 'dept.therapy');
 console.log(`База ${db.contentVersion}: болезней ${Object.keys(db.conditions).length}, у терапии кандидатов ${therapy.length}, обследований ${Object.keys(db.exams).length}; собрана за ${Math.round(dbMs)} мс`);
 console.log(`Bun ${Bun.version}, зерно ${SEED}`);
@@ -316,6 +325,21 @@ for (const desks of DESKS) {
   console.log(`  мс на игровую минуту 09:00–14:00: медиана ${f1(quantile(msMin, 0.5))}, p95 ${f1(quantile(msMin, 0.95))}, худшая ${f1(Math.max(...msMin))}`);
   console.log(`  за день до ${clock(UNTIL)}: ${Math.round(main.totalMs)} мс; приёмов закрыто ${main.end.done}, ушли не дождавшись ${main.end.left}; событий в очереди до ${main.maxEvents}; к ${clock(UNTIL)} ждут досчёта разбора ${main.due}, ушедших в журнале ${main.gone}; закрытие дня ${Math.round(main.closeMs)} мс`);
   console.log(`  память на пике: состояние в куче ${mb(main.peak.heap)} (вся куча процесса с базой и кэшами ${mb(main.peak.process)}), снимок ${kb(main.peak.snapshot)} (gzip ${kb(main.peak.gzip)}); к ${clock(UNTIL)}: снимок ${kb(main.end.snapshot)} (gzip ${kb(main.end.gzip)}), пациентов в состоянии ${main.end.patients}`);
+  // сутки целиком (spec 2026-10-day): по часам суток — от начала смены, 08:00 первых суток
+  if (DAY_RUN) {
+    const H = 3600;
+    const span = (from: number, to: number) => main.steps.filter(x => x.t > from * H && x.t <= to * H);
+    for (const [name, from, to] of [['день 09–14', 9, 14], ['день 14–20', 14, 20], ['ночь 20–08', 20, 32], ['утро 08–10 вторых суток', 32, 34]] as const) {
+      const w = span(from, Math.min(to, UNTIL / H));
+      if (w.length === 0) continue;
+      const ms = w.map(x => x.ms);
+      console.log(`  ${name}: в больнице медиана ${quantile(w.map(x => x.live), 0.5)}; мс на игровую минуту — медиана ${f1(quantile(ms, 0.5))}, p95 ${f1(quantile(ms, 0.95))}, худшая ${f1(Math.max(...ms))}`);
+    }
+    for (const [name, at] of [['планёрка (минута до 08:00)', 32], ['обход (минута до 09:00)', 33]] as const) {
+      const x = main.steps.find(st => st.t === at * H);
+      if (x) console.log(`  ${name}: ${f1(x.ms)} мс`);
+    }
+  }
 
   const runs: RunResult[] = [main];
   let frames: Row['frames'];
