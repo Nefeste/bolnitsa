@@ -285,6 +285,8 @@ export const en: Strings = {
     places: { ward: 'wards', icu: 'intensive care', ricu: 'ICU', box: 'isolation rooms' } as Record<string, string>,
     wanted: (what: string) => `wanted ${what} — the place was taken`,
     left: (_f: boolean, waited: string, patience: string) => `left without being seen: waited for a doctor ${waited}, was ready to wait ${patience}`,
+    leftEnd: (_f: boolean) => 'left without being seen',
+    patience: (_f: boolean, d: string) => `out of patience: was ready to wait ${d}`,
     unseen: 'the day ended — not seen in time',
     lost: 'the path broke off',
     cut: 'the rest of the path is not recorded',

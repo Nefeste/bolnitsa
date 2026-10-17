@@ -129,7 +129,8 @@ export function PathSection({ hud }: { hud: Hud }) {
     <div className="path" id="path">
       {path.left ? (
         <div className="pleft" id="path-left">
-          <b>{T.flow.whyLeft}.</b> {path.left}
+          <b>{T.flow.whyLeft}</b>
+          <div>{path.left.charAt(0).toUpperCase() + path.left.slice(1)}</div>
         </div>
       ) : null}
       <div className="phead">{T.flow.path}</div>

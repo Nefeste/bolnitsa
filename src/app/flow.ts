@@ -238,10 +238,12 @@ export function pathCard(j: Journey, female: boolean, now: number, names: PathNa
         why = [...(e.full?.length ? [T.flow.placesFull(e.full.map(k => T.flow.places[k] ?? k).join(', '))] : []), ...(e.wanted ? [T.flow.wanted(T.flow.stayIn[e.wanted] ?? e.wanted)] : [])].join('; ') || undefined;
         break;
       case 'left': {
+        // в ленте — коротко; почему — целиком первой строкой карточки
         const q = [...steps].reverse().find((x): x is Extract<Step, { k: 'queue' }> => x.k === 'queue');
-        text = T.flow.left(female, dur(q ? e.t - q.t : e.t - j.at), dur(e.patience ?? 0));
-        why = q ? queueWhy(q) : undefined;
-        left = why ? `${text} — ${why}` : text;
+        const all = T.flow.left(female, dur(q ? e.t - q.t : e.t - j.at), dur(e.patience ?? 0));
+        left = q ? `${all} — ${queueWhy(q)}` : all;
+        text = T.flow.leftEnd(female);
+        why = T.flow.patience(female, dur(e.patience ?? 0));
         break;
       }
       case 'unseen':
@@ -331,9 +333,10 @@ export function roomChip(load: RoomLoad, problem: { kind: Problem['kind'] | 'bro
 
 /** Цвет пола в слое «Очереди и загрузка»: по ожиданию, по койкам, занято; не работает — серый; пусто — нет цвета. */
 export function tintOf(load: RoomLoad, down: boolean): number | null {
-  const GREEN = 0x3fae6a;
-  const YELLOW = 0xe7b416;
-  const RED = 0xd8392b;
+  // насыщенные: кадр потом переводится в тон и затеняется, и полупрозрачный пол бледнеет
+  const GREEN = 0x1fbf5a;
+  const YELLOW = 0xffc400;
+  const RED = 0xff2a12;
   if (down) return 0x6f7a80;
   if (load.queue > 0) return load.wait >= WAIT_BAD ? RED : load.wait >= WAIT_OK ? YELLOW : GREEN;
   if (load.beds && load.beds[0] > 0) return load.beds[0] >= load.beds[1] ? RED : load.beds[0] >= load.beds[1] * BEDS_HIGH ? YELLOW : GREEN;

@@ -84,13 +84,13 @@ function atlas(): THREE.CanvasTexture {
   return tex;
 }
 
+// Середина значка — из матрицы экземпляра; сам значок — в плоскости экрана (повёрнут к камере), размер `uSize` м.
 const VERTEX = /* glsl */ `
 attribute float aIcon;
 uniform float uSize;
 uniform float uCount;
 varying vec2 vUv;
 void main() {
-  // середина значка — из матрицы экземпляра; сам значок — в плоскости экрана (повёрнут к камере)
   vec4 c = viewMatrix * modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
   c.xy += position.xy * uSize;
   gl_Position = projectionMatrix * c;

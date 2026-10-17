@@ -54,7 +54,9 @@ describe('путь пациента в карточке', () => {
     const c = pathCard(j, true, H(12), names);
     expect(c.lines[0].text).toBe('пришла сама');
     expect(c.left).toBe('ушла, не дождавшись: ждала врача 1 ч 10 мин, готова была ждать 1 ч 10 мин — все нанятые врачи заняты (1), впереди 2');
-    expect(c.lines[c.lines.length - 1]).toMatchObject({ at: '11:10', kind: 'end' });
+    expect(c.lines[c.lines.length - 1]).toMatchObject({ at: '11:10', kind: 'end', text: 'ушла, не дождавшись', why: 'терпение кончилось: готова была ждать 1 ч 10 мин' });
+    // и в мужском роде
+    expect(pathCard(j, false, H(12), names).left).toBe('ушёл, не дождавшись: ждал врача 1 ч 10 мин, готов был ждать 1 ч 10 мин — все нанятые врачи заняты (1), впереди 2');
     expect(c.summary).toBe('в больнице 1 ч 10 мин, из них ждала 1 ч 10 мин (100 %)');
   });
 

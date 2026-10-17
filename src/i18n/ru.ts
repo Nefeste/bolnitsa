@@ -284,11 +284,13 @@ export const ru = {
     places: { ward: 'палаты', icu: 'ПИТ', ricu: 'реанимация', box: 'боксы' } as Record<string, string>,
     wanted: (what: string) => `хотели ${what} — место успели занять`,
     left: (f: boolean, waited: string, patience: string) =>
-      `${f ? 'ушла' : 'ушёл'}, не дождавшись: ${f ? 'ждала' : 'ждал'} врача ${waited}, ${f ? 'готова' : 'готов'} была ждать ${patience}`,
+      `${f ? 'ушла' : 'ушёл'}, не дождавшись: ${f ? 'ждала' : 'ждал'} врача ${waited}, ${f ? 'готова была' : 'готов был'} ждать ${patience}`,
+    leftEnd: (f: boolean): string => (f ? 'ушла, не дождавшись' : 'ушёл, не дождавшись'),
+    patience: (f: boolean, d: string) => `терпение кончилось: ${f ? 'готова была' : 'готов был'} ждать ${d}`,
     unseen: 'день кончился — не успели принять',
     lost: 'путь оборвался',
     cut: 'дальше путь не записан',
-    whyLeft: 'Почему ушёл',
+    whyLeft: 'Причина ухода',
     room: {
       works: 'работает', busy: 'занято', queue: (n: number) => `очередь ${n}`, noStaff: 'нет персонала', closed: 'закрыто',
       beds: (a: number, b: number) => `койки ${a}/${b}`, ask: 'врач ждёт вашего ответа', mine: 'ваш кабинет', broken: 'аппарат сломан',

@@ -94,9 +94,11 @@ async function partOne() {
   await page.goto(`http://127.0.0.1:${port}/index.html?q=${arg('q', 'low')}&lang=ru&hospital=preset`);
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
   ok('страница загрузилась, первый кадр нарисован');
-  // дать потоку расчёта и людям пожить: ×4 на несколько секунд
+  // дать потоку расчёта и людям пожить: ×4 на несколько секунд — и до первого пациента (без видеокарты и при занятом
+  // процессоре кадров мало, часы идут медленнее)
   await page.keyboard.press('Digit3');
   await page.waitForTimeout(6000);
+  await page.waitForFunction(() => window.__game.crowd.walkers.size > window.__game.staff.length, null, { timeout: 120000 }).catch(() => {});
   const s = await page.evaluate(() => {
     const g = window.__game;
     return {
@@ -463,7 +465,6 @@ async function partThree() {
   const path = await page.textContent('#path');
   if (path.includes('ожидание врача') && /заняты|ждёт вас|не принимает/.test(path)) ok(`путь пациента: «${path.slice(0, 160)}…»`);
   else fail(`путь пациента без причины ожидания: «${path}»`);
-  await shotAs('e2e-flow-2.png');
   // «Ушли»: путь ушедшего — почему ушёл
   await page.click('#pf-gone');
   await page.waitForTimeout(300);
@@ -474,6 +475,7 @@ async function partThree() {
     const why = (await page.textContent('#path-left').catch(() => '')) ?? '';
     if (why.includes('не дождавшись') && /заняты|ждёт вас|не принимает/.test(why)) ok(`ушедший: «${gone[0]}» — «${why}»`);
     else fail(`ушедший: «${gone[0]}», почему — «${why}»`);
+    await shotAs('e2e-flow-2.png');
   } else fail('«Ушли» пусто: к 13:00 ушёл хотя бы один');
   await page.click('#pf-present');
   // слой «Очереди и загрузка»: L — пол окрашен, над помещениями очередь и ожидание

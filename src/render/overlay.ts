@@ -21,7 +21,7 @@ export class FloorTint {
       (m.material as THREE.Material).dispose();
     }
     this.meshes = layout.plan.rooms.map(r => {
-      const m = new THREE.Mesh(this.geo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.42, depthWrite: false }));
+      const m = new THREE.Mesh(this.geo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, depthWrite: false }));
       // внутри стен: прямоугольник помещения — со стенами по краю
       m.scale.set(Math.max(0.5, r.w - 2), 1, Math.max(0.5, r.h - 2));
       m.position.set(r.x + r.w / 2, 0.035, r.y + r.h / 2);
