@@ -37,7 +37,7 @@ export class Chips {
 
   constructor(private stage: Stage) {
     this.root = document.createElement('div');
-    this.root.className = 'chips';
+    this.root.className = 'roomchips';
     // под панелями, как подписи стройки
     document.body.insertBefore(this.root, document.getElementById('ui'));
   }
@@ -62,7 +62,7 @@ export class Chips {
       }
       if (x.key === key) continue;
       x.key = key;
-      x.el.className = `chip t-${r.chip.tone}`;
+      x.el.className = `roomchip t-${r.chip.tone}`;
       x.el.dataset.room = r.id;
       x.el.dataset.icon = r.chip.icon;
       x.el.title = r.chip.long ?? r.chip.text;

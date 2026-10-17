@@ -7,6 +7,9 @@ import type { Journey } from '../engine/shift/journey';
 import type { HospitalState } from '../engine/hospital/build';
 import type { StaffMember } from '../engine/hospital/staff';
 import type { Season } from '../content/types';
+import type { Lang } from '../i18n';
+import type { Difficulty } from '../engine/shift/types';
+import type { CardView, DoctorState, Refusal } from './doctor';
 import type { NameRow } from './pack';
 
 export type ToSim =
@@ -27,7 +30,18 @@ export type ToSim =
    * путь пациента (spec docs/specs/2026-10-flow-ui.md): окно показывает путь этого пациента (номер в движке) — поток кладёт
    * его в срез (`path`), когда он изменился; null — никого
    */
-  | { kind: 'watch'; id: string | null };
+  | { kind: 'watch'; id: string | null }
+  /** режим врача (spec docs/specs/2026-10-doctor-mode.md, «Поток расчёта»): карта, «Взять случай», действие в карте */
+  | { kind: 'doctor'; act: DoctorAct };
+
+/**
+ * Режим врача: `view` — чью карту показывать (`null` — закрыта), язык и уровень медицины; `take` — «Взять случай» (поток
+ * сам решает, какая это команда движка); `case` — действие в карте больного `id`: только если он у вас в кабинете.
+ */
+export type DoctorAct =
+  | { kind: 'view'; open: string | null; lang: Lang; level: Difficulty }
+  | { kind: 'take'; id: string }
+  | { kind: 'case'; id: string; cmd: Command };
 
 /** Больница и штат — когда они впервые или заново (после `start`, `load`, стройки и найма). */
 export interface World {
@@ -50,6 +64,16 @@ export type FromSim =
    * после каждого tick и command: упакованный срез (`buf`, src/sim/pack.ts), строки новых людей, извещения, на сколько
    * часы смены отстали от часов игры (игровых секунд); `world` — если больница или штат изменились
    */
-  | { kind: 'slice'; buf: Int32Array; names: NameRow[]; notices: Notice[]; lag: number; world?: World; path?: PathView }
+  | ({ kind: 'slice'; buf: Int32Array; names: NameRow[]; notices: Notice[]; lag: number; world?: World; path?: PathView } & DoctorOut)
   | { kind: 'state'; state: ShiftState }
   | { kind: 'error'; message: string };
+
+/**
+ * Режим врача в срезе (spec docs/specs/2026-10-doctor-mode.md): состояние врача и вид открытой карты — когда изменились
+ * (`card: null` — карта закрыта или больного нет); `refused` — почему поток не сделал `take` или `case`.
+ */
+export interface DoctorOut {
+  doctor?: DoctorState;
+  card?: CardView | null;
+  refused?: { act: 'take' | 'case'; id: string; why: Refusal };
+}

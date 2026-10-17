@@ -40,7 +40,7 @@ const Seg = ({ on, onClick, children, id, title }: { on: boolean; onClick: () =>
 function Row({ p, actions, gone }: { p: PatientRow; actions: Actions; gone?: boolean }) {
   return (
     <li>
-      <button type="button" className={`row prow t-${p.triage}`} onClick={() => actions.focus(p.key)} title={gone ? undefined : T.flow.flyHint} data-id={p.id}>
+      <button type="button" className={`row patrow t-${p.triage}`} onClick={() => actions.focus(p.key)} title={gone ? undefined : T.flow.flyHint} data-id={p.id}>
         <span className="ptitle">
           {p.title}
           {p.mood ? <MoodIcon mood={p.mood} /> : null}

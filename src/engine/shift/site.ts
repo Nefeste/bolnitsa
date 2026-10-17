@@ -8,7 +8,7 @@ import { Rng } from '../core/rng';
 import { DOCTOR, standInOf } from '../hospital/requirements';
 import {
   addItem, addRoom, bedOrder, demolish, type Done, FREE_CHECK, furnish, hospitalOf, moveItem, removeDoor, removedBetween, removeItem, removeRoom, setDoor,
-  type Site, type SiteCommand, type SiteError, type SiteRoom, SITE_UNDO, type Works,
+  setOffice, type Site, type SiteCommand, type SiteError, type SiteRoom, SITE_UNDO, type Works,
 } from '../hospital/site';
 import { salaryOf, type StaffMember } from '../hospital/staff';
 import type { ContentDb } from '../../content/types';
@@ -82,6 +82,9 @@ export function occupied(db: ContentDb, s: ShiftState): { rooms: Set<string>; it
       if (office && p.status === 'inRoom') rooms.add(office);
     }
   }
+  // у вас в кабинете пациент (spec 2026-10-doctor-mode): ваш кабинет занят, как кабинет нанятого врача с приёмом
+  const yours = s.current ? s.patients[s.current] : undefined;
+  if (yours && site.mine && !yours.bay) rooms.add(site.mine);
   return { rooms, items, staff };
 }
 
@@ -148,6 +151,8 @@ export function siteCommand(db: ContentDb, s: ShiftState, cmd: SiteCommand): Not
       return undo(db, s, works, site);
     case 'hire':
       return hire(db, s, works, site, cmd);
+    case 'office':
+      return office(db, s, works, site, cmd.room);
     case 'dismiss': {
       const m = s.staff?.find(x => x.id === cmd.id);
       if (!m) return no(cmd.kind, { kind: 'nothing' });
@@ -247,6 +252,34 @@ function hire(db: ContentDb, s: ShiftState, works: Works, site: Site, cmd: Extra
   }
   nudge(s);
   return [{ kind: 'site', cmd: 'hire', ok: true, cost: 0, room: room.id }];
+}
+
+/**
+ * «Мой кабинет» и «Не принимаю» (spec docs/specs/2026-10-doctor-mode.md, «Ваш кабинет»): нельзя, пока у вас в кабинете
+ * пациент или пока нанятый врач того кабинета ведёт пациента. Нанятый врач того кабинета встаёт в ваш прежний кабинет, а
+ * нет прежнего — в резерв: «Мой» не убирает врача из больницы. Цена — 0; в отмене стройки — как любое действие.
+ */
+function office(db: ContentDb, s: ShiftState, works: Works, site: Site, room: string | undefined): Notice[] {
+  if (s.current) return no('office', { kind: 'busy' });
+  const r = setOffice(db, site, room);
+  if (!r.ok) return no('office', r.error);
+  const post = (m: StaffMember) => db.roles[m.role]?.stands ?? m.role;
+  const there = room === undefined ? undefined : s.staff?.find(m => m.room === room && post(m) === DOCTOR);
+  if (there && occupied(db, s).staff.has(there.id)) return no('office', { kind: 'busy' });
+  // без помещения в отмене: отмена «Моего» не закрывает кабинет на перестройку
+  remember(s, works, site);
+  if (there) {
+    const old = site.mine && site.rooms.some(x => x.id === site.mine && !x.leaving) ? site.mine : undefined;
+    s.staff = s.staff!.map(m => {
+      if (m !== there) return m;
+      if (old) return { ...m, room: old };
+      const out = { ...m };
+      delete out.room;
+      return out;
+    });
+  }
+  commit(db, s, site, r.site);
+  return [{ kind: 'site', cmd: 'office', ok: true, cost: 0, ...(room ? { room } : {}) }];
 }
 
 /** Событие `siteFree`: освободившееся — прочь; ещё что-то ждёт — проверить снова через FREE_CHECK. */

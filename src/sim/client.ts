@@ -3,9 +3,10 @@
 // поток не захлёбывается кадрами, если не успевает.
 import type { Command, Notice, ShiftState } from '../engine/shift/types';
 import type { NameRow } from './pack';
-import type { FromSim, PathView, ToSim, World } from './protocol';
+import type { DoctorAct, DoctorOut, FromSim, PathView, ToSim, World } from './protocol';
 
-export interface Slice {
+/** Срез и, если изменились, режим врача (spec docs/specs/2026-10-doctor-mode.md). */
+export interface Slice extends DoctorOut {
   buf: Int32Array;
   names: NameRow[];
   notices: Notice[];
@@ -48,7 +49,11 @@ export class SimClient {
       this.roundTrips.push(performance.now() - this.sentAt);
       if (this.roundTrips.length > 2000) this.roundTrips.splice(0, 1000);
     }
-    this.onSlice({ buf: msg.buf, names: msg.names, notices: msg.notices, lag: msg.lag, ...(msg.world ? { world: msg.world } : {}), ...(msg.path ? { path: msg.path } : {}) });
+    this.onSlice({
+      buf: msg.buf, names: msg.names, notices: msg.notices, lag: msg.lag, ...(msg.world ? { world: msg.world } : {}),
+      ...(msg.doctor ? { doctor: msg.doctor } : {}), ...(msg.card !== undefined ? { card: msg.card } : {}), ...(msg.refused ? { refused: msg.refused } : {}),
+      ...(msg.path ? { path: msg.path } : {}),
+    });
   }
 
   start(msg: Extract<ToSim, { kind: 'start' }>) {
@@ -58,6 +63,11 @@ export class SimClient {
 
   command(cmd: Command) {
     this.post({ kind: 'command', cmd });
+  }
+
+  /** Режим врача: карта, «Взять случай», действие в карте (spec docs/specs/2026-10-doctor-mode.md). */
+  doctor(act: DoctorAct) {
+    this.post({ kind: 'doctor', act });
   }
 
   /** `tick` в пути: промотка («До утра», бенч) добавляет секунды, только когда поток ответил, — иначе при сотнях кадров в

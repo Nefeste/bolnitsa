@@ -6,6 +6,8 @@ import { clock, type Lang, money, T } from '../i18n';
 import type { PersonInfo } from '../render/population';
 import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
+import { Card } from './doctor/Card';
+import { Asks, Dock, OfficeRow, TakeCase } from './doctor/Dock';
 import { Layers, PathSection, PatientsTab } from './flow';
 import { type Actions, type Hud, type RoomCard, type Speed, type Store, type Tab, type Tool, useHud } from './store';
 
@@ -214,8 +216,8 @@ function LeftTools({ hud, actions }: P) {
   );
 }
 
-/** Карточка помещения больницы ПК: состояние, нужное, должности, «Обставить», «Снести». */
-function SiteCard({ r, actions }: { r: RoomCard; actions: Actions }) {
+/** Карточка помещения больницы ПК: состояние, нужное, должности, «Обставить», «Снести»; у кабинета врача — «Мой кабинет». */
+function SiteCard({ r, actions, hud }: { r: RoomCard; actions: Actions; hud: Hud }) {
   return (
     <>
       <div className={`state ${r.ok ? 'ok' : 'bad'}`} id="room-state">
@@ -284,6 +286,7 @@ function SiteCard({ r, actions }: { r: RoomCard; actions: Actions }) {
           {r.demolish}
         </button>
       </div>
+      <OfficeRow r={r} hud={hud} actions={actions} />
     </>
   );
 }
@@ -292,7 +295,7 @@ function RightTabs({ hud, actions }: P) {
   const tabs: [Tab, string][] = [
     ['patients', T.tabs.patients],
     ['staff', T.tabs.staff],
-    ['asks', T.tabs.asks],
+    ['asks', T.doctor.asks.tab(hud.doctor?.state?.asks.length ?? 0)],
     ['journal', T.tabs.journal],
     ['reports', T.tabs.reports],
     ['goals', T.tabs.goals],
@@ -321,6 +324,7 @@ function RightTabs({ hud, actions }: P) {
         ))}
       </ul>
     );
+  else if (hud.tab === 'asks') body = <Asks hud={hud} actions={actions} />;
   else if (hud.tab) body = <p>{T.tabs.soon}</p>;
   return (
     <div className="right" id="right">
@@ -371,6 +375,7 @@ function BottomCard({ hud, actions, names }: P) {
             </div>
           ))}
         </dl>
+        {info.kind === 'patient' && !info.gone ? <TakeCase info={info} said={hud.doctor?.said} actions={actions} /> : null}
         {info.kind === 'patient' ? <PathSection hud={hud} /> : null}
       </div>
     );
@@ -387,7 +392,7 @@ function BottomCard({ hud, actions, names }: P) {
               ✕
             </button>
           </div>
-          <SiteCard r={r} actions={actions} />
+          <SiteCard r={r} actions={actions} hud={hud} />
         </div>
       );
     return (
@@ -478,6 +483,8 @@ export function App({ store, actions, names }: { store: Store; actions: Actions;
       <LeftTools {...p} />
       <RightTabs {...p} />
       <BottomCard {...p} />
+      {!hud.build.on ? <Dock hud={hud} actions={actions} /> : null}
+      {hud.doctor?.card ? <Card key={hud.doctor.card.id} v={hud.doctor.card} level={hud.doctor.level} meanwhile={hud.doctor.meanwhile} next={hud.doctor.next} actions={actions} /> : null}
       {hud.debug ? <DebugMenu {...p} /> : null}
       {!hud.ready || hud.status || hud.error ? (
         <div className="status panel" id="status">

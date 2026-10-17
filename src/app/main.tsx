@@ -49,6 +49,7 @@ const actions: Actions = {
   focus: later('focus'),
   toggleLayers: later('toggleLayers'),
   toggleQueues: later('toggleQueues'),
+  doctor: later('doctor'),
   startGame: kind => {
     store.set({ choose: false });
     chosen?.(kind);

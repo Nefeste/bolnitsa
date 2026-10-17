@@ -7,13 +7,15 @@
 // приходят, их принимают. Часть 3 — люди и поток (spec docs/specs/2026-10-flow-ui.md): готовая больница к 13:00 —
 // пациенты ходят, значки «ждёт долго» и «недоволен», значки помещений; вкладка «Пациенты» (Tab) — фильтр, клик — камера
 // летит к человеку, в карточке — путь с причиной ожидания; «Ушли» — путь ушедшего и почему; слой «Очереди и загрузка» (L);
-// ушедший, не дождавшись, идёт к выходу со значком. Ошибок в консоли и запросов наружу нет.
+// ушедший, не дождавшись, идёт к выходу со значком. Часть 4 — режим врача: tools/app/e2e-doctor.mjs. Ошибок в консоли и
+// запросов наружу нет.
 // Снимки — tools/app/out/e2e.png, e2e-build-*.png и e2e-flow-*.png; `--shots high` — снимки частей 2 и 3 в этом качестве
 // (на время снимка).
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|3] [--shots low|medium|high] [--port 8093]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|3|4] [--shots low|medium|high] [--port 8093]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { doctorPart } from './e2e-doctor.mjs';
 import { findChromium } from './e2e-lib.mjs';
 import { serve } from './serve.mjs';
 
@@ -79,6 +81,8 @@ try {
   if (run(1)) await partOne();
   if (run(2)) await partTwo();
   if (run(3)) await partThree();
+  // часть 4 — режим врача (spec docs/specs/2026-10-doctor-mode.md): tools/app/e2e-doctor.mjs
+  if (run(4)) await doctorPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);
@@ -444,13 +448,13 @@ async function partThree() {
   await until(() => !!document.getElementById('patients'));
   await page.click('#pf-w-wait');
   await page.waitForTimeout(300);
-  const rows = await page.$$eval('#patients .prow', els => els.map(e => e.textContent ?? ''));
+  const rows = await page.$$eval('#patients .patrow', els => els.map(e => e.textContent ?? ''));
   if (rows.length > 0 && rows.every(t => t.includes('ждёт врача'))) ok(`вкладка «Пациенты», ждут врача: ${rows.length}; первый — «${rows[0]}»`);
   else fail(`вкладка «Пациенты»: ${JSON.stringify(rows.slice(0, 5))}`);
   await page.evaluate(() => window.__game.stage.cam.overview());
   await page.waitForTimeout(200);
   const cam0 = await page.evaluate(() => window.__game.stage.cam.half);
-  await page.click('#patients .prow');
+  await page.click('#patients .patrow');
   // камера долетает за полсекунды кадров; без видеокарты кадров мало — ждём, пока долетит
   await until(() => !window.__game.stage.cam.flying, null, 20000).catch(() => {});
   const fly = await page.evaluate(() => {
@@ -468,9 +472,9 @@ async function partThree() {
   // «Ушли»: путь ушедшего — почему ушёл
   await page.click('#pf-gone');
   await page.waitForTimeout(300);
-  const gone = await page.$$eval('#patients .prow', els => els.map(e => e.textContent ?? ''));
+  const gone = await page.$$eval('#patients .patrow', els => els.map(e => e.textContent ?? ''));
   if (gone.length > 0) {
-    await page.click('#patients .prow');
+    await page.click('#patients .patrow');
     await until(() => !!document.getElementById('path-left'), null, 10000).catch(() => {});
     const why = (await page.textContent('#path-left').catch(() => '')) ?? '';
     if (why.includes('не дождавшись') && /заняты|ждёт вас|не принимает/.test(why)) ok(`ушедший: «${gone[0]}» — «${why}»`);

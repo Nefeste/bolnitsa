@@ -1,4 +1,5 @@
 // Строки игры по-английски: тот же вид, что ru.ts, — пропущенная строка не соберётся (tsc).
+import { doctorEn } from './doctor.en';
 import type { Strings } from './ru';
 
 export const en: Strings = {
@@ -177,7 +178,7 @@ export const en: Strings = {
     needs: 'Needs',
     posts: 'Posts',
     vacant: 'nobody',
-    you: 'you — with the doctor mode (part 4)',
+    you: 'you — your office',
     hire: (name: string, salary: string) => `Hire: ${name} — ${salary} per shift`,
     dismiss: 'Dismiss',
     demolish: (back: string) => `Demolish — ${back} back`,
@@ -301,4 +302,6 @@ export const en: Strings = {
     layerSoon: 'later',
     legend: (a: number, b: number) => `Floor: green — waiting under ${a} min, yellow — ${a}–${b} min, red — ${b} min or longer; wards — by beds taken.`,
   },
+  // режим врача (spec docs/specs/2026-10-doctor-mode.md)
+  ...doctorEn,
 };

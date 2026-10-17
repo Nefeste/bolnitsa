@@ -11,10 +11,13 @@ import type { Doing } from '../engine/shift/slice';
 import type { Triage } from '../engine/shift/types';
 import { DOINGS, H, HEADER, KINDS, type NameRow, NO_TIME, P, STATUSES, STRIDE, TRIAGES } from '../sim/pack';
 import type { Look } from './bake';
-import { CLOTHES, GOWN, lookSpec, OLD_AGE, roleColor, SKIN } from './cast';
+import { CLOTHES, COAT, GOWN, lookSpec, OLD_AGE, roleColor, SKIN } from './cast';
 import type { Crowd, Walker } from './crowd';
 import type { Layout } from './layout';
-import type { Places, Spot } from './place';
+import { doorInside, nearestWalk, type Places, type Spot, standAt } from './place';
+
+/** Ваша фигура на карте (spec docs/specs/2026-10-doctor-mode.md, «Вы на карте»): врач в белом халате с меткой. */
+export const YOU = 'you';
 
 /** Что показать о человеке в панели; `gone` — пациент ушёл, на карте его нет (spec 2026-10-flow-ui). */
 export type PersonInfo =
@@ -114,7 +117,32 @@ export class Population {
       this.crowd.add(key, look, spot, true);
       this.paints.set(key, { clothes: new THREE.Color(roleColor(m.role)), skin: new THREE.Color(SKIN[m.seed % SKIN.length]) });
     }
-    for (const [key, w] of [...this.crowd.walkers]) if (w.staff && !keep.has(key)) this.crowd.remove(key);
+    for (const [key, w] of [...this.crowd.walkers]) if (w.staff && !keep.has(key) && key !== YOU) this.crowd.remove(key);
+  }
+
+  /**
+   * Ваша фигура (spec docs/specs/2026-10-doctor-mode.md, «Вы на карте») — на месте врача в помещении плана `room`: вашем
+   * кабинете или смотровой, где вы у привезённого скорой; места врача нет — у двери изнутри. -1 — фигуры нет («Не
+   * принимаю»). Белый халат — как у врачей (cast.ts), метку над головой рисует сцена (stage.ts).
+   */
+  placeYou(room: number) {
+    const w = this.crowd.walkers.get(YOU);
+    const r = room >= 0 ? this.layout.plan.rooms[room] : undefined;
+    if (!r) {
+      if (w) this.crowd.remove(YOU);
+      return;
+    }
+    const taken = new Set<number>();
+    for (const x of this.crowd.walkers.values()) if (x.staff && x.key !== YOU && x.at) taken.add(x.at.cell);
+    const cell = r.staff['role.doctor'];
+    const you = { id: YOU, role: 'role.doctor', sex: 'm' as const, seed: 7, skill: 5, salary: 0, days: 0 };
+    const spot = (cell ? this.places.staffSpot(you, () => cell, taken) : undefined) ?? standAt(this.layout, nearestWalk(this.layout, doorInside(this.layout, room), taken), 'wait', 0);
+    if (w) {
+      if (w.at?.key !== spot.key) this.crowd.retarget(w, spot, true);
+      return;
+    }
+    this.crowd.add(YOU, this.pick('staff', 'm', false, 7), spot, true);
+    this.paints.set(YOU, { clothes: new THREE.Color(COAT), skin: new THREE.Color(SKIN[2]) });
   }
 
   /** Стройка (spec docs/specs/2026-10-build.md, «Отрисовка»): новая раскладка, места, штат и список помещений больницы. */

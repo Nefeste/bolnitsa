@@ -10,7 +10,7 @@
 import type { Cell, ContentDb, Id, ObjectKind, RoomSize, RoomSizeId, Rot } from '../../content/types';
 import type { Decor, HospitalState, PlacedRoom, Plan, RoomInstance } from './build';
 import { CELL } from './grid';
-import type { Problem } from './requirements';
+import { OFFICE, type Problem } from './requirements';
 import type { StaffMember } from './staff';
 
 // --- состояние ------------------------------------------------------------------------------------------------------
@@ -985,7 +985,28 @@ export function removeRoom(site: Site, room: SiteRoom): Site {
   const openings: Rect[] = (room.door ?? []).filter(([x, y]) => !m.inside[y * m.w + x]).map(([x, y]) => ({ x, y, w: 1, h: 1 }));
   const next: Site = { ...site, rooms: site.rooms.filter(r => r.id !== room.id), ...(openings.length ? { inside: [...site.inside, ...openings] } : {}) };
   if (next.editing === room.id) delete next.editing;
+  // ваш кабинет снесли — вы «не принимаете», пока не отметите другой (spec 2026-10-doctor-mode, «Неудачные случаи»)
+  if (next.mine === room.id) delete next.mine;
   return next;
+}
+
+/**
+ * Ваш кабинет (spec docs/specs/2026-10-doctor-mode.md, «Ваш кабинет: „Мой кабинет“»): отметить кабинет врача `room` или,
+ * без `room`, снять отметку («Не принимаю»). Помещение на перестройку не закрывается, цены нет. Кто из нанятых встаёт на
+ * освободившееся место — решает команда смены (shift/site.ts): здесь только участок.
+ */
+export function setOffice(db: ContentDb, site: Site, room?: string): Done {
+  if (room === undefined) {
+    if (site.mine === undefined) return fail({ kind: 'nothing' });
+    const next = { ...site };
+    delete next.mine;
+    return { ok: true, site: next, cost: 0 };
+  }
+  const r = site.rooms.find(x => x.id === room);
+  if (!r || r.leaving) return fail({ kind: 'unknown' });
+  if (r.type !== OFFICE || !db.rooms[r.type]) return fail({ kind: 'notHere' });
+  if (site.mine === room) return fail({ kind: 'nothing' });
+  return { ok: true, site: { ...site, mine: room }, cost: 0, room };
 }
 
 /** Что под курсором для сноса: предмет, дверь, помещение — в этом порядке. */
@@ -1248,7 +1269,9 @@ export type SiteCommand =
   | { kind: 'dismiss'; id: string }
   | { kind: 'undo' }
   /** стройка закончена: перестраиваемое помещение открыто */
-  | { kind: 'done' };
+  | { kind: 'done' }
+  /** ваш кабинет — «Мой кабинет»; без `room` — «Не принимаю» (spec 2026-10-doctor-mode) */
+  | { kind: 'office'; room?: string };
 
 /** Что вышло: извещение движка `{ kind: 'site', … }`. */
 export interface SiteResult {
