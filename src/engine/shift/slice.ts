@@ -45,9 +45,12 @@ export interface ShiftSlice {
 
 const ROOM_OF_STAFF = new WeakMap<object, Map<string, string>>();
 
-/** Что делает пациент и где; `rooms` — кабинет нанятого врача по номеру человека. */
-function doingOf(s: ShiftState, p: ShiftPatient, rooms: Map<string, string> | undefined): { doing: Doing; room?: string; bed?: number } {
-  const office = p.by ? rooms?.get(p.by) : undefined;
+/**
+ * Что делает пациент и где; `rooms` — кабинет нанятого врача по номеру человека; `yours` — ваш кабинет (spec
+ * 2026-10-doctor-mode): у вашего больного на приёме — он.
+ */
+function doingOf(s: ShiftState, p: ShiftPatient, rooms: Map<string, string> | undefined, yours?: string): { doing: Doing; room?: string; bed?: number } {
+  const office = p.by ? rooms?.get(p.by) : yours;
   if (p.kind === 'ambulance' && (p.status === 'waiting' || p.status === 'inRoom')) {
     return { doing: 'ambulance', ...(p.bay ? { room: p.bay.room, bed: p.bay.bed } : {}) };
   }
@@ -80,7 +83,8 @@ function doingOf(s: ShiftState, p: ShiftPatient, rooms: Map<string, string> | un
   return { doing: 'ward', ...(p.stay ? { room: p.stay.room, bed: p.stay.bed } : {}) };
 }
 
-export function sliceOf(s: ShiftState): ShiftSlice {
+/** `office` — ваш кабинет (номер помещения плана, spec 2026-10-doctor-mode): туда идёт ваш больной на приёме. */
+export function sliceOf(s: ShiftState, office?: string): ShiftSlice {
   // кабинет нанятого врача — по штату; карта одна на штат
   let rooms = s.staff ? ROOM_OF_STAFF.get(s.staff) : undefined;
   if (s.staff && !rooms) {
@@ -90,7 +94,7 @@ export function sliceOf(s: ShiftState): ShiftSlice {
   const people: PersonSlice[] = [];
   for (const p of Object.values(s.patients)) {
     if (p.status !== 'waiting' && p.status !== 'inRoom' && p.status !== 'away' && p.status !== 'admitted') continue;
-    const d = doingOf(s, p, rooms);
+    const d = doingOf(s, p, rooms, office);
     people.push({
       id: p.id, status: p.status, triage: p.triage, ...(d.room ? { room: d.room } : {}), ...(p.by ? { by: p.by } : {}), doing: d.doing,
       ...(d.bed !== undefined ? { bed: d.bed } : {}), kind: p.kind,
