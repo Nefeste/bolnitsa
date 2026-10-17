@@ -65,20 +65,59 @@ Studio-wide rules are in the charter's `docs/05-rules.md`. In addition here:
 ## Commands
 
 The engine and the medical database are copied from Anamnez (`docs/02-architecture.md`); tests run in Bun
-(CI: Bun 1.3.11, like Anamnez). Run the first four before every push — `pr.yml` runs the same on every PR.
+(CI: Bun 1.3.11, like Anamnez). The game around them is Electron + Three.js + React (ADR 0002), built with esbuild.
+Run `content`, `typecheck`, `test` and the browser scenario before every push — `pr.yml` runs the first three and
+the page build on every PR.
 
 ```bash
-npm ci                             # dependencies (yaml, zod, typescript, bun-types)
+npm ci                             # dependencies, Electron included (ELECTRON_SKIP_BINARY_DOWNLOAD=1 for checks only)
 npm run content                    # build and validate content/ → src/content/generated/bundle.json (not in git)
-npm run typecheck                  # content + tsc --noEmit (src, tools)
-npm test                           # content + bun test tools/test (~4 min)
-npm run bench -- --mode flow --quick           # time per game minute at 50/100/200/300 patients (PC flow)
+npm run typecheck                  # content + tsc --noEmit (src incl. .tsx, tools)
+npm test                           # content + bun test tools/test (~5 min)
+npm run build                      # content + page and worker (esbuild) → dist/ (not in git)
+npm run electron                   # build + the game window
+npm run e2e                        # after build: the game in headless Chromium, real clicks; screenshot in tools/app/out/
+npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
+npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git)
+npm run dist:win                   # build + Windows zip and portable .exe → release/ (from Linux, no wine)
+npm run assets -- <sources dir>    # rebuild assets/models/*.glb from the CC0 packs (byte-identical; see assets/LICENSES.md)
+npm run bench -- --mode flow --quick           # engine: time per game minute at 50/100/200/300 patients (PC flow)
 npm run bench -- --mode desks --quick          # the same with Anamnez's appointment slots
 bun --cpu-prof --cpu-prof-dir=tools/bench/out/prof tools/bench/bench.ts --mode flow --only 200 --quick --until 11
 bun tools/bench/profile.ts tools/bench/out/prof/<file>.cpuprofile 30 --under catchUp
 bun tools/test/make-review-fixture.ts          # only with the ORIGINAL engine: fingerprints of the eager review
 ```
 
+The browser scenario and the headless bench need Chromium: `PLAYWRIGHT_BROWSERS_PATH` (default `/opt/pw-browsers`) or
+`CHROMIUM_PATH`. Electron in a container without a GPU: `xvfb-run -a node_modules/electron/dist/electron . --no-sandbox
+--swiftshader` (add `--bench --secs 5 --qualities low` for the auto-bench; results land in the working directory).
+Software WebGL numbers say nothing about a player's GPU — the owner's PC is the reference.
+
 If the environment sets `BUN_OPTIONS=--smol`, unset it for the bench (`env -u BUN_OPTIONS …`). Any change to
 `src/engine/` re-runs the bench and compares with `docs/reports/2026-10-engine-speed.md`; a change to inference must
 keep `tools/test/infer-speed.test.ts` and the golden fingerprints green (same numbers to the bit).
+
+Never write Three.js, Electron, React or esbuild code from memory: read the docs of the pinned versions
+(`package.json`) first — their APIs change between releases (e.g. `GTAOPass` in three r186).
+
+## Project map
+
+- `src/engine/` — the engine copied from Anamnez (pure TypeScript; see «Hard rules»); `shift/slice.ts` is ours: who is
+  where and what they are doing, for rendering.
+- `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`), Web Worker
+  (`worker.ts`) and its client in the window (`client.ts`). The window never runs the engine.
+- `src/app/` — the game in the window: loads the database and models, builds the preset hospital, frame loop, clock,
+  input, auto-bench (`bench.ts`).
+- `src/render/` — the 3D view (Three.js): `layout.ts` places template items on the engine plan, `catalog.ts` maps
+  engine items to CC0 models or code-made ones, `world.ts` floors and cut walls, `doors.ts`, `lamps.ts`, `post.ts`
+  (MSAA + GTAO), `stage.ts`; people: `bake.ts` (animations baked into a texture), `cast.ts` (the one table of heights,
+  role colours and looks), `place.ts`, `path.ts`, `crowd.ts`, `population.ts`. People exist only in rendering: the
+  engine never sees them.
+- `src/ui/` — panels (React) and their store; `src/i18n/` — every player-facing string, Russian and English (English
+  typed as the Russian); `tools/test/i18n.test.ts` fails on Cyrillic in strings elsewhere in `src/app`, `src/ui`,
+  `src/render`, `src/sim`.
+- `electron/` — the main process (window, `app://`, no network) and preload; `app/index.html` — the page.
+- `assets/` — CC0 models and `LICENSES.md` (sources, licenses, SHA-256); never add a model without its line there.
+- `tools/app/` — page build, model preparation, browser scenario, headless bench; `tools/test/` — Bun tests;
+  `tools/content/` — database build; `tools/bench/` — engine bench.
+- `spikes/` — probes, kept as they were; code taken from them carries `// из spikes/<probe>: <path>` on its first line.
