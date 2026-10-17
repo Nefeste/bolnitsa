@@ -112,6 +112,7 @@ try {
     await page.goto(url('hospital=empty'));
     await ready('__ready');
     await page.keyboard.press('KeyB');
+    await page.click('#tool-room');
     await page.click('#rt-reception');
     await look(10, 10, 9);
     const at = (x, y) => page.evaluate(([cx, cy]) => window.__game.stage.screenOfCell(cx, cy), [x, y]);
