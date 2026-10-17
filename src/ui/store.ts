@@ -1,6 +1,7 @@
 // Хранилище панелей (spec docs/specs/2026-10-shell-3d.md, «Панели»): игра пишет сюда не чаще 10 раз в секунду, панели
 // читают через `useSyncExternalStore`. Снимок неизменяемый: каждое `set` — новый объект.
 import { useSyncExternalStore } from 'react';
+import type { PathLine, PatientFilter, PatientRow } from '../app/flow';
 import type { Id, ObjectKind } from '../content/types';
 import type { Lang } from '../i18n';
 import type { PersonInfo } from '../render/population';
@@ -79,7 +80,15 @@ export interface Hud {
   selected?: { key: string; info: PersonInfo };
   room?: RoomCard;
   notices: { t: number; text: string }[];
-  patients: { key: string; text: string; triage: string }[];
+  /** вкладка «Пациенты» (spec docs/specs/2026-10-flow-ui.md): строки по фильтру, сколько всего, ушедшие */
+  patients: PatientRow[];
+  patientsAll: number;
+  patientFilter: PatientFilter;
+  gone: PatientRow[];
+  /** «Путь пациента» выбранного: лента, итог, почему ушёл; `none` — пути нет (пришёл до этой версии) */
+  path?: { lines: PathLine[]; summary: string; left?: string } | { none: true };
+  /** слои карты: меню открыто; «Очереди и загрузка» включён */
+  layers: { open: boolean; queues: boolean };
   staffList: { key: string; text: string }[];
   debug: boolean;
   build: BuildHud;
@@ -116,6 +125,10 @@ export const initial: Hud = {
   tab: null,
   notices: [],
   patients: [],
+  patientsAll: 0,
+  patientFilter: { triage: 'all', where: 'all', long: false, gone: false },
+  gone: [],
+  layers: { open: false, queues: false },
   staffList: [],
   debug: false,
   build: { on: false, moving: false, spent: 0, undo: 0 },
@@ -171,6 +184,11 @@ export interface Actions {
   dismiss(id: string): void;
   /** начало игры: пустое здание или готовая больница */
   startGame(kind: 'empty' | 'preset'): void;
+  /** часть 3 (spec docs/specs/2026-10-flow-ui.md): фильтры «Пациентов», камера к человеку и выбор, слои карты */
+  filterPatients(patch: Partial<PatientFilter>): void;
+  focus(key: string): void;
+  toggleLayers(): void;
+  toggleQueues(): void;
   /** режим врача (spec docs/specs/2026-10-doctor-mode.md) */
   doctor(a: DoctorAction): void;
 }
