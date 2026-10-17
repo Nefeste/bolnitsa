@@ -1,13 +1,16 @@
 // Сцена 3D-вида (spec docs/specs/2026-10-shell-3d.md, «Больница на экране», «Свет, качество, камера»): участок, полы,
 // стены со срезом, двери со створками, светильники, мебель, люди, значки срочности и выделение; свет по часам смены,
-// пресеты качества, мягкое затенение, выбор человека и помещения мышью, снимки.
+// пресеты качества, мягкое затенение, выбор человека и помещения мышью, снимки. Часть 3 (spec
+// docs/specs/2026-10-flow-ui.md): значки над людьми — отдельным проходом поверх кадра (`over`), слой очередей — цвет пола.
 import * as THREE from 'three';
 import type { People } from './bake';
 import type { Crowd, Walker } from './crowd';
 import { buildDoors, type Doors } from './doors';
 import { batchMeshes, type Furnished } from './furniture';
 import { GpuTimer } from './gpu';
+import { Icons } from './icons';
 import { buildLamps, type Lamps } from './lamps';
+import { FloorTint } from './overlay';
 import { type Layout, roomAt } from './layout';
 import { type Paint, PeopleView } from './people';
 import { YOU } from './population';
@@ -49,6 +52,13 @@ export class Stage {
   private aniso: number;
   private marks: THREE.InstancedMesh;
   private ring: THREE.Mesh;
+  /** поверх готового кадра: значки над людьми (часть 3) */
+  readonly over = new THREE.Scene();
+  readonly icons: Icons;
+  /** значок над человеком: номер в `ICONS` (icons.ts) или -1 — задаёт игра */
+  iconOf: (w: Walker) => number = () => -1;
+  /** слой «Очереди и загрузка»: цвет пола помещений */
+  readonly tint = new FloorTint();
   /** метка вашей фигуры */
   private you: THREE.Mesh;
   quality: Quality;
@@ -94,6 +104,10 @@ export class Stage {
     this.ring = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.52, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x2fb5c9, transparent: true, opacity: 0.9, depthWrite: false }));
     this.ring.visible = false;
     this.scene.add(this.ring);
+    this.icons = new Icons(init.capacity);
+    this.over.add(this.icons.mesh);
+    this.tint.setLayout(layout);
+    this.scene.add(this.tint.group);
     // ваша фигура (spec docs/specs/2026-10-doctor-mode.md): синяя стрелка остриём вниз над головой
     this.you = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.34, 4).rotateX(Math.PI), new THREE.MeshBasicMaterial({ color: YOU_MARK }));
     this.you.visible = false;
@@ -133,6 +147,7 @@ export class Stage {
     this.scene.add(this.lamps.mesh);
     this.furniture = batchMeshes(furnished.batch);
     for (const m of this.furniture) this.scene.add(m);
+    this.tint.setLayout(layout);
     // свет пола и светильники — по часу заново
     this.hourShown = -1;
   }
@@ -180,6 +195,7 @@ export class Stage {
     const cull = cam.half * Math.max(1, cam.aspect) * 1.25 + 3;
     this.view.update(crowd, paint, cam.target, cull, cam.half <= PRESETS[this.quality].fullHalf);
     this.updateMarks(crowd, triageOf, selected);
+    this.icons.update(crowd, this.iconOf, cam.half);
     this.updateYou(crowd);
     this.draw();
   }
@@ -236,6 +252,12 @@ export class Stage {
     } else {
       r.setRenderTarget(null);
       r.render(this.scene, camera);
+    }
+    // значки над людьми — поверх: без затенения и перевода в тон, сквозь стены
+    if (this.icons.mesh.count > 0) {
+      r.autoClear = false;
+      r.render(this.over, camera);
+      r.autoClear = true;
     }
     this.gpu.end();
     this.calls = r.info.render.calls;

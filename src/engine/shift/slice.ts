@@ -1,7 +1,9 @@
 // Срез смены для отрисовки (spec docs/specs/2026-10-engine-speed.md, «Поток расчёта»; docs/specs/2026-10-shell-3d.md,
 // «Обмен между потоками»): то, что поток расчёта отдаёт потоку отрисовки каждый кадр, — кто где и что делает. Плоские
 // числа и короткие строки: поток упаковывает их в Int32Array (src/sim/pack.ts). Чистая функция состояния: ничего не
-// меняет.
+// меняет. Часть 3 (spec docs/specs/2026-10-flow-ui.md): с какого момента человек делает то, что делает, и до какого часа
+// готов ждать — из пути пациента (journey.ts); у кабинета обследования ждут, только если там очередь.
+import { examQueued, phaseOf } from './journey';
 import { REGISTRATION, type ShiftPatient, type ShiftState, TRIAGE, type Triage, type VisitKind } from './types';
 
 /**
@@ -25,6 +27,12 @@ export interface PersonSlice {
   /** койка: лежит в палате (номер койки в помещении) или на месте в смотровой приёмного */
   bed?: number;
   kind: VisitKind;
+  /**
+   * путь пациента (spec 2026-10-flow-ui): с какого момента идёт то, что он делает сейчас (ждёт, у врача, у кабинета…), и до
+   * какого часа ждёт в общей очереди, пока не кончится терпение
+   */
+  since?: number;
+  limit?: number;
 }
 
 export interface ShiftSlice {
@@ -55,8 +63,9 @@ function doingOf(s: ShiftState, p: ShiftPatient, rooms: Map<string, string> | un
     return { doing: 'ambulance', ...(p.bay ? { room: p.bay.room, bed: p.bay.bed } : {}) };
   }
   if (p.status === 'inRoom') {
-    // ушёл от врача на обследование: в том кабинете — до `until`, потом идёт назад
-    if (p.out && p.out.until > s.t) return { doing: 'exam', room: p.out.room };
+    // ушёл от врача на обследование: в том кабинете — до `until`, потом идёт назад; у кабинета очередь — ждёт её
+    // (spec 2026-10-flow-ui), а не стоит у аппарата вместе с тем, кого обследуют
+    if (p.out && p.out.until > s.t) return { doing: examQueued(s, p, p.out.until) ? 'examQueue' : 'exam', room: p.out.room };
     return { doing: 'office', ...(office ? { room: office } : {}) };
   }
   if (p.status === 'waiting') {
@@ -67,15 +76,16 @@ function doingOf(s: ShiftState, p: ShiftPatient, rooms: Map<string, string> | un
     return { doing: 'waiting' };
   }
   if (p.status === 'away') {
-    // во время процедуры — в её кабинете; до неё — ждёт её; после — ждёт результатов
-    let next: { room: string; start: number } | undefined;
+    // во время процедуры — в её кабинете; до неё — ждёт её (идёт туда сразу, если очереди нет); после — ждёт результатов
+    let next: { room: string; start: number; end: number } | undefined;
     for (const x of p.pending) {
       if (!x.room || x.start === undefined) continue;
       const end = x.end ?? x.readyAt;
       if (s.t >= x.start && s.t < end) return { doing: 'exam', room: x.room };
-      if (x.start > s.t && (!next || x.start < next.start)) next = { room: x.room, start: x.start };
+      if (x.start > s.t && (!next || x.start < next.start)) next = { room: x.room, start: x.start, end };
     }
-    return next ? { doing: 'examQueue', room: next.room } : { doing: 'results' };
+    if (!next) return { doing: 'results' };
+    return { doing: examQueued(s, p, next.end) === false ? 'exam' : 'examQueue', room: next.room };
   }
   // лежит; идёт операция — на операционном столе
   const op = p.stay?.op;
@@ -95,9 +105,10 @@ export function sliceOf(s: ShiftState, office?: string): ShiftSlice {
   for (const p of Object.values(s.patients)) {
     if (p.status !== 'waiting' && p.status !== 'inRoom' && p.status !== 'away' && p.status !== 'admitted') continue;
     const d = doingOf(s, p, rooms, office);
+    const ph = phaseOf(s, p, d.doing);
     people.push({
       id: p.id, status: p.status, triage: p.triage, ...(d.room ? { room: d.room } : {}), ...(p.by ? { by: p.by } : {}), doing: d.doing,
-      ...(d.bed !== undefined ? { bed: d.bed } : {}), kind: p.kind,
+      ...(d.bed !== undefined ? { bed: d.bed } : {}), kind: p.kind, since: ph.since, ...(ph.limit !== undefined ? { limit: ph.limit } : {}),
     });
   }
   // «Просят посмотреть» (spec 2026-10-consults): у кого нанятый врач ждёт вашего ответа

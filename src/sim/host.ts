@@ -1,14 +1,15 @@
 // Поток расчёта (spec docs/specs/2026-10-engine-speed.md, «Поток расчёта»; docs/specs/2026-10-shell-3d.md): разбирает
 // сообщения `ToSim` и отвечает `FromSim`. Без привязки к виду потока: Web Worker окна Electron (src/sim/worker.ts),
 // `worker_threads` Node/Bun в тестах — у каждого своя тонкая обёртка. Движок однопоточный и детерминированный: тот же
-// порядок сообщений даёт то же состояние, что и в основном потоке. Срез упаковывается (pack.ts).
+// порядок сообщений даёт то же состояние, что и в основном потоке. Срез упаковывается (pack.ts). Путь пациента, которого
+// показывает окно (`watch`, spec docs/specs/2026-10-flow-ui.md), — в срезе, когда он изменился.
 import type { ContentDb } from '../content/types';
 import { apply, catchUp, newFlowShift, prepareFinish } from '../engine/shift/engine';
 import { sliceOf } from '../engine/shift/slice';
 import type { Command, Notice, ShiftState } from '../engine/shift/types';
 import { DoctorDesk, officeOf, takeCommand } from './doctor';
 import { Handles, packSlice } from './pack';
-import type { DoctorOut, FromSim, ToSim, World } from './protocol';
+import type { DoctorOut, FromSim, PathView, ToSim, World } from './protocol';
 
 /** Счёт до `ms` от сейчас; одно событие — всегда (как `budget` в session.ts «Анамнеза»). */
 function budget(ms: number): () => boolean {
@@ -34,6 +35,11 @@ export function createSim(db: ContentDb): SimHost {
   const handles = new Handles();
   // номера помещений и штата в срезе — по спискам больницы; меняются вместе с ними
   let shown: { hospital: unknown; staff: unknown } = { hospital: undefined, staff: undefined };
+  /** список сломанных аппаратов, который окно уже получило; null — ещё никакого */
+  let sentBroken: unknown = null;
+  /** чей путь показывает окно и каким он был отправлен */
+  let watch: string | null = null;
+  let sentPath: string | undefined;
   let rooms = new Map<string, number>();
   let staff = new Map<string, number>();
   // режим врача (spec docs/specs/2026-10-doctor-mode.md): что окно уже получило — состояние врача и вид карты
@@ -46,14 +52,32 @@ export function createSim(db: ContentDb): SimHost {
       staff = new Map((s!.staff ?? []).map((m, i) => [m.id, i]));
       if (s!.hospital) world = { hospital: s!.hospital, staff: s!.staff ?? [], ...(s!.works ? { works: { spent: s!.works.spent, undo: s!.works.undo.length } } : {}) };
     }
+    // сломанные аппараты — отдельно от больницы: новый список в 08:00 не пересобирает сцену окна
+    let broken: string[] | undefined;
+    if (s!.broken !== sentBroken) {
+      sentBroken = s!.broken;
+      broken = [...(s!.broken ?? [])];
+    }
+    // путь, который показывает окно: шагов стало больше, путь кончился, его убрали — заново
+    let path: PathView | undefined;
+    if (watch !== null) {
+      const j = s!.journeys?.of[watch] ?? null;
+      const sig = j ? `${j.steps.length}:${j.end?.t ?? ''}:${j.steps[j.steps.length - 1]?.t ?? ''}` : '';
+      if (sig !== sentPath) {
+        sentPath = sig;
+        path = { id: watch, journey: j ? structuredClone(j) : null };
+      }
+    }
     const lag = owed + (s!.until !== undefined ? s!.until - s!.t : 0);
     const { buf, names } = packSlice(s!, sliceOf(s!, officeOf(db, s!)), lag, handles, rooms, staff);
-    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
+    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
   };
   const fresh = () => {
     owed = 0;
     handles.reset();
     shown = { hospital: undefined, staff: undefined };
+    sentBroken = null;
+    sentPath = undefined;
     desk.reset();
   };
   /** Дожить время, которое часы игры уже прошли: команда видит больницу такой, как игрок. */
@@ -117,6 +141,11 @@ export function createSim(db: ContentDb): SimHost {
             if (s.until === undefined && owed === 0 && desk.focus !== null && desk.focus === s.current && more()) prepareFinish(db, s, more);
             return slice(notices);
           }
+          case 'watch':
+            watch = msg.id;
+            sentPath = undefined;
+            if (!s) return { kind: 'error', message: 'нет смены' };
+            return slice([]);
           case 'save':
             if (!s) return { kind: 'error', message: 'нет смены' };
             // сохранение — всё прожитое: недожитое время сначала доживается
