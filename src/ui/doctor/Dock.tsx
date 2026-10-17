@@ -11,7 +11,7 @@ import { Levels } from './Card';
 
 const VERDICT: Record<string, string> = { correct: '✓', partly: '≈', wrong: '✗' };
 
-function Row({ r, children, hint }: { r: PatientRow; children?: ReactNode; hint?: string }) {
+function Row({ r, children, hint, find }: { r: PatientRow; children?: ReactNode; hint?: string; find?: (id: string) => void }) {
   return (
     <li className={`prow t-${r.triage}`} id={`dr-${r.id}`}>
       <span className="who">
@@ -21,8 +21,18 @@ function Row({ r, children, hint }: { r: PatientRow; children?: ReactNode; hint?
           «{r.complaint}»{hint ? ` · ${hint}` : ''}
         </small>
       </span>
+      {find ? <Find id={r.id} find={find} /> : null}
       {children}
     </li>
+  );
+}
+
+/** «Найти» (spec docs/specs/2026-10-owner-play.md): камера к пациенту и его карточка на карте. */
+function Find({ id, find, prefix = 'find' }: { id: string; find: (id: string) => void; prefix?: string }) {
+  return (
+    <button type="button" className="small" id={`${prefix}-${id}`} title={T.doctor.findHint} onClick={() => find(id)}>
+      {T.doctor.find}
+    </button>
   );
 }
 
@@ -34,6 +44,7 @@ export function Dock({ hud, actions }: { hud: Hud; actions: Actions }) {
   const t = T.doctor;
   const take = (id: string) => actions.doctor({ kind: 'take', id });
   const open = (id: string) => actions.doctor({ kind: 'open', id });
+  const find = (id: string) => actions.find(id);
   const free = !st.current;
   const status = !st.office ? t.noOffice : st.current ? t.leading(st.current.who) : t.free;
   if (d.folded)
@@ -69,7 +80,7 @@ export function Dock({ hud, actions }: { hud: Hud; actions: Actions }) {
           <>
             <div className="label">{t.lists.office}</div>
             <ul>
-              <Row r={st.current}>
+              <Row r={st.current} find={find}>
                 <button type="button" id="dock-open" className="small on" onClick={() => open(st.current!.id)}>
                   {t.openCard}
                 </button>
@@ -81,7 +92,7 @@ export function Dock({ hud, actions }: { hud: Hud; actions: Actions }) {
         {st.yours.length === 0 ? <p className="muted small">{t.nobody}</p> : null}
         <ul>
           {st.yours.map(r => (
-            <Row key={r.id} r={r} hint={r.why ? t.why[r.why] : undefined}>
+            <Row key={r.id} r={r} hint={r.why ? t.why[r.why] : undefined} find={find}>
               <button type="button" className="small" disabled={!free || !st.office} onClick={() => take(r.id)}>
                 {t.call}
               </button>
@@ -93,7 +104,7 @@ export function Dock({ hud, actions }: { hud: Hud; actions: Actions }) {
             <div className="label">{t.lists.others}</div>
             <ul>
               {st.others.map(r => (
-                <Row key={r.id} r={r}>
+                <Row key={r.id} r={r} find={find}>
                   <button type="button" className="small" disabled={!free || !st.office} onClick={() => take(r.id)}>
                     {t.call}
                   </button>
@@ -108,7 +119,7 @@ export function Dock({ hud, actions }: { hud: Hud; actions: Actions }) {
             <div className="label">{t.lists.away}</div>
             <ul>
               {st.away.map(r => (
-                <Row key={r.id} r={r} hint={r.ready !== undefined ? t.ready(clock(r.ready)) : undefined}>
+                <Row key={r.id} r={r} hint={r.ready !== undefined ? t.ready(clock(r.ready)) : undefined} find={find}>
                   <button type="button" className="small" onClick={() => open(r.id)}>
                     {t.openCard}
                   </button>
@@ -172,6 +183,7 @@ function WardItem({ r, worse, actions }: { r: WardRow; worse: boolean; actions: 
         {r.op ? <div className="small">{r.op}</div> : null}
         <div className="small muted">{T.round.treatments(r.treatments)}</div>
         <div className="row">
+          <Find id={r.id} find={actions.find} prefix="ward-find" />
           <button type="button" className="small" id={`ward-replan-${r.id}`} title={T.round.replanHint} onClick={() => actions.doctor({ kind: 'open', id: r.id })}>
             {T.round.replan}
           </button>
@@ -261,6 +273,7 @@ function Ask({ a, colleagues, actions }: { a: AskRow; colleagues: { id: string; 
         <button type="button" id={`ask-look-${a.id}`} className="on" onClick={() => actions.doctor({ kind: 'take', id: a.id })}>
           {t.look}
         </button>
+        <Find id={a.id} find={actions.find} prefix="ask-find" />
         <button type="button" id={`ask-self-${a.id}`} onClick={() => actions.doctor({ kind: 'consult', id: a.id, answer: 'self' })}>
           {t.self}
         </button>

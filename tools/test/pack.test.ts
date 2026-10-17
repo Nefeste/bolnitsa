@@ -26,7 +26,7 @@ describe('упакованный срез', () => {
     for (let m = 0; m < 6 * 60; m += 2) {
       apply(db, s, { kind: 'advance', seconds: 120 });
       const slice = sliceOf(s);
-      const { buf, names } = packSlice(s, slice, 0, handles, rooms, team);
+      const { buf, names } = packSlice(s, slice, 0, handles, rooms, team, p => `имя ${p.seed}`);
       expect(buf.length).toBe(HEADER + slice.people.length * STRIDE);
       expect(buf[H.t]).toBe(s.t);
       expect(buf[H.count]).toBe(slice.people.length);
@@ -38,6 +38,8 @@ describe('упакованный срез', () => {
         byId.set(r.id, r.h);
         expect(r.age).toBe(s.patients[r.id].patient.age);
         expect(r.sex).toBe(s.patients[r.id].patient.sex);
+        // имя — для карточки на карте (spec docs/specs/2026-10-owner-play.md)
+        expect(r.name).toBe(`имя ${s.patients[r.id].patient.seed}`);
       }
       const back = peopleOf(buf);
       slice.people.forEach((p, i) => {

@@ -62,7 +62,7 @@ export class Stage {
   /** метка вашей фигуры */
   private you: THREE.Mesh;
   quality: Quality;
-  wallMode: WallMode = 'cut';
+  wallMode: WallMode = 'down';
   gpu: GpuTimer;
   gpuName: string;
   /** вызовов отрисовки и треугольников в последнем кадре */

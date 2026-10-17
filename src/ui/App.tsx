@@ -375,8 +375,9 @@ function personLines(info: PersonInfo, names: Names): [string, string][] {
   if (info.gone) return [[T.card.complaint, names.finding(info.complaint)], [T.card.visit, T.visit[info.visit as keyof typeof T.visit] ?? info.visit]];
   return [
     [T.card.complaint, names.finding(info.complaint)],
-    [T.card.where, info.room ? names.room(info.room) : T.card.corridor],
-    [T.card.doing, T.doing[info.doing]],
+    // ещё идёт (spec docs/specs/2026-10-owner-play.md): куда, а не «у врача» — движок уже там, человек на экране ещё нет
+    [info.walking ? T.card.whereTo : T.card.where, info.room ? names.room(info.room) : T.card.corridor],
+    [T.card.doing, info.walking ? T.going[info.doing] : T.doing[info.doing]],
     [T.card.triage, T.triage[info.triage]],
     [T.card.by, info.by ? names.role(info.by) : T.card.byNobody],
     [T.card.visit, T.visit[info.visit as keyof typeof T.visit] ?? info.visit],
@@ -386,7 +387,7 @@ function personLines(info: PersonInfo, names: Names): [string, string][] {
 function BottomCard({ hud, actions, names }: P) {
   if (hud.selected) {
     const info = hud.selected.info;
-    const title = info.kind === 'patient' ? T.card.patient(info.sex, info.age) : names.role(info.role);
+    const title = info.kind === 'patient' ? T.card.patient(info.sex, info.age, info.name) : names.role(info.role);
     return (
       <div className="card panel" id="card">
         <div className="cardhead">

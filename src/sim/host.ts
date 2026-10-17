@@ -7,6 +7,7 @@ import type { ContentDb } from '../content/types';
 import { apply, catchUp, newFlowShift, prepareFinish } from '../engine/shift/engine';
 import { sliceOf } from '../engine/shift/slice';
 import type { Command, Notice, ShiftState } from '../engine/shift/types';
+import { patientName } from './caseView';
 import { DoctorDesk, officeOf, takeCommand } from './doctor';
 import { Handles, packSlice } from './pack';
 import type { DoctorOut, FromSim, PathView, ToSim, World } from './protocol';
@@ -69,7 +70,7 @@ export function createSim(db: ContentDb): SimHost {
       }
     }
     const lag = owed + (s!.until !== undefined ? s!.until - s!.t : 0);
-    const { buf, names } = packSlice(s!, sliceOf(s!, officeOf(db, s!)), lag, handles, rooms, staff);
+    const { buf, names } = packSlice(s!, sliceOf(s!, officeOf(db, s!)), lag, handles, rooms, staff, patientName);
     return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
   };
   const fresh = () => {

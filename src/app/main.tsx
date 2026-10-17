@@ -50,6 +50,7 @@ const actions: Actions = {
   dismiss: later('dismiss'),
   filterPatients: later('filterPatients'),
   focus: later('focus'),
+  find: later('find'),
   toggleLayers: later('toggleLayers'),
   toggleQueues: later('toggleQueues'),
   doctor: later('doctor'),
@@ -67,7 +68,7 @@ const names: Names = {
 };
 createRoot(document.getElementById('ui')!).render(<App store={store} actions={actions} names={names} />);
 
-const quality = (['low', 'medium', 'high'] as Quality[]).find(x => x === q.get('q')) ?? 'medium';
+const quality = (['low', 'medium', 'high'] as Quality[]).find(x => x === q.get('q')) ?? 'high';
 
 /** С чего начать: ключ адреса или Electron; бенч и снимки — готовая больница; иначе спросить игрока. */
 async function startOf(): Promise<Start> {

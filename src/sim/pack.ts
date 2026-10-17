@@ -2,7 +2,9 @@
 // потоками»): Int32Array, который поток расчёта передаёт потоку отрисовки без копии (`transferList`). Строки — номера
 // пациентов, пол, возраст, жалоба — уходят отдельной таблицей и только у новых: у каждого человека в больнице свой номер
 // в срезе (`handle`), он не меняется, пока человек в больнице. Формат 2 (spec docs/specs/2026-10-flow-ui.md): у человека —
-// с какого момента он делает то, что делает, до какого часа ждёт в общей очереди и просьба нанятого врача о нём.
+// с какого момента он делает то, что делает, до какого часа ждёт в общей очереди и просьба нанятого врача о нём. Имя —
+// в строке, его даёт поток расчёта (spec docs/specs/2026-10-owner-play.md): окно не знает словарей имён.
+import type { Patient } from '../engine/med/types';
 import type { Doing, PersonSlice, ShiftSlice } from '../engine/shift/slice';
 import type { ShiftState, Triage, VisitKind } from '../engine/shift/types';
 
@@ -38,6 +40,8 @@ export interface NameRow {
   complaint?: string;
   /** зерно пациента — облик на экране */
   seed: number;
+  /** имя, как в карте пациента; нет — тесты без имён */
+  name?: string;
 }
 
 /** Номера в срезе: свой у каждого, пока он в больнице. */
@@ -66,10 +70,18 @@ export class Handles {
 }
 
 /**
- * Упаковать срез. `rooms` и `staff` — номера помещений и людей штата в списках больницы (сообщение `world`);
- * отдаёт массив и строки новых.
+ * Упаковать срез. `rooms` и `staff` — номера помещений и людей штата в списках больницы (сообщение `world`); `nameOf` —
+ * имя пациента для строки нового. Отдаёт массив и строки новых.
  */
-export function packSlice(s: ShiftState, slice: ShiftSlice, lag: number, handles: Handles, rooms: Map<string, number>, staff: Map<string, number>): { buf: Int32Array; names: NameRow[] } {
+export function packSlice(
+  s: ShiftState,
+  slice: ShiftSlice,
+  lag: number,
+  handles: Handles,
+  rooms: Map<string, number>,
+  staff: Map<string, number>,
+  nameOf?: (p: Patient) => string,
+): { buf: Int32Array; names: NameRow[] } {
   const n = slice.people.length;
   const buf = new Int32Array(HEADER + n * STRIDE);
   buf[H.format] = FORMAT;
@@ -93,7 +105,10 @@ export function packSlice(s: ShiftState, slice: ShiftSlice, lag: number, handles
     const { h, fresh } = handles.of(p.id);
     if (fresh) {
       const pt = s.patients[p.id]?.patient;
-      names.push({ h, id: p.id, sex: pt?.sex ?? 'm', age: pt?.age ?? 40, ...(pt?.complaints[0] ? { complaint: pt.complaints[0] } : {}), seed: pt?.seed ?? 0 });
+      names.push({
+        h, id: p.id, sex: pt?.sex ?? 'm', age: pt?.age ?? 40, ...(pt?.complaints[0] ? { complaint: pt.complaints[0] } : {}), seed: pt?.seed ?? 0,
+        ...(pt && nameOf ? { name: nameOf(pt) } : {}),
+      });
     }
     const o = HEADER + i * STRIDE;
     buf[o + P.handle] = h;
