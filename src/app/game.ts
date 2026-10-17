@@ -374,6 +374,7 @@ export class Game {
       : n.kind === 'resultsReady' ? this.doctor.resultsText(n.id)
       : n.kind === 'arrest' ? T.notices.arrest
       : n.kind === 'consult' ? this.doctor.consultText(n)
+      : n.kind === 'morning' ? T.notices.morning
       : T.notices.shiftEnd;
     this.notices.unshift({ t: this.t, text });
     if (this.notices.length > 60) this.notices.length = 60;

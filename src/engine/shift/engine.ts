@@ -1,4 +1,4 @@
-// из anamnez: src/engine/shift/engine.ts @ 96503ac, изменено: разбор приёма нанятого врача — по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults); стройка ПК — команда `site`, событие `siteFree`, приход в закрытую больницу, аппараты коек ПИТ из плана (spec 2026-10-build); путь пациента — однострочные вызовы `journey.*` (spec 2026-10-flow-ui)
+// из anamnez: src/engine/shift/engine.ts @ 96503ac, изменено: разбор приёма нанятого врача — по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults); стройка ПК — команда `site`, событие `siteFree`, приход в закрытую больницу, аппараты коек ПИТ из плана (spec 2026-10-build); сутки целиком в потоке для ПК — часы приёма, поток по часам, планёрка в 08:00, обход нанятых врачей, ночь по часам (spec 2026-10-day); путь пациента — однострочные вызовы `journey.*` (spec 2026-10-flow-ui)
 // Движок смены: приход пациентов, сортировка, очередь, терпение, обследования со своими
 // сроками, закрытие случая и дня (spec 2026-09-first-shift, «Движок»; ADR 0005).
 //
@@ -38,6 +38,7 @@ import * as journey from './journey';
 import { COMPLICATION_DAYS, complicationAt, complicationsOf, deathsOf, onsetHours, operationFor } from './surgery';
 import { dueIn, type TargetPlace, targetResults } from './targets';
 import { siteCommand, siteFree } from './site';
+import { arrivalAfter, dayOf, hospitalDay, hoursOf, returnWindow, roundsAt, validHours } from './day';
 import { type Bed, daysIn, type StayEnd, stayNorm, wardCourse, wardState } from './ward';
 
 const MIN = 60;
@@ -60,6 +61,9 @@ const TUTORIAL_TRIES = 64;
 const WALK_INS: [number, number] = [2, 6];
 
 const branch = (s: ShiftState, name: string) => Rng.seeded(s.meta.seed).fork(name);
+
+/** Сутки по часам: в потоке для ПК — с 08:00 до 08:00, как их сменяет планёрка (spec 2026-10-day); в сменах «Анамнеза» — по полуночи. */
+const dayAt = (s: ShiftState, t: number) => (s.flow ? hospitalDay(t) : Math.floor(t / DAY) + 1);
 
 // --- больница смены: план, штат, что работает (spec 2026-09-own-hospital, часть 8) ------------
 
@@ -224,6 +228,8 @@ export function newFlowShift(
 ): ShiftState {
   const s = singleBase(db, { ...opts, venue: SANDBOX_VENUE });
   s.flow = { ...opts.flow };
+  // часы приёма — только верные (spec 2026-10-day): иначе — базы
+  if (s.flow.hours && !validHours(s.flow.hours[0], s.flow.hours[1])) delete s.flow.hours;
   planDay(db, s);
   return s;
 }
@@ -415,11 +421,18 @@ export function apply(db: ContentDb, s: ShiftState, cmd: Command, more?: () => b
   if (cmd.kind === 'advance' && last?.kind === 'advance') last.seconds += cmd.seconds;
   else s.journal.push({ ...cmd });
   tailMore = more;
+  morningAt = undefined;
   try {
     const out = command(db, s, cmd);
     return before.length > 0 ? [...before, ...out] : out;
   } finally {
     tailMore = undefined;
+    // планёрка посреди команды, чьё время не в `until` (spec 2026-10-day): журнал новых суток — её время после 08:00
+    if (morningAt !== undefined) {
+      const left = (s.until ?? s.t) - morningAt;
+      s.journal = left > 0 ? [{ kind: 'advance', seconds: left }] : [];
+      morningAt = undefined;
+    }
   }
 }
 
@@ -536,6 +549,8 @@ function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       return takeOver(db, s, cmd.id);
     case 'consult':
       return answerConsult(db, s, cmd);
+    case 'hours':
+      return setHours(db, s, cmd.open, cmd.close);
     case 'discharge':
     case 'transfer':
       return leaveWard(db, s, cmd.id, cmd.kind);
@@ -763,44 +778,52 @@ function planDay(db: ContentDb, s: ShiftState) {
 // --- поток для ПК (spec 2026-10-engine-speed, ч. 2) -------------------------------------------------------------------
 
 /**
- * День в потоке: первый пришедший сам и первая машина скорой — по своим часам, вернувшиеся — к своему часу; остальных
- * назначает приход предыдущего (`flowArrive`). Пациентов ещё нет — они генерируются к приходу.
+ * Сутки в потоке (spec 2026-10-day): следующая планёрка — в 08:00, обход нанятых врачей — в свой час; вернувшиеся — в первые
+ * два часа приёма; первый пришедший сам и первая машина скорой — по своим часам с 08:00; остальных назначает приход
+ * предыдущего (`flowArrive`). Пациентов ещё нет — они генерируются к приходу. Конца приёма, который останавливал бы день,
+ * нет: часы идут сутки за сутками.
  */
 function planFlow(db: ContentDb, s: ShiftState) {
   const d = s.day;
   const base = (d - 1) * DAY;
   const r = branch(s, `day:${d}`);
   const admits = departmentsOf(db, s);
+  schedule(s, base + SHIFT_START + DAY, { kind: 'morning' });
+  schedule(s, base + roundsAt(db), { kind: 'rounds' });
+  const back = returnWindow(hoursOf(db, s.flow!));
   for (const ret of s.returns.filter(x => x.day === d)) {
     const as = ret.as ? db.conditions[ret.as] : undefined;
     if (as && !admits.includes(as.department)) continue;
-    schedule(s, base + SHIFT_START + r.fork(`return:${ret.of}`).range(0, 120) * MIN, { kind: 'flow', stream: 'ret', n: 0, of: ret.of });
+    schedule(s, base + back.from + r.fork(`return:${ret.of}`).range(0, back.minutes) * MIN, { kind: 'flow', stream: 'ret', n: 0, of: ret.of });
   }
   scheduleFlow(db, s, 'walk', 0, base + SHIFT_START);
   // больница ПК (spec 2026-10-build): смотровую могут построить днём — машины едут, а принимает их `flowArrive`
   if (emergencyBays(db, s).length > 0 || s.hospital?.site) scheduleFlow(db, s, 'amb', 0, base + SHIFT_START);
-  schedule(s, base + SHIFT_END, { kind: 'shiftEnd' });
-}
-
-/** В час: пришедших сами — с репутацией чаще или реже, как запись в песочнице; машин скорой — как есть. */
-function flowRate(db: ContentDb, s: ShiftState, stream: 'walk' | 'amb'): number {
-  const f = s.flow!;
-  if (stream === 'amb') return f.ambulancePerHour ?? 0;
-  const k = s.economy ? flowOf(db, s.economy.reputation ?? db.economy.reputation.start) : 100;
-  return (f.perHour * k) / 100;
 }
 
 /**
- * Следующий приход потока после `from`: промежуток — показательный, из своей ветви зерна `flow:<день>:<поток>:<номер>`;
- * логарифм — целочисленный (`log2`, как у фибрилляции). После конца приёма никто не приходит.
+ * В час, по часам суток (spec 2026-10-day): пришедших сами — только в часы приёма, по форме `walk` базы, с репутацией чаще
+ * или реже, как запись в песочнице; машин скорой — по форме `ambulance`, круглые сутки.
+ */
+function flowRate(db: ContentDb, s: ShiftState, stream: 'walk' | 'amb', hour: number): number {
+  const f = s.flow!;
+  const day = dayOf(db);
+  if (stream === 'amb') return ((f.ambulancePerHour ?? 0) * day.ambulance[hour]) / 100;
+  const [open, close] = hoursOf(db, f);
+  if (hour < open || hour >= close) return 0;
+  const k = s.economy ? flowOf(db, s.economy.reputation ?? db.economy.reputation.start) : 100;
+  return (f.perHour * k * day.walk[hour]) / 10000;
+}
+
+/**
+ * Следующий приход потока после `from`: промежуток — показательный, из своей ветви зерна `flow:<сутки>:<поток>:<номер>`;
+ * логарифм — целочисленный (`log2`, как у фибрилляции); частота — по часам суток (`arrivalAfter`, spec 2026-10-day). Приход
+ * может прийтись и на следующие сутки — его отменит планёрка: в 08:00 потоки начинаются заново.
  */
 function scheduleFlow(db: ContentDb, s: ShiftState, stream: 'walk' | 'amb', n: number, from: number) {
-  const rate = flowRate(db, s, stream);
-  if (rate <= 0) return;
   const u = branch(s, `flow:${s.day}:${stream}:${n}`).range(1, P_ONE) / P_ONE;
-  const gap = Math.round((-log2(u) * Math.LN2 * 3600) / rate);
-  const t = from + Math.max(1, gap);
-  if (t < (s.day - 1) * DAY + SHIFT_END) schedule(s, t, { kind: 'flow', stream, n });
+  const t = arrivalAfter(from, -log2(u) * Math.LN2, h => flowRate(db, s, stream, h));
+  if (t !== undefined) schedule(s, t, { kind: 'flow', stream, n });
 }
 
 /** Пришёл следующий из потока: пациент генерируется сейчас — из своего зерна, тот же, когда бы его ни сгенерировали. */
@@ -959,12 +982,11 @@ function returningPatient(db: ContentDb, s: ShiftState, ret: PlannedReturn) {
 }
 
 function closeDay(db: ContentDb, s: ShiftState) {
-  if (!s.dayOpen) return;
+  // в потоке для ПК день не закрывают: сутки кончаются сами, в 08:00, а часы идут дальше (`morning`, spec 2026-10-day)
+  if (!s.dayOpen || s.flow) return;
   // итоги дня — полные: отложенные разборы приёмов нанятых врачей досчитываются (spec 2026-10-engine-speed, ч. 1); в потоке
-  // для ПК — нет: оценку считают только приёмам игрока (решение владельца 16.10.2026)
-  if (!s.flow) settleReviews(db, s);
-  // просьбы «Просят посмотреть» без ответа — с днём: больные остались не принятыми (spec 2026-10-consults)
-  delete s.consults;
+  // для ПК их нет: оценку считают только приёмам игрока (решение владельца 16.10.2026)
+  settleReviews(db, s);
   for (const p of Object.values(s.patients)) {
     if (p.status === 'waiting' || p.status === 'inRoom' || p.status === 'away' || p.status === 'coming') {
       if (p.status !== 'coming') s.summary.unseen++;
@@ -977,23 +999,8 @@ function closeDay(db: ContentDb, s: ShiftState) {
   s.dayOpen = false;
   nightOperations(db, s);
   nightDeaths(db, s);
-  const lying = inpatientsOf(s);
-  if (lying.length > 0 || s.summary.ward) {
-    const day = wardDay(s);
-    day.lying = lying.length;
-    // в ПИТ — отдельно (часть 38а), в реанимации — тоже (spec 2026-10-chapter-4, часть 47), в боксах — тоже (часть 49а)
-    const ricu = lying.filter(p => inRicu(db, s, p)).length;
-    const icu = lying.filter(p => inIcu(db, s, p)).length - ricu;
-    const box = lying.filter(p => inBox(db, s, p)).length;
-    if (icu > 0) day.icuLying = icu;
-    if (ricu > 0) day.ricuLying = ricu;
-    if (box > 0) day.boxLying = box;
-    const heavy = lying.filter(p => p.stay?.heavy).length;
-    if (heavy > 0) day.heavyLying = heavy;
-  }
+  wardLying(db, s);
   if (s.economy && s.hospital) settle(db, s);
-  // поток для ПК: не принятые до конца дня — строками журнала
-  if (s.flow) for (const p of Object.values(s.patients)) evict(s, p);
   // журнал ушедших — по приходу: итог дня тот же, когда бы ни досчитывали разборы и ни выгружали приёмы
   if (s.gone) s.gone.sort((x, y) => x.arriveT - y.arriveT || (x.id < y.id ? -1 : 1));
   s.history.push({ ...s.summary, grades: { ...s.summary.grades } });
@@ -1011,6 +1018,97 @@ function closeDay(db: ContentDb, s: ShiftState) {
     s.candidates = c.list;
     s.nextStaff = c.next;
   }
+}
+
+/** Лежащие в конце суток — в итог: сколько, из них в ПИТ, реанимации, боксах, тяжёлых. */
+function wardLying(db: ContentDb, s: ShiftState) {
+  const lying = inpatientsOf(s);
+  if (lying.length > 0 || s.summary.ward) {
+    const day = wardDay(s);
+    day.lying = lying.length;
+    // в ПИТ — отдельно (часть 38а), в реанимации — тоже (spec 2026-10-chapter-4, часть 47), в боксах — тоже (часть 49а)
+    const ricu = lying.filter(p => inRicu(db, s, p)).length;
+    const icu = lying.filter(p => inIcu(db, s, p)).length - ricu;
+    const box = lying.filter(p => inBox(db, s, p)).length;
+    if (icu > 0) day.icuLying = icu;
+    if (ricu > 0) day.ricuLying = ricu;
+    if (box > 0) day.boxLying = box;
+    const heavy = lying.filter(p => p.stay?.heavy).length;
+    if (heavy > 0) day.heavyLying = heavy;
+  }
+}
+
+// --- сутки на ПК (spec 2026-10-day) -----------------------------------------------------------------------------------
+
+/**
+ * Планёрка (spec 2026-10-day): в 08:00 сутки потока для ПК кончаются, а часы идут дальше. Что «Анамнез» делает, закрывая
+ * день (`closeDay`) и открывая следующий (`nextDay`), — здесь, кроме того, что на ПК идёт само по часам: кто в больнице, тот
+ * на месте, очередь и события — те же, операционная работала ночью. Итог суток — ровно за 24 часа: каждый счётчик
+ * прибавлялся в час события. Роста навыка и новых кандидатов нет: на ПК нанимают на месте, рост — персонал этапа Б.
+ */
+function morning(db: ContentDb, s: ShiftState, notices: Notice[]) {
+  // команды суток — с планёрки; время команды, на которой она пришлась, после 08:00 — первой строкой, чтобы повтор от снимка в
+  // 08:00 дал то же; команда со временем не в `until` (`advanceBy`) допишет его сама (`apply`)
+  morningAt = s.until === undefined ? s.t : undefined;
+  s.journal = s.until !== undefined && s.until > s.t ? [{ kind: 'advance', seconds: s.until - s.t }] : [];
+  // ночь (часть 28б «Анамнеза»): кому выпало умереть в ночь этих суток — сейчас, в итог этих суток
+  nightDeaths(db, s);
+  wardLying(db, s);
+  if (s.economy && s.hospital) settle(db, s);
+  // журнал ушедших — по приходу, как при закрытии дня «Анамнеза»
+  if (s.gone) s.gone.sort((x, y) => x.arriveT - y.arriveT || (x.id < y.id ? -1 : 1));
+  const summary: DaySummary = { ...s.summary, grades: { ...s.summary.grades } };
+  s.history.push(summary);
+  // утро — следующие сутки, без остановки
+  s.day++;
+  if (s.economy) s.economy.ledger = emptyLedger();
+  s.summary = emptySummary(s.day);
+  // умения врача (spec 2026-10-skills): выросшие за вчера — с утра
+  if (s.meta.skillsNext) {
+    setSkills(s, s.meta.skillsNext);
+    delete s.meta.skillsNext;
+  }
+  // аппараты, сломавшиеся с утра (FR-EQ-3): до следующего утра их нет
+  const broken = breakdowns(db, s);
+  if (broken.length > 0) s.broken = broken;
+  else delete s.broken;
+  // потоки — с 08:00 заново, ветвями новых суток: кто по вчерашнему счёту пришёл бы позже, не придёт — у показательного
+  // промежутка нет памяти, и новый отсчёт даёт тот же поток
+  s.events = s.events.filter(e => e.event.kind !== 'flow' || e.event.stream === 'ret');
+  planFlow(db, s);
+  prune(s);
+  notices.push({ kind: 'morning', summary, ...(broken.length > 0 ? { broken } : {}) });
+}
+
+/** Планёрка прошла посреди команды, чьё время идёт не через `until` (`advanceBy`): с какого часа `apply` допишет журнал суток. */
+let morningAt: number | undefined;
+
+/**
+ * Часы амбулаторного приёма (spec 2026-10-day): с `open` до `close`, целые часы. Действуют сразу: тот, кто придёт сам
+ * следующим, — по новым часам (тот же номер, промежуток — от этой минуты). Повторные этих суток уже назначены — придут в
+ * своё время. Те же часы — ничего не меняется.
+ */
+function setHours(db: ContentDb, s: ShiftState, open: number, close: number): Notice[] {
+  const f = s.flow;
+  if (!f || !validHours(open, close)) return [];
+  const [a, b] = hoursOf(db, f);
+  if (a === open && b === close) return [];
+  f.hours = [open, close];
+  const next = s.events.find(e => e.event.kind === 'flow' && e.event.stream === 'walk');
+  if (next) s.events = s.events.filter(e => e !== next);
+  scheduleFlow(db, s, 'walk', next?.event.kind === 'flow' ? next.event.n : walkedToday(s), s.t);
+  return [];
+}
+
+/**
+ * Следующий номер пришедшего сам в эти сутки, если ни один не назначен (прежние часы не пускали никого до утра): после
+ * последнего пришедшего — имена `<сутки>-w<номер>` не повторяются.
+ */
+function walkedToday(s: ShiftState): number {
+  const prefix = `${s.day}-w`;
+  let n = 0;
+  for (const id of [...Object.keys(s.patients), ...(s.gone ?? []).map(r => r.id)]) if (id.startsWith(prefix)) n = Math.max(n, Number(id.slice(prefix.length)) + 1);
+  return n;
 }
 
 function ledgerOf(s: ShiftState): Ledger {
@@ -1039,7 +1137,7 @@ function settle(db: ContentDb, s: ShiftState) {
   ledger.expenses.interest = interestOf(db, before);
   e.cash = before - ledger.expenses.interest;
   // и ушедшие из потока для ПК — строками журнала (spec 2026-10-engine-speed, ч. 2)
-  const today = [...Object.values(s.patients), ...(s.gone ?? [])].filter(p => Math.floor(p.arriveT / DAY) + 1 === s.day);
+  const today = [...Object.values(s.patients), ...(s.gone ?? [])].filter(p => dayAt(s, p.arriveT) === s.day);
   const waits = today.filter(p => p.calledT !== undefined).map(p => (p.calledT! - p.arriveT) / MIN);
   const ctx = hospitalCtx(db, s);
   // репутация — по всем приёмам больницы: и вашим, и нанятых врачей
@@ -1144,7 +1242,8 @@ function prune(s: ShiftState) {
   const keep = new Set(s.returns.filter(r => r.day >= s.day).map(r => r.of));
   for (const [id, p] of Object.entries(s.patients)) {
     const day = Number(id.split('-')[0]);
-    if (keep.has(id) || day >= s.day || p.status === 'admitted') continue;
+    // в потоке для ПК кто ещё в больнице, тот остаётся (spec 2026-10-day): сутки кончаются, а приём идёт
+    if (keep.has(id) || day >= s.day || p.status === 'admitted' || (s.flow && (p.status === 'waiting' || p.status === 'inRoom' || p.status === 'away'))) continue;
     if (day < s.day - 7 || p.status === 'left' || p.status === 'unseen') delete s.patients[id];
   }
   s.returns = s.returns.filter(r => r.day >= s.day);
@@ -2102,7 +2201,7 @@ function admit(db: ContentDb, s: ShiftState, p: ShiftPatient) {
   // строка обхода; в палате без монитора — смерть в ночь этих суток
   const vf = p.arrest === undefined ? arrestAfter(db, s, p) : undefined;
   if (vf !== undefined && p.arriveT + vf >= s.t) {
-    const night = Math.floor((p.arriveT + vf) / DAY) + 1 - s.day;
+    const night = dayAt(s, p.arriveT + vf) - s.day;
     if (icu) p.stay.shock = night;
     else p.stay.dies = Math.min(p.stay.dies ?? night, night);
   }
@@ -2298,10 +2397,17 @@ function nightOperations(db: ContentDb, s: ShiftState) {
  * его диагноза; болезнь идёт дальше с планом, где она есть, с этих суток.
  */
 function operate(db: ContentDb, s: ShiftState, id: string): Notice[] {
-  const p = s.patients[id];
-  if (!s.dayOpen || !p || p.status !== 'admitted' || !p.stay || p.stay.op || !p.closed) return [];
+  if (!s.dayOpen || !toTable(db, s, s.patients[id])) return [];
+  const notices = advanceBy(db, s, 2 * MIN);
+  startOperations(db, s);
+  return notices;
+}
+
+/** Лежащего — в очередь операционной, операцией его диагноза; нельзя — false, ничего не меняется. Время — у того, кто решил. */
+function toTable(db: ContentDb, s: ShiftState, p: ShiftPatient | undefined): boolean {
+  if (!p || p.status !== 'admitted' || !p.stay || p.stay.op || !p.closed) return false;
   const op = operationOf(db, p, p.closed.diagnosis);
-  if (!op || orBlock(db, s, op) !== null) return [];
+  if (!op || orBlock(db, s, op) !== null) return false;
   const stay = p.stay;
   const from = daysIn(stay, s.day);
   const plan = { treatments: [...new Set([...stay.plan.treatments, op])].sort(), setting: 'surgery' as const };
@@ -2309,9 +2415,7 @@ function operate(db: ContentDb, s: ShiftState, id: string): Notice[] {
   const replans = stay.replans + 1;
   const course = wardCourse(db, p.patient, plan, ev, branch(s, `ward:${p.id}:${replans}`), from);
   p.stay = { room: stay.room, bed: stay.bed, since: stay.since, plan, planFrom: from, replans, ...course, op: { tx: op, queued: s.t } };
-  const notices = advanceBy(db, s, 2 * MIN);
-  startOperations(db, s);
-  return notices;
+  return true;
 }
 
 /**
@@ -2321,12 +2425,17 @@ function operate(db: ContentDb, s: ShiftState, id: string): Notice[] {
  * итог стационара — в закрытый случай.
  */
 function leaveWard(db: ContentDb, s: ShiftState, id: string, how: 'discharge' | 'transfer'): Notice[] {
-  const p = s.patients[id];
   // обход — днём: доход случая идёт в кассу этого дня
-  if (!s.dayOpen || !p || p.status !== 'admitted' || !p.stay || !p.closed) return [];
+  if (!s.dayOpen || !leave(db, s, s.patients[id], how)) return [];
+  return later(db, s, undefined, 2 * MIN); // выписка, эпикриз
+}
+
+/** Выписать или перевести (`leaveWard`), не тратя времени: время — у того, кто решил. Нельзя — false, ничего не меняется. */
+function leave(db: ContentDb, s: ShiftState, p: ShiftPatient | undefined, how: 'discharge' | 'transfer'): boolean {
+  if (!p || p.status !== 'admitted' || !p.stay || !p.closed) return false;
   const stay = p.stay;
   // на столе — ни выписать, ни перевести; ждёт операции — только перевести (часть 28)
-  if (stay.op && !stay.op.done && (stay.op.start !== undefined || how === 'discharge')) return [];
+  if (stay.op && !stay.op.done && (stay.op.start !== undefined || how === 'discharge')) return false;
   const days = daysIn(stay, s.day);
   const state = wardState(stay, days);
   const ward = wardDay(s);
@@ -2353,7 +2462,27 @@ function leaveWard(db: ContentDb, s: ShiftState, id: string, how: 'discharge' | 
     if (stay.heavy) ward.heavyEarly = (ward.heavyEarly ?? 0) + 1;
   }
   closeStay(db, s, p, end, days);
-  return later(db, s, undefined, 2 * MIN); // выписка, эпикриз
+  return true;
+}
+
+/**
+ * Утренний обход нанятых врачей (поток для ПК, spec 2026-10-day): их лежащих — кто лежит хотя бы сутки и не ждёт операции —
+ * по правилу разумного врача «Анамнеза» из его симулятора районной больницы (`tools/sim/district.ts`, `rounds`): можно
+ * выписывать — выписывает; хуже — в операционную, если у болезни есть операция и её здесь сделают, иначе переводит; реакция
+ * на лечение — переводит. Ваших лежащих (приём закрыли вы) не трогает: они в вашем списке «Обход». Времени врачей обход не
+ * стоит — упрощение прототипа до смен этапа Б.
+ */
+function rounds(db: ContentDb, s: ShiftState) {
+  for (const p of inpatientsOf(s)) {
+    const stay = p.stay!;
+    if (!p.closed?.by || (stay.op && !stay.op.done)) continue;
+    const days = daysIn(stay, s.day);
+    if (days < 1) continue;
+    const state = wardState(stay, days);
+    if (state === 'ready') leave(db, s, p, 'discharge');
+    else if (state === 'worse' && !stay.op && toTable(db, s, p)) startOperations(db, s);
+    else if (state === 'worse' || state === 'reaction') leave(db, s, p, 'transfer');
+  }
 }
 
 /**
@@ -2570,6 +2699,10 @@ function handle(db: ContentDb, s: ShiftState, ev: ShiftEvent, notices: Notice[])
       return;
     case 'siteFree':
       return siteFree(db, s);
+    case 'morning':
+      return morning(db, s, notices);
+    case 'rounds':
+      return rounds(db, s);
   }
 }
 

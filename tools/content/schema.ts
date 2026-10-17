@@ -1,4 +1,4 @@
-// из anamnez: tools/content/schema.ts @ 96503ac, изменено: hospital/consults.yaml — «Просят посмотреть» (spec 2026-10-consults)
+// из anamnez: tools/content/schema.ts @ 96503ac, изменено: hospital/consults.yaml — «Просят посмотреть» (spec 2026-10-consults); hospital/day.yaml — сутки целиком (spec 2026-10-day)
 // Схема исходных записей медицинской базы (YAML в content/, `docs/11-content.md` §4).
 // Строгие объекты: опечатка в имени поля — ошибка сборки, а не молча пропущенное поле.
 import { z } from 'zod';
@@ -865,6 +865,19 @@ export const consultsSchema = z.strictObject({
   wait: z.number().int().min(1).max(24 * 60),
 });
 
+/**
+ * Сутки целиком «Больницы» (spec docs/specs/2026-10-day.md): часы амбулаторного приёма по умолчанию; сколько приходят сами
+ * и сколько машин скорой по часам суток, % от среднего; в котором часу нанятые врачи обходят своих лежащих. Среднее и
+ * «утром больше» / «вечером больше» проверяет сборка (`tools/content/load.ts`).
+ */
+const hourly = z.array(int).length(24);
+export const daySchema = z.strictObject({
+  hours: z.tuple([z.number().int().min(0).max(23), z.number().int().min(1).max(24)]),
+  walk: hourly,
+  ambulance: hourly,
+  rounds: z.number().int().min(0).max(23),
+});
+
 // --- кампания (spec 2026-09-campaign) ---------------------------------------------------------
 
 const slug = z.string().regex(/^[a-z][a-zA-Z0-9]*$/);
@@ -1176,6 +1189,7 @@ export type RoleSrc = z.infer<typeof roleSchema>;
 export type PresetSrc = z.infer<typeof presetSchema>;
 export type EconomySrc = z.infer<typeof economySchema>;
 export type ConsultsSrc = z.infer<typeof consultsSchema>;
+export type DaySrc = z.infer<typeof daySchema>;
 export type CharacterSrc = z.infer<typeof characterSchema>;
 export type ChapterSrc = z.infer<typeof chapterSchema>;
 export type TipSrc = z.infer<typeof tipSchema>;

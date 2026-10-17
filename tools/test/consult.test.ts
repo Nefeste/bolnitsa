@@ -241,7 +241,7 @@ describe('«Просят посмотреть» в потоке для ПК', ()
     expect(closedBy(s, n.id)?.by).toBe(other.id);
   }, 120_000);
 
-  test('ответ без просьбы ничего не меняет; закрытие дня — просьбы с ним', () => {
+  test('ответ без просьбы ничего не меняет; «закрыть день» — тоже: сутки кончаются сами, просьба ждёт ответа', () => {
     const s = start(31, [1]);
     const n = untilAsk(s)!;
     const other = Object.values(s.patients).find(q => !s.consults!.some(c => c.id === q.id))!;
@@ -249,9 +249,11 @@ describe('«Просят посмотреть» в потоке для ПК', ()
     for (const answer of ['look', 'self', 'refer'] as const) apply(db, s, { kind: 'consult', id: other.id, answer, to: n.by });
     apply(db, s, { kind: 'consult', id: 'nobody', answer: 'self' });
     expect(bare(s)).toBe(before);
+    // сутки целиком (spec 2026-10-day): в потоке для ПК день не закрывают — итог в 08:00, а больной ждёт ответа
     apply(db, s, { kind: 'closeDay' });
-    expect(s.consults).toBeUndefined();
-    expect(s.events).toEqual([]);
+    apply(db, s, { kind: 'nextDay' });
+    expect(bare(s)).toBe(before);
+    expect(s.consults?.some(c => c.id === n.id)).toBe(true);
   }, 60_000);
 });
 
@@ -284,8 +286,8 @@ describe('«Просят посмотреть»: сколько и кто', () =
     const staff = big.staff.map(m => (m.role === 'role.therapist' ? { ...m, skill: skillAt((++k * ((Math.sqrt(5) - 1) / 2)) % 1) } : m));
     const s = newFlowShift(db, { seed: 1, season: 'winter', hospital: big.hospital, staff, flow: { perHour: 70, ambulancePerHour: 1 } });
     liveUntil(db, s, 20);
-    apply(db, s, { kind: 'closeDay' });
-    const cols = Object.values(s.history[0].colleagues ?? {});
+    // итог суток с 08:00 до сих пор (spec 2026-10-day: сутки кончаются в 08:00)
+    const cols = Object.values(s.summary.colleagues ?? {});
     const seen = cols.reduce((a, c) => a + c.seen, 0);
     const asked = cols.reduce((a, c) => a + (c.asked ?? 0), 0);
     expect(seen).toBeGreaterThan(300);
@@ -362,7 +364,7 @@ describe('«Просят посмотреть»: детерминизм', () => 
     const s = live();
     expect(hash(s)).toBe(want.closed);
     // извещений о просьбах — столько, сколько просили: и те, что пришли, пока команда доживала время
-    expect(notices).toBe(Object.values(s.history[0].colleagues ?? {}).reduce((a, c) => a + (c.asked ?? 0), 0));
+    expect(notices).toBe(Object.values(s.summary.colleagues ?? {}).reduce((a, c) => a + (c.asked ?? 0), 0));
     expect(notices).toBe(want.asked);
   }, 300_000);
 });

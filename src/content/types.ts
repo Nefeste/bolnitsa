@@ -1,4 +1,4 @@
-// из anamnez: src/content/types.ts @ 96503ac, изменено: ContentDb.consults — «Просят посмотреть» (spec 2026-10-consults)
+// из anamnez: src/content/types.ts @ 96503ac, изменено: ContentDb.consults — «Просят посмотреть» (spec 2026-10-consults); ContentDb.day — сутки целиком (spec 2026-10-day)
 // Типы собранной медицинской базы (`docs/04-data-model.md` §1).
 //
 // Исходник — YAML в content/, собирает tools/content/build.ts. Здесь — то, что получает
@@ -1292,6 +1292,21 @@ export interface Consults {
   wait: number;
 }
 
+/**
+ * Сутки целиком «Больницы» (spec docs/specs/2026-10-day.md), поток для ПК: часы идут без остановки, амбулатория — по часам
+ * работы, скорая — круглые сутки. Игровые числа — гипотезы.
+ */
+export interface Day {
+  /** часы амбулаторного приёма по умолчанию: с какого часа и до какого, `0 ≤ открытие < закрытие ≤ 24` */
+  hours: [number, number];
+  /** сколько приходят сами по часам суток 0–23, % от среднего часа приёма по умолчанию (там в среднем 100) */
+  walk: number[];
+  /** сколько машин скорой по часам суток 0–23, % от среднего часа суток (в среднем 100) */
+  ambulance: number[];
+  /** в котором часу утра нанятые врачи обходят своих лежащих */
+  rounds: number;
+}
+
 export interface ContentDb {
   contentVersion: number;
   hash: string;
@@ -1309,6 +1324,8 @@ export interface ContentDb {
   economy: Economy;
   /** «Просят посмотреть» (spec 2026-10-consults): пороги нанятого врача в потоке для ПК; нет — не просят (база тестов) */
   consults?: Consults;
+  /** сутки целиком в потоке для ПК (spec 2026-10-day); нет (база тестов) — ровный поток в часы приёма геймдизайна */
+  day?: Day;
   characters: Record<Id, Character>;
   chapters: Record<Id, Chapter>;
   tips: Record<Id, Tip>;
