@@ -10,7 +10,7 @@
 //   --mode flow  — поток для ПК (`newFlowShift`): приток в час, пациент — к приходу (--load 50,100,200,300 — сколько
 //                  пациентов одновременно нужно; кабинетов и притока — по таблице LOADS ниже).
 //
-// bun tools/bench/bench.ts                     — поток для ПК: шаги по минуте, кадры ×1 и ×4 целиком и по частям, детерминизм
+// bun tools/bench/bench.ts                     — поток для ПК: шаги по минуте, кадры по 1 и 4 игровые секунды (×3 и ×12) целиком и по частям, детерминизм
 // bun tools/bench/bench.ts --quick             — только шаги по минуте (и повтор меньшей больницы — детерминизм)
 // bun tools/bench/bench.ts --mode desks        — по-старому, слотами записи (до и после ускорения — одни и те же пациенты)
 // bun tools/bench/bench.ts --no-parts          — без прогонов «по частям» (кадр с бюджетом 4 мс, как в игре «Анамнеза»)
@@ -344,8 +344,8 @@ for (const desks of DESKS) {
   const runs: RunResult[] = [main];
   let frames: Row['frames'];
   if (FRAMES) {
-    // кадры: ×1 = 60 игровых секунд в секунду (`docs/02-architecture.md` «Время» «Анамнеза») — при 60 к/с 1 игровая
-    // секунда на кадр; ×4 — 4 секунды
+    // кадры при 60 к/с: 1 игровая секунда на кадр и 4 — ×3 и ×12 «спокойного» темпа (spec docs/specs/2026-10-walk.md;
+    // прежние ×1 и ×4 — 60 игровых секунд в секунду, `docs/02-architecture.md` «Время» «Анамнеза»)
     frames = {} as NonNullable<Row['frames']>;
     for (const [key, sec] of [['x1', 1], ['x4', 4]] as const) {
       const r = run(layout, sec, false);
@@ -383,7 +383,7 @@ for (const desks of DESKS) {
   // по частям — сравнивается итог дня
   if (parts && (!parts.x1.same || !parts.x4.same)) same = false;
   const last = [...main.hashes.keys()].pop()!;
-  console.log(`  детерминизм: ${runs.length + partHashes.length} прогона (шаги ${runs.map(r => `${r.step} с`).join(', ')}${partHashes.length ? ', по частям ×1 и ×4' : ''}), сравнений по часам ${compared} — ${same ? 'хэши совпали' : 'ХЭШИ РАЗНЫЕ'}; хэш в ${clock(last)}: ${runs.map(r => r.hashes.get(last)).join(' / ')}; после закрытия дня: ${runs.map(r => r.closedHash).join(' / ')}${parts ? `; по частям — ${parts.x1.same && parts.x4.same ? 'тот же' : 'ДРУГОЙ'}` : ''}`);
+  console.log(`  детерминизм: ${runs.length + partHashes.length} прогона (шаги ${runs.map(r => `${r.step} с`).join(', ')}${partHashes.length ? ', по частям — кадры 1 и 4 с' : ''}), сравнений по часам ${compared} — ${same ? 'хэши совпали' : 'ХЭШИ РАЗНЫЕ'}; хэш в ${clock(last)}: ${runs.map(r => r.hashes.get(last)).join(' / ')}; после закрытия дня: ${runs.map(r => r.closedHash).join(' / ')}${parts ? `; по частям — ${parts.x1.same && parts.x4.same ? 'тот же' : 'ДРУГОЙ'}` : ''}`);
 
   rows.push({
     desks, plot: layout.plot, rooms: layout.rooms, planned: main.planned, planMs: main.planMs,
@@ -401,19 +401,20 @@ for (const desks of DESKS) {
 // --- итог: таблица и бюджет кадра ------------------------------------------------------------------------------------
 
 console.log('\nИтог (окно 09:00–14:00, шаг 60 игровых секунд):');
-console.log('| кабинетов | в больнице, медиана / пик | мс на игр. минуту, медиана / p95 / худшая | кадр ×1, p95 / худший, мс | кадр ×4, p95 / худший, мс | снимок на пике / gzip | состояние в куче / вся куча |');
+console.log('| кабинетов | в больнице, медиана / пик | мс на игр. минуту, медиана / p95 / худшая | кадр 1 с (×3), p95 / худший, мс | кадр 4 с (×12), p95 / худший, мс | снимок на пике / gzip | состояние в куче / вся куча |');
 for (const r of rows) {
   const fx = (k: 'x1' | 'x4') => (r.frames ? `${f2(r.frames[k].p95)} / ${f1(r.frames[k].max)}` : '—');
   console.log(`| ${r.desks} | ${r.liveMedian} / ${r.livePeak} | ${f1(r.minute.median)} / ${f1(r.minute.p95)} / ${f1(r.minute.max)} | ${fx('x1')} | ${fx('x4')} | ${kb(r.memory.snapshotPeak)} / ${kb(r.memory.gzipPeak)} | ${mb(r.memory.heapPeak)} / ${mb(r.memory.processPeak)} |`);
 }
-// бюджет: 4 мс на кадр при 60 к/с; ×1 — 60 кадров на игровую минуту (240 мс), ×4 — 15 кадров (60 мс)
+// бюджет: 4 мс на кадр при 60 к/с; ×12 — 15 кадров на игровую минуту (60 мс), ×3 — 60 кадров (240 мс), ×1 — 180 (720 мс)
 if (rows.some(r => r.parts)) {
   console.log('\nПо частям (кадр — 4 мс движку, как в игре «Анамнеза»): насколько отстают часы смены, игровых минут, наибольшее / в 14:00');
-  for (const r of rows) if (r.parts) console.log(`| ${r.desks} | ×1: ${f1(r.parts.x1.maxLagMin)} / ${f1(r.parts.x1.lagAtEndMin)}, худший кадр ${f1(r.parts.x1.max)} мс | ×4: ${f1(r.parts.x4.maxLagMin)} / ${f1(r.parts.x4.lagAtEndMin)}, худший кадр ${f1(r.parts.x4.max)} мс |`);
+  for (const r of rows) if (r.parts) console.log(`| ${r.desks} | 1 с (×3): ${f1(r.parts.x1.maxLagMin)} / ${f1(r.parts.x1.lagAtEndMin)}, худший кадр ${f1(r.parts.x1.max)} мс | 4 с (×12): ${f1(r.parts.x4.maxLagMin)} / ${f1(r.parts.x4.lagAtEndMin)}, худший кадр ${f1(r.parts.x4.max)} мс |`);
 }
-console.log('\nБюджет 4 мс на кадр при 60 к/с: ×1 — 240 мс на игровую минуту, ×4 — 60 мс на игровую минуту.');
+console.log('\nБюджет 4 мс на кадр при 60 к/с («спокойный» темп): ×12 — 60 мс на игровую минуту, ×3 — 240 мс, ×1 — 720 мс.');
 for (const r of rows) {
-  console.log(`  ${r.desks} кабинетов: медиана ${f1(r.minute.median)} мс/мин — ${r.minute.median <= 60 ? 'в бюджете ×4' : r.minute.median <= 240 ? 'в бюджете ×1, не ×4' : 'больше бюджета ×1'}; p95 ${f1(r.minute.p95)} мс/мин — ${r.minute.p95 <= 60 ? 'в бюджете ×4' : r.minute.p95 <= 240 ? 'в бюджете ×1, не ×4' : 'больше бюджета ×1'}`);
+  const verdict = (ms: number) => (ms <= 60 ? 'в бюджете ×12' : ms <= 240 ? 'в бюджете ×3, не ×12' : ms <= 720 ? 'в бюджете ×1, не ×3' : 'больше бюджета ×1');
+  console.log(`  ${r.desks} кабинетов: медиана ${f1(r.minute.median)} мс/мин — ${verdict(r.minute.median)}; p95 ${f1(r.minute.p95)} мс/мин — ${verdict(r.minute.p95)}`);
 }
 
 if (JSON_OUT) {
