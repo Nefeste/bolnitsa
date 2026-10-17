@@ -399,6 +399,10 @@ async function partThree() {
   await page.waitForFunction(() => window.__started === true, null, { timeout: 240000 });
   const until = (fn, a, ms = 20000) => page.waitForFunction(fn, a, { timeout: ms });
   ok(`люди и поток: ${await page.textContent('#clock')}`);
+  // автопауза режима врача (часть 4) на просьбы и результаты остановила бы часы — здесь смотрят поток
+  await page.evaluate(() => window.__game.actions.doctor({ kind: 'autopause', on: false }));
+  // окно врача (часть 4) — свернуть кнопкой: значки и слой видны на всей карте
+  await page.click('#dock .close', { timeout: 20000 });
   // пациенты ходят: на ×4 кто-то идёт по срезу — пришёл, позвали к врачу, на обследование (кадров без видеокарты мало)
   const before = await page.evaluate(() => [...window.__game.crowd.walkers.values()].filter(w => !w.staff).map(w => [w.key, w.x, w.z]));
   await page.keyboard.press('Digit3');
