@@ -1,4 +1,4 @@
-// из anamnez: src/content/types.ts @ 96503ac
+// из anamnez: src/content/types.ts @ 96503ac, изменено: ContentDb.consults — «Просят посмотреть» (spec 2026-10-consults)
 // Типы собранной медицинской базы (`docs/04-data-model.md` §1).
 //
 // Исходник — YAML в content/, собирает tools/content/build.ts. Здесь — то, что получает
@@ -1279,6 +1279,19 @@ export interface Target {
   review: Review;
 }
 
+/**
+ * «Просят посмотреть» «Больницы» (spec docs/specs/2026-10-consults.md): нанятый врач в потоке для ПК после своих
+ * обследований не уверен и зовёт игрока. Игровые числа — гипотезы, подобраны прогоном (`tools/bench/consults.ts`).
+ */
+export interface Consults {
+  /** по навыку 1–5: ниже какой уверенности в своём диагнозе — вместе с болезнями той же группы — просит, %; не растёт с навыком */
+  unsure: [number, number, number, number, number];
+  /** вторая группа болезней не меньше этой доли первой — «две гипотезы рядом», % */
+  close: number;
+  /** сколько игровых минут ждёт ответа, потом решает сам */
+  wait: number;
+}
+
 export interface ContentDb {
   contentVersion: number;
   hash: string;
@@ -1294,6 +1307,8 @@ export interface ContentDb {
   roles: Record<Id, StaffRole>;
   presets: Record<Id, Preset>;
   economy: Economy;
+  /** «Просят посмотреть» (spec 2026-10-consults): пороги нанятого врача в потоке для ПК; нет — не просят (база тестов) */
+  consults?: Consults;
   characters: Record<Id, Character>;
   chapters: Record<Id, Chapter>;
   tips: Record<Id, Tip>;

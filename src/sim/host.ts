@@ -44,10 +44,11 @@ export function createSim(db: ContentDb): SimHost {
             return slice([]);
           case 'command':
             if (!s) return { kind: 'error', message: 'нет смены' };
-            // команда сначала доживает прошедшее время — как в игре: состояние то же, что без отставания
-            if (owed > 0) apply(db, s, { kind: 'advance', seconds: owed });
+            // команда сначала доживает прошедшее время — как в игре: состояние то же, что без отставания; извещения этого
+            // времени — тоже в ответ: по ним автопауза («Просят посмотреть», spec 2026-10-consults)
+            const before = owed > 0 ? apply(db, s, { kind: 'advance', seconds: owed }) : [];
             owed = 0;
-            return slice(apply(db, s, msg.cmd));
+            return slice([...before, ...apply(db, s, msg.cmd)]);
           case 'tick': {
             if (!s) return { kind: 'error', message: 'нет смены' };
             owed += msg.seconds;

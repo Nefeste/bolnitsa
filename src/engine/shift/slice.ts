@@ -9,6 +9,8 @@ export interface PersonSlice {
   status: 'waiting' | 'inRoom' | 'away' | 'admitted';
   triage: Triage;
   room?: string;
+  /** нанятый врач просит вас посмотреть его (spec 2026-10-consults): с какого часа, до какого ждёт ответа, почему */
+  asks?: Pick<import('./types').Consult, 'at' | 'until' | 'why' | 'lead'>;
   /** кто ведёт: номер человека из штата; нет — вы или никто */
   by?: string;
 }
@@ -40,6 +42,11 @@ export function sliceOf(s: ShiftState): ShiftSlice {
     const out = p.out && p.out.back > s.t ? p.out.room : undefined;
     const room = out ?? p.bay?.room ?? (p.status === 'admitted' ? p.stay?.room : p.status === 'inRoom' && p.by ? rooms?.get(p.by) : undefined);
     people.push({ id: p.id, status: p.status, triage: p.triage, ...(room ? { room } : {}), ...(p.by ? { by: p.by } : {}) });
+  }
+  // «Просят посмотреть» (spec 2026-10-consults): у кого нанятый врач ждёт вашего ответа
+  for (const c of s.consults ?? []) {
+    const x = people.find(q => q.id === c.id);
+    if (x) x.asks = { at: c.at, until: c.until, why: [...c.why], lead: c.lead.map(b => ({ ...b })) };
   }
   people.sort((a, b) => (a.id < b.id ? -1 : 1));
   return { t: s.t, day: s.day, dayOpen: s.dayOpen, people, arrived: s.summary.arrived, seen: s.summary.seen, left: s.summary.left };
