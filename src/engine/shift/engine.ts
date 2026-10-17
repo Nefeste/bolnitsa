@@ -3205,48 +3205,43 @@ function callIn(db: ContentDb, s: ShiftState, list: readonly StaffMember[]) {
 }
 
 /**
- * Следующий к каждому врачу идёт к двери его кабинета (spec 2026-10-walk; геймдизайн §5: «ждут у двери кабинета, и врач
- * зовёт следующего, заканчивая с прежним»): к нанятому — кого он позовёт первым из своих, к вам — первый из ваших в
- * очереди. Кто уже у двери, там и остаётся, даже если впереди встал срочный.
+ * Следующие к каждому врачу идут к двери его кабинета (spec 2026-10-walk; геймдизайн §5: «ждут у двери кабинета, и врач
+ * зовёт следующего, заканчивая с прежним»): к нанятому — первые `AT_DOOR` из тех, кого он позовёт, к вам — первые из ваших
+ * в очереди. Один проход по очереди. Кто уже у двери, там и остаётся, даже если впереди встал срочный.
  */
 function toDoors(db: ContentDb, s: ShiftState, list: readonly StaffMember[]) {
   const plan = hospitalCtx(db, s).plan;
-  let back: Map<string, ShiftPatient[]> | undefined;
-  for (const m of list) {
-    if (!m.room) continue;
-    // свои, вернувшиеся с результатами, — первыми, как их зовёт `callIn`: раньше вставший в очередь
-    if (!back) {
-      back = new Map();
-      for (const p of Object.values(s.patients)) {
-        if (p.status !== 'waiting' || !p.by) continue;
-        const q = back.get(p.by);
-        if (q) q.push(p);
-        else back.set(p.by, [p]);
-      }
-      for (const q of back.values()) q.sort((a, b) => a.queuedT - b.queuedT || (a.id < b.id ? -1 : 1));
-    }
-    let n = 0;
-    for (const p of back.get(m.id) ?? []) {
-      if (n++ >= AT_DOOR) break;
-      toDoor(plan, p, m.room, s.t);
-    }
-    for (const x of s.queue) {
-      if (n >= AT_DOOR) break;
-      const p = s.patients[x];
-      if (p.doc !== m.id || !colleagueTakes(db, s, p, m, list)) continue;
-      toDoor(plan, p, m.room, s.t);
-      n++;
+  // сколько уже идут к двери каждого врача; свои, вернувшиеся с результатами, — первыми, как их зовёт `callIn`: раньше
+  // вставший в очередь
+  const n = new Map<string, number>();
+  const doc = new Map<string, StaffMember>();
+  for (const m of list) if (m.room) doc.set(m.id, m);
+  if (doc.size > 0) {
+    const back = Object.values(s.patients).filter(p => p.status === 'waiting' && p.by !== undefined && doc.has(p.by));
+    back.sort((a, b) => a.queuedT - b.queuedT || (a.id < b.id ? -1 : 1));
+    for (const p of back) {
+      const k = n.get(p.by!) ?? 0;
+      if (k >= AT_DOOR) continue;
+      toDoor(plan, p, doc.get(p.by!)!.room!, s.t);
+      n.set(p.by!, k + 1);
     }
   }
+  // за ними — свои из очереди, по её порядку; к вам — первые из ваших
   const office = doctorRoom(plan);
-  if (!office) return;
-  let n = 0;
+  let yours = 0;
   for (const x of s.queue) {
-    if (n >= AT_DOOR) break;
     const p = s.patients[x];
-    if (p.doc !== undefined || p.kind === 'ambulance') continue;
-    toDoor(plan, p, office, s.t);
-    n++;
+    if (p.doc === undefined) {
+      if (!office || yours >= AT_DOOR || p.kind === 'ambulance') continue;
+      toDoor(plan, p, office, s.t);
+      yours++;
+      continue;
+    }
+    const m = doc.get(p.doc);
+    const k = m ? (n.get(m.id) ?? 0) : AT_DOOR;
+    if (k >= AT_DOOR || !colleagueTakes(db, s, p, m!, list)) continue;
+    toDoor(plan, p, m!.room!, s.t);
+    n.set(m!.id, k + 1);
   }
 }
 

@@ -1,21 +1,21 @@
 // Ходьба в движке (spec docs/specs/2026-10-walk.md, «Проверки»): в потоке для ПК каждый переход пациента стоит дороги по
 // коридорам со скоростью людей на экране; приём начинается, когда пациент дошёл; терпение тратится с того, как он сел в
-// зале; записывают к врачу с самой короткой очередью; первые в очереди ждут у двери кабинета; нанятый врач зовёт только
+// зале; записывают к врачу, к которому раньше попадёшь; первые в очереди ждут у двери кабинета; нанятый врач зовёт только
 // оформленного и измеренного. Детерминизм при любом шаге часов и отпечатки «Анамнеза» проверяют journey.test.ts,
 // sim.test.ts и золотые тесты.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
+import type { Id } from '../../src/content/types';
 import { doctorRoom } from '../../src/engine/hospital/requirements';
-import { hospitalOf } from '../../src/engine/hospital/site';
+import { emptySite, hospitalOf } from '../../src/engine/hospital/site';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { presetStaff } from '../../src/engine/hospital/staff';
 import { metersFromEntrance } from '../../src/engine/hospital/walk';
 import { apply, colleaguesOf, hospitalCtx, newFlowShift } from '../../src/engine/shift/engine';
 import { sliceOf } from '../../src/engine/shift/slice';
 import { REGISTRATION, type ShiftPatient, type ShiftState, TRIAGE } from '../../src/engine/shift/types';
-import { AT_DOOR, readyAt, toDoctor, WALK_SPEED_PC, walkPc } from '../../src/engine/shift/walking';
-import { hospitalFor } from '../bench/hospital';
-import { FLOW, liveTo } from './site-kit';
+import { AT_DOOR, hallNear, readyAt, toDoctor, WALK_SPEED_PC, walkPc } from '../../src/engine/shift/walking';
+import { FLOW, liveTo, site } from './site-kit';
 
 const rec = db.presets['preset.city'];
 const hospital = hospitalOf(db, siteOfPreset(db, rec));
@@ -23,6 +23,30 @@ const staff = presetStaff(db, rec);
 /** Готовая больница: терапевт в дальнем кабинете, одна зона ожидания у входа. */
 const city = (seed: number) => newFlowShift(db, { seed, season: 'winter', hospital, staff, flow: FLOW });
 const roomOf = (s: ShiftState, type: string) => hospitalCtx(db, s).plan.rooms.find(r => r.type === type)!.id;
+
+/**
+ * Районная больница симулятора экономики (tools/sim/economy.ts): ряд прототипа у северной стены, средний ряд — ваш кабинет,
+ * кабинет второго терапевта, доврачебный, вторая зона ожидания, рентген; у каждого из двух нанятых терапевтов — своя.
+ */
+const DISTRICT: [Id, number, number, number, number, 'top' | 'bottom'][] = [
+  ['room.reception', 6, 6, 6, 7, 'bottom'], ['room.waiting', 11, 6, 9, 7, 'bottom'], ['room.office', 19, 6, 8, 7, 'bottom'], ['room.staff', 26, 6, 6, 7, 'bottom'],
+  ['room.procedure', 31, 6, 6, 7, 'bottom'], ['room.lab', 36, 6, 6, 7, 'bottom'], ['room.toilet', 41, 6, 6, 7, 'bottom'], ['room.ecg', 46, 6, 6, 7, 'bottom'],
+  ['room.office', 6, 15, 8, 7, 'top'], ['room.office', 13, 15, 8, 7, 'top'], ['room.triage', 20, 15, 6, 7, 'top'], ['room.waiting', 25, 15, 6, 7, 'top'],
+  ['room.xray', 30, 15, 8, 7, 'top'],
+];
+
+function district(seed: number, perHour: number): ShiftState {
+  const s = newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, emptySite()), staff: [], flow: { perHour, ambulancePerHour: 0 } });
+  for (const [type, x, y, w, h, side] of DISTRICT) {
+    const id = site(db, s, { kind: 'room', type, x, y, w, h }).room!;
+    site(db, s, { kind: 'furnish', room: id });
+    const mid = x + Math.floor(w / 2);
+    site(db, s, { kind: 'door', room: id, cells: type === 'room.xray' ? [[mid - 1, side === 'top' ? y : y + h - 1], [mid, side === 'top' ? y : y + h - 1]] : [[mid, side === 'top' ? y : y + h - 1]] });
+    for (const role of db.rooms[type].staff) site(db, s, { kind: 'hire', room: id, role });
+  }
+  site(db, s, { kind: 'done' });
+  return s;
+}
 
 describe('ходьба в движке', () => {
   test('дорога каждого перехода — расстояние по плану, делённое на скорость; терпение — с того, как сел в зале', () => {
@@ -98,9 +122,8 @@ describe('ходьба в движке', () => {
     expect(p.doc).toBeUndefined();
   });
 
-  test('запись — к терапевту с самой короткой очередью; первые в очереди — у двери его кабинета; две зоны ожидания делят пациентов', () => {
-    const l = hospitalFor(db, 3, 100);
-    const s = newFlowShift(db, { seed: 1, season: 'winter', hospital: l.hospital, staff: l.staff, flow: { perHour: 24, ambulancePerHour: 0 } });
+  test('запись — к терапевту, к которому раньше попадёшь; первые в очереди — у двери его кабинета; две зоны ожидания делят пациентов', () => {
+    const s = district(1, 12);
     let doors = 0;
     while (s.t < 12 * 3600) {
       apply(db, s, { kind: 'advance', seconds: 60 });
@@ -114,18 +137,17 @@ describe('ходьба в движке', () => {
       }
     }
     expect(doors).toBeGreaterThan(20);
-    // каждому из трёх терапевтов записывали
-    const docs = new Map<string, number>();
-    for (const m of colleaguesOf(db, s)) docs.set(m.id, 0);
+    // каждому из двух нанятых терапевтов записывали
+    const list = colleaguesOf(db, s);
+    expect(list.length).toBe(2);
+    const docs = new Map(list.map(m => [m.id, 0]));
     for (const p of Object.values(s.patients)) if (p.doc && docs.has(p.doc)) docs.set(p.doc, docs.get(p.doc)! + 1);
-    const n = [...docs.values()];
-    expect(n.length).toBe(3);
-    expect(Math.min(...n)).toBeGreaterThan(0);
-    // две зоны ожидания делят пациентов: каждый ждёт в ближайшей к кабинету своего врача
-    const plan = hospitalCtx(db, s).plan;
-    const halls = plan.rooms.filter(r => r.type === 'room.waiting').map(r => r.id);
-    expect(halls.length).toBe(2);
+    expect(Math.min(...docs.values())).toBeGreaterThan(0);
+    // две зоны ожидания делят пациентов: у каждого терапевта своя — ближайшая к его кабинету
+    const ctx = hospitalCtx(db, s);
+    const halls = ctx.plan.rooms.filter(r => r.type === 'room.waiting').map(r => r.id).sort();
+    expect(list.map(m => hallNear(ctx.plan, ctx.working, m.room)).sort()).toEqual(halls);
     const used = new Set(Object.values(s.patients).flatMap(p => (p.hall ? [p.hall] : [])));
-    expect([...used].sort()).toEqual([...halls].sort());
+    expect([...used].sort()).toEqual(halls);
   }, 60_000);
 });
