@@ -158,9 +158,9 @@ export async function doctorPart({ page, port, out, ok, fail, q, shots }) {
   if (closed.some(r => r.id === ask.id)) ok(`карта закрыта; в окне врача — закрытый приём с разбором`);
   else fail('закрытого приёма нет в окне врача');
 
-  // «Взять случай» у больного нанятого врача — с карты
-  await page.keyboard.press('Digit3');
-  const target = await until(() => {
+  // «Взять случай» у больного нанятого врача — с карты. Ищем на ×4, но выбираем на паузе: за долю секунды на ×4 приём
+  // успевает закончиться, а у ушедшего «Взять случай» скрыто (часть 3) — поэтому после паузы кандидата проверяем заново.
+  const candidate = () => {
     const g = window.__game;
     for (const w of g.crowd.walkers.values()) {
       if (w.staff || w.leaving) continue;
@@ -170,8 +170,16 @@ export async function doctorPart({ page, port, out, ok, fail, q, shots }) {
       if (p && p.x > 380 && p.x < 960 && p.y > 140 && p.y < 560) return { ...p, key: w.key, id: info.id };
     }
     return null;
-  }, null, 120000).then(h => h.jsonValue());
-  await page.keyboard.press('Space');
+  };
+  let target = null;
+  for (let tries = 0; tries < 5 && !target; tries++) {
+    await page.keyboard.press('Digit3');
+    await until(candidate, null, 120000);
+    // пауза — действием, а не пробелом: пробел переключает, а автопауза (просьба врача) могла уже остановить часы
+    await page.evaluate(() => window.__game.actions.setSpeed(0));
+    target = await page.evaluate(candidate);
+  }
+  if (!target) throw new Error('нет больного нанятого врача на экране — пять попыток');
   await page.mouse.click(target.x, target.y);
   await page.waitForTimeout(300);
   const picked = await page.evaluate(() => window.__game.selected);
