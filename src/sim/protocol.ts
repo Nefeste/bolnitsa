@@ -1,11 +1,12 @@
 // Обмен между потоком отрисовки и потоком расчёта (spec docs/specs/2026-10-engine-speed.md, «Поток расчёта», решение
-// владельца 16.10.2026): больница считается в отдельном потоке (Web Worker в окне Electron), отрисовка — в основном. Туда —
-// команды и ход часов, обратно — срез для отрисовки и извещения. Сообщения — простые объекты: structured clone.
+// владельца 16.10.2026; docs/specs/2026-10-shell-3d.md, «Обмен между потоками»): больница считается в отдельном потоке
+// (Web Worker в окне Electron), отрисовка — в основном. Туда — команды и ход часов, обратно — упакованный срез
+// (src/sim/pack.ts), строки новых людей и извещения. Сообщения — structured clone; массив среза передаётся без копии.
 import type { Flow, Notice, ShiftState, Command } from '../engine/shift/types';
 import type { HospitalState } from '../engine/hospital/build';
 import type { StaffMember } from '../engine/hospital/staff';
 import type { Season } from '../content/types';
-import type { ShiftSlice } from '../engine/shift/slice';
+import type { NameRow } from './pack';
 
 export type ToSim =
   /** новая смена с потоком для ПК */
@@ -22,8 +23,17 @@ export type ToSim =
   /** сохранить: вернуть снимок */
   | { kind: 'save' };
 
+/** Больница и штат — когда они впервые или заново (после `start`, `load`, стройки и найма). */
+export interface World {
+  hospital: HospitalState;
+  staff: StaffMember[];
+}
+
 export type FromSim =
-  /** после каждого tick и command: срез, извещения, на сколько часы смены отстали от часов игры (игровых секунд) */
-  | { kind: 'slice'; slice: ShiftSlice; notices: Notice[]; lag: number }
+  /**
+   * после каждого tick и command: упакованный срез (`buf`, src/sim/pack.ts), строки новых людей, извещения, на сколько
+   * часы смены отстали от часов игры (игровых секунд); `world` — если больница или штат изменились
+   */
+  | { kind: 'slice'; buf: Int32Array; names: NameRow[]; notices: Notice[]; lag: number; world?: World }
   | { kind: 'state'; state: ShiftState }
   | { kind: 'error'; message: string };

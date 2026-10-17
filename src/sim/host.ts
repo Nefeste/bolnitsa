@@ -1,12 +1,13 @@
-// Поток расчёта (spec docs/specs/2026-10-engine-speed.md, «Поток расчёта»): разбирает сообщения `ToSim` и отвечает
-// `FromSim`. Без привязки к виду потока: Web Worker окна Electron, `worker_threads` Node/Bun в тестах — у каждого своя
-// тонкая обёртка (`self.onmessage` или `parentPort.on('message')`). Движок однопоточный и детерминированный: тот же
-// порядок сообщений даёт то же состояние, что и в основном потоке.
+// Поток расчёта (spec docs/specs/2026-10-engine-speed.md, «Поток расчёта»; docs/specs/2026-10-shell-3d.md): разбирает
+// сообщения `ToSim` и отвечает `FromSim`. Без привязки к виду потока: Web Worker окна Electron (src/sim/worker.ts),
+// `worker_threads` Node/Bun в тестах — у каждого своя тонкая обёртка. Движок однопоточный и детерминированный: тот же
+// порядок сообщений даёт то же состояние, что и в основном потоке. Срез упаковывается (pack.ts).
 import type { ContentDb } from '../content/types';
 import { apply, catchUp, newFlowShift } from '../engine/shift/engine';
 import { sliceOf } from '../engine/shift/slice';
 import type { Notice, ShiftState } from '../engine/shift/types';
-import type { FromSim, ToSim } from './protocol';
+import { Handles, packSlice } from './pack';
+import type { FromSim, ToSim, World } from './protocol';
 
 /** Счёт до `ms` от сейчас; одно событие — всегда (как `budget` в session.ts «Анамнеза»). */
 function budget(ms: number): () => boolean {
@@ -29,18 +30,39 @@ export function createSim(db: ContentDb): SimHost {
   let s: ShiftState | undefined;
   /** игровые секунды, которые часы игры уже прошли, а движок ещё не начал */
   let owed = 0;
-  const slice = (notices: Notice[]): FromSim => ({ kind: 'slice', slice: sliceOf(s!), notices, lag: owed + (s!.until !== undefined ? s!.until - s!.t : 0) });
+  const handles = new Handles();
+  // номера помещений и штата в срезе — по спискам больницы; меняются вместе с ними
+  let shown: { hospital: unknown; staff: unknown } = { hospital: undefined, staff: undefined };
+  let rooms = new Map<string, number>();
+  let staff = new Map<string, number>();
+  const slice = (notices: Notice[]): FromSim => {
+    let world: World | undefined;
+    if (s!.hospital !== shown.hospital || s!.staff !== shown.staff) {
+      shown = { hospital: s!.hospital, staff: s!.staff };
+      rooms = new Map((s!.hospital?.rooms ?? []).map((r, i) => [r.id, i]));
+      staff = new Map((s!.staff ?? []).map((m, i) => [m.id, i]));
+      if (s!.hospital) world = { hospital: s!.hospital, staff: s!.staff ?? [] };
+    }
+    const lag = owed + (s!.until !== undefined ? s!.until - s!.t : 0);
+    const { buf, names } = packSlice(s!, sliceOf(s!), lag, handles, rooms, staff);
+    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}) };
+  };
+  const fresh = () => {
+    owed = 0;
+    handles.reset();
+    shown = { hospital: undefined, staff: undefined };
+  };
   return {
     handle(msg) {
       try {
         switch (msg.kind) {
           case 'start':
             s = newFlowShift(db, { seed: msg.seed, season: msg.season, hospital: msg.hospital, staff: msg.staff, flow: msg.flow });
-            owed = 0;
+            fresh();
             return slice([]);
           case 'load':
             s = msg.state;
-            owed = 0;
+            fresh();
             return slice([]);
           case 'command':
             if (!s) return { kind: 'error', message: 'нет смены' };
