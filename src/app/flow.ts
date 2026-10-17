@@ -240,7 +240,8 @@ export function pathCard(j: Journey, female: boolean, now: number, names: PathNa
       case 'left': {
         // в ленте — коротко; почему — целиком первой строкой карточки
         const q = [...steps].reverse().find((x): x is Extract<Step, { k: 'queue' }> => x.k === 'queue');
-        const all = T.flow.left(female, dur(q ? e.t - q.t : e.t - j.at), dur(e.patience ?? 0));
+        // ждал — с того, как сел в зале (spec 2026-10-walk): терпение тратится оттуда, а не у стойки и не в пути
+        const all = T.flow.left(female, dur(q ? e.t - (q.sat ?? q.t) : e.t - j.at), dur(e.patience ?? 0));
         left = q ? `${all} — ${queueWhy(q)}` : all;
         text = T.flow.leftEnd(female);
         why = T.flow.patience(female, dur(e.patience ?? 0));

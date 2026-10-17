@@ -10,14 +10,14 @@ import type { ShiftState, Triage, VisitKind } from '../engine/shift/types';
 
 /** Заголовок: чисел (с частью 5б — касса за сутки и репутация, spec docs/specs/2026-10-economy.md). */
 export const HEADER = 14;
-/** На человека: чисел. */
-export const STRIDE = 12;
-export const FORMAT = 2;
+/** На человека: чисел (формат 3, spec docs/specs/2026-10-walk.md: когда дойдёт). */
+export const STRIDE = 13;
+export const FORMAT = 3;
 
 /** Поля заголовка. */
 export const H = { format: 0, t: 1, day: 2, dayOpen: 3, count: 4, arrived: 5, seen: 6, left: 7, cash: 8, lag: 9, queue: 10, reserved: 11, today: 12, reputation: 13 } as const;
 /** Поля человека. */
-export const P = { handle: 0, status: 1, triage: 2, room: 3, by: 4, doing: 5, bed: 6, flags: 7, since: 8, limit: 9, askAt: 10, askUntil: 11 } as const;
+export const P = { handle: 0, status: 1, triage: 2, room: 3, by: 4, doing: 5, bed: 6, flags: 7, since: 8, limit: 9, askAt: 10, askUntil: 11, arrive: 12 } as const;
 /** Нет времени: срока терпения, просьбы. */
 export const NO_TIME = -1;
 /** Кассы нет — в этом режиме движка нет экономики. */
@@ -124,6 +124,8 @@ export function packSlice(
     buf[o + P.limit] = p.limit ?? NO_TIME;
     buf[o + P.askAt] = p.asks ? p.asks.at : NO_TIME;
     buf[o + P.askUntil] = p.asks ? p.asks.until : NO_TIME;
+    // поток для ПК (spec 2026-10-walk): идёт — к какому часу дойдёт
+    buf[o + P.arrive] = p.arrive ?? NO_TIME;
   });
   handles.keep(present);
   return { buf, names };
@@ -147,6 +149,8 @@ export interface PersonView {
   limit: number;
   /** нанятый врач просит вас посмотреть его: с какого часа и до какого ждёт ответа */
   ask?: { at: number; until: number };
+  /** идёт туда, где делает то, что делает, — дойдёт к этому часу (spec 2026-10-walk) */
+  arrive?: number;
 }
 
 export function personAt(buf: Int32Array, i: number): PersonView {
@@ -163,6 +167,7 @@ export function personAt(buf: Int32Array, i: number): PersonView {
     since: buf[o + P.since],
     limit: buf[o + P.limit],
     ...(buf[o + P.askUntil] !== NO_TIME ? { ask: { at: buf[o + P.askAt], until: buf[o + P.askUntil] } } : {}),
+    ...(buf[o + P.arrive] !== NO_TIME ? { arrive: buf[o + P.arrive] } : {}),
   };
 }
 

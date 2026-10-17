@@ -39,6 +39,7 @@ import { chipShown, dur, moodOf, pathCard, type PatientRow, patientRows, roomChi
 import { Labels } from './labels';
 import { Money } from './money';
 import { startCash } from '../engine/shift/money';
+import { GAME_PER_REAL } from '../engine/shift/walking';
 import type { Flow } from '../engine/shift/types';
 
 /**
@@ -53,8 +54,12 @@ export const AUTO: Flow = { perHour: 0, auto: true };
 /** С чего начать (spec docs/specs/2026-10-build.md, «Начало игры»): пустое здание или готовая больница 2а. */
 export type Start = 'empty' | 'preset';
 
-/** Игровых секунд в секунду на ×1: минута за секунду (геймдизайн §2). */
-export const GAME_PER_REAL = 60;
+/**
+ * Игровых секунд в секунду на ×1 — «спокойный» темп, решение владельца 17.10.2026 (spec docs/specs/2026-10-walk.md): приём
+ * на экране — около 23 секунд, люди идут 1,6 м/с, и движок считает их дорогу с той же скоростью. Число — у движка
+ * (`src/engine/shift/walking.ts`): скорость пешком в движке выводится из него.
+ */
+export { GAME_PER_REAL };
 
 /** Мост к оболочке Electron (electron/preload.cjs); в браузере его нет. */
 export interface ShellBridge {
@@ -435,7 +440,10 @@ export class Game {
       if (cell?.[0] !== h?.[0] || cell?.[1] !== h?.[1]) this.builder.move(cell);
     }
     const a = performance.now();
-    this.crowd.speed = this.ff ? 4 : this.speed;
+    // люди идут с той скоростью, с какой их дорогу считает движок (spec 2026-10-walk): «До утра» — как на ×12
+    this.crowd.speed = this.ff ? 12 : this.speed;
+    this.crowd.rate = this.crowd.speed * GAME_PER_REAL;
+    this.crowd.t = this.t;
     this.crowd.update(this.speed === 0 && !this.ff ? 0 : dt);
     const b = performance.now();
     this.stage.frame(dt, (this.t % 86400) / 3600, this.crowd, this.pop.paint, k => this.pop.triageOf(k), this.ringKey());
@@ -855,8 +863,8 @@ export class Game {
         e.preventDefault();
         this.actions.setSpeed(this.speed === 0 && !this.ff ? 1 : 0);
       } else if (k === 'Digit1') this.actions.setSpeed(1);
-      else if (k === 'Digit2') this.actions.setSpeed(2);
-      else if (k === 'Digit3') this.actions.setSpeed(4);
+      else if (k === 'Digit2') this.actions.setSpeed(3);
+      else if (k === 'Digit3') this.actions.setSpeed(12);
       else if (k === 'Digit4') this.actions.untilMorning();
       else if (k === 'KeyQ') this.stage.cam.rotate(-1);
       else if (k === 'KeyE') this.stage.cam.rotate(1);

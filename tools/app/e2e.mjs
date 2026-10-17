@@ -102,7 +102,7 @@ async function partOne() {
   await page.goto(`http://127.0.0.1:${port}/index.html?q=${arg('q', 'low')}&lang=ru&hospital=preset&flow=6,1`);
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
   ok('страница загрузилась, первый кадр нарисован');
-  // дать потоку расчёта и людям пожить: ×4 на несколько секунд — и до первого пациента (без видеокарты и при занятом
+  // дать потоку расчёта и людям пожить: ×12 на несколько секунд — и до первого пациента (без видеокарты и при занятом
   // процессоре кадров мало, часы идут медленнее)
   await page.keyboard.press('Digit3');
   await page.waitForTimeout(6000);
@@ -128,7 +128,7 @@ async function partOne() {
   else fail('пациентов нет');
   if (s.calls > 10 && s.tris > 10000) ok(`кадр: ${s.calls} вызовов, ${s.tris} треугольников`);
   else fail('кадр пустой');
-  if (s.speed === 4 && s.t > 8 * 3600) ok(`часы идут: ${s.clock}, ×${s.speed}`);
+  if (s.speed === 12 && s.t > 8 * 3600) ok(`часы идут: ${s.clock}, ×${s.speed}`);
   else fail('часы не идут');
   // больница видна: в середине кадра не один цвет фона
   const shot = await page.screenshot({ path: join(out, 'e2e.png') });
@@ -376,7 +376,7 @@ async function partTwo() {
   if (one.includes('двойная') && !two.includes('двойная')) ok(`палата: «${one}» → «${two}»`);
   else fail(`палата: «${one}» → «${two}»`);
 
-  // выйти из стройки — открыто; часы ×4 — приходят и принимают
+  // выйти из стройки — открыто; часы ×12 — приходят и принимают
   await page.keyboard.press('KeyB');
   await until(() => !document.getElementById('closed'));
   const working = await page.evaluate(() => [...window.__game.working].length);
@@ -409,7 +409,7 @@ async function partThree() {
   await page.evaluate(() => window.__game.actions.doctor({ kind: 'autopause', on: false }));
   // окно врача (часть 4) — свернуть кнопкой: значки и слой видны на всей карте
   await page.click('#dock .close', { timeout: 20000 });
-  // пациенты ходят: на ×4 кто-то идёт по срезу — пришёл, позвали к врачу, на обследование (кадров без видеокарты мало)
+  // пациенты ходят: на ×12 кто-то идёт по срезу — пришёл, позвали к врачу, на обследование (кадров без видеокарты мало)
   const before = await page.evaluate(() => [...window.__game.crowd.walkers.values()].filter(w => !w.staff).map(w => [w.key, w.x, w.z]));
   await page.keyboard.press('Digit3');
   const moved = await page
@@ -431,6 +431,43 @@ async function partThree() {
     .catch(() => null);
   if (moved) ok(`пациенты ходят: сдвинулись ${moved.n} из ${moved.of}, идут ${moved.walking} (${moved.clock})`);
   else fail('пациенты стоят');
+  // ходьба в движке (spec docs/specs/2026-10-walk.md): идущий — в карточке «идёт … · дойдёт к ЧЧ:ММ»; дошёл (в движке и на
+  // экране) — «идёт» и срок пропадают
+  await page.keyboard.press('Digit1');
+  const going = await page
+    .waitForFunction(
+      () => {
+        const g = window.__game;
+        for (const [key, now] of g.pop.patients()) if (now.arrive > g.t + 60 && g.crowd.walkers.get(key)?.state === 'walk') return key;
+        return null;
+      },
+      null,
+      { timeout: 60000, polling: 100 },
+    )
+    .then(h => h.jsonValue())
+    .catch(() => null);
+  if (going) {
+    await page.evaluate(k => window.__game.actions.select(k), going);
+    await page.waitForTimeout(300);
+    const on = await page.evaluate(() => document.querySelector('#card dl')?.textContent ?? '');
+    const there = await page
+      .waitForFunction(
+        k => {
+          const g = window.__game;
+          const n = g.pop.now(k);
+          return !n || (n.arrive <= g.t && g.crowd.walkers.get(k)?.state !== 'walk');
+        },
+        going,
+        { timeout: 60000, polling: 100 },
+      )
+      .then(() => true)
+      .catch(() => false);
+    await page.waitForTimeout(300);
+    const off = await page.evaluate(() => document.querySelector('#card dl')?.textContent ?? '');
+    if (/идёт .*дойдёт к \d\d:\d\d/.test(on) && there && !off.includes('дойдёт') && !off.includes('идёт')) ok(`идёт — «${on.match(/Что делает(.*?)Срочность/)?.[1] ?? on}»; дошёл — «${off.match(/Что делает(.*?)Срочность/)?.[1] ?? off}»`);
+    else fail(`идущий: «${on}» → «${off}» (дошёл: ${there})`);
+    await page.evaluate(() => window.__game.actions.select(undefined));
+  } else fail('нет идущего со сроком прихода');
   await page.keyboard.press('Space');
   // значки над людьми и помещениями
   const icons = await page.evaluate(() => window.__game.stage.icons.shown);

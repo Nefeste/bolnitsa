@@ -1,4 +1,4 @@
-// из anamnez: src/engine/hospital/walk.ts @ 96503ac
+// из anamnez: src/engine/hospital/walk.ts @ 96503ac, изменено: скорость — параметром, дорога от главного входа (spec 2026-10-walk)
 // Дорога по больнице (FR-HOS-4, spec 2026-10-walk-breakdowns, 0.5.9): сколько шагов от двери одного помещения до двери
 // другого по полу, коридорам и дверям — поиском в ширину по клеткам сетки (клетка — 1 × 1 м, ADR 0014). Пешком — метр в
 // секунду: так ходят пожилые и больные (игровая оценка; здоровые взрослые — быстрее). Один план — одни расстояния, они
@@ -29,10 +29,30 @@ export function metersBetween(plan: Plan, from: string, to: string): number | un
   return d;
 }
 
-/** Секунд пешком между дверями; не дойти — 0: такого помещения в работе и не бывает. */
-export function walkSeconds(plan: Plan, from: string | undefined, to: string | undefined): number {
+/**
+ * Шагов (метров) от главного входа до двери помещения `to` (spec 2026-10-walk: пришедший идёт к регистратуре); не дойти —
+ * undefined.
+ */
+export function metersFromEntrance(plan: Plan, to: string): number | undefined {
+  let known = cache.get(plan);
+  if (!known) {
+    known = new Map();
+    cache.set(plan, known);
+  }
+  const key = `>${to}`;
+  const hit = known.get(key);
+  if (hit !== undefined) return hit ?? undefined;
+  const b = plan.rooms.find(r => r.id === to);
+  const from = plan.entrances?.find(e => e.kind === 'main')?.cells ?? [plan.entrance];
+  const d = b && b.door.length > 0 ? search(plan, from, b.door) : undefined;
+  known.set(key, d ?? null);
+  return d;
+}
+
+/** Секунд пешком между дверями со скоростью `speed`; не дойти — 0: такого помещения в работе и не бывает. */
+export function walkSeconds(plan: Plan, from: string | undefined, to: string | undefined, speed = WALK_SPEED): number {
   if (!from || !to) return 0;
-  return Math.round((metersBetween(plan, from, to) ?? 0) / WALK_SPEED);
+  return Math.round((metersBetween(plan, from, to) ?? 0) / speed);
 }
 
 /** Поиск в ширину от любой клетки двери `starts` до любой клетки двери `goals`. */
