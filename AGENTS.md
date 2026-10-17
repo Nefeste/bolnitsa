@@ -88,6 +88,8 @@ npm run dist:win                   # build + Windows zip and portable .exe → r
 npm run assets -- <sources dir>    # rebuild assets/models/*.glb from the CC0 packs (byte-identical; see assets/LICENSES.md)
 npm run bench -- --mode flow --quick           # engine: time per game minute at 50/100/200/300 patients (PC flow)
 npm run bench -- --mode desks --quick          # the same with Anamnez's appointment slots
+npm run bench -- --mode flow --day             # the whole day to 10:00 of day 2: day and night minutes, 08:00 meeting, 09:00 round
+npm run bench -- --mode flow --quick --flat    # flat arrivals by hour: the same patients as before the 24-hour day, to compare
 bun tools/bench/consults.ts                    # «Просят посмотреть»: share of hired doctors' cases that ask you (--probe: why these thresholds)
 bun --cpu-prof --cpu-prof-dir=tools/bench/out/prof tools/bench/bench.ts --mode flow --only 200 --quick --until 11
 bun tools/bench/profile.ts tools/bench/out/prof/<file>.cpuprofile 30 --under catchUp
@@ -111,7 +113,9 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
 - `src/engine/` — the engine copied from Anamnez (pure TypeScript; see «Hard rules»); `shift/slice.ts` is ours: who is
   where and what they are doing, for rendering. Building by mouse is ours too: `hospital/site.ts` (the lot, rooms as
   rectangles, items, doors, checks, the plan for the engine), `hospital/site-preset.ts` (the preset as a lot) and
-  `shift/site.ts` (the `site` command: deferred removal, undo, hiring) — `docs/specs/2026-10-build.md`.
+  `shift/site.ts` (the `site` command: deferred removal, undo, hiring) — `docs/specs/2026-10-build.md`. The whole
+  24-hour day of the PC flow is ours as well: `shift/day.ts` (outpatient hours, arrivals by hour of day), the 08:00
+  meeting and the morning round in `engine.ts`, shapes in `content/hospital/day.yaml` — `docs/specs/2026-10-day.md`.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`), Web Worker
   (`worker.ts`) and its client in the window (`client.ts`). The window never runs the engine.
 - `src/app/` — the game in the window: loads the database and models, starts with the empty building or the preset,
