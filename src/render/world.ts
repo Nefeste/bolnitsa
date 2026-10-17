@@ -1,6 +1,7 @@
 // из spikes/render-3d: src/world.ts (полы, земля, стены с режимами «целые / срез / вниз», окна, наличники) — изменено:
 // план движка вместо случайной больницы; материал пола — по типу помещения движка; участок движка вместо травы до
-// горизонта; дверь — 2,1 м; второй набор координат пола — для карты света светильников (lamps.ts).
+// горизонта; дверь — 2,1 м; второй набор координат пола — для карты света светильников (lamps.ts); дорожки от входов
+// здания на участке и текстуры пола одни на сцену — стройка пересобирает полы (spec docs/specs/2026-10-build.md).
 //
 // Мир: x — столбец клетки, z — строка, y — вверх; клетка — 1 м. Стены режет вершинный шейдер: переключение режима и
 // движение камеры ничего не перестраивают; тени считаются по срезанным стенам тем же шейдером.
@@ -9,7 +10,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { Id } from '../content/types';
 import { CELL } from '../engine/hospital/grid';
 import type { Layout } from './layout';
-import { type FloorKind, makeFloor } from './textures';
+import { type FloorKind, type FloorTex, makeFloor } from './textures';
 
 /** Высота стены, м. */
 export const WALL_H = 2.7;
@@ -64,7 +65,7 @@ function floorKinds(l: Layout): (FloorKind | null)[] {
  * Пол — квадраты по 0,5 м; половинки стеновых клеток берут пол соседа (как в пробе). Второй набор координат (`uv1`) —
  * доля участка: по нему ложится карта света светильников.
  */
-export function buildFloors(l: Layout, anisotropy: number, lightMap: THREE.Texture | null): THREE.Mesh[] {
+export function buildFloors(l: Layout, anisotropy: number, lightMap: THREE.Texture | null, textures = new Map<FloorKind, FloorTex>()): THREE.Mesh[] {
   const { w, h, plan } = l;
   const kind = floorKinds(l);
   const isWall = (x: number, y: number) => x < 0 || y < 0 || x >= w || y >= h || plan.grid.cells[y * w + x] === CELL.wall;
@@ -96,7 +97,8 @@ export function buildFloors(l: Layout, anisotropy: number, lightMap: THREE.Textu
   }
   const meshes: THREE.Mesh[] = [];
   for (const [k, q] of quads) {
-    const tex = makeFloor(k, anisotropy);
+    let tex = textures.get(k);
+    if (!tex) textures.set(k, (tex = makeFloor(k, anisotropy)));
     const n = q.length / 3;
     const pos = new Float32Array(n * 18);
     const uv = new Float32Array(n * 12);
@@ -157,9 +159,26 @@ export function buildGround(l: Layout, anisotropy: number): THREE.Mesh[] {
     return false;
   };
   const [ex, ey] = plan.entrance;
+  // дорожки: от входов здания больницы ПК — прямо наружу до края участка, шире входа на клетку с каждой стороны
+  const paths = new Uint8Array(w * h);
+  for (const e of plan.entrances ?? []) {
+    const [ox, oy] = e.out;
+    for (const [cx, cy] of e.cells) {
+      for (let k = 1; ; k++) {
+        const x0 = cx + ox * k;
+        const y0 = cy + oy * k;
+        if (x0 < 0 || y0 < 0 || x0 >= w || y0 >= h) break;
+        for (let d = -1; d <= 1; d++) {
+          const x = x0 + (ox === 0 ? d : 0);
+          const y = y0 + (oy === 0 ? d : 0);
+          if (x >= 0 && y >= 0 && x < w && y < h && plan.grid.cells[y * w + x] === CELL.outside) paths[y * w + x] = 1;
+        }
+      }
+    }
+  }
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      const road = (ex === 0 && Math.abs(y - ey) <= 1 && x <= 1) || (ey === 0 && Math.abs(x - ex) <= 1 && y <= 1);
+      const road = paths[y * w + x] === 1 || (ex === 0 && Math.abs(y - ey) <= 1 && x <= 1) || (ey === 0 && Math.abs(x - ex) <= 1 && y <= 1);
       g.fillStyle = road ? '#7b8082' : near(x, y, 1) ? '#a7acab' : (x + y) % 2 ? '#6f8a55' : '#6b8651';
       g.fillRect(x * px, y * px, px, px);
     }

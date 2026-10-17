@@ -27,6 +27,8 @@ export type ToSim =
 export interface World {
   hospital: HospitalState;
   staff: StaffMember[];
+  /** стройка ПК (spec 2026-10-build): потрачено на стройку, ₽, и сколько действий можно отменить */
+  works?: { spent: number; undo: number };
 }
 
 export type FromSim =

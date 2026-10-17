@@ -1,4 +1,4 @@
-// из anamnez: src/engine/shift/types.ts @ 96503ac, изменено: ClosedCase.review — разбор по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults)
+// из anamnez: src/engine/shift/types.ts @ 96503ac, изменено: ClosedCase.review — разбор по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults); стройка ПК — команда, событие, извещение и счётчики (spec 2026-10-build)
 // Смена в амбулатории (spec 2026-09-first-shift, «Движок»; `04-data-model.md` §2).
 //
 // Состояние — обычный сериализуемый объект: сохранение — снимок (ADR 0010). Случайность
@@ -8,6 +8,7 @@ import type { BodySystem, Id, Season, Setting } from '../../content/types';
 import type { Scheduled } from '../core/events';
 import type { Outcome } from '../med/course';
 import type { BuildCommand, Built, HospitalState } from '../hospital/build';
+import type { SiteCommand, SiteResult, Works } from '../hospital/site';
 import type { CampaignProgress } from '../campaign/campaign';
 import type { CaseIncome, Ledger, Payer, RepChange } from '../economy/economy';
 import type { StaffMember } from '../hospital/staff';
@@ -232,7 +233,9 @@ export type ShiftEvent =
    * или вернулся (`ret`, `of` — прежний приём); пациент генерируется сейчас
    */
   | { kind: 'flow'; stream: 'walk' | 'amb' | 'ret'; n: number; of?: string }
-  | { kind: 'shiftEnd' };
+  | { kind: 'shiftEnd' }
+  /** стройка ПК (spec 2026-10-build): убрать освободившееся — предметы и помещения, ждущие сноса */
+  | { kind: 'siteFree' };
 
 /** Почему нанятый врач просит посмотреть (spec 2026-10-consults): не уверен в своём диагнозе; две гипотезы рядом. */
 export type ConsultWhy = 'unsure' | 'close';
@@ -339,7 +342,9 @@ export type Command =
    */
   | { kind: 'consult'; id: string; answer: 'look' | 'self' | 'refer'; to?: string }
   /** кампания (часть 34): основные задания главы выполнены — в больницу следующей главы */
-  | { kind: 'nextChapter' };
+  | { kind: 'nextChapter' }
+  /** стройка ПК (spec 2026-10-build): в любой момент, в потоке для ПК */
+  | { kind: 'site'; cmd: SiteCommand };
 
 /** Что случилось — для интерфейса: звук, автопауза, сводка «за это время». */
 export type Notice =
@@ -352,7 +357,9 @@ export type Notice =
   | { kind: 'arrest'; id: string }
   /** поток для ПК: нанятый врач `by` просит посмотреть больного (spec 2026-10-consults) — звук и автопауза */
   | { kind: 'consult'; id: string; by: string }
-  | { kind: 'shiftEnd' };
+  | { kind: 'shiftEnd' }
+  /** стройка ПК (spec 2026-10-build): что вышло — цена или почему нельзя */
+  | ({ kind: 'site' } & SiteResult);
 
 export interface DaySummary {
   day: number;
@@ -578,4 +585,6 @@ export interface ShiftState {
   gone?: GoneRow[];
   /** поток для ПК: «Просят посмотреть» — просьбы нанятых врачей без ответа, по времени (spec 2026-10-consults) */
   consults?: Consult[];
+  /** стройка ПК (spec 2026-10-build): потрачено на стройку и отмена */
+  works?: Works;
 }

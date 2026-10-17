@@ -33,7 +33,7 @@ export interface ShiftSlice {
   dayOpen: boolean;
   /** все, кто сейчас в больнице, — по номеру */
   people: PersonSlice[];
-  /** сколько пришло, принято и ушло за день — для полосы сверху */
+  /** сколько пришло, принято (вами и нанятыми врачами) и ушло за день — для полосы сверху */
   arrived: number;
   seen: number;
   left: number;
@@ -102,8 +102,11 @@ export function sliceOf(s: ShiftState): ShiftSlice {
     if (x) x.asks = { at: c.at, until: c.until, why: [...c.why], lead: c.lead.map(b => ({ ...b })) };
   }
   people.sort((a, b) => (a.id < b.id ? -1 : 1));
+  // приняты — и вами, и нанятыми врачами: в итогах дня их приёмы — в своих строках (`colleagues`)
+  let seen = s.summary.seen;
+  for (const c of Object.values(s.summary.colleagues ?? {})) seen += c.seen;
   return {
-    t: s.t, day: s.day, dayOpen: s.dayOpen, people, arrived: s.summary.arrived, seen: s.summary.seen, left: s.summary.left,
+    t: s.t, day: s.day, dayOpen: s.dayOpen, people, arrived: s.summary.arrived, seen, left: s.summary.left,
     ...(s.economy ? { cash: s.economy.cash } : {}), queue: s.queue.length,
   };
 }

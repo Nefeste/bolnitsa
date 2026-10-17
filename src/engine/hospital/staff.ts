@@ -1,4 +1,4 @@
-// из anamnez: src/engine/hospital/staff.ts @ 96503ac
+// из anamnez: src/engine/hospital/staff.ts @ 96503ac, изменено: мест в ординаторской больницы ПК — из плана (spec 2026-10-build)
 // Персонал своей больницы (spec 2026-09-own-hospital, часть 8): кандидаты дня, найм, навык 1–5,
 // черта, зарплата за смену, скорость и точность работы, рост навыка с отработанными сменами.
 // Числа — баланс игры (content/hospital/economy.yaml, `staff`). Имя человека — из словаря игры,
@@ -120,7 +120,7 @@ export function grow(db: ContentDb, m: StaffMember): StaffMember {
 export function placesOf(db: ContentDb, plan: Plan, type: Id): number {
   return plan.rooms
     .filter(r => r.type === type && r.door.length > 0 && plan.connected[r.id])
-    .reduce((n, r) => n + (db.rooms[type]?.sizes.find(z => z.id === r.size)?.places ?? 0), 0);
+    .reduce((n, r) => n + (r.places ?? db.rooms[type]?.sizes.find(z => z.id === r.size)?.places ?? 0), 0);
 }
 
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);

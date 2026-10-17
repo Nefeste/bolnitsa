@@ -1,6 +1,7 @@
 // Хранилище панелей (spec docs/specs/2026-10-shell-3d.md, «Панели»): игра пишет сюда не чаще 10 раз в секунду, панели
 // читают через `useSyncExternalStore`. Снимок неизменяемый: каждое `set` — новый объект.
 import { useSyncExternalStore } from 'react';
+import type { Id, ObjectKind } from '../content/types';
 import type { Lang } from '../i18n';
 import type { PersonInfo } from '../render/population';
 import type { Quality } from '../render/view';
@@ -9,12 +10,48 @@ import type { WallMode } from '../render/world';
 export type Speed = 0 | 1 | 2 | 4;
 export type Tab = 'patients' | 'staff' | 'asks' | 'journal' | 'reports' | 'goals';
 
+/** Инструменты стройки (spec docs/specs/2026-10-build.md, «Экран и управление»). */
+export type Tool = 'room' | 'item' | 'door' | 'door2' | 'demolish';
+
+export interface BuildHud {
+  on: boolean;
+  tool?: Tool;
+  roomType?: Id;
+  item?: { kind: ObjectKind; eq?: Id };
+  /** переставляют поставленный предмет */
+  moving: boolean;
+  /** строка призрака: что, размер, цена — или почему нельзя */
+  ghost?: { ok: boolean; text: string };
+  /** что вышло у последнего действия */
+  result?: { ok: boolean; text: string };
+  spent: number;
+  undo: number;
+}
+
 export interface RoomCard {
   room: number;
   name: string;
   id: string;
   staff: string[];
   people: number;
+  /** больница ПК: размер, работает ли и почему нет, нужное, должности, «Обставить», снос, каталог предметов */
+  size?: string;
+  ok?: boolean;
+  state?: string;
+  problems?: string[];
+  needs?: { name: string; have: number; need: number }[];
+  posts?: { role: Id; name: string; who?: string; staffId?: string; salary: string; you?: boolean }[];
+  furnish?: { ok: boolean; text: string };
+  demolish?: string;
+  catalog?: { kind: ObjectKind; eq?: Id; name: string; price: string }[];
+}
+
+/** Тип помещения в каталоге стройки: наименьший размер и цена за м². */
+export interface RoomTypeRow {
+  id: Id;
+  name: string;
+  min: string;
+  price: string;
 }
 
 export interface Hud {
@@ -44,6 +81,12 @@ export interface Hud {
   patients: { key: string; text: string; triage: string }[];
   staffList: { key: string; text: string }[];
   debug: boolean;
+  build: BuildHud;
+  roomTypes: RoomTypeRow[];
+  /** больница ПК закрыта — почему (пациенты не приходят) */
+  closed?: string;
+  /** выбор начала: пустое здание или готовая больница */
+  choose?: boolean;
   fps: number;
   cpuMs: number;
   gpuMs: number | null;
@@ -72,6 +115,8 @@ export const initial: Hud = {
   patients: [],
   staffList: [],
   debug: false,
+  build: { on: false, moving: false, spent: 0, undo: 0 },
+  roomTypes: [],
   fps: 0,
   cpuMs: 0,
   gpuMs: null,
@@ -110,6 +155,19 @@ export interface Actions {
   toggleDebug(): void;
   bench(uncapped: boolean): void;
   setLang(l: Lang): void;
+  /** стройка (spec docs/specs/2026-10-build.md) */
+  toggleBuild(): void;
+  setTool(t: Tool | undefined): void;
+  pickRoomType(id: Id): void;
+  pickItem(kind: ObjectKind, eq?: Id): void;
+  undo(): void;
+  done(): void;
+  furnish(room: string): void;
+  demolish(room: string): void;
+  hire(room: string, role: Id): void;
+  dismiss(id: string): void;
+  /** начало игры: пустое здание или готовая больница */
+  startGame(kind: 'empty' | 'preset'): void;
 }
 
 export function useHud(store: Store): Hud {

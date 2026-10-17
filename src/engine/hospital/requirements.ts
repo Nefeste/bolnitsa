@@ -1,10 +1,10 @@
-// из anamnez: src/engine/hospital/requirements.ts @ 96503ac
+// из anamnez: src/engine/hospital/requirements.ts @ 96503ac, изменено: причины больницы ПК, ваш кабинет из плана (spec 2026-10-build)
 // Требования своей больницы (spec 2026-09-own-hospital, «Движок»): помещение работает, если у
 // него есть дверь в коридор, от входа до неё можно дойти, на каждой нужной должности есть
 // человек и стоит нужный аппарат. Обследование доступно, если работает его помещение с
 // подходящим аппаратом и помещение, где берут материал. Смену открывают, когда работают
 // регистратура, зона ожидания и кабинет врача.
-import type { ContentDb, Id } from '../../content/types';
+import type { ContentDb, Id, ObjectKind } from '../../content/types';
 import type { Plan, PlacedRoom } from './build';
 
 export const DOCTOR: Id = 'role.doctor';
@@ -18,7 +18,21 @@ export type Problem =
   | { kind: 'noEquipment' }
   | { kind: 'noStaff'; role: Id }
   /** нанятый есть, а места для него нет — в ординаторской (spec 2026-09-hired-doctors) */
-  | { kind: 'noPlace'; room: Id };
+  | { kind: 'noPlace'; room: Id }
+  /** больница ПК (spec 2026-10-build): помещение перестраивают — закрыто */
+  | { kind: 'closed' }
+  /** больница ПК: снесут, когда освободится */
+  | { kind: 'leaving' }
+  /** больница ПК: где лежат, нужна двойная дверь — каталка в одинарную не проходит */
+  | { kind: 'singleDoor' }
+  /** больница ПК: не хватает нужной мебели */
+  | { kind: 'noObject'; object: ObjectKind; need: number; have: number };
+
+/**
+ * Порядок причин больницы ПК: первая — та, что в «не работает: …». «Закрыто на перестройку» — последней: пока строят,
+ * видно, чего ещё не хватает.
+ */
+const ORDER: Problem['kind'][] = ['leaving', 'noDoor', 'singleDoor', 'noPath', 'noObject', 'noEquipment', 'noStaff', 'noPlace', 'closed'];
 
 /**
  * Есть ли человек на должности в помещении — решает штат (часть 8); в вашем кабинете врач — вы.
@@ -41,13 +55,15 @@ export function standInsOf(db: ContentDb, role: Id): Id[] {
 
 /** Ваш кабинет — первый кабинет врача, до которого можно дойти; в других — нанятые врачи. */
 export function doctorRoom(plan: Plan): string | undefined {
+  // больница ПК: ваш кабинет — отмеченный; нет — его нет (spec 2026-10-build, «Персонал»)
+  if (plan.mine !== undefined) return plan.mine ?? undefined;
   const offices = plan.rooms.filter(r => r.type === OFFICE);
   return (offices.find(r => plan.connected[r.id]) ?? offices[0])?.id;
 }
 
 /** Чего не хватает помещению; пусто — работает. */
 export function problemsOf(db: ContentDb, plan: Plan, room: PlacedRoom, staffed: Staffing): Problem[] {
-  const out: Problem[] = [];
+  const out: Problem[] = room.issues ? [...room.issues] : [];
   if (room.door.length === 0) out.push({ kind: 'noDoor' });
   else if (!plan.connected[room.id]) out.push({ kind: 'noPath' });
   const t = db.rooms[room.type];
@@ -62,7 +78,7 @@ export function problemsOf(db: ContentDb, plan: Plan, room: PlacedRoom, staffed:
     if (needs && staffed.unplaced?.(room.id)) out.push({ kind: 'noPlace', room: needs });
     else out.push({ kind: 'noStaff', role: role === DOCTOR ? (stand ?? role) : role });
   }
-  return out;
+  return room.issues ? out.sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind)) : out;
 }
 
 /** Работающие помещения больницы. */

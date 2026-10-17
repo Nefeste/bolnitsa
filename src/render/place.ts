@@ -99,10 +99,14 @@ export function accessOf(l: Layout, t: number, taken: ReadonlySet<number> = new 
 /** Место на предмете: сесть, если на нём сидят; лечь, если на нём лежат; иначе — стоять рядом. */
 export function spotOn(l: Layout, a: Anchors, t: number, kind: LegKind, dwell: number, taken?: ReadonlySet<number>): Spot {
   const cell = accessOf(l, t, taken);
+  // ключ — по клетке предмета, а не по номеру в раскладке: после стройки (новая раскладка) тот же стул — тот же ключ, и
+  // сидящий на нём не встаёт (spec docs/specs/2026-10-build.md, «Отрисовка»)
+  const th = l.things[t];
+  const at = th.cell[1] * l.w + th.cell[0];
   const seat = a.seats[t];
-  if (seat) return { key: `seat:${t}`, cell, pose: 'sit', x: seat.x, y: seat.y, z: seat.z, yaw: seat.yaw, kind, dwell, thing: t };
+  if (seat) return { key: `seat:${at}`, cell, pose: 'sit', x: seat.x, y: seat.y, z: seat.z, yaw: seat.yaw, kind, dwell, thing: t };
   const lie = a.lies[t];
-  if (lie) return { key: `lie:${t}`, cell, pose: 'lie', x: lie.x, y: lie.y, z: lie.z, yaw: lie.yaw, kind, dwell, thing: t };
+  if (lie) return { key: `lie:${at}`, cell, pose: 'lie', x: lie.x, y: lie.y, z: lie.z, yaw: lie.yaw, kind, dwell, thing: t };
   return standAt(l, cell, kind, dwell);
 }
 
@@ -215,6 +219,23 @@ export class Places {
     });
   }
 
+  /**
+   * После стройки (spec docs/specs/2026-10-build.md, «Отрисовка»): кто сидел на стуле или скамье, которые остались на
+   * месте, — сидит на них же; места сверяются по клетке предмета.
+   */
+  carry(prev: Places) {
+    const cellOf = (l: Layout, t: number) => l.things[t].cell[1] * l.w + l.things[t].cell[0];
+    const move = (from: readonly number[], fromL: Layout, to: readonly number[], had: Map<string, number>, out: Map<string, number>) => {
+      const index = new Map(to.map((t, i) => [cellOf(this.l, t), i]));
+      for (const [id, i] of had) {
+        const j = i >= 0 && i < from.length ? index.get(cellOf(fromL, from[i])) : undefined;
+        if (j !== undefined) out.set(id, j);
+      }
+    };
+    move(prev.seats, prev.l, this.seats, prev.seatOf, this.seatOf);
+    move(prev.benches, prev.l, this.benches, prev.benchOf, this.benchOf);
+  }
+
   /** Первое помещение этого типа с дверью; нет — -1. */
   room(type: Id): number {
     return this.firstOf.get(type) ?? -1;
@@ -258,8 +279,8 @@ export class Places {
       case 'ambulance': {
         const bed = room && w.bed >= 0 ? room.beds[w.bed] : undefined;
         if (bed) return spotAtCell(l, a, bed, 'wait', 0, taken);
-        // привезла скорая, а мест нет — у входа
-        const [ex, ey] = l.plan.entrance;
+        // привезла скорая, а мест нет — у входа (у больницы ПК — у входа для скорой)
+        const [ex, ey] = l.plan.entrances?.find(e => e.kind === 'ambulance')?.cells[0] ?? l.plan.entrance;
         return standAt(l, nearestWalk(l, ey * l.w + ex, taken), 'wait', 0);
       }
       case 'examQueue':

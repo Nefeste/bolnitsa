@@ -1,9 +1,14 @@
 // Раскладка 3D-вида по шаблонам помещений (spec docs/specs/2026-10-shell-3d.md, «Больница на экране»): на всех шаблонах
 // всех размеров и поворотов предметы не налезают друг на друга и на проход у двери, длинные нашли вторую клетку, а места
-// персонала, пациента, стулья и койки достижимы от двери. И в готовых больницах — от входа.
+// персонала, пациента, стулья и койки достижимы от двери. И в готовых больницах — от входа. Больница ПК (spec
+// docs/specs/2026-10-build.md, «Тесты»): то же — у помещений, построенных протяжкой и обставленных, и у готовой больницы,
+// переведённой в стройку.
 import { describe, expect, test } from 'bun:test';
 import type { Rot } from '../../src/content/types';
 import { planOf } from '../../src/engine/hospital/build';
+import { addRoom, emptySite, furnish, planOfSite, setDoor, type Site } from '../../src/engine/hospital/site';
+import { siteOfPreset } from '../../src/engine/hospital/site-preset';
+import { presetStaff } from '../../src/engine/hospital/staff';
 import { buildDb } from '../content/load';
 import { isLong, layoutOf, type Layout } from '../../src/render/layout';
 import { accessOf, doorInside, thingAt } from '../../src/render/place';
@@ -88,5 +93,83 @@ describe('раскладка готовых больниц', () => {
     }
     // скамьи коридора стоят на проходимых клетках коридора и не перекрывают его
     for (const t of l.things.filter(x => x.room < 0)) expect(l.plan.grid.cells[t.cell[1] * l.w + t.cell[0]]).toBe(2);
+  });
+});
+
+describe('раскладка больницы ПК', () => {
+  const ok = <T extends { ok: boolean }>(r: T): Extract<T, { ok: true }> => {
+    expect(r.ok ? 'ok' : JSON.stringify(r)).toBe('ok');
+    return r as Extract<T, { ok: true }>;
+  };
+  /** Всё, что для людей, достижимо от `from`; предметы не делят клеток и стоят внутри своих помещений. */
+  function sound(l: Layout, from: number) {
+    const owner = new Set<number>();
+    for (const t of l.things) {
+      for (const [x, y] of t.cells) {
+        const k = y * l.w + x;
+        expect(owner.has(k)).toBe(false);
+        owner.add(k);
+        const r = l.plan.rooms[t.room];
+        if (r) expect(x > r.x && y > r.y && x < r.x + r.w - 1 && y < r.y + r.h - 1).toBe(true);
+      }
+    }
+    const ok = reach(l, from);
+    for (const r of l.plan.rooms) {
+      if (!l.plan.connected[r.id]) continue;
+      for (const c of Object.values(r.staff)) expect(ok.has(target(l, c))).toBe(true);
+      if (r.patient) expect(ok.has(target(l, r.patient))).toBe(true);
+      for (const c of [...r.seats, ...r.beds]) expect(ok.has(target(l, c))).toBe(true);
+    }
+    return ok;
+  }
+
+  // помещение в углу здания: снизу и справа — коридор; дверь снизу или справа, потом «Обставить»
+  const cases: [string, string, number, number, 'низ' | 'право'][] = [];
+  for (const room of Object.values(db.rooms))
+    for (const z of room.sizes)
+      for (const [w, h] of [
+        [z.w, z.h],
+        [z.h, z.w],
+      ])
+        for (const side of ['низ', 'право'] as const) cases.push([room.id, z.id, w, h, side]);
+
+  test.each(cases)('%s %s, %d × %d, дверь — %s', (type, _size, w, h, side) => {
+    let site: Site = ok(addRoom(db, emptySite(), type, { x: 6, y: 6, w, h })).site;
+    const door: [number, number] = side === 'низ' ? [6 + Math.floor(w / 2), 6 + h - 1] : [6 + w - 1, 6 + Math.floor(h / 2)];
+    const two = db.rooms[type].sizes.some(z => z.objects.some(o => o.kind === 'bed'));
+    site = ok(setDoor(db, site, 'r1', two ? [door, side === 'низ' ? [door[0] + 1, door[1]] : [door[0], door[1] + 1]] : [door])).site;
+    site = ok(furnish(db, site, 'r1')).site;
+    const plan = planOfSite(db, site);
+    const r = plan.rooms[0];
+    const l = layoutOf(db, plan, site.decor, Object.values(r.staff).map(c => [c[0], c[1]]));
+    // предметы стройки — в раскладке все, каждый своими клетками
+    expect(l.things.filter(t => t.item !== undefined).length).toBe(site.rooms[0].items.length);
+    const [ex, ey] = plan.entrance;
+    const from = reach(l, ey * l.w + ex);
+    // двери со створками: помещения — в одну или две клетки, наружу — в коридор; входы — главный и скорой, наружу — из здания
+    expect(l.doors.filter(d => d.room === 0).map(d => d.cells.length)).toEqual([two ? 2 : 1]);
+    expect(l.doors.filter(d => d.room === -1).map(d => d.out)).toEqual([
+      [0, 1],
+      [1, 0],
+    ]);
+    // клетка за дверью свободна и достижима от главного входа
+    const inner = doorInside(l, 0);
+    expect(l.walk[inner]).toBe(1);
+    expect(from.has(inner)).toBe(true);
+    sound(l, inner);
+  });
+
+  test.each(['preset.city', 'preset.district', 'preset.clinic', 'preset.village', 'preset.vascular'])('%s в стройке: те же предметы, все места достижимы от входа', id => {
+    const rec = db.presets[id];
+    const site = siteOfPreset(db, rec);
+    const plan = planOfSite(db, site);
+    const staff = presetStaff(db, rec);
+    const l = layoutOf(db, plan, site.decor, staffCells(plan, staff, db));
+    const old = presetLayout(db, id).layout;
+    expect(l.things.length).toBe(old.things.length);
+    const [ex, ey] = plan.entrance;
+    sound(l, ey * l.w + ex);
+    // вход у готовой больницы — один, как в 2а (у пустого здания — ещё вход скорой)
+    expect(plan.entrances!.map(e => e.kind)).toEqual(['main']);
   });
 });

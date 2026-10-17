@@ -1,12 +1,12 @@
 // Панели игры (spec docs/specs/2026-10-shell-3d.md, «Панели»; геймдизайн §12): сверху — день и часы, скорость, касса,
-// репутация, извещения; слева — место под стройку и слои; справа — вкладки; снизу — карточка выбранного. Панели тонкие:
-// читают хранилище (store.ts) и просят игру (Actions); 3D-кадр живёт вне React.
+// репутация, стройка, извещения; слева — стройка (spec docs/specs/2026-10-build.md) и слои; справа — вкладки; снизу —
+// карточка выбранного. Панели тонкие: читают хранилище (store.ts) и просят игру (Actions); 3D-кадр живёт вне React.
 import type { ReactNode } from 'react';
-import { clock, type Lang, T } from '../i18n';
+import { clock, type Lang, money, T } from '../i18n';
 import type { PersonInfo } from '../render/population';
 import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
-import { type Actions, type Hud, type Speed, type Store, type Tab, useHud } from './store';
+import { type Actions, type Hud, type RoomCard, type Speed, type Store, type Tab, type Tool, useHud } from './store';
 
 /** Названия из базы: помещения, должности, признаки. */
 export interface Names {
@@ -57,6 +57,10 @@ function TopBar({ hud, actions }: P) {
       <span className="stat" id="counts">
         {T.top.arrived} <b>{hud.arrived}</b> · {T.top.seen} <b>{hud.seen}</b> · {T.top.left} <b>{hud.left}</b> · {T.top.queue} <b>{hud.queue}</b>
       </span>
+      <span className="stat" id="spent" title={T.top.builtHint}>
+        {T.top.built}: <b>{money(hud.build.spent)}</b>
+      </span>
+
       {hud.lag > 2 ? <span className="stat warn">{T.top.lag(Math.round(hud.lag))}</span> : null}
       <span className="notice" title={hud.notices.map(n => `${clock(n.t)} ${n.text}`).join('\n')}>{last ? `🔔 ${clock(last.t)} ${last.text}` : '🔔'}</span>
     </div>
@@ -109,17 +113,179 @@ function ViewBar({ hud, actions }: P) {
   );
 }
 
-function LeftTools() {
+/** Слева — стройка (spec docs/specs/2026-10-build.md, «Экран и управление»): инструменты, каталог, строка призрака. */
+function LeftTools({ hud, actions }: P) {
+  const b = hud.build;
+  if (!b.on)
+    return (
+      <div className="left panel" id="left">
+        <button type="button" id="build" onClick={actions.toggleBuild} title="B">
+          🏗 {T.left.build}
+        </button>
+        <button type="button" disabled title={T.left.overlaysSoon}>
+          ▦ {T.left.overlays}
+        </button>
+      </div>
+    );
+  const tools: [Tool, string, string][] = [
+    ['room', '▭', T.build.room],
+    ['item', '▪', T.build.item],
+    ['door', '▯', T.build.door],
+    ['door2', '▯▯', T.build.door2],
+    ['demolish', '✖', T.build.demolish],
+  ];
+  let body: ReactNode = null;
+  if (b.tool === 'room')
+    body = (
+      <ul className="list" id="room-types">
+        {hud.roomTypes.map(t => (
+          <li key={t.id}>
+            <button type="button" id={`rt-${t.id.slice(5)}`} className={b.roomType === t.id ? 'on' : undefined} onClick={() => actions.pickRoomType(t.id)}>
+              <span>{t.name}</span>
+              <small>
+                {t.min} · {t.price}
+              </small>
+            </button>
+          </li>
+        ))}
+      </ul>
+    );
+  else if (b.tool === 'item')
+    body = hud.room?.catalog ? (
+      <>
+        <div className="label">{T.build.catalog(hud.room.name)}</div>
+        {hud.room.furnish?.ok ? (
+          <button type="button" id="furnish" className="wide" onClick={() => actions.furnish(hud.room!.id)} title={T.build.furnishHint}>
+            {hud.room.furnish.text}
+          </button>
+        ) : null}
+        <ul className="list" id="catalog">
+          {hud.room.catalog.map(c => (
+            <li key={c.eq ?? c.kind}>
+              <button type="button" id={`it-${c.eq ? c.eq.slice(3) : c.kind}`} className={b.item?.kind === c.kind && b.item?.eq === c.eq ? 'on' : undefined} onClick={() => actions.pickItem(c.kind, c.eq)}>
+                <span>{c.name}</span>
+                <small>{c.price}</small>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </>
+    ) : (
+      <p className="hint">{T.build.pickRoom}</p>
+    );
   return (
-    <div className="left panel" id="left">
-      <button type="button" disabled title={T.left.buildSoon}>
-        🏗 {T.left.build}
-      </button>
-      <button type="button" disabled title={T.left.overlaysSoon}>
-        ▦ {T.left.overlays}
-      </button>
-      <div className="hint">{T.left.buildSoon}</div>
+    <div className="left panel wide" id="left">
+      <div className="row">
+        <b>{T.build.on}</b>
+        <button type="button" id="build" className="close" onClick={actions.toggleBuild} title={`B — ${T.build.off}`}>
+          ✕
+        </button>
+      </div>
+      <div className="tools">
+        {tools.map(([t, icon, name]) => (
+          <button key={t} type="button" id={`tool-${t}`} className={b.tool === t ? 'on' : undefined} onClick={() => actions.setTool(b.tool === t ? undefined : t)}>
+            {icon} {name}
+          </button>
+        ))}
+      </div>
+      <div className="row">
+        <button type="button" id="undo" disabled={b.undo === 0} onClick={actions.undo} title="Ctrl+Z">
+          ↶ {T.build.undo} ({b.undo})
+        </button>
+        <button type="button" id="done" onClick={actions.done} title={T.build.doneHint}>
+          ✓ {T.build.done}
+        </button>
+      </div>
+      <div className="spent">
+        {T.build.spent}: <b>{money(b.spent)}</b>
+      </div>
+      {b.ghost ? (
+        <div className={`ghostline ${b.ghost.ok ? 'ok' : 'bad'}`} id="ghost">
+          {b.ghost.text}
+        </div>
+      ) : null}
+      {b.result ? (
+        <div className={`ghostline ${b.result.ok ? 'ok' : 'bad'}`} id="result">
+          {b.result.text}
+        </div>
+      ) : null}
+      {body}
+      <div className="hint">{T.build.keys}</div>
     </div>
+  );
+}
+
+/** Карточка помещения больницы ПК: состояние, нужное, должности, «Обставить», «Снести». */
+function SiteCard({ r, actions }: { r: RoomCard; actions: Actions }) {
+  return (
+    <>
+      <div className={`state ${r.ok ? 'ok' : 'bad'}`} id="room-state">
+        {r.state}
+      </div>
+      {r.problems && r.problems.length > 1 ? (
+        <ul className="problems">
+          {r.problems.slice(1).map(p => (
+            <li key={p}>{p}</li>
+          ))}
+        </ul>
+      ) : null}
+      <dl>
+        <div>
+          <dt>{T.card.size}</dt>
+          <dd>{r.size}</dd>
+        </div>
+        <div>
+          <dt>{T.card.roomPeople}</dt>
+          <dd>{r.people}</dd>
+        </div>
+        <div>
+          <dt>{T.card.needs}</dt>
+          <dd>
+            {r.needs?.map(n => (
+              <span key={n.name} className={n.have >= n.need ? 'need ok' : 'need bad'}>
+                {n.have >= n.need ? '✓' : '✗'} {n.name}
+                {n.need > 1 ? ` ${Math.min(n.have, n.need)}/${n.need}` : ''}
+              </span>
+            ))}
+          </dd>
+        </div>
+        <div>
+          <dt>{T.card.posts}</dt>
+          <dd>
+            {r.posts?.length
+              ? r.posts.map(p => (
+                  <div key={p.role} className="post">
+                    {p.you ? (
+                      <span className="muted">{T.card.you}</span>
+                    ) : p.who ? (
+                      <>
+                        <span>{p.who}</span>
+                        <button type="button" className="small" onClick={() => actions.dismiss(p.staffId!)}>
+                          {T.card.dismiss}
+                        </button>
+                      </>
+                    ) : (
+                      <button type="button" className="small" id={`hire-${p.role.slice(5)}`} onClick={() => actions.hire(r.id, p.role)}>
+                        {T.card.hire(p.name, p.salary)}
+                      </button>
+                    )}
+                  </div>
+                ))
+              : '—'}
+          </dd>
+        </div>
+      </dl>
+      <div className="row">
+        {r.furnish?.ok ? (
+          <button type="button" id="card-furnish" onClick={() => actions.furnish(r.id)}>
+            {r.furnish.text}
+          </button>
+        ) : null}
+        <button type="button" id="card-demolish" onClick={() => actions.demolish(r.id)}>
+          {r.demolish}
+        </button>
+      </div>
+    </>
   );
 }
 
@@ -222,6 +388,19 @@ function BottomCard({ hud, actions, names }: P) {
   }
   if (hud.room) {
     const r = hud.room;
+    if (r.state !== undefined)
+      return (
+        <div className="card panel" id="card">
+          <div className="cardhead">
+            <b id="card-title">{r.name}</b>
+            <span className="muted">{r.id}</span>
+            <button type="button" className="close" onClick={() => actions.select(undefined)} title="Esc">
+              ✕
+            </button>
+          </div>
+          <SiteCard r={r} actions={actions} />
+        </div>
+      );
     return (
       <div className="card panel" id="card">
         <div className="cardhead">
@@ -276,15 +455,38 @@ function DebugMenu({ hud, actions }: P) {
   );
 }
 
+/** Начало игры (spec docs/specs/2026-10-build.md, «Начало игры»): пустое здание или готовая больница. */
+function StartChooser({ actions }: P) {
+  return (
+    <div className="start panel" id="start">
+      <h2>{T.start.title}</h2>
+      <button type="button" id="start-empty" onClick={() => actions.startGame('empty')}>
+        <b>{T.start.empty}</b>
+        <span>{T.start.emptyHint}</span>
+      </button>
+      <button type="button" id="start-preset" onClick={() => actions.startGame('preset')}>
+        <b>{T.start.preset}</b>
+        <span>{T.start.presetHint}</span>
+      </button>
+    </div>
+  );
+}
+
 export function App({ store, actions, names }: { store: Store; actions: Actions; names: Names }) {
   // язык меняется на ходу: строки читаются при отрисовке, смена языка — новый снимок хранилища
   const hud = useHud(store);
   const p = { hud, actions, names };
+  if (hud.choose) return <StartChooser {...p} />;
   return (
     <>
       <TopBar {...p} />
+      {hud.closed ? (
+        <div className="banner panel" id="closed" title={T.top.closedHint}>
+          {T.top.closed(hud.closed)}
+        </div>
+      ) : null}
       <ViewBar {...p} />
-      <LeftTools />
+      <LeftTools {...p} />
       <RightTabs {...p} />
       <BottomCard {...p} />
       {hud.debug ? <DebugMenu {...p} /> : null}

@@ -24,8 +24,19 @@ export function named(n: { ru: string; en?: string } | undefined, fallback = '')
   return (lang === 'en' && n.en) || n.ru;
 }
 
+/** Название в родительном падеже («нет регистратуры»); по-английски падежа нет — то же название. */
+export function genitive(n: { name: { ru: string; en?: string }; gen: { ru: string; en?: string } } | undefined, fallback = ''): string {
+  if (!n) return fallback;
+  return lang === 'en' ? named(n.name, fallback) : named(n.gen, fallback);
+}
+
 /** Часы смены: «08:05». */
 export function clock(t: number): string {
   const s = ((t % 86400) + 86400) % 86400;
   return `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}`;
+}
+
+/** Деньги: «12 000 ₽» (валюта — рубль, как касса «Анамнеза»; геймдизайн §8 — условная монета, решит владелец). */
+export function money(n: number): string {
+  return `${Math.round(n).toLocaleString(lang === 'en' ? 'en-US' : 'ru-RU')} ₽`;
 }

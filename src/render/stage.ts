@@ -12,6 +12,7 @@ import { type Layout, roomAt } from './layout';
 import { type Paint, PeopleView } from './people';
 import { Post } from './post';
 import { createRenderer, Daylight, gpuString, IsoCamera, PRESETS, type Quality } from './view';
+import type { FloorKind, FloorTex } from './textures';
 import { buildFloors, buildGround, buildWalls, type WallMode, type Walls } from './world';
 
 export interface StageInit {
@@ -33,11 +34,16 @@ export class Stage {
   readonly light: Daylight;
   renderer: THREE.WebGLRenderer;
   private post: Post | null = null;
-  readonly walls: Walls;
-  readonly doors: Doors;
-  readonly lamps: Lamps;
+  walls: Walls;
+  doors: Doors;
+  lamps: Lamps;
   readonly view: PeopleView;
   private floors: THREE.Mesh[];
+  /** слитые сетки мебели — пересобираются стройкой */
+  private furniture: THREE.Mesh[];
+  /** текстуры пола — одни на сцену: стройка пересобирает полы, а не рисует их заново */
+  private floorTex = new Map<FloorKind, FloorTex>();
+  private aniso: number;
   private marks: THREE.InstancedMesh;
   private ring: THREE.Mesh;
   quality: Quality;
@@ -60,17 +66,18 @@ export class Stage {
     this.renderer = createRenderer(host, init.quality);
     this.gpu = new GpuTimer(this.renderer.getContext() as WebGL2RenderingContext);
     this.gpuName = gpuString(this.renderer);
-    const aniso = this.renderer.capabilities.getMaxAnisotropy();
-    for (const m of buildGround(layout, Math.min(8, aniso))) this.scene.add(m);
+    this.aniso = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
+    for (const m of buildGround(layout, this.aniso)) this.scene.add(m);
     this.lamps = buildLamps(layout);
-    this.floors = buildFloors(layout, Math.min(8, aniso), this.lamps.lightMap);
+    this.floors = buildFloors(layout, this.aniso, this.lamps.lightMap, this.floorTex);
     for (const m of this.floors) this.scene.add(m);
     this.walls = buildWalls(layout);
     this.scene.add(this.walls.mesh);
     this.doors = buildDoors(layout);
     this.scene.add(this.doors.mesh);
     this.scene.add(this.lamps.mesh);
-    for (const m of batchMeshes(furnished.batch)) this.scene.add(m);
+    this.furniture = batchMeshes(furnished.batch);
+    for (const m of this.furniture) this.scene.add(m);
     this.view = new PeopleView(people, init.capacity);
     this.scene.add(this.view.group);
     // значки срочности над головой и кольцо выделения у ног
@@ -84,6 +91,41 @@ export class Stage {
     this.scene.add(this.ring);
     this.applyQuality(init.quality);
     this.walls.setMode(this.wallMode);
+  }
+
+  /**
+   * Новая раскладка после стройки (spec docs/specs/2026-10-build.md, «Отрисовка»): полы, стены, двери, светильники и мебель
+   * — заново; участок, свет, камера, люди и пресет — те же.
+   */
+  setLayout(layout: Layout, furnished: Furnished) {
+    const drop = (o: THREE.Object3D) => {
+      this.scene.remove(o);
+      o.traverse(x => {
+        const m = x as THREE.Mesh;
+        if (!m.isMesh) return;
+        m.geometry.dispose();
+        for (const mat of Array.isArray(m.material) ? m.material : [m.material]) mat.dispose();
+      });
+    };
+    for (const m of this.floors) drop(m);
+    drop(this.walls.mesh);
+    drop(this.doors.mesh);
+    drop(this.lamps.mesh);
+    this.lamps.lightMap.dispose();
+    for (const m of this.furniture) drop(m);
+    this.lamps = buildLamps(layout);
+    this.floors = buildFloors(layout, this.aniso, this.lamps.lightMap, this.floorTex);
+    for (const m of this.floors) this.scene.add(m);
+    this.walls = buildWalls(layout);
+    this.walls.setMode(this.wallMode);
+    this.scene.add(this.walls.mesh);
+    this.doors = buildDoors(layout);
+    this.scene.add(this.doors.mesh);
+    this.scene.add(this.lamps.mesh);
+    this.furniture = batchMeshes(furnished.batch);
+    for (const m of this.furniture) this.scene.add(m);
+    // свет пола и светильники — по часу заново
+    this.hourShown = -1;
   }
 
   /** Сменить пресет: разрешение, тени, отражения, затенение и сглаживание (своим буфером кадра). */
@@ -219,6 +261,14 @@ export class Stage {
   screenOf(w: Walker): { x: number; y: number } | undefined {
     const rect = this.renderer.domElement.getBoundingClientRect();
     const v = new THREE.Vector3(w.x, w.y + (w.lie > 0.5 ? 0.3 : 0.9), w.z).project(this.cam.camera);
+    if (v.z > 1 || Math.abs(v.x) > 1 || Math.abs(v.y) > 1) return undefined;
+    return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
+  }
+
+  /** Точка экрана над серединой клетки (x, y) пола: для сценария в браузере. */
+  screenOfCell(x: number, y: number): { x: number; y: number } | undefined {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const v = new THREE.Vector3(x + 0.5, 0, y + 0.5).project(this.cam.camera);
     if (v.z > 1 || Math.abs(v.x) > 1 || Math.abs(v.y) > 1) return undefined;
     return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
   }

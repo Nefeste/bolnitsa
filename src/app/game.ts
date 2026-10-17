@@ -1,17 +1,22 @@
-// Игра в окне (spec docs/specs/2026-10-shell-3d.md): база и модели, больница пресета движка, поток расчёта, 3D-вид,
-// толпа по срезу, часы и скорости, ввод, панели. Всё, что знает игра, — здесь; панели только читают хранилище и просят.
+// Игра в окне (spec docs/specs/2026-10-shell-3d.md; стройка — docs/specs/2026-10-build.md): база и модели, больница —
+// пустое здание или готовая больница движка, поток расчёта, 3D-вид, толпа по срезу, часы и скорости, ввод, стройка,
+// панели. Всё, что знает игра, — здесь; панели только читают хранилище и просят.
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { MeshoptSimplifier } from 'three/addons/libs/meshopt_simplifier.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import type { ContentDb, Season } from '../content/types';
-import { planOf, presetHospital } from '../engine/hospital/build';
-import { presetStaff, type StaffMember } from '../engine/hospital/staff';
+import type { Cell, ContentDb, Season } from '../content/types';
+import { type HospitalState, type Plan, planOf } from '../engine/hospital/build';
+import { DOCTOR, doctorRoom, openBlocks, type Problem, problemsOf, standInOf, type Staffing, workingRooms } from '../engine/hospital/requirements';
+import { demolishRefund, emptySite, furnishOf, hospitalOf, priceOf, rulesOf, type SiteCommand } from '../engine/hospital/site';
+import { siteOfPreset } from '../engine/hospital/site-preset';
+import { presetStaff, salaryOf, type StaffMember, staffingOf } from '../engine/hospital/staff';
 import type { Notice } from '../engine/shift/types';
-import { clock, type Lang, named, setLang, T } from '../i18n';
+import { clock, genitive, type Lang, money, named, setLang, T } from '../i18n';
 import { bakeLook, lodOf, packPeople, type People } from '../render/bake';
 import { CATALOG, EXTRA_MODELS } from '../render/catalog';
 import { Crowd } from '../render/crowd';
 import { furnish, type Furnished } from '../render/furniture';
+import { Ghosts } from '../render/ghost';
 import { type Layout, layoutOf } from '../render/layout';
 import { type Index, type Model, modelOf } from '../render/models';
 import { Paths } from '../render/path';
@@ -22,10 +27,16 @@ import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
 import { H } from '../sim/pack';
 import { type Slice, SimClient } from '../sim/client';
-import type { Actions, Speed, Store, Tab } from '../ui/store';
+import type { World } from '../sim/protocol';
+import type { Actions, RoomCard, Speed, Store, Tab } from '../ui/store';
+import { Builder, objectName, whyText } from './build';
+import { Labels } from './labels';
 
 /** Больница и поток части 2а — вопросы к гейм-дизайну в спецификации, «Вопросы к гейм-дизайну». */
 export const SCENE = { preset: 'preset.city', seed: 1, season: 'winter' as Season, flow: { perHour: 6, ambulancePerHour: 1 } };
+
+/** С чего начать (spec docs/specs/2026-10-build.md, «Начало игры»): пустое здание или готовая больница 2а. */
+export type Start = 'empty' | 'preset';
 
 /** Игровых секунд в секунду на ×1: минута за секунду (геймдизайн §2). */
 export const GAME_PER_REAL = 60;
@@ -76,6 +87,23 @@ export class Game {
   people!: People;
   client!: SimClient;
   staff: StaffMember[] = [];
+  /** больница из потока расчёта (у больницы ПК — с `site`), её план и что работает */
+  hospital!: HospitalState;
+  plan!: Plan;
+  places!: Places;
+  ghosts!: Ghosts;
+  readonly builder = new Builder(this);
+  /** стройка: потрачено и сколько действий можно отменить */
+  works = { spent: 0, undo: 0 };
+  start: Start = 'preset';
+  private models = new Map<string, Model>();
+  private staffed!: Staffing;
+  private working = new Set<string>();
+  /** выбранное помещение — по номеру в больнице: план после стройки другой */
+  private roomSel: string | undefined;
+  /** первый `world` из потока — та же больница, что окно отправило: сцену не пересобирать */
+  private fresh = true;
+  private labels!: Labels;
   speed: Speed = 1;
   /** промотка «до утра» (заглушка части 2а): до 20:00 или до первого срочного */
   ff = false;
@@ -95,7 +123,7 @@ export class Game {
   /** последние кадры: интервал, CPU кадра (толпа + отрисовка) — для полосы отладки и бенча */
   readonly frames: { interval: number[]; sim: number[]; draw: number[] } = { interval: [], sim: [], draw: [] };
   onFrame: ((ts: number) => void) | null = null;
-  private mouse = { x: 0, y: 0, inside: false, drag: null as null | { x: number; y: number }, keys: new Set<string>() };
+  private mouse = { x: 0, y: 0, inside: false, drag: null as null | { x: number; y: number; moved: number; button: number }, keys: new Set<string>() };
 
   constructor(
     readonly db: ContentDb,
@@ -105,11 +133,12 @@ export class Game {
   ) {}
 
   /** База, модели, больница, поток — и первый кадр. */
-  static async create(host: HTMLElement, store: Store, version: string, quality: Quality): Promise<Game> {
+  static async create(host: HTMLElement, store: Store, version: string, quality: Quality, start: Start = 'preset'): Promise<Game> {
     const t0 = performance.now();
     store.set({ status: T.app.loading, version });
     const db = (await (await fetch('./content.json')).json()) as ContentDb;
     const g = new Game(db, store, host, version);
+    g.start = start;
     g.load.content = Math.round(performance.now() - t0);
     await g.build(quality);
     g.load.total = Math.round(performance.now() - t0);
@@ -123,7 +152,7 @@ export class Game {
     const index = (await (await fetch(`${base}/index.json`)).json()) as Index;
     const tf = performance.now();
     const names = [...new Set([...Object.values(CATALOG).flatMap(e => ('model' in e ? [e.model] : [])), ...EXTRA_MODELS])];
-    const models = new Map<string, Model>();
+    const models = this.models;
     await Promise.all(names.map(async n => models.set(n, modelOf(await loadGltf(`${base}/${n}.glb`), n))));
     this.load.furniture = Math.round(performance.now() - tf);
     const tp = performance.now();
@@ -134,9 +163,32 @@ export class Game {
 
     store.set({ status: T.app.loadingWorld });
     const ts = performance.now();
+    // больница ПК (spec docs/specs/2026-10-build.md): пустое здание или готовая больница 2а в том же виде
     const rec = db.presets[SCENE.preset];
-    const { hospital } = presetHospital(db, rec);
-    this.staff = presetStaff(db, rec);
+    const site = this.start === 'empty' ? emptySite() : siteOfPreset(db, rec);
+    this.staff = this.start === 'empty' ? [] : presetStaff(db, rec);
+    this.hospital = hospitalOf(db, site);
+    this.setWorld(true, quality);
+    this.load.scene = Math.round(performance.now() - ts);
+
+    this.client = new SimClient('./sim.js');
+    this.client.onSlice = s => this.onSlice(s);
+    this.client.onError = m => store.set({ error: m });
+    this.client.start({ kind: 'start', seed: SCENE.seed, season: SCENE.season, hospital: this.hospital, staff: this.staff, flow: SCENE.flow });
+    // пустое здание — часы стоят, пока игрок не пустит их
+    if (this.start === 'empty') this.speed = 0;
+    this.bindInput();
+    window.addEventListener('resize', () => this.stage.resize());
+    store.set({ ready: true, status: '', quality, walls: this.stage.wallMode, speed: this.speed });
+    requestAnimationFrame(this.loop);
+  }
+
+  /**
+   * Больница (новая или после стройки) — на экран: план, раскладка, мебель, пути, места; сцена, толпа и население —
+   * впервые или заново (люди остаются и идут к новым местам). Что работает, подписи, список штата, карточка.
+   */
+  private setWorld(first: boolean, quality: Quality = 'medium') {
+    const { db, hospital } = this;
     const plan = planOf(db, hospital);
     const staffCells: [number, number][] = [];
     for (const m of this.staff) {
@@ -144,31 +196,112 @@ export class Game {
       const c = r?.staff[db.roles[m.role]?.stands ?? m.role] ?? r?.staff[m.role];
       if (c) staffCells.push([c[0], c[1]]);
     }
-    this.layout = layoutOf(db, plan, hospital.decor, staffCells);
-    this.furnished = furnish(this.layout, models);
-    const walk = this.layout.walk.slice();
-    for (const [x, y] of this.furnished.decor) walk[y * this.layout.w + x] = 0;
+    const layout = layoutOf(db, plan, hospital.decor, staffCells);
+    const furnished = furnish(layout, this.models);
+    const walk = layout.walk.slice();
+    for (const [x, y] of furnished.decor) walk[y * layout.w + x] = 0;
     const open = new Uint8Array(walk.length);
     for (let i = 0; i < open.length; i++) open[i] = plan.grid.cells[i] === 1 || plan.grid.cells[i] === 2 || plan.grid.cells[i] === 4 ? 1 : 0;
-    const paths = new Paths(this.layout.w, this.layout.h, walk, open);
-    const places = new Places(this.layout, this.furnished);
-    this.crowd = new Crowd(this.layout, paths, this.people.looks);
-    this.pop = new Population(db, this.layout, places, this.crowd, this.people.looks, this.staff, hospital.rooms);
-    this.pop.placeStaff();
-    this.stage = new Stage({ host: this.host, layout: this.layout, furnished: this.furnished, people: this.people, quality, capacity: 600 });
-    this.load.scene = Math.round(performance.now() - ts);
+    const paths = new Paths(layout.w, layout.h, walk, open);
+    const places = new Places(layout, furnished);
+    if (first) {
+      this.crowd = new Crowd(layout, paths, this.people.looks);
+      this.layout = layout;
+      this.pop = new Population(db, layout, places, this.crowd, this.people.looks, this.staff, hospital.rooms);
+      this.pop.placeStaff();
+      this.stage = new Stage({ host: this.host, layout, furnished, people: this.people, quality, capacity: 600 });
+      this.ghosts = new Ghosts(this.models);
+      this.stage.scene.add(this.ghosts.group);
+      this.labels = new Labels(this.stage);
+    } else {
+      places.carry(this.places);
+      this.stage.setLayout(layout, furnished);
+      this.crowd.relayout(layout, paths);
+      this.pop.relayout(layout, places, this.staff, hospital.rooms);
+    }
+    this.layout = layout;
+    this.furnished = furnished;
+    this.places = places;
+    this.plan = plan;
+    this.staffed = staffingOf(db, plan, this.staff);
+    this.working = workingRooms(db, plan, this.staffed);
+    this.texts();
+    this.builder.refresh();
+  }
 
-    this.client = new SimClient('./sim.js');
-    this.client.onSlice = s => this.onSlice(s);
-    this.client.onError = m => store.set({ error: m });
-    this.client.start({ kind: 'start', seed: SCENE.seed, season: SCENE.season, hospital, staff: this.staff, flow: SCENE.flow });
-    this.bindInput();
-    window.addEventListener('resize', () => this.stage.resize());
-    store.set({
-      ready: true, status: '', quality, walls: this.stage.wallMode,
-      staffList: this.staff.map((m, i) => ({ key: `s:${i}`, text: `${named(db.roles[m.role]?.name, m.role)} · ${named(db.rooms[plan.rooms.find(r => r.id === m.room)?.type ?? '']?.name, m.room ?? '')}` })),
+  /** Слова о больнице — со стройкой и с языком: подписи помещений, список штата, «закрыта», типы помещений. */
+  private texts() {
+    const { db, plan } = this;
+    this.labels.set(
+      plan.rooms.map(r => {
+        const why = problemsOf(db, plan, r, this.staffed);
+        return { id: r.id, x: r.x + r.w / 2, z: r.y + r.h / 2, name: named(db.rooms[r.type]?.name, r.type), state: why.length ? T.problem.down(this.problemText(why[0])) : T.problem.works, ok: why.length === 0 };
+      }),
+    );
+    this.store.set({
+      staffList: this.staff.map(m => ({ key: `s:${m.id}`, text: `${named(db.roles[m.role]?.name, m.role)} · ${m.room ? named(db.rooms[plan.rooms.find(r => r.id === m.room)?.type ?? '']?.name, m.room) : T.card.reserve(1)}` })),
+      closed: this.closedText(),
+      roomTypes: Object.values(db.rooms)
+        .map(t => {
+          const r = rulesOf(db, t.id)!;
+          return { id: t.id, name: named(t.name, t.id), min: T.build.from(r.smallest.w, r.smallest.h), price: T.build.perM2(money(r.smallest.cost / (r.smallest.w * r.smallest.h))) };
+        })
+        .sort((a, b) => a.name.localeCompare(b.name, document.documentElement.lang || undefined)),
     });
-    requestAnimationFrame(this.loop);
+  }
+
+  /** Больница ПК закрыта — почему: первое, без чего не открыть приём (`openBlocks`). */
+  private closedText(): string | undefined {
+    const { db, plan } = this;
+    if (!this.hospital.site) return undefined;
+    const b = openBlocks(db, plan, this.working, this.staffed)[0];
+    if (!b) return undefined;
+    const gen = genitive(db.rooms[b.room], b.room);
+    if (b.kind === 'down') return T.problem.roomDown(named(db.rooms[b.room]?.name, b.room), this.problemText(b.problem));
+    return T.problem.noRoom(gen);
+  }
+
+  /** Причина «не работает» словами. */
+  problemText(p: Problem): string {
+    const { db } = this;
+    switch (p.kind) {
+      case 'closed':
+        return T.problem.closed;
+      case 'leaving':
+        return T.problem.leaving;
+      case 'noDoor':
+        return T.problem.noDoor;
+      case 'singleDoor':
+        return T.problem.singleDoor;
+      case 'noPath':
+        return T.problem.noPath;
+      case 'noObject':
+        return T.problem.noObject(T.objects[p.object as keyof typeof T.objects] ?? p.object, p.have, p.need);
+      case 'noEquipment':
+        return T.problem.noEquipment;
+      case 'noStaff':
+        return T.problem.noStaff(genitive(db.roles[p.role], p.role));
+      case 'noPlace':
+        return T.problem.noPlace;
+    }
+  }
+
+  /** Команда стройки — в поток расчёта. */
+  command(cmd: SiteCommand) {
+    this.client.command({ kind: 'site', cmd });
+  }
+
+  /** Новая больница из потока (стройка, найм, убрали освободившееся). */
+  private applyWorld(w: World) {
+    if (w.works) this.works = w.works;
+    this.hospital = w.hospital;
+    this.staff = w.staff;
+    if (this.fresh) {
+      // та же больница, что окно отправило в `start`: сцена уже есть
+      this.fresh = false;
+      return;
+    }
+    this.setWorld(false);
   }
 
   // ---------------------------------------------------------------- поток расчёта
@@ -177,12 +310,17 @@ export class Game {
     this.lastSlice = s;
     this.t = s.buf[H.t];
     this.day = s.buf[H.day];
+    // новая больница — раньше людей: номера помещений в срезе — по её списку
+    if (s.world) this.applyWorld(s.world);
     this.pop.sync(s.buf, s.names);
-    for (const n of s.notices) this.notice(n);
+    for (const n of s.notices) {
+      if (n.kind === 'site') this.builder.onResult(n);
+      else this.notice(n);
+    }
     if (this.ff && this.ffStop(s.notices)) this.setSpeed(0);
   }
 
-  private notice(n: Notice) {
+  private notice(n: Exclude<Notice, { kind: 'site' }>) {
     const text =
       n.kind === 'arrived' ? (n.triage === 'red' ? T.notices.arrivedRed : T.notices.arrived)
       : n.kind === 'left' ? T.notices.left
@@ -215,11 +353,19 @@ export class Game {
       this.client.frame(game, this.ff ? 14 : 10);
     }
     this.edgePan(dt);
+    // стройка: клетка под курсором — и когда камера едет, а мышь стоит
+    if (this.builder.on && this.mouse.inside) {
+      const cell = this.cellAt(this.mouse.x, this.mouse.y);
+      const h = this.builder.hover;
+      if (cell?.[0] !== h?.[0] || cell?.[1] !== h?.[1]) this.builder.move(cell);
+    }
     const a = performance.now();
     this.crowd.speed = this.ff ? 4 : this.speed;
     this.crowd.update(this.speed === 0 && !this.ff ? 0 : dt);
     const b = performance.now();
     this.stage.frame(dt, (this.t % 86400) / 3600, this.crowd, this.pop.paint, k => this.pop.triageOf(k), this.selected);
+    this.labels.visible = this.builder.on;
+    this.labels.frame();
     const c = performance.now();
     this.push(this.frames.sim, b - a);
     this.push(this.frames.draw, c - b);
@@ -256,7 +402,11 @@ export class Game {
       }
     }
     const sel = this.selected ? this.pop.info(this.selected) : undefined;
+    const room = this.roomSel ? this.roomCard(this.roomSel) : undefined;
+    if (this.roomSel && !room) this.roomSel = undefined;
     this.store.set({
+      build: this.builder.hud(),
+      room,
       t: this.t, day: this.day, speed: this.speed, ff: this.ff,
       ...(s ? { arrived: s.buf[H.arrived], seen: s.buf[H.seen], left: s.buf[H.left], queue: s.buf[H.queue], lag: s.lag / 60, cash: s.buf[H.cash] === -2147483648 ? undefined : s.buf[H.cash] } : {}),
       notices: [...this.notices],
@@ -304,7 +454,7 @@ export class Game {
     rotate: k => this.stage.cam.rotate(k),
     select: key => {
       this.selected = key;
-      this.store.set({ room: undefined });
+      this.roomSel = undefined;
       this.hud();
     },
     setTab: (t: Tab | null) => {
@@ -321,18 +471,115 @@ export class Game {
       document.documentElement.lang = l;
       document.title = T.app.title;
       this.store.set({ lang: l });
+      this.texts();
     },
+    // стройка (spec docs/specs/2026-10-build.md)
+    toggleBuild: () => {
+      this.builder.toggle();
+      this.hud();
+    },
+    setTool: t => {
+      this.builder.setTool(t);
+      this.hud();
+    },
+    pickRoomType: id => {
+      this.builder.pickRoomType(id);
+      this.hud();
+    },
+    pickItem: (kind, eq) => {
+      this.builder.pickItem(kind, eq);
+      this.hud();
+    },
+    undo: () => this.command({ kind: 'undo' }),
+    done: () => {
+      if (this.builder.on) this.builder.toggle();
+      this.hud();
+    },
+    furnish: room => this.command({ kind: 'furnish', room }),
+    demolish: room => this.command({ kind: 'demolish', room }),
+    hire: (room, role) => this.command({ kind: 'hire', room, role }),
+    dismiss: id => this.command({ kind: 'dismiss', id }),
+    // начало выбирают до игры (main.tsx)
+    startGame: () => {},
   };
 
   /** Карточка помещения по клику на пол. */
   private selectRoom(room: number) {
-    const r = this.layout.plan.rooms[room];
-    if (!r) return;
-    const staff = this.staff.filter(m => m.room === r.id).map(m => named(this.db.roles[m.role]?.name, m.role));
+    this.selectRoomId(this.layout.plan.rooms[room]?.id);
+  }
+
+  /** Выбрать помещение (номер в больнице): карточка, в стройке — каталог предметов. */
+  selectRoomId(id: string | undefined) {
+    this.selected = undefined;
+    this.roomSel = id;
+    this.hud();
+  }
+
+  /** Помещение в клетке — выбрать; коридор — снять выбор. */
+  selectRoomAt(cell: Cell) {
+    const r = this.plan.rooms.find(x => cell[0] > x.x && cell[1] > x.y && cell[0] < x.x + x.w - 1 && cell[1] < x.y + x.h - 1);
+    this.selectRoomId(r?.id);
+  }
+
+  get selectedRoom(): string | undefined {
+    return this.roomSel;
+  }
+
+  /**
+   * Карточка помещения: кто работает, сколько людей; у больницы ПК — размер, работает ли и почему нет, нужное с
+   * отметками, должности с «Нанять» и «Уволить», «Обставить», «Снести», каталог предметов.
+   */
+  private roomCard(id: string): RoomCard | undefined {
+    const { db, plan } = this;
+    const n = plan.rooms.findIndex(r => r.id === id);
+    if (n < 0) return undefined;
+    const r = plan.rooms[n];
+    const here = this.staff.filter(m => m.room === r.id);
     let people = 0;
     for (const w of this.crowd.walkers.values()) if (Math.floor(w.x) > r.x && Math.floor(w.x) < r.x + r.w - 1 && Math.floor(w.z) > r.y && Math.floor(w.z) < r.y + r.h - 1) people++;
-    this.selected = undefined;
-    this.store.set({ selected: undefined, room: { room, name: named(this.db.rooms[r.type]?.name, r.type), id: r.id, staff, people } });
+    const base: RoomCard = { room: n, name: named(db.rooms[r.type]?.name, r.type), id: r.id, staff: here.map(m => named(db.roles[m.role]?.name, m.role)), people };
+    const site = this.hospital.site;
+    const room = site?.rooms.find(x => x.id === id);
+    const rules = rulesOf(db, r.type);
+    if (!site || !room || !rules) return base;
+    const t = db.rooms[r.type];
+    const why = problemsOf(db, plan, r, this.staffed);
+    const live = room.items.filter(i => !i.leaving);
+    const needs = rules.needs.map(x => ({ name: objectName(db, x.kind, r.type), need: x.n, have: live.filter(i => i.kind === x.kind && !i.eq).length }));
+    if (t.needsEquipment) needs.push({ name: T.objects.machine, need: 1, have: live.filter(i => i.eq).length });
+    const post = (m: StaffMember) => db.roles[m.role]?.stands ?? m.role;
+    const mine = doctorRoom(plan) === r.id;
+    const posts = t.staff.map(role => {
+      const m = here.find(x => post(x) === role);
+      const hire = role === DOCTOR ? (standInOf(db, DOCTOR) ?? role) : role;
+      return {
+        role, name: named(db.roles[hire]?.name, hire), salary: money(salaryOf(db, hire, 3)), ...(role === DOCTOR && mine ? { you: true } : {}),
+        ...(m ? { who: `${named(db.roles[m.role]?.name, m.role)} · ${m.skill}`, staffId: m.id } : {}),
+      };
+    });
+    const f = furnishOf(db, site, id);
+    return {
+      ...base, size: `${r.w} × ${r.h}`, ok: why.length === 0, state: why.length ? T.problem.down(this.problemText(why[0])) : T.problem.works,
+      problems: why.map(p => this.problemText(p)), needs, posts,
+      furnish: f.ok ? { ok: true, text: T.card.furnish(money(f.cost)) } : { ok: false, text: whyText(db, site, f.error) },
+      demolish: T.card.demolish(money(demolishRefund(db, room))),
+      catalog: [
+        ...rules.kinds.map(k => ({ kind: k, name: objectName(db, k, r.type), price: money(priceOf(db, k)) })),
+        ...rules.equipment.map(eq => ({ kind: db.equipment[eq].sprite, eq, name: named(db.equipment[eq].name, eq), price: money(priceOf(db, db.equipment[eq].sprite, eq)) })),
+      ],
+    };
+  }
+
+  /** Клетка участка под точкой экрана. */
+  private cellAt(x: number, y: number): Cell | undefined {
+    const c = this.stage.pickCell(x, y, this.layout);
+    return c ? [c.x, c.z] : undefined;
+  }
+
+  /** Esc и ПКМ без протяжки: в стройке — призрак, инструмент, стройка; иначе — снять выбор. */
+  private cancel() {
+    if (this.builder.cancel()) this.hud();
+    else this.actions.select(undefined);
   }
 
   // ---------------------------------------------------------------- ввод
@@ -349,9 +596,16 @@ export class Game {
     );
     el.addEventListener('pointerdown', e => {
       if (e.button === 2 || e.button === 1) {
-        this.mouse.drag = { x: e.clientX, y: e.clientY };
+        this.mouse.drag = { x: e.clientX, y: e.clientY, moved: 0, button: e.button };
         el.setPointerCapture(e.pointerId);
       } else if (e.button === 0) {
+        // стройка: поставить, протянуть, взять
+        if (this.builder.on) {
+          el.setPointerCapture(e.pointerId);
+          this.builder.down(this.cellAt(e.clientX, e.clientY));
+          this.hud();
+          return;
+        }
         const key = this.stage.pickPerson(e.clientX, e.clientY, this.crowd);
         if (key) this.actions.select(key);
         else {
@@ -366,11 +620,21 @@ export class Game {
       this.mouse.y = e.clientY;
       this.mouse.inside = true;
       if (!this.mouse.drag) return;
-      this.stage.cam.pan(e.clientX - this.mouse.drag.x, e.clientY - this.mouse.drag.y, el.clientHeight);
-      this.mouse.drag = { x: e.clientX, y: e.clientY };
+      const dx = e.clientX - this.mouse.drag.x;
+      const dy = e.clientY - this.mouse.drag.y;
+      this.stage.cam.pan(dx, dy, el.clientHeight);
+      this.mouse.drag = { x: e.clientX, y: e.clientY, moved: this.mouse.drag.moved + Math.abs(dx) + Math.abs(dy), button: this.mouse.drag.button };
     });
-    el.addEventListener('pointerup', () => {
+    el.addEventListener('pointerup', e => {
+      if (e.button === 0 && this.builder.on) {
+        this.builder.up(this.cellAt(e.clientX, e.clientY));
+        this.hud();
+      }
+      const d = this.mouse.drag;
+      if (!d || d.button !== e.button) return;
       this.mouse.drag = null;
+      // ПКМ без протяжки — отменить (геймдизайн §12); с протяжкой — сдвиг камеры
+      if (e.button === 2 && d.moved < 5) this.cancel();
     });
     el.addEventListener('pointerleave', () => {
       this.mouse.inside = false;
@@ -392,9 +656,15 @@ export class Game {
       else if (k === 'Digit4') this.actions.untilMorning();
       else if (k === 'KeyQ') this.stage.cam.rotate(-1);
       else if (k === 'KeyE') this.stage.cam.rotate(1);
-      else if (k === 'Escape') {
-        this.actions.select(undefined);
-        this.store.set({ room: undefined });
+      else if (k === 'Escape') this.cancel();
+      // стройка (геймдизайн §12): B — стройка, R — повернуть, Ctrl+Z — отменить
+      else if (k === 'KeyB') this.actions.toggleBuild();
+      else if (k === 'KeyR' && this.builder.on) {
+        this.builder.rotate();
+        this.hud();
+      } else if (k === 'KeyZ' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        if (this.hospital.site) this.actions.undo();
       } else if (k === 'Backquote') this.actions.toggleDebug();
       else this.mouse.keys.add(k);
     });
