@@ -118,8 +118,8 @@ function day(load: number, seed: number): Day {
     // проба: сразу «пусть решает сам» — тем диагнозом, с которым просил
     if (PROBE) for (const c of [...(s.consults ?? [])]) apply(use, s, { kind: 'consult', id: c.id, answer: 'self' });
   }
-  apply(use, s, { kind: 'closeDay' });
-  for (const [by, c] of Object.entries(s.history[0].colleagues ?? {})) {
+  // итог суток с 08:00 до 20:00 (spec 2026-10-day: сутки кончаются в 08:00, день не закрывают)
+  for (const [by, c] of Object.entries(s.summary.colleagues ?? {})) {
     const k = (skillOf.get(by) ?? 3) - 1;
     out.seen[k] += c.seen;
     out.asked[k] += c.asked ?? 0;

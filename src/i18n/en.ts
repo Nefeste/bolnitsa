@@ -207,6 +207,7 @@ export const en: Strings = {
     ambulance: 'an ambulance brought a patient',
     resultsReady: 'results are ready',
     arrest: 'cardiac arrest: shock delivered under the monitor',
+    morning: 'morning meeting: the past day’s report',
     shiftEnd: 'outpatient hours are over',
   },
   debug: {
