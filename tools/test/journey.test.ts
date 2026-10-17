@@ -5,7 +5,7 @@ import { describe, expect, test } from 'bun:test';
 import { SYSTEMS } from '../../src/content/types';
 import type { StaffMember } from '../../src/engine/hospital/staff';
 import { apply, newFlowShift, newShift, newSingle } from '../../src/engine/shift/engine';
-import { type Journey, KEEP, MAX_DONE, type Step } from '../../src/engine/shift/journey';
+import { type Journey, KEEP, MAX_DONE, type Step, SWEEP } from '../../src/engine/shift/journey';
 import { sliceOf } from '../../src/engine/shift/slice';
 import { DAY, type Flow, type Notice, type ShiftState } from '../../src/engine/shift/types';
 import { createSim } from '../../src/sim/host';
@@ -240,10 +240,11 @@ describe('путь пациента', () => {
   test('хранится сутки после ухода, лежащих — пока лежат; законченных — не больше MAX_DONE', () => {
     const s = flowShift(6);
     liveUntil(db, s, 20);
-    apply(db, s, { kind: 'closeDay' });
     const day1 = journeys(s).map(([id]) => id);
-    apply(db, s, { kind: 'nextDay' });
-    liveUntil(db, s, 13);
+    // сутки целиком (spec 2026-10-day): день не закрывают — часы идут через ночь и планёрку до 13:00 следующих суток
+    const end = DAY + 13 * 3600;
+    while (s.t < end) apply(db, s, { kind: 'advance', seconds: Math.min(60, end - s.t) });
+    expect(s.day).toBe(2);
     const of = s.journeys!.of;
     for (const [id, j] of journeys(s)) {
       if (!j.end) continue;
@@ -253,7 +254,7 @@ describe('путь пациента', () => {
     const lying = Object.values(s.patients).filter(p => p.status === 'admitted' && p.arriveT < DAY);
     expect(lying.length).toBeGreaterThan(0);
     for (const p of lying) expect(of[p.id]).toBeDefined();
-    expect(day1.some(id => of[id] && of[id].end!.t > 13 * 3600 && s.patients[id]?.status !== 'admitted')).toBe(true);
+    expect(day1.some(id => (of[id]?.end?.t ?? 0) > 13 * 3600 && s.patients[id]?.status !== 'admitted')).toBe(true);
     expect(day1.some(id => !of[id])).toBe(true);
     // большой поток: после каждой уборки законченных — не больше MAX_DONE
     const big = hospitalFor(db, 40);
@@ -265,7 +266,9 @@ describe('путь пациента', () => {
       if (b.journeys && b.journeys.sweep !== sweep) {
         sweep = b.journeys.sweep;
         sweeps++;
-        const done = journeys(b).filter(([id, j]) => j.end && b.patients[id]?.status !== 'admitted').length;
+        // законченные к часу уборки: кто закончил в ту же минуту после неё — до следующей
+        const at = sweep - SWEEP;
+        const done = journeys(b).filter(([id, j]) => j.end && j.end.t <= at && b.patients[id]?.status !== 'admitted').length;
         expect(done).toBeLessThanOrEqual(MAX_DONE);
       }
     }

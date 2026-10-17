@@ -78,7 +78,7 @@ export const MAX_DONE = 600;
 /** Шагов в пути — не больше: обычно их 3–10. */
 export const MAX_STEPS = 40;
 /** Старое убирается раз в игровой час — при приходе следующего пациента. */
-const SWEEP = 3600;
+export const SWEEP = 3600;
 
 /** Ожидания: такое без минуты (позвали в ту же секунду) — не ожидание, его заменяет следующий шаг. */
 const WAITS: ReadonlySet<Step['k']> = new Set(['queue', 'own', 'results', 'ask']);
