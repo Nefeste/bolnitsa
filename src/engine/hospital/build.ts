@@ -1,10 +1,12 @@
-// из anamnez: src/engine/hospital/build.ts @ 96503ac
+// из anamnez: src/engine/hospital/build.ts @ 96503ac, изменено: больница ПК — поле `site`, её план — из него (spec 2026-10-build)
 // Стройка своей больницы (spec 2026-09-own-hospital; ADR 0014, 0016). Больница — участок, вход,
 // коридор и помещения из каталога (content/hospital); план — сетка, предметы, места людей —
 // выводится из неё чистой функцией, поэтому практика и песочница рисуются и ходят одинаково.
 // Команды не меняют состояние на месте, а отдают новое: отмена — прежний снимок.
 import type { Cell, ContentDb, Id, ObjectKind, Preset, RoomSize, RoomSizeId, Rot } from '../../content/types';
 import { CELL, type CellKind, type Grid, walkable } from './grid';
+import type { Problem } from './requirements';
+import { planOfSite, type Site, type SiteItem } from './site';
 
 export interface RoomInstance {
   /** номер в больнице: r1, r2… — не меняется, пока помещение стоит */
@@ -39,6 +41,11 @@ export interface HospitalState {
   decor: Decor[];
   /** номер следующего помещения */
   next: number;
+  /**
+   * больница ПК (spec 2026-10-build): участок, здание, помещения протяжкой с предметами; поля выше — выведены из неё
+   * (`hospitalOf` в site.ts), план — из неё
+   */
+  site?: Site;
 }
 
 /** Больница и касса — то, что меняет стройка и что возвращает отмена. */
@@ -378,6 +385,14 @@ export interface PlacedRoom {
   beds: Cell[];
   slots: Cell[];
   equipment: (Id | null)[];
+  /** больница ПК (spec 2026-10-build): предметы помещения с клетками и поворотами — для отрисовки */
+  items?: SiteItem[];
+  /** больница ПК: чего не хватает сверх проверок «Анамнеза» — перестройка, снос, одинарная дверь, мебель */
+  issues?: Problem[];
+  /** больница ПК: мест для нанятых врачей — столы ординаторской */
+  places?: number;
+  /** больница ПК: аппараты у коек ПИТ и реанимации — номера в `equipment` по порядку коек, нет — -1 */
+  slotsOf?: Record<Id, number[]>;
 }
 
 export interface Plan {
@@ -387,10 +402,15 @@ export interface Plan {
   entrance: Cell;
   /** помещения, до двери которых можно дойти от входа */
   connected: Record<string, boolean>;
+  /** больница ПК: ваш кабинет; null — нет, все кабинеты — нанятым врачам; нет поля — первый кабинет (`doctorRoom`) */
+  mine?: string | null;
+  /** больница ПК: входы — главный и для скорой — с направлением наружу */
+  entrances?: { kind: 'main' | 'ambulance'; cells: Cell[]; out: Cell }[];
 }
 
 /** План больницы: сетка, помещения на участке, предметы, места людей, связность от входа. */
 export function planOf(db: ContentDb, hs: HospitalState): Plan {
+  if (hs.site) return planOfSite(db, hs.site);
   const cells = new Uint8Array(hs.w * hs.h).fill(CELL.outside);
   const set = (x: number, y: number, c: CellKind) => {
     cells[y * hs.w + x] = c;

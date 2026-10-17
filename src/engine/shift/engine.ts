@@ -1,4 +1,4 @@
-// из anamnez: src/engine/shift/engine.ts @ 96503ac, изменено: разбор приёма нанятого врача — по требованию (spec 2026-10-engine-speed)
+// из anamnez: src/engine/shift/engine.ts @ 96503ac, изменено: разбор приёма нанятого врача — по требованию (spec 2026-10-engine-speed); стройка ПК — команда `site`, событие `siteFree`, приход в закрытую больницу, аппараты коек ПИТ из плана (spec 2026-10-build)
 // Движок смены: приход пациентов, сортировка, очередь, терпение, обследования со своими
 // сроками, закрытие случая и дня (spec 2026-09-first-shift, «Движок»; ADR 0005).
 //
@@ -35,6 +35,7 @@ import {
 } from './types';
 import { COMPLICATION_DAYS, complicationAt, complicationsOf, deathsOf, onsetHours, operationFor } from './surgery';
 import { dueIn, type TargetPlace, targetResults } from './targets';
+import { siteCommand, siteFree } from './site';
 import { type Bed, daysIn, type StayEnd, stayNorm, wardCourse, wardState } from './ward';
 
 const MIN = 60;
@@ -561,6 +562,9 @@ function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
     case 'nextChapter':
       nextChapter(db, s);
       return [];
+    // стройка ПК (spec 2026-10-build): в любой момент, пока идут часы
+    case 'site':
+      return siteCommand(db, s, cmd.cmd);
   }
 }
 
@@ -768,7 +772,8 @@ function planFlow(db: ContentDb, s: ShiftState) {
     schedule(s, base + SHIFT_START + r.fork(`return:${ret.of}`).range(0, 120) * MIN, { kind: 'flow', stream: 'ret', n: 0, of: ret.of });
   }
   scheduleFlow(db, s, 'walk', 0, base + SHIFT_START);
-  if (emergencyBays(db, s).length > 0) scheduleFlow(db, s, 'amb', 0, base + SHIFT_START);
+  // больница ПК (spec 2026-10-build): смотровую могут построить днём — машины едут, а принимает их `flowArrive`
+  if (emergencyBays(db, s).length > 0 || s.hospital?.site) scheduleFlow(db, s, 'amb', 0, base + SHIFT_START);
   schedule(s, base + SHIFT_END, { kind: 'shiftEnd' });
 }
 
@@ -795,6 +800,11 @@ function scheduleFlow(db: ContentDb, s: ShiftState, stream: 'walk' | 'amb', n: n
 
 /** Пришёл следующий из потока: пациент генерируется сейчас — из своего зерна, тот же, когда бы его ни сгенерировали. */
 function flowArrive(db: ContentDb, s: ShiftState, ev: Extract<ShiftEvent, { kind: 'flow' }>, notices: Notice[]) {
+  // больница ПК (spec 2026-10-build): в закрытую не приходят — следующий в свой час; скорая — если работает смотровая
+  if (s.hospital?.site && !siteOpen(db, s, ev.stream)) {
+    if (ev.stream !== 'ret') scheduleFlow(db, s, ev.stream, ev.n + 1, s.t);
+    return;
+  }
   const d = s.day;
   const admits = departmentsOf(db, s);
   const varied = s.meta.variety === true;
@@ -819,6 +829,17 @@ function flowArrive(db: ContentDb, s: ShiftState, ev: Extract<ShiftEvent, { kind
   };
   if (ev.stream !== 'ret') scheduleFlow(db, s, ev.stream, ev.n + 1, s.t);
   arrive(db, s, s.patients[id], notices);
+}
+
+/**
+ * Больница ПК открыта (spec 2026-10-build, «Стройка в любой момент»): сами приходят, когда работают регистратура, зона
+ * ожидания и кабинет врача с врачом (`openBlocks`, как открытие смены «Анамнеза»); скорую принимают, когда работает
+ * смотровая приёмного.
+ */
+export function siteOpen(db: ContentDb, s: ShiftState, stream: 'walk' | 'amb' | 'ret'): boolean {
+  if (stream === 'amb') return emergencyBays(db, s).length > 0;
+  const ctx = hospitalCtx(db, s);
+  return openBlocks(db, ctx.plan, ctx.working, ctx.staffed).length === 0;
 }
 
 /**
@@ -1865,7 +1886,8 @@ export function freeBeds(db: ContentDb, s: ShiftState): Bed[] {
  * каждом свой аппарат: монитор и аппарат ИВЛ.
  */
 function bedWorks(db: ContentDb, r: Plan['rooms'][number], bed: number): boolean {
-  const of = sizeOf(db, r.type, r.size)?.slotsOf;
+  // больница ПК (spec 2026-10-build): аппараты коек — из плана, по тому, что стоит у койки
+  const of = r.slotsOf ?? sizeOf(db, r.type, r.size)?.slotsOf;
   return of ? Object.entries(of).every(([eq, slots]) => r.equipment[slots[bed]] === eq) : !!r.equipment[bed];
 }
 
@@ -2528,6 +2550,9 @@ function handle(db: ContentDb, s: ShiftState, ev: ShiftEvent, notices: Notice[])
       return staffDesks(db, s);
     case 'shiftEnd':
       notices.push({ kind: 'shiftEnd' });
+      return;
+    case 'siteFree':
+      return siteFree(db, s);
   }
 }
 

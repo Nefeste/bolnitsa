@@ -41,7 +41,7 @@ export function createSim(db: ContentDb): SimHost {
       shown = { hospital: s!.hospital, staff: s!.staff };
       rooms = new Map((s!.hospital?.rooms ?? []).map((r, i) => [r.id, i]));
       staff = new Map((s!.staff ?? []).map((m, i) => [m.id, i]));
-      if (s!.hospital) world = { hospital: s!.hospital, staff: s!.staff ?? [] };
+      if (s!.hospital) world = { hospital: s!.hospital, staff: s!.staff ?? [], ...(s!.works ? { works: { spent: s!.works.spent, undo: s!.works.undo.length } } : {}) };
     }
     const lag = owed + (s!.until !== undefined ? s!.until - s!.t : 0);
     const { buf, names } = packSlice(s!, sliceOf(s!), lag, handles, rooms, staff);

@@ -1,4 +1,4 @@
-// из anamnez: src/engine/shift/types.ts @ 96503ac, изменено: ClosedCase.review — разбор по требованию (spec 2026-10-engine-speed)
+// из anamnez: src/engine/shift/types.ts @ 96503ac, изменено: ClosedCase.review — разбор по требованию (spec 2026-10-engine-speed); стройка ПК — команда, событие, извещение и счётчики (spec 2026-10-build)
 // Смена в амбулатории (spec 2026-09-first-shift, «Движок»; `04-data-model.md` §2).
 //
 // Состояние — обычный сериализуемый объект: сохранение — снимок (ADR 0010). Случайность
@@ -8,6 +8,7 @@ import type { BodySystem, Id, Season, Setting } from '../../content/types';
 import type { Scheduled } from '../core/events';
 import type { Outcome } from '../med/course';
 import type { BuildCommand, Built, HospitalState } from '../hospital/build';
+import type { SiteCommand, SiteResult, Works } from '../hospital/site';
 import type { CampaignProgress } from '../campaign/campaign';
 import type { CaseIncome, Ledger, Payer, RepChange } from '../economy/economy';
 import type { StaffMember } from '../hospital/staff';
@@ -227,7 +228,9 @@ export type ShiftEvent =
    * или вернулся (`ret`, `of` — прежний приём); пациент генерируется сейчас
    */
   | { kind: 'flow'; stream: 'walk' | 'amb' | 'ret'; n: number; of?: string }
-  | { kind: 'shiftEnd' };
+  | { kind: 'shiftEnd' }
+  /** стройка ПК (spec 2026-10-build): убрать освободившееся — предметы и помещения, ждущие сноса */
+  | { kind: 'siteFree' };
 
 /** Поток пациентов для ПК (spec 2026-10-engine-speed, ч. 2): сколько приходит в час, не зависит от числа кабинетов. */
 export interface Flow {
@@ -309,7 +312,9 @@ export type Command =
   /** «свои больные» из настроек (spec 2026-10-own-patients): сразу — нанятые врачи оставляют вам новых этих групп */
   | { kind: 'mine'; systems: BodySystem[] }
   /** кампания (часть 34): основные задания главы выполнены — в больницу следующей главы */
-  | { kind: 'nextChapter' };
+  | { kind: 'nextChapter' }
+  /** стройка ПК (spec 2026-10-build): в любой момент, в потоке для ПК */
+  | { kind: 'site'; cmd: SiteCommand };
 
 /** Что случилось — для интерфейса: звук, автопауза, сводка «за это время». */
 export type Notice =
@@ -320,7 +325,9 @@ export type Notice =
   | { kind: 'ambulance'; id: string }
   /** фибрилляция желудочков в смотровой (часть 39б): под монитором — разряд, ритм восстановлен */
   | { kind: 'arrest'; id: string }
-  | { kind: 'shiftEnd' };
+  | { kind: 'shiftEnd' }
+  /** стройка ПК (spec 2026-10-build): что вышло — цена или почему нельзя */
+  | ({ kind: 'site' } & SiteResult);
 
 export interface DaySummary {
   day: number;
@@ -542,4 +549,6 @@ export interface ShiftState {
   flow?: Flow;
   /** поток для ПК: ушедшие — строками, по дням; хранятся неделю, как принятые */
   gone?: GoneRow[];
+  /** стройка ПК (spec 2026-10-build): потрачено на стройку и отмена */
+  works?: Works;
 }
