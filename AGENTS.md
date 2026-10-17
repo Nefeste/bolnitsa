@@ -84,8 +84,8 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # by mouse in the empty building; then the doctor mode: a consult, a whole case, «Take the
                                    # case», «My office»); screenshots in tools/app/out/; `-- --only 1|2|4` for one part
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
-npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git)
-npm run dist:win                   # build + Windows zip and portable .exe → release/ (from Linux, no wine)
+npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
+npm run dist:win                   # build + Windows x64 zip → release/ (from Linux, no wine) — the only release file for now
 npm run assets -- <sources dir>    # rebuild assets/models/*.glb from the CC0 packs (byte-identical; see assets/LICENSES.md)
 npm run bench -- --mode flow --quick           # engine: time per game minute at 50/100/200/300 patients (PC flow)
 npm run bench -- --mode desks --quick          # the same with Anamnez's appointment slots

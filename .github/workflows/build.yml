@@ -2,9 +2,9 @@
 # запускает, ручного запуска нет. Тег ставит владелец.
 #
 # Собирается игра из корня репозитория (spec docs/specs/2026-10-shell-3d.md, «Сборка»): оболочка
-# Electron, 3D-вид, панели и поток расчёта над движком. Windows (zip и portable .exe) и Linux
-# (AppImage и tar.gz) — всё из Linux, без wine, как собирались пробы. Пробы spikes/map-render
-# (v0.0.1) и spikes/render-3d (v0.0.2) больше не собираются: их код и числа остаются в spikes/.
+# Electron, 3D-вид, панели и поток расчёта над движком. Пока — только Windows x64, одним zip (решение
+# владельца 17.10.2026; Linux и одиночный .exe вернутся, когда понадобятся), из Linux, без wine.
+# Пробы spikes/map-render (v0.0.1) и spikes/render-3d (v0.0.2) больше не собираются.
 # Файлы уходят в релиз на этот тег; версии 0.x — пре-релизы. Репозиторий закрыт: релиз видят
 # только участники.
 name: Сборка ПК
@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   build:
-    name: Windows и Linux
+    name: Windows x64
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -61,18 +61,16 @@ jobs:
         run: npx tsc --noEmit
       - name: Страница и поток расчёта
         run: node tools/app/build.mjs
-      - name: Windows и Linux
-        run: npx electron-builder --linux --win --publish never
+      - name: Windows x64
+        run: npx electron-builder --win --publish never
       - run: ls -la release
 
       - name: Описание релиза
         run: |
           {
-            echo "«Больница» — оболочка игры и 3D-вид больницы над движком: смена идёт, пациенты приходят, ждут, идут на приём и в палаты."
-            echo "Стройки ещё нет (часть 2б). Что сделано и что проверить — docs/specs/2026-10-shell-3d.md."
+            echo "«Больница» — прототип: что в этой версии — STATUS.md и docs/07-roadmap.md на этом теге."
             echo
-            echo "**Windows:** \`*-win-x64.zip\` — распаковать и запустить \`Bolnitsa.exe\`; \`*-win-x64.exe\` — то же одним файлом."
-            echo "**Linux:** \`*.AppImage\` или \`*.tar.gz\`."
+            echo "**Windows x64:** \`*-win-x64.zip\` — распаковать в любую папку и запустить \`Bolnitsa.exe\`."
             echo
             echo "Авто-бенч: \`Bolnitsa.exe --bench\` (или кнопка «Авто-бенч» в меню отладки — клавиша слева от 1 или кнопка «Отладка») — итог bench-electron-*.json и четыре снимка рядом с программой."
             echo
@@ -91,7 +89,4 @@ jobs:
           prerelease: ${{ startsWith(github.ref_name, 'v0.') }}
           fail_on_unmatched_files: true
           files: |
-            release/Bolnitsa-*.AppImage
-            release/Bolnitsa-*.tar.gz
             release/Bolnitsa-*-win-x64.zip
-            release/Bolnitsa-*-win-x64.exe
