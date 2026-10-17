@@ -25,7 +25,7 @@
 11. [`reports/`](reports/) — отчёты: [`2026-10-engine-speed.md`](reports/2026-10-engine-speed.md) — движок
     до и после ускорения; [`2026-10-3d-generators.md`](reports/2026-10-3d-generators.md) — какие генераторы
     3D-моделей поднимут вид; снимки оболочки и 3D-вида — [`2026-10-shell-3d/`](reports/2026-10-shell-3d/), стройки —
-    [`2026-10-build/`](reports/2026-10-build/).
+    [`2026-10-build/`](reports/2026-10-build/), людей и потока — [`2026-10-flow-ui/`](reports/2026-10-flow-ui/).
 
 Медицинская модель и правила медицинской базы — в «Анамнезе»
 (`Nefeste/anamnez`: `docs/10-medical-model.md`, `docs/11-content.md`); здесь не повторяются.

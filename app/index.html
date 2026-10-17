@@ -96,6 +96,44 @@
     .start button { display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 10px 12px; }
     .start button b { font-size: 15px; }
     .start button span { color: var(--muted); }
+    /* люди и поток (docs/specs/2026-10-flow-ui.md): значки помещений, вкладка «Пациенты», путь пациента, слои */
+    .chips { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+    .chip { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 4px; padding: 1px 6px 1px 4px; border-radius: 10px; background: rgba(22,30,34,.82); border: 1px solid rgba(255,255,255,.18); font-size: 11px; line-height: 16px; white-space: nowrap; color: #8fe3b4; }
+    .chip svg { flex: none; }
+    .chip.t-busy { color: #8fd3ff; }
+    .chip.t-queue { color: var(--yellow); border-color: rgba(231,180,22,.55); }
+    .chip.t-bad { color: #ff9b86; border-color: rgba(216,57,43,.6); }
+    .chip.t-off { color: var(--muted); }
+    .chip.t-ask { color: var(--accent); border-color: rgba(47,181,201,.6); }
+    .chip.t-ok span { color: var(--muted); }
+    .patients .pfilters { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
+    .patients .group { display: inline-flex; gap: 3px; flex-wrap: wrap; }
+    .patients .pfilters button { padding: 1px 6px; font-size: 12px; }
+    .patients .small { font-size: 11px; }
+    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--green); vertical-align: -1px; }
+    .dot.t-red { background: var(--red); }
+    .dot.t-yellow { background: var(--yellow); }
+    .right .prow { display: flex; flex-direction: column; gap: 1px; padding: 3px 7px; }
+    .prow .ptitle { display: flex; align-items: center; gap: 6px; }
+    .prow .ptext { color: var(--muted); font-size: 12px; }
+    .mood { display: inline-flex; }
+    .mood.m-long svg { fill: var(--yellow); }
+    .mood.m-unhappy svg { fill: var(--red); }
+    .mood.m-ask svg { fill: var(--accent); }
+    .card .path { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 6px; }
+    .card .phead { color: var(--muted); font-size: 11px; margin-bottom: 3px; }
+    .card .pleft { background: rgba(216,57,43,.16); border-left: 3px solid var(--red); padding: 4px 8px; margin-bottom: 6px; border-radius: 3px; }
+    .card .plines { list-style: none; margin: 0; padding: 0; max-height: 34vh; overflow: auto; }
+    .card .plines li { display: grid; grid-template-columns: 44px 1fr; gap: 6px; padding: 2px 0; }
+    .card .plines .pat { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .card .plines .pwhy { display: block; color: var(--muted); font-size: 12px; }
+    .card .plines li.pl-wait .ptxt { color: #ffd98a; }
+    .card .plines li.pl-end .ptxt { font-weight: 600; }
+    .card .plines li.now .pnow { color: var(--accent); }
+    .card .psum { margin-top: 4px; font-size: 12px; }
+    .layers { display: flex; flex-direction: column; gap: 3px; }
+    .layers button { text-align: left; }
+    .layers .hint { margin: 2px 0 0; }
   </style>
 </head>
 <body>

@@ -80,8 +80,9 @@ npm run typecheck                  # content + tsc --noEmit (src incl. .tsx, too
 npm test                           # content + bun test tools/test (~5 min)
 npm run build                      # content + page and worker (esbuild) → dist/ (not in git)
 npm run electron                   # build + the game window
-npm run e2e                        # after build: the game in headless Chromium, real clicks (preset; then building six rooms
-                                   # by mouse in the empty building); screenshots in tools/app/out/; `-- --only 1|2` for one part
+npm run e2e                        # after build: the game in headless Chromium, real clicks (preset; building six rooms by
+                                   # mouse in the empty building; people and flow at 13:00 — icons, «Пациенты», the patient's
+                                   # path, the queues overlay); screenshots in tools/app/out/; `-- --only 1|2|3` for one part
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git)
 npm run dist:win                   # build + Windows zip and portable .exe → release/ (from Linux, no wine)
@@ -111,16 +112,20 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
 - `src/engine/` — the engine copied from Anamnez (pure TypeScript; see «Hard rules»); `shift/slice.ts` is ours: who is
   where and what they are doing, for rendering. Building by mouse is ours too: `hospital/site.ts` (the lot, rooms as
   rectangles, items, doors, checks, the plan for the engine), `hospital/site-preset.ts` (the preset as a lot) and
-  `shift/site.ts` (the `site` command: deferred removal, undo, hiring) — `docs/specs/2026-10-build.md`.
+  `shift/site.ts` (the `site` command: deferred removal, undo, hiring) — `docs/specs/2026-10-build.md`. `shift/journey.ts`
+  is ours: the patient's path with the reason of every wait (PC flow only; one-line hooks in `engine.ts`) —
+  `docs/specs/2026-10-flow-ui.md`.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`), Web Worker
   (`worker.ts`) and its client in the window (`client.ts`). The window never runs the engine.
 - `src/app/` — the game in the window: loads the database and models, starts with the empty building or the preset,
-  frame loop, clock, input, build tools (`build.ts`), room labels (`labels.ts`), auto-bench (`bench.ts`).
+  frame loop, clock, input, build tools (`build.ts`), room labels (`labels.ts`), auto-bench (`bench.ts`); people and flow:
+  pure window logic (`flow.ts` — path lines, room load and state, patient rows) and room status chips (`chips.ts`).
 - `src/render/` — the 3D view (Three.js): `layout.ts` places template items on the engine plan, `catalog.ts` maps
   engine items to CC0 models or code-made ones, `world.ts` floors and cut walls, `doors.ts`, `lamps.ts`, `post.ts`
   (MSAA + GTAO), `stage.ts`, build ghosts `ghost.ts`; people: `bake.ts` (animations baked into a texture), `cast.ts`
   (the one table of heights, role colours and looks), `place.ts`, `path.ts`, `crowd.ts`, `population.ts`. People exist
-  only in rendering: the engine never sees them.
+  only in rendering: the engine never sees them. Icons above heads — `icons.ts` (drawn after the frame); the queues
+  overlay floor tint — `overlay.ts`.
 - `src/ui/` — panels (React) and their store; `src/i18n/` — every player-facing string, Russian and English (English
   typed as the Russian); `tools/test/i18n.test.ts` fails on Cyrillic in strings elsewhere in `src/app`, `src/ui`,
   `src/render`, `src/sim`.

@@ -1,23 +1,43 @@
 // Люди больницы из среза потока (spec docs/specs/2026-10-shell-3d.md, «Где человек и что он делает»): штат — на местах
 // своих помещений, пациенты — по срезу: кто новый — входит с улицы, кого нет — уходит к выходу, у кого новое место — идёт
-// туда. Здесь же — кто как выглядит (cast.ts) и что о нём сказать в панели. Без Three.js, кроме цвета.
+// туда. Здесь же — кто как выглядит (cast.ts) и что о нём сказать в панели. Без Three.js, кроме цвета. Часть 3 (spec
+// docs/specs/2026-10-flow-ui.md): с какого момента человек делает то, что делает, его терпение и просьба врача — для
+// значков над головой и вкладки «Пациенты»; ушедший, не дождавшись, уходит к выходу со значком.
 import * as THREE from 'three';
 import type { ContentDb, Id } from '../content/types';
 import type { RoomInstance } from '../engine/hospital/build';
 import type { StaffMember } from '../engine/hospital/staff';
 import type { Doing } from '../engine/shift/slice';
 import type { Triage } from '../engine/shift/types';
-import { DOINGS, H, HEADER, KINDS, type NameRow, P, STRIDE, TRIAGES } from '../sim/pack';
+import { DOINGS, H, HEADER, KINDS, type NameRow, NO_TIME, P, STATUSES, STRIDE, TRIAGES } from '../sim/pack';
 import type { Look } from './bake';
 import { CLOTHES, GOWN, lookSpec, OLD_AGE, roleColor, SKIN } from './cast';
 import type { Crowd, Walker } from './crowd';
 import type { Layout } from './layout';
 import type { Places, Spot } from './place';
 
-/** Что показать о человеке в панели. */
+/** Что показать о человеке в панели; `gone` — пациент ушёл, на карте его нет (spec 2026-10-flow-ui). */
 export type PersonInfo =
   | { kind: 'staff'; role: Id; room?: string; sex: 'm' | 'f' }
-  | { kind: 'patient'; id: string; sex: 'm' | 'f'; age: number; complaint?: Id; triage: Triage; doing: Doing; room?: string; by?: Id; visit: string };
+  | { kind: 'patient'; id: string; sex: 'm' | 'f'; age: number; complaint?: Id; triage: Triage; doing: Doing; room?: string; by?: Id; visit: string; gone?: true };
+
+/** Что окно знает о пациенте из среза (часть 3): как `Seen` в src/app/flow.ts. */
+export interface PatientNow {
+  row: NameRow;
+  status: (typeof STATUSES)[number];
+  triage: Triage;
+  doing: Doing;
+  room: number;
+  by: number;
+  bed: number;
+  kind: string;
+  since: number;
+  limit: number;
+  ask?: { at: number; until: number };
+}
+
+/** Сколько строк пришедших помнить (для «Ушли» и карточки ушедшего). */
+const ROWS = 2000;
 
 const LYING: ReadonlySet<Doing> = new Set(['ward', 'surgery', 'ambulance']);
 
@@ -25,9 +45,18 @@ export class Population {
   /** вид — по полу и возрасту; номера видов в `looks` */
   private byUse = new Map<string, number[]>();
   private paints = new Map<string, { clothes: THREE.Color; skin: THREE.Color }>();
-  /** последнее о пациенте из среза — для панели и цвета */
-  private last = new Map<string, { row: NameRow; triage: Triage; doing: Doing; room: number; by: number; kind: string }>();
+  /** последнее о пациенте из среза — для панели, цвета и значков */
+  private last = new Map<string, PatientNow>();
   readonly names = new Map<number, NameRow>();
+  /** номер пациента в движке → человек на экране и строка пришедшего (последние ROWS) */
+  private keys = new Map<string, string>();
+  readonly rows = new Map<string, NameRow>();
+  /** последнее, что окно знало о пациенте, — и после ухода (по номеру в движке, последние ROWS) */
+  private byId = new Map<string, PatientNow>();
+  /** ушли, не дождавшись: уходят к выходу со значком «недоволен» */
+  private angry = new Set<string>();
+  /** часы смены из последнего среза */
+  t = 0;
   /** номера помещений в списке больницы → номер в плане */
   private roomIndex: number[] = [];
   /** раскладка новая (стройка) — в следующем срезе места раздаются всем заново */
@@ -100,7 +129,18 @@ export class Population {
 
   /** Сверить с упакованным срезом: новые входят, ушедшие уходят, у кого новое место — идут туда. */
   sync(buf: Int32Array, names: readonly NameRow[]) {
-    for (const r of names) this.names.set(r.h, r);
+    this.t = buf[H.t];
+    for (const r of names) {
+      this.names.set(r.h, r);
+      this.keys.set(r.id, `p:${r.h}`);
+      this.rows.set(r.id, r);
+      if (this.rows.size > ROWS) {
+        const old = this.rows.keys().next().value!;
+        this.rows.delete(old);
+        this.keys.delete(old);
+        this.byId.delete(old);
+      }
+    }
     const n = buf[H.count];
     const waiting: string[] = [];
     const benched: string[] = [];
@@ -126,7 +166,13 @@ export class Population {
       const roomH = buf[o + P.room];
       const room = roomH >= 0 ? (this.roomIndex[roomH] ?? -1) : -1;
       const prev = this.last.get(key);
-      this.last.set(key, { row, triage: TRIAGES[buf[o + P.triage]], doing, room, by: buf[o + P.by], kind: String(buf[o + P.flags]) });
+      const askUntil = buf[o + P.askUntil];
+      const now: PatientNow = {
+        row, status: STATUSES[buf[o + P.status]], triage: TRIAGES[buf[o + P.triage]], doing, room, by: buf[o + P.by], bed: buf[o + P.bed], kind: String(buf[o + P.flags]),
+        since: buf[o + P.since], limit: buf[o + P.limit], ...(askUntil !== NO_TIME ? { ask: { at: buf[o + P.askAt], until: askUntil } } : {}),
+      };
+      this.last.set(key, now);
+      this.byId.set(row.id, now);
       const spot: Spot = this.places.spot({ key, doing, room, bed: buf[o + P.bed] }, taken);
       if (spot.pose === 'stand') taken.add(spot.cell);
       const w = this.crowd.walkers.get(key);
@@ -146,6 +192,52 @@ export class Population {
       if (!w.leaving) this.crowd.leave(w);
       this.last.delete(key);
     }
+    // дошли до выхода — значок больше не нужен
+    for (const key of this.angry) if (!this.crowd.walkers.has(key)) this.angry.delete(key);
+  }
+
+  /** Пациент ушёл, не дождавшись (извещение `left`): к выходу — со значком «недоволен». */
+  markLeft(id: string) {
+    const key = this.keys.get(id);
+    if (key && this.crowd.walkers.has(key)) this.angry.add(key);
+  }
+
+  /** Ушёл, не дождавшись, и ещё идёт к выходу. */
+  leavingAngry(key: string): boolean {
+    return this.angry.has(key);
+  }
+
+  /** Человек на экране по номеру в движке (нет — ушёл). */
+  keyOf(id: string): string | undefined {
+    const key = this.keys.get(id);
+    return key && this.last.has(key) ? key : undefined;
+  }
+
+  /** Человек на экране по номеру в движке — и тот, кто уже ушёл из среза и идёт к выходу. */
+  walkerKey(id: string): string | undefined {
+    const key = this.keys.get(id);
+    return key && this.crowd.walkers.has(key) ? key : undefined;
+  }
+
+  /** Номер в движке человека на экране (и того, кто уходит к выходу). */
+  idOf(key: string): string | undefined {
+    if (!key.startsWith('p:')) return undefined;
+    return this.names.get(Number(key.slice(2)))?.id;
+  }
+
+  /** Пациенты в больнице — что окно о них знает (часть 3: вкладка, значки, нагрузка помещений). */
+  patients(): IterableIterator<[string, PatientNow]> {
+    return this.last.entries();
+  }
+
+  /** Что знает окно о пациенте на экране. */
+  now(key: string): PatientNow | undefined {
+    return this.last.get(key);
+  }
+
+  /** Последнее, что окно знало о пациенте по номеру в движке, — и после ухода. */
+  lastOf(id: string): PatientNow | undefined {
+    return this.byId.get(id);
   }
 
   /** Цвет экземпляра: лежащим — больничная рубашка. */

@@ -4,9 +4,13 @@
 // меняется клавишами, стены переключаются. Часть 2 — пустое здание: мышью шесть помещений (регистратура, зона ожидания,
 // кабинет врача, ординаторская, процедурный, лаборатория) — протяжкой, «Обставить», двери, найм; предмет — красный
 // призрак на занятом, R, взять и переставить, снос, Ctrl+Z, Esc, ПКМ; двойная дверь палаты; часы идут — пациенты
-// приходят, их принимают. Ошибок в консоли и запросов наружу нет.
-// Снимки — tools/app/out/e2e.png и e2e-build-*.png; `--shots high` — снимки стройки в этом качестве (на время снимка).
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2] [--shots low|medium|high]
+// приходят, их принимают. Часть 3 — люди и поток (spec docs/specs/2026-10-flow-ui.md): готовая больница к 13:00 —
+// пациенты ходят, значки «ждёт долго» и «недоволен», значки помещений; вкладка «Пациенты» (Tab) — фильтр, клик — камера
+// летит к человеку, в карточке — путь с причиной ожидания; «Ушли» — путь ушедшего и почему; слой «Очереди и загрузка» (L);
+// ушедший, не дождавшись, идёт к выходу со значком. Ошибок в консоли и запросов наружу нет.
+// Снимки — tools/app/out/e2e.png, e2e-build-*.png и e2e-flow-*.png; `--shots high` — снимки частей 2 и 3 в этом качестве
+// (на время снимка).
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|3] [--shots low|medium|high] [--port 8093]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -20,7 +24,8 @@ const arg = (k, d) => {
 
 const out = new URL('./out/', import.meta.url).pathname;
 mkdirSync(out, { recursive: true });
-const port = 8093;
+// порт — свой у каждого прогона, если сценарии идут параллельно (`--port`)
+const port = Number(arg('port', '8093'));
 const server = await serve(port);
 const browser = await chromium.launch({
   executablePath: findChromium(),
@@ -69,9 +74,11 @@ const PROTO = [
 ];
 
 const only = arg('only', '');
+const run = n => !only || only === String(n);
 try {
-  if (only !== '2') await partOne();
-  if (only !== '1') await partTwo();
+  if (run(1)) await partOne();
+  if (run(2)) await partTwo();
+  if (run(3)) await partThree();
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);
@@ -378,4 +385,130 @@ async function partTwo() {
   else await until(() => window.__game.store.get().seen >= 3, null, 60000).catch(() => {});
   await shotAs('e2e-build-3.png');
   ok(`снимок: ${await page.evaluate(() => `${document.getElementById('clock')?.textContent}, принято ${window.__game.store.get().seen}`)}`);
+}
+
+async function partThree() {
+  // готовая больница: один терапевт на поток — к 13:00 очередь, долгие ожидания, первый ушедший (12:52)
+  await page.goto(`http://127.0.0.1:${port}/index.html?q=${arg('q', 'low')}&lang=ru&hospital=preset&start=13`);
+  await page.waitForFunction(() => window.__started === true, null, { timeout: 240000 });
+  const until = (fn, a, ms = 20000) => page.waitForFunction(fn, a, { timeout: ms });
+  ok(`люди и поток: ${await page.textContent('#clock')}`);
+  // пациенты ходят: на ×4 кто-то идёт по срезу — пришёл, позвали к врачу, на обследование (кадров без видеокарты мало)
+  const before = await page.evaluate(() => [...window.__game.crowd.walkers.values()].filter(w => !w.staff).map(w => [w.key, w.x, w.z]));
+  await page.keyboard.press('Digit3');
+  const moved = await page
+    .waitForFunction(
+      b => {
+        const g = window.__game;
+        const walking = [...g.crowd.walkers.values()].filter(w => !w.staff && w.state === 'walk' && !w.leaving).length;
+        let n = 0;
+        for (const [k, x, z] of b) {
+          const w = g.crowd.walkers.get(k);
+          if (w && Math.hypot(w.x - x, w.z - z) > 0.5) n++;
+        }
+        return n > 0 && walking > 0 ? { n, of: b.length, walking, clock: document.getElementById('clock')?.textContent } : null;
+      },
+      before,
+      { timeout: 60000, polling: 100 },
+    )
+    .then(h => h.jsonValue())
+    .catch(() => null);
+  if (moved) ok(`пациенты ходят: сдвинулись ${moved.n} из ${moved.of}, идут ${moved.walking} (${moved.clock})`);
+  else fail('пациенты стоят');
+  await page.keyboard.press('Space');
+  // значки над людьми и помещениями
+  const icons = await page.evaluate(() => window.__game.stage.icons.shown);
+  if (icons.long + icons.unhappy > 0) ok(`значки над людьми: ${JSON.stringify(icons)}`);
+  else fail(`нет значков «ждёт долго» и «недоволен»: ${JSON.stringify(icons)}`);
+  const chips = await page.evaluate(() => window.__game.chips.dump());
+  const rooms = await page.evaluate(() => window.__game.plan.rooms.length);
+  const queue = chips.filter(c => c.icon === 'queue');
+  if (chips.length === rooms && queue.length > 0 && chips.some(c => ['ok', 'busy', 'bed', 'mine'].includes(c.icon))) ok(`значки помещений: ${chips.length}; ${queue.map(c => c.text).join(', ')}`);
+  else fail(`значки помещений: ${JSON.stringify(chips.slice(0, 8))}`);
+  // снимок: зал ожидания крупно — значки над людьми и помещениями
+  const hall = await page.evaluate(() => {
+    const r = window.__game.plan.rooms.find(x => x.type === 'room.waiting');
+    return [r.x + r.w / 2, r.y + r.h / 2];
+  });
+  await page.evaluate(([x, z]) => {
+    const c = window.__game.stage.cam;
+    c.target.set(x + 3, 0, z);
+    c.half = 13;
+  }, hall);
+  await page.waitForTimeout(400);
+  await shotAs('e2e-flow-1.png');
+  // вкладка «Пациенты»: Tab; фильтр «ждут врача»; клик — камера к человеку, карточка с путём и причиной
+  await page.keyboard.press('Tab');
+  await until(() => !!document.getElementById('patients'));
+  await page.click('#pf-w-wait');
+  await page.waitForTimeout(300);
+  const rows = await page.$$eval('#patients .prow', els => els.map(e => e.textContent ?? ''));
+  if (rows.length > 0 && rows.every(t => t.includes('ждёт врача'))) ok(`вкладка «Пациенты», ждут врача: ${rows.length}; первый — «${rows[0]}»`);
+  else fail(`вкладка «Пациенты»: ${JSON.stringify(rows.slice(0, 5))}`);
+  await page.evaluate(() => window.__game.stage.cam.overview());
+  await page.waitForTimeout(200);
+  const cam0 = await page.evaluate(() => window.__game.stage.cam.half);
+  await page.click('#patients .prow');
+  // камера долетает за полсекунды кадров; без видеокарты кадров мало — ждём, пока долетит
+  await until(() => !window.__game.stage.cam.flying, null, 20000).catch(() => {});
+  const fly = await page.evaluate(() => {
+    const g = window.__game;
+    const c = g.stage.cam;
+    const w = g.crowd.walkers.get(g.selected);
+    return { sel: g.selected, d: w ? Math.hypot(c.target.x - w.x, c.target.z - w.z) : -1, half: c.half };
+  });
+  if (fly.sel?.startsWith('p:') && fly.d >= 0 && fly.d < 2 && fly.half < cam0) ok(`клик — камера у человека (${fly.d.toFixed(2)} м, масштаб ${cam0.toFixed(0)} → ${fly.half.toFixed(1)}), он выбран`);
+  else fail(`камера к человеку: ${JSON.stringify(fly)}`);
+  await until(() => document.querySelectorAll('#path .plines li').length >= 2);
+  const path = await page.textContent('#path');
+  if (path.includes('ожидание врача') && /заняты|ждёт вас|не принимает/.test(path)) ok(`путь пациента: «${path.slice(0, 160)}…»`);
+  else fail(`путь пациента без причины ожидания: «${path}»`);
+  await shotAs('e2e-flow-2.png');
+  // «Ушли»: путь ушедшего — почему ушёл
+  await page.click('#pf-gone');
+  await page.waitForTimeout(300);
+  const gone = await page.$$eval('#patients .prow', els => els.map(e => e.textContent ?? ''));
+  if (gone.length > 0) {
+    await page.click('#patients .prow');
+    await until(() => !!document.getElementById('path-left'), null, 10000).catch(() => {});
+    const why = (await page.textContent('#path-left').catch(() => '')) ?? '';
+    if (why.includes('не дождавшись') && /заняты|ждёт вас|не принимает/.test(why)) ok(`ушедший: «${gone[0]}» — «${why}»`);
+    else fail(`ушедший: «${gone[0]}», почему — «${why}»`);
+  } else fail('«Ушли» пусто: к 13:00 ушёл хотя бы один');
+  await page.click('#pf-present');
+  // слой «Очереди и загрузка»: L — пол окрашен, над помещениями очередь и ожидание
+  await page.click('#card .close').catch(() => {});
+  await page.keyboard.press('KeyL');
+  await page.waitForTimeout(400);
+  const layer = await page.evaluate(() => ({ painted: window.__game.stage.tint.painted, chips: window.__game.chips.dump().filter(c => /очередь \d+ · до/.test(c.text)).map(c => c.text) }));
+  if (layer.painted > 0 && layer.chips.length > 0) ok(`слой «Очереди и загрузка»: окрашено ${layer.painted}, ${layer.chips.join(', ')}`);
+  else fail(`слой: ${JSON.stringify(layer)}`);
+  await page.keyboard.press('Tab');
+  await page.evaluate(([x, z]) => {
+    const c = window.__game.stage.cam;
+    c.target.set(x + 6, 0, z - 2);
+    c.half = 18;
+  }, hall);
+  await page.waitForTimeout(400);
+  await shotAs('e2e-flow-3.png');
+  await page.keyboard.press('KeyL');
+  // ушедший, не дождавшись, идёт к выходу со значком «недоволен»
+  const left0 = await page.evaluate(() => window.__game.left.length);
+  await page.keyboard.press('Digit3');
+  const leaving = await page
+    .waitForFunction(
+      n => {
+        const g = window.__game;
+        if (g.left.length <= n) return null;
+        const key = g.pop.walkerKey(g.left[0].id);
+        return key ? { key, angry: g.pop.leavingAngry(key), unhappy: g.stage.icons.shown.unhappy, leaving: g.crowd.walkers.get(key).leaving, clock: document.getElementById('clock')?.textContent } : { gone: true };
+      },
+      left0,
+      { timeout: 120000, polling: 50 },
+    )
+    .then(h => h.jsonValue())
+    .catch(() => null);
+  await page.keyboard.press('Space');
+  if (leaving?.key && leaving.angry && leaving.leaving && leaving.unhappy > 0) ok(`ушёл, не дождавшись, — идёт к выходу со значком (${leaving.clock})`);
+  else fail(`уход недовольного: ${JSON.stringify(leaving)}`);
 }
