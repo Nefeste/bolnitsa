@@ -15,9 +15,10 @@ export type Step =
   /**
    * ждёт врача в общей очереди: почему, сколько впереди; сколько нанятых врачей принимало и сколько из них ждало вашего
    * ответа; `door` — скорая без места в смотровой, ждёт у входа; `full` — зона ожидания была полна: стоял, терпения
-   * вдвое меньше
+   * вдвое меньше; `sat` — пришедший сам сел в зале ожидания (spec 2026-10-walk): до того его оформляли и он шёл, терпение —
+   * с этого часа
    */
-  | { t: number; k: 'queue'; why: QueueWhy; ahead: number; docs?: number; asks?: number; door?: true; full?: true }
+  | { t: number; k: 'queue'; why: QueueWhy; ahead: number; docs?: number; asks?: number; door?: true; full?: true; sat?: number }
   /** у врача: нанятого (`by` — номер в штате, `room` — его кабинет) или у вас */
   | { t: number; k: 'doctor'; by?: string; room?: string }
   /**
@@ -130,6 +131,7 @@ export function arrived(s: ShiftState, p: ShiftPatient, docs: () => number, mine
   push(j, {
     t: s.t, k: 'queue', why, ahead: Math.max(0, s.queue.indexOf(p.id)), ...(n > 0 ? { docs: n } : {}), ...(why === 'busy' && asks > 0 ? { asks } : {}),
     ...(p.kind === 'ambulance' && !p.bay ? { door: true as const } : {}), ...(full && p.patience > 0 ? { full: true as const } : {}),
+    ...(p.seatAt !== undefined && p.seatAt > s.t ? { sat: p.seatAt } : {}),
   });
 }
 
@@ -282,6 +284,6 @@ export function phaseOf(s: ShiftState, p: ShiftPatient, doing: Doing): { since: 
     if (s.t >= last.back) return { since: last.back };
     return { since: now(lastOf(j.steps, 'doctor')?.t ?? last.t) };
   }
-  const limit = last.k === 'queue' && p.status === 'waiting' && p.by === undefined && p.patience > 0 ? last.t + p.patience : undefined;
+  const limit = last.k === 'queue' && p.status === 'waiting' && p.by === undefined && p.patience > 0 ? (last.sat ?? last.t) + p.patience : undefined;
   return { since: now(last.t), ...(limit !== undefined ? { limit } : {}) };
 }

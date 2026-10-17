@@ -25,7 +25,7 @@ setLang('ru');
 const rec = db.presets['preset.city'];
 const hospital = hospitalOf(db, siteOfPreset(db, rec));
 const staff = presetStaff(db, rec);
-/** Готовая больница 2а; зерно 11 — нанятый терапевт просит посмотреть к 08:55 (как в сценарии в браузере). */
+/** Готовая больница 2а; зерно 11 — нанятый терапевт просит посмотреть к 09:08 (как в сценарии в браузере). */
 const preset = (seed = 11) => newFlowShift(db, { seed, season: 'winter', hospital, staff, flow: FLOW });
 const office = (s: ShiftState, room?: string) => site(db, s, { kind: 'office', ...(room ? { room } : {}) }, false);
 const roomOf = (s: ShiftState, id: string) => s.staff?.find(m => m.id === id)?.room;
@@ -153,7 +153,10 @@ describe('«Взять случай»', () => {
   test('свободному — call: больной у вас, в срезе — в вашем кабинете', () => {
     const s = preset(5);
     liveTo(db, s, 10);
-    const waiting = s.queue.find(id => !s.patients[id].by && s.patients[id].calledT === undefined && (s.patients[id].kind !== 'ambulance' || s.patients[id].sorted));
+    // пришедший сам (привезённого скорой вы смотрите в смотровой приёмного): ждёт врача, никем не взятый
+    const free = () => s.queue.find(id => !s.patients[id].by && s.patients[id].calledT === undefined && s.patients[id].kind !== 'ambulance');
+    for (let i = 0; i < 120 && !free(); i++) apply(db, s, { kind: 'advance', seconds: 60 });
+    const waiting = free();
     expect(waiting).toBeDefined();
     const t = takeCommand(db, s, waiting!);
     expect(t.cmd).toEqual({ kind: 'call', id: waiting! });
@@ -237,9 +240,9 @@ async function wholeCase(step: number) {
   const seen: Seen = { notices: [] };
   talk(sim, seen, { kind: 'start', seed: 11, season: 'winter', hospital, staff, flow: FLOW });
   talk(sim, seen, { kind: 'doctor', act: { kind: 'view', open: null, lang: 'ru', level: 'student' } });
-  // кадрами до 09:00 — просьба приходит к 08:55; отвечать — в один и тот же игровой час при любом шаге
+  // кадрами до 09:15 — просьба приходит к 09:08; отвечать — в один и тот же игровой час при любом шаге
   let ask: Extract<Notice, { kind: 'consult' }> | undefined;
-  for (let i = 0; i < 3600 / step; i++) {
+  for (let i = 0; i < (75 * 60) / step; i++) {
     const r = talk(sim, seen, { kind: 'tick', seconds: step, budgetMs: 1000 });
     ask ??= r.notices.find((n): n is Extract<Notice, { kind: 'consult' }> => n.kind === 'consult');
   }

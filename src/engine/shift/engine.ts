@@ -1,4 +1,4 @@
-// из anamnez: src/engine/shift/engine.ts @ 96503ac, изменено: разбор приёма нанятого врача — по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults); стройка ПК — команда `site`, событие `siteFree`, приход в закрытую больницу, аппараты коек ПИТ из плана (spec 2026-10-build); сутки целиком в потоке для ПК — часы приёма, поток по часам, планёрка в 08:00, обход нанятых врачей, ночь по часам (spec 2026-10-day); путь пациента — однострочные вызовы `journey.*` (spec 2026-10-flow-ui); фибрилляция желудочков после полуночи — в ночь суток поступления и в сменах «Анамнеза» (`hospitalDay`; так же в anamnez 0.6.4, Nefeste/anamnez#152); касса и поток от больницы, планёрка с узкими местами, «стало хуже», долгий случай нанятого врача (spec 2026-10-economy)
+// из anamnez: src/engine/shift/engine.ts @ 96503ac, изменено: разбор приёма нанятого врача — по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults); стройка ПК — команда `site`, событие `siteFree`, приход в закрытую больницу, аппараты коек ПИТ из плана (spec 2026-10-build); сутки целиком в потоке для ПК — часы приёма, поток по часам, планёрка в 08:00, обход нанятых врачей, ночь по часам (spec 2026-10-day); путь пациента — однострочные вызовы `journey.*` (spec 2026-10-flow-ui); фибрилляция желудочков после полуночи — в ночь суток поступления и в сменах «Анамнеза» (`hospitalDay`; так же в anamnez 0.6.4, Nefeste/anamnez#152); касса и поток от больницы, планёрка с узкими местами, «стало хуже», долгий случай нанятого врача (spec 2026-10-economy); ходьба в потоке для ПК — свой врач, свой зал, следующие у двери, приём, когда дошёл (spec 2026-10-walk)
 // Движок смены: приход пациентов, сортировка, очередь, терпение, обследования со своими
 // сроками, закрытие случая и дня (spec 2026-09-first-shift, «Движок»; ADR 0005).
 //
@@ -15,7 +15,7 @@ import { type CampaignProgress, campaignEvening, chapterOf, nextChapterOf, start
 import { build, emptyPlot, type HospitalState, type Plan, planOf, presetHospital, sizeOf, UNDO_DEPTH, widenPlot } from '../hospital/build';
 import { bedsideIn, DOCTOR, doctorRoom, examWhere, NONE_BROKEN, openBlocks, type Problem, problemsOf, slotKey, type Staffing, workingRooms } from '../hospital/requirements';
 import { applicantsOf, doctorOf, grow, memberAt, presetStaff, PROFILE_PRIOR, readingOf, type StaffMember, speedOf, staffingOf } from '../hospital/staff';
-import { walkSeconds } from '../hospital/walk';
+import { WALK_SPEED, walkSeconds } from '../hospital/walk';
 import { log2 } from '../core/math';
 import { P_ONE, RNG_VERSION, Rng } from '../core/rng';
 import { examHarmOutcome, observe, type Outcome, rscOutcome } from '../med/course';
@@ -35,6 +35,7 @@ import {
 } from './types';
 import { type Ask, askFor, askLong } from './consult';
 import * as journey from './journey';
+import { AT_DOOR, hallNear, moveTo, readyAt, route, toDoctor, toDoor, WALK_SPEED_PC, waitsAt, walkPc } from './walking';
 import { COMPLICATION_DAYS, complicationAt, complicationsOf, deathsOf, onsetHours, operationFor } from './surgery';
 import { dueIn, type TargetPlace, targetResults } from './targets';
 import { siteCommand, siteFree } from './site';
@@ -1338,8 +1339,28 @@ function call(db: ContentDb, s: ShiftState, id: string): Notice[] {
   journey.called(s, p);
   // к привезённому скорой врач идёт в смотровую приёмного, к пришедшему сам — в свой кабинет (FR-HOS-4)
   const meet = meetIn(db, s, p);
+  // поток для ПК (spec 2026-10-walk): пришедший сам идёт к вам из зала или от двери — приём, когда дойдёт; теперь он ваш,
+  // а к вашей двери идёт следующий из ваших
+  const walk = s.flow && !p.bay ? walkToYou(db, s, p, (ctx, office) => toDoctor(ctx.plan, p, office, s.t)) : 0;
+  delete p.doc;
+  delete p.next;
+  delete p.nextAt;
+  doors(db, s);
   goTo(s, p);
-  return later(db, s, p, meet);
+  return later(db, s, p, Math.max(meet, walk));
+}
+
+/**
+ * Сколько пациенту идти в ваш кабинет (spec 2026-10-walk): дорога — `walk(ctx, ваш кабинет)`; идёт — записано, куда и к
+ * какому часу (для окна). Кабинета нет — 0.
+ */
+function walkToYou(db: ContentDb, s: ShiftState, p: ShiftPatient, walk: (ctx: HospitalCtx, office: string) => number, from = s.t): number {
+  const ctx = hospitalCtx(db, s);
+  const office = doctorRoom(ctx.plan);
+  if (!office) return 0;
+  const sec = walk(ctx, office);
+  if (sec > 0) p.walk = { to: office, at: from + sec };
+  return sec;
 }
 
 /**
@@ -1350,8 +1371,11 @@ function call(db: ContentDb, s: ShiftState, id: string): Notice[] {
 export function walkTo(db: ContentDb, s: ShiftState, p: ShiftPatient): number {
   const plan = hospitalCtx(db, s).plan;
   const office = doctorRoom(plan);
-  return walkSeconds(plan, s.doctorAt ?? office, p.bay?.room ?? office);
+  return walkSeconds(plan, s.doctorAt ?? office, p.bay?.room ?? office, walkSpeed(s));
 }
+
+/** Скорость пешком: в потоке для ПК — как люди идут на экране (spec 2026-10-walk), в сменах «Анамнеза» — прежняя. */
+export const walkSpeed = (s: ShiftState): number => (s.flow ? WALK_SPEED_PC : WALK_SPEED);
 
 /**
  * Через сколько секунд врач и больной встретятся (FR-HOS-4): позвать — минута, как и прежде, а врач тем временем идёт к
@@ -1455,7 +1479,7 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
     // узкие места суток (spec 2026-10-economy): очередь у кабинета обследования
     if (s.flow) meeting.examWait(s, room.id, go.at + go.walk, start);
     addPending(s, p, examId, end + after * MIN, obs, { room: room.id, start, end });
-    goOut(ctx, p, examId, room.id, end);
+    goOut(ctx, p, examId, room.id, end, walkSpeed(s));
     journey.examOut(s, p, go.at, go.at + go.walk);
     return order;
   }
@@ -1476,7 +1500,7 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
     const go = outFrom(ctx, s, p, to, s.t + order);
     const start = go.at + go.walk;
     addPending(s, p, examId, start + cost + wait, first, { room: room.id, start, end: start + cost });
-    goOut(ctx, p, examId, to, start + cost);
+    goOut(ctx, p, examId, to, start + cost, walkSpeed(s));
     journey.examOut(s, p, go.at, start);
     if (e.repeat && second.length > 0) {
       const draw = s.t + e.repeat.minutes * MIN + walk;
@@ -1516,12 +1540,13 @@ export function atDoctor(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: 
  */
 function outFrom(ctx: HospitalCtx, s: ShiftState, p: ShiftPatient, to: string, leave: number): { at: number; walk: number } {
   const out = p.out && p.out.back > s.t ? p.out : undefined;
-  return out ? { at: Math.max(leave, out.until), walk: walkSeconds(ctx.plan, out.room, to) } : { at: leave, walk: walkSeconds(ctx.plan, fromRoom(ctx, p), to) };
+  const v = walkSpeed(s);
+  return out ? { at: Math.max(leave, out.until), walk: walkSeconds(ctx.plan, out.room, to, v) } : { at: leave, walk: walkSeconds(ctx.plan, fromRoom(ctx, p), to, v) };
 }
 
 /** Ушёл на обследование (0.5.12): там — до `until`, у врача снова — когда дойдёт обратно. */
-function goOut(ctx: HospitalCtx, p: ShiftPatient, exam: Id, room: string, until: number) {
-  p.out = { exam, room, until, back: until + walkSeconds(ctx.plan, room, fromRoom(ctx, p)) };
+function goOut(ctx: HospitalCtx, p: ShiftPatient, exam: Id, room: string, until: number, speed: number) {
+  p.out = { exam, room, until, back: until + walkSeconds(ctx.plan, room, fromRoom(ctx, p), speed) };
 }
 
 /** Где и как сделать обследование этому пациенту сейчас: у постели или в кабинете, время — с поправкой аппарата и человека; нельзя — null. */
@@ -1545,7 +1570,7 @@ function examSetup(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id) {
   // дорога (FR-HOS-4, spec 2026-10-walk-breakdowns): снимок и функциональное — в своём кабинете, материал берут там, где
   // записано (кровь — в процедурном, тропонин и пункцию — в смотровой приёмного)
   const to = queued ? room?.id : e.collect && !bed ? collectRoom(ctx, p, e.collect) : undefined;
-  const walk = to ? walkSeconds(ctx.plan, fromRoom(ctx, p), to) : 0;
+  const walk = to ? walkSeconds(ctx.plan, fromRoom(ctx, p), to, walkSpeed(s)) : 0;
   return { e, ctx, bed, queued, room, eqId, roomPct, walk, to };
 }
 
@@ -2752,7 +2777,7 @@ function handle(db: ContentDb, s: ShiftState, ev: ShiftEvent, notices: Notice[])
       if (s.flow) meeting.left(s, p);
       notices.push({ kind: 'left', id: p.id });
       evict(s, p);
-      return;
+      return doors(db, s);
     }
     case 'flow':
       return flowArrive(db, s, ev, notices);
@@ -2772,6 +2797,7 @@ function handle(db: ContentDb, s: ShiftState, ev: ShiftEvent, notices: Notice[])
       return;
     }
     case 'free':
+    case 'ready':
       return staffDesks(db, s);
     case 'shiftEnd':
       notices.push({ kind: 'shiftEnd' });
@@ -2810,10 +2836,56 @@ function arrive(db: ContentDb, s: ShiftState, p: ShiftPatient, notices: Notice[]
   if (s.hospital && p.patience > 0 && s.queue.length >= ctx.seats) p.patience = Math.round(p.patience / 2);
   s.summary.arrived++;
   if (p.kind === 'return') s.summary.returnsToday++;
-  enqueue(s, p, s.t);
+  // поток для ПК (spec 2026-10-walk): к какому врачу записан, где ждёт и когда туда дойдёт
+  if (s.flow) seatPc(db, s, p, ctx, nurse);
+  enqueue(s, p, s.t, p.seatAt ?? s.t);
   notices.push({ kind: 'arrived', id: p.id, triage: p.triaged === false ? 'green' : p.triage });
-  if (nurse) schedule(s, s.t + REGISTRATION + TRIAGE, { kind: 'nurse', id: p.id });
+  if (nurse) schedule(s, p.triAt !== undefined ? p.triAt + TRIAGE : s.t + REGISTRATION + TRIAGE, { kind: 'nurse', id: p.id });
+  // поток для ПК (spec 2026-10-walk): оформят и измерят — тогда его позовёт нанятый врач
+  if (s.flow && readyAt(p) > s.t) schedule(s, readyAt(p), { kind: 'ready', id: p.id });
   staffDesks(db, s);
+}
+
+/**
+ * Поток для ПК (spec 2026-10-walk, «Свой врач», «Своя зона ожидания»): к кому записан пришедший, в какой зоне ожидания
+ * ждёт — у кабинета его врача (ваш — у вашего) — и когда до неё дойдёт от входа.
+ */
+function seatPc(db: ContentDb, s: ShiftState, p: ShiftPatient, ctx: HospitalCtx, nurse: boolean) {
+  const m = docFor(db, s, p, colleaguesOf(db, s));
+  if (m) p.doc = m.id;
+  p.hall = hallNear(ctx.plan, ctx.working, m?.room ?? doctorRoom(ctx.plan));
+  const r = route(ctx.plan, ctx.working, p.hall, nurse, s.t);
+  p.regAt = r.regAt;
+  if (r.triAt !== undefined) p.triAt = r.triAt;
+  if (r.leg) p.leg = r.leg;
+  p.seatAt = r.seatAt;
+}
+
+/**
+ * К какому нанятому врачу записать нового (spec 2026-10-walk, «Свой врач»): записанного к специалисту — к нему; вашего
+ * («Свои больные») и заданного главой — к вам, без нанятого; остальных — к терапевту с самой короткой очередью (с теми, кто
+ * у него на приёме и на обследованиях), при равной — к первому по кабинету. Терапевтов нет — к вам.
+ */
+function docFor(db: ContentDb, s: ShiftState, p: ShiftPatient, list: readonly StaffMember[]): StaffMember | undefined {
+  if (bookedHere(p, list)) return list.find(m => m.id === p.to);
+  if (p.taught || forPlayer(db, s, p)) return undefined;
+  // очередь врача — кто у него на приёме, на обследованиях и ждёт его
+  const load = new Map<string, number>();
+  for (const x of Object.values(s.patients)) {
+    const id = x.status === 'inRoom' || x.status === 'away' ? x.by : x.status === 'waiting' ? (x.by ?? x.doc) : undefined;
+    if (id) load.set(id, (load.get(id) ?? 0) + 1);
+  }
+  let best: StaffMember | undefined;
+  let n = Number.POSITIVE_INFINITY;
+  for (const m of list) {
+    if (db.roles[m.role]?.profile) continue;
+    const q = load.get(m.id) ?? 0;
+    if (q < n) {
+      best = m;
+      n = q;
+    }
+  }
+  return best;
 }
 
 /** Давление, пульс, температура и сатурация у медсестры — своей ветвью зерна: те же, когда бы она ни мерила. */
@@ -2831,6 +2903,7 @@ function nurse(db: ContentDb, s: ShiftState, p: ShiftPatient, notices: Notice[])
   p.triage = triageOf(db, p);
   if (p.triage === was) return;
   sortQueue(s);
+  doors(db, s);
   if (p.triage === 'red') notices.push({ kind: 'arrived', id: p.id, triage: 'red' });
 }
 
@@ -2908,14 +2981,15 @@ export function moreUrgent(db: ContentDb, s: ShiftState, p: ShiftPatient): boole
   });
 }
 
-function enqueue(s: ShiftState, p: ShiftPatient, queuedT: number) {
+function enqueue(s: ShiftState, p: ShiftPatient, queuedT: number, patienceFrom = s.t) {
   p.status = 'waiting';
   p.queuedT = queuedT;
   p.wait++;
   s.queue = [...s.queue.filter(x => x !== p.id), p.id];
   sortQueue(s);
   journey.queued(s, p);
-  if (p.patience > 0) schedule(s, s.t + p.patience, { kind: 'patience', id: p.id, wait: p.wait });
+  // поток для ПК (spec 2026-10-walk): терпение — с той минуты, как сел в зале, а не в пути
+  if (p.patience > 0) schedule(s, patienceFrom + p.patience, { kind: 'patience', id: p.id, wait: p.wait });
   // узкие места суток (spec 2026-10-economy): больше всего ждали врача сразу
   if (s.flow) meeting.queued(s);
 }
@@ -3041,37 +3115,127 @@ export function leftForPlayer(db: ContentDb, s: ShiftState, p: ShiftPatient): bo
 }
 
 /**
- * Свободные врачи зовут: сначала своего, вернувшегося с результатами, потом нового из очереди.
+ * Свободные врачи зовут: сначала своего, вернувшегося с результатами, потом нового из очереди. В потоке для ПК следующий
+ * к каждому врачу идёт к двери его кабинета (spec 2026-10-walk).
  */
 function staffDesks(db: ContentDb, s: ShiftState) {
   if (!s.dayOpen) return;
   const list = colleaguesOf(db, s);
+  callIn(db, s, list);
+  if (s.flow) toDoors(db, s, list);
+}
+
+/** Следующие — к дверям (spec 2026-10-walk): после того, как очередь изменилась без вызова нанятым врачом. */
+function doors(db: ContentDb, s: ShiftState) {
+  if (s.flow && s.dayOpen) toDoors(db, s, colleaguesOf(db, s));
+}
+
+function callIn(db: ContentDb, s: ShiftState, list: readonly StaffMember[]) {
   if (list.length === 0) return;
   const all = Object.values(s.patients);
   const busy = new Set(all.flatMap(p => (p.status === 'inRoom' && p.by ? [p.by] : [])));
-  for (const m of list) {
-    if ((s.desk?.[m.id] ?? 0) > s.t) continue;
-    if (busy.has(m.id)) {
-      releaseWaiting(db, s, all.find(p => p.status === 'inRoom' && p.by === m.id)!, m, list);
-      continue;
+  const ctx = hospitalCtx(db, s);
+  // поток для ПК (spec 2026-10-walk): сперва все свободные зовут своих, потом свободный без своих — из чужой очереди
+  for (const steal of s.flow ? [false, true] : [false]) {
+    for (const m of list) {
+      if ((s.desk?.[m.id] ?? 0) > s.t || (steal && busy.has(m.id))) continue;
+      if (busy.has(m.id)) {
+        releaseWaiting(db, s, all.find(p => p.status === 'inRoom' && p.by === m.id)!, m, list);
+        continue;
+      }
+      const back = all.filter(p => p.status === 'waiting' && p.by === m.id).sort((a, b) => a.queuedT - b.queuedT || (a.id < b.id ? -1 : 1))[0];
+      const id = back?.id ?? (s.flow ? pickPc(db, s, m, list, steal) : s.queue.find(x => colleagueTakes(db, s, s.patients[x], m, list)));
+      if (!id) continue;
+      const p = s.patients[id];
+      s.queue = s.queue.filter(x => x !== id);
+      p.status = 'inRoom';
+      if (!back) {
+        p.by = m.id;
+        p.phase = {};
+      }
+      p.calledT ??= s.t;
+      p.wait++; // прежняя проверка терпения недействительна
+      journey.called(s, p, m.room);
+      p.spent.seconds += MIN;
+      // поток для ПК (spec 2026-10-walk): приём начнётся, когда он дойдёт до кабинета; врач ждёт его
+      const walk = s.flow && m.room ? toDoctor(ctx.plan, p, m.room, s.t) : 0;
+      if (s.flow) {
+        p.doc = m.id;
+        delete p.next;
+        delete p.nextAt;
+      }
+      if (walk > 0) p.walk = { to: m.room!, at: s.t + walk };
+      schedule(s, s.t + Math.max(MIN, walk), { kind: 'colleague', id });
+      busy.add(m.id);
     }
-    const back = all.filter(p => p.status === 'waiting' && p.by === m.id).sort((a, b) => a.queuedT - b.queuedT || (a.id < b.id ? -1 : 1))[0];
-    const id = back?.id ?? s.queue.find(x => colleagueTakes(db, s, s.patients[x], m, list));
-    if (!id) continue;
-    const p = s.patients[id];
-    s.queue = s.queue.filter(x => x !== id);
-    p.status = 'inRoom';
-    if (!back) {
-      p.by = m.id;
-      p.phase = {};
-    }
-    p.calledT ??= s.t;
-    p.wait++; // прежняя проверка терпения недействительна
-    journey.called(s, p, m.room);
-    p.spent.seconds += MIN;
-    schedule(s, s.t + MIN, { kind: 'colleague', id });
-    busy.add(m.id);
   }
+}
+
+/**
+ * Следующий к каждому врачу идёт к двери его кабинета (spec 2026-10-walk; геймдизайн §5: «ждут у двери кабинета, и врач
+ * зовёт следующего, заканчивая с прежним»): к нанятому — кого он позовёт первым из своих, к вам — первый из ваших в
+ * очереди. Кто уже у двери, там и остаётся, даже если впереди встал срочный.
+ */
+function toDoors(db: ContentDb, s: ShiftState, list: readonly StaffMember[]) {
+  const plan = hospitalCtx(db, s).plan;
+  let back: Map<string, ShiftPatient[]> | undefined;
+  for (const m of list) {
+    if (!m.room) continue;
+    // свои, вернувшиеся с результатами, — первыми, как их зовёт `callIn`: раньше вставший в очередь
+    if (!back) {
+      back = new Map();
+      for (const p of Object.values(s.patients)) {
+        if (p.status !== 'waiting' || !p.by) continue;
+        const q = back.get(p.by);
+        if (q) q.push(p);
+        else back.set(p.by, [p]);
+      }
+      for (const q of back.values()) q.sort((a, b) => a.queuedT - b.queuedT || (a.id < b.id ? -1 : 1));
+    }
+    let n = 0;
+    for (const p of back.get(m.id) ?? []) {
+      if (n++ >= AT_DOOR) break;
+      toDoor(plan, p, m.room, s.t);
+    }
+    for (const x of s.queue) {
+      if (n >= AT_DOOR) break;
+      const p = s.patients[x];
+      if (p.doc !== m.id || !colleagueTakes(db, s, p, m, list)) continue;
+      toDoor(plan, p, m.room, s.t);
+      n++;
+    }
+  }
+  const office = doctorRoom(plan);
+  if (!office) return;
+  let n = 0;
+  for (const x of s.queue) {
+    if (n >= AT_DOOR) break;
+    const p = s.patients[x];
+    if (p.doc !== undefined || p.kind === 'ambulance') continue;
+    toDoor(plan, p, office, s.t);
+    n++;
+  }
+}
+
+/**
+ * Кого зовёт свободный нанятый врач в потоке для ПК (spec 2026-10-walk, «Свой врач»): первого из записанных к нему; своих
+ * нет и можно чужих (`steal`) — терапевт зовёт первого из самой длинной чужой очереди (тот идёт к нему), специалист —
+ * никого. Только готовых: оформленных и измеренных.
+ */
+function pickPc(db: ContentDb, s: ShiftState, m: StaffMember, list: readonly StaffMember[], steal: boolean): string | undefined {
+  const can = s.queue.filter(x => readyAt(s.patients[x]) <= s.t && colleagueTakes(db, s, s.patients[x], m, list));
+  const own = can.find(x => s.patients[x].doc === m.id);
+  if (own || !steal || db.roles[m.role]?.profile) return own;
+  const by = new Map<string, string[]>();
+  for (const x of can) {
+    const d = s.patients[x].doc ?? '';
+    const q = by.get(d);
+    if (q) q.push(x);
+    else by.set(d, [x]);
+  }
+  let best: string[] | undefined;
+  for (const q of by.values()) if (!best || q.length > best.length) best = q;
+  return best?.[0];
 }
 
 /**
@@ -3082,7 +3246,7 @@ function staffDesks(db: ContentDb, s: ShiftState) {
 function releaseWaiting(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffMember, list: readonly StaffMember[]) {
   if (p.pending.length === 0 || p.results.some(r => r.at > s.t)) return;
   const step = s.events.find(e => e.event.kind === 'colleague' && e.event.id === p.id);
-  if (!step || step.t <= s.t || !s.queue.some(x => colleagueTakes(db, s, s.patients[x], m, list))) return;
+  if (!step || step.t <= s.t || !s.queue.some(x => (!s.flow || readyAt(s.patients[x]) <= s.t) && colleagueTakes(db, s, s.patients[x], m, list))) return;
   s.events = s.events.filter(e => e !== step);
   p.spent.seconds -= step.t - s.t;
   p.status = 'away';
@@ -3106,9 +3270,13 @@ function takeOver(db: ContentDb, s: ShiftState, id: string): Notice[] {
   // врач просил посмотреть (spec 2026-10-consults) — вы забрали: просьба исполнена
   closeConsult(s, id);
   const by = p.by;
+  const was = p.status;
   delete p.by;
   delete p.phase;
   p.from = by;
+  // поток для ПК (spec 2026-10-walk): теперь он ваш; был у врача — идёт из его кабинета
+  if (s.flow) delete p.doc;
+  const room = s.flow ? hospitalCtx(db, s).staff.find(x => x.id === by)?.room : undefined;
   // начатый вопрос или осмотр врач доделывает: результат уже записан, со временем конца. Время
   // шага записано вперёд, до следующего шага; ожидание результатов у врача — не в счёт приёма
   const busy = Math.max(s.t, ...p.results.map(r => r.at));
@@ -3128,10 +3296,21 @@ function takeOver(db: ContentDb, s: ShiftState, id: string): Notice[] {
       journey.called(s, p);
       // дослушать ответ у врача и дойти до вас; вы — из смотровой приёмного, если были там (FR-HOS-4)
       const meet = meetIn(db, s, p);
+      // поток для ПК (spec 2026-10-walk): от врача — из его кабинета, из зала или от двери — оттуда
+      const walk = s.flow && !p.bay
+        ? walkToYou(db, s, p, (ctx, office) => (was === 'inRoom' && room ? walkPc(ctx.plan, room, office) : toDoctor(ctx.plan, p, office, busy)), busy)
+        : 0;
+      delete p.next;
+      delete p.nextAt;
       goTo(s, p);
-      notices = [...advanceBy(db, s, busy - s.t), ...spend(db, s, p, meet)];
+      notices = [...advanceBy(db, s, busy - s.t), ...spend(db, s, p, Math.max(meet, walk))];
     } else {
-      // впереди — по времени прихода, как вернувшийся с обследований
+      // впереди — по времени прихода, как вернувшийся с обследований; в потоке для ПК — в зал у вашего кабинета
+      if (s.flow) {
+        const ctx = hospitalCtx(db, s);
+        const w = waitsAt(p);
+        moveTo(ctx.plan, ctx.working, p, was === 'inRoom' ? room : w.at, doctorRoom(ctx.plan), Math.max(s.t, w.t ?? s.t));
+      }
       enqueue(s, p, p.arriveT);
     }
   }
@@ -3298,6 +3477,12 @@ function answerConsult(db: ContentDb, s: ShiftState, cmd: Extract<Command, { kin
   p.queuedT = s.t;
   p.wait++;
   delete p.out;
+  // поток для ПК (spec 2026-10-walk): из кабинета прежнего врача — в зону ожидания у кабинета нового
+  if (s.flow) {
+    const ctx = hospitalCtx(db, s);
+    p.doc = to.id;
+    moveTo(ctx.plan, ctx.working, p, m.room, to.room, s.t + MIN);
+  }
   journey.own(s, p, true);
   // минута — передать карту, и этот врач свободен
   (s.desk ??= {})[m.id] = s.t + MIN;
