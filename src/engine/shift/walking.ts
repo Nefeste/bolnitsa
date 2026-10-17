@@ -18,11 +18,20 @@ const secs = (m: number | undefined): number => Math.round((m ?? 0) / WALK_SPEED
 /** Сколько первых в очереди к врачу ждут у двери его кабинета (spec 2026-10-walk) — игровая оценка, подобрана симулятором. */
 export const AT_DOOR = 2;
 
+/**
+ * Сколько игровых секунд регистратура кладёт на каждого, кто уже ждёт врача или у него, когда решает, к кому записать
+ * (spec 2026-10-walk): терапевт навыка 3 принимает около трёх в час (content/hospital/inflow.yaml) — игровая оценка.
+ */
+export const PER_QUEUED = 20 * 60;
+
 /** Секунд пешком от двери `from` до двери `to` в потоке для ПК. */
 export const walkPc = (plan: Plan, from: string | undefined, to: string | undefined): number => (from && to ? secs(metersBetween(plan, from, to)) : 0);
 
 /** Работающее помещение этого вида — первое по плану. */
 const first = (plan: Plan, working: ReadonlySet<string>, type: string): string | undefined => plan.rooms.find(r => r.type === type && working.has(r.id))?.id;
+
+/** Секунд пешком от регистратуры до кабинета `office`; регистратуры нет — 0. */
+export const fromDesk = (plan: Plan, working: ReadonlySet<string>, office: string | undefined): number => walkPc(plan, first(plan, working, 'room.reception'), office);
 
 /** Зона ожидания у кабинета `office` (spec 2026-10-walk, «Своя зона ожидания»): ближайшая работающая по коридорам. */
 export function hallNear(plan: Plan, working: ReadonlySet<string>, office: string | undefined): string | undefined {
