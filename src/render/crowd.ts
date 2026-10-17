@@ -80,6 +80,16 @@ function turnTo(a: number, target: number, max: number): number {
   return a + Math.max(-max, Math.min(max, d));
 }
 
+/** Точка на улице за входом (3 м) и клетка входа: главный или для скорой (нет его — главный). */
+function exitOf(l: Layout, kind: 'main' | 'ambulance'): { x: number; z: number; cell: number } {
+  const e = l.plan.entrances?.find(x => x.kind === kind) ?? l.plan.entrances?.find(x => x.kind === 'main');
+  const cells = e?.cells ?? [l.plan.entrance];
+  const out = e?.out ?? l.doors.find(d => d.room === -1)!.out;
+  const cx = cells.reduce((n, c) => n + c[0] + 0.5, 0) / cells.length;
+  const cz = cells.reduce((n, c) => n + c[1] + 0.5, 0) / cells.length;
+  return { x: cx + out[0] * 3, z: cz + out[1] * 3, cell: cells[0][1] * l.w + cells[0][0] };
+}
+
 export class Crowd {
   readonly walkers = new Map<string, Walker>();
   /** скорость игры: 1, 2, 4 (0 — пауза: люди стоят) */
@@ -87,8 +97,10 @@ export class Crowd {
   /** длительности анимаций SitDown и StandUp по виду, с */
   private sitDur: number[];
   private standDur: number[];
-  /** куда выйти из больницы: точка на улице за входом */
-  readonly exit: { x: number; z: number; cell: number };
+  /** куда выйти из больницы: точка на улице за главным входом */
+  exit: { x: number; z: number; cell: number };
+  /** откуда входит привезённый скорой: за входом для скорой (у больницы ПК; иначе — главный) */
+  ambulance: { x: number; z: number; cell: number };
 
   constructor(
     private l: Layout,
@@ -97,15 +109,27 @@ export class Crowd {
   ) {
     this.sitDur = looks.map(k => k.clips.SitDown.duration);
     this.standDur = looks.map(k => k.clips.StandUp.duration);
-    const [ex, ey] = l.plan.entrance;
-    const door = l.doors.find(d => d.room === -1)!;
-    this.exit = { x: ex + 0.5 + door.out[0] * 3, z: ey + 0.5 + door.out[1] * 3, cell: ey * l.w + ex };
+    this.exit = exitOf(l, 'main');
+    this.ambulance = exitOf(l, 'ambulance');
   }
 
-  /** Новый человек: персонал — сразу на месте, пациент — входит с улицы. */
-  add(key: string, look: number, spot: Spot, staff: boolean): Walker {
+  /**
+   * Новая раскладка после стройки (spec docs/specs/2026-10-build.md, «Отрисовка»): люди остаются где были; кто шёл —
+   * идёт заново по новым клеткам; места раздаст население (population.ts, `relayout`).
+   */
+  relayout(l: Layout, paths: Paths) {
+    this.l = l;
+    this.paths = paths;
+    this.exit = exitOf(l, 'main');
+    this.ambulance = exitOf(l, 'ambulance');
+    for (const w of this.walkers.values()) if (w.state === 'walk') this.startWalk(w, w.leaving ? null : (w.goals[0] ?? null));
+  }
+
+  /** Новый человек: персонал — сразу на месте, пациент — входит с улицы (привезённый скорой — у входа для скорой). */
+  add(key: string, look: number, spot: Spot, staff: boolean, ambulance = false): Walker {
+    const from = ambulance ? this.ambulance : this.exit;
     const w: Walker = {
-      key, look, staff, x: this.exit.x, y: 0, z: this.exit.z, heading: 0, lie: 0, lat: KEEP_RIGHT, state: 'idle', pts: null, seg: 0,
+      key, look, staff, x: from.x, y: 0, z: from.z, heading: 0, lie: 0, lat: KEEP_RIGHT, state: 'idle', pts: null, seg: 0,
       at: undefined, goals: [], dwell: 0, t: 0, fx: 0, fz: 0, fy: 0, clip: IDLE, clipTime: (key.length * 0.37) % 3, loop: true, leaving: false,
       yield: 0, v: 0,
     };
@@ -197,7 +221,9 @@ export class Crowd {
     const l = this.l;
     const fromCell = Math.max(0, Math.min(l.h - 1, Math.floor(w.z))) * l.w + Math.max(0, Math.min(l.w - 1, Math.floor(w.x)));
     const outside = fromCell >= 0 && l.plan.grid.cells[fromCell] === 0;
-    const start = outside ? this.exit.cell : fromCell;
+    // с улицы — через ближний вход
+    const near = (e: { x: number; z: number }) => (e.x - w.x) ** 2 + (e.z - w.z) ** 2;
+    const start = outside ? (near(this.ambulance) < near(this.exit) ? this.ambulance.cell : this.exit.cell) : fromCell;
     const to = goal ? goal.cell : this.exit.cell;
     const cells = this.paths.find(start, to) ?? Int32Array.of(start, to);
     const n = cells.length + 1 + (goal ? 0 : 1);

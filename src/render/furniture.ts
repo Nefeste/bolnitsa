@@ -1,6 +1,7 @@
 // из spikes/render-3d: src/world.ts (Batch, Furnisher, оборудование кодом) — изменено: предметы — из раскладки движка и
 // таблицы catalog.ts; размер по месту — отдельно по ширине, глубине и высоте; посадочные и «лёжа» точки; кровать с
-// бортами, КТ, МРТ, операционный стол, наркозный аппарат, аппарат ИВЛ, монитор, УЗИ, эндоскопическая стойка — кодом.
+// бортами, КТ, МРТ, операционный стол, наркозный аппарат, аппарат ИВЛ, монитор, УЗИ, эндоскопическая стойка — кодом;
+// один предмет отдельно — для призрака стройки (`furnishThing`, spec docs/specs/2026-10-build.md).
 //
 // Все предметы больницы сливаются в несколько больших сеток по материалу: несколько вызовов отрисовки на всю больницу,
 // сколько бы предметов в ней ни было. Мир: x — столбец клетки, z — строка, y — вверх; клетка — 1 м. У предмета перёд —
@@ -426,80 +427,89 @@ export function furnish(layout: Layout, models: Map<string, Model>): Furnished {
   const f = new Furnisher(models);
   const seats: (SeatAnchor | undefined)[] = [];
   const lies: (LieAnchor | undefined)[] = [];
-  layout.things.forEach((t, i) => {
-    const e = entryOf(t.kind, t.type, t.equipment);
-    const { cx, cz, m } = thingFrame(t);
-    if (!e) return;
-    if ('model' in e) {
-      const r = f.place(e.model, cx, cz, t.yaw, e.fit, { recolor: e.recolor, back: e.back, seat: e.seat });
-      seats[i] = r.seat;
-      if (e.computer) screenOn(f, m, 0, r.top - 0.01, -0.08);
-      return;
-    }
-    if (LIE_TOP[e.code] !== undefined) lies[i] = lieAt(t, e.code, cx, cz);
-    // длинный предмет, которому не нашлось второй клетки (одна койка в шаблоне реанимации: вторая клетка разрезала бы
-    // помещение), — укорочен до своей клетки, а не налезает на соседние
-    if (LIE_TOP[e.code] !== undefined && t.cells.length === 1) m.multiply(new THREE.Matrix4().makeScale(1, 1, 0.5));
-    switch (e.code) {
-      case 'bed':
-        bed(f, m, t.type === 'room.ward' || t.type === 'room.box');
-        break;
-      case 'examCouch':
-        examCouch(f, m);
-        break;
-      case 'xray':
-        xray(f, m);
-        break;
-      case 'ct':
-        ct(f, m);
-        break;
-      case 'mri':
-        mri(f, m);
-        break;
-      case 'orTable':
-        orTable(f, m);
-        break;
-      case 'anesthesia':
-        anesthesia(f, m);
-        break;
-      case 'ventilator':
-        ventilator(f, m);
-        break;
-      case 'monitor':
-        monitor(f, m);
-        break;
-      case 'ecg':
-        ecgCart(f, m);
-        break;
-      case 'analyzer':
-        analyzer(f, m.clone().multiply(new THREE.Matrix4().makeTranslation(0, 0, -0.18)));
-        break;
-      case 'us':
-        us(f, m);
-        break;
-      case 'endoscope':
-        endoscope(f, m);
-        break;
-      case 'counter':
-        counter(f, m, f);
-        break;
-      case 'console':
-        console_(f, m.clone().multiply(new THREE.Matrix4().makeTranslation(0, 0, -0.18)));
-        break;
-      case 'instrumentTable':
-        instrumentTable(f, m);
-        break;
-      case 'labBench':
-        labBench(f, m, cx, cz, t.yaw, (t.cell[0] + t.cell[1]) % 2);
-        break;
-      case 'procedureTable':
-        procedureTable(f, m);
-        break;
-    }
-    f.batch.items++;
-  });
+  layout.things.forEach((t, i) => placeThing(f, t, i, seats, lies));
   const decor = decorate(f, layout);
   return { batch: f.batch, seats, lies, decor };
+}
+
+/** Один предмет — для призрака стройки (spec docs/specs/2026-10-build.md, «Экран и управление»). */
+export function furnishThing(t: Thing, models: Map<string, Model>): Batch {
+  const f = new Furnisher(models);
+  placeThing(f, t, 0, [], []);
+  return f.batch;
+}
+
+function placeThing(f: Furnisher, t: Thing, i: number, seats: (SeatAnchor | undefined)[], lies: (LieAnchor | undefined)[]) {
+  const e = entryOf(t.kind, t.type, t.equipment);
+  const { cx, cz, m } = thingFrame(t);
+  if (!e) return;
+  if ('model' in e) {
+    const r = f.place(e.model, cx, cz, t.yaw, e.fit, { recolor: e.recolor, back: e.back, seat: e.seat });
+    seats[i] = r.seat;
+    if (e.computer) screenOn(f, m, 0, r.top - 0.01, -0.08);
+    return;
+  }
+  if (LIE_TOP[e.code] !== undefined) lies[i] = lieAt(t, e.code, cx, cz);
+  // длинный предмет, которому не нашлось второй клетки (одна койка в шаблоне реанимации: вторая клетка разрезала бы
+  // помещение), — укорочен до своей клетки, а не налезает на соседние
+  if (LIE_TOP[e.code] !== undefined && t.cells.length === 1) m.multiply(new THREE.Matrix4().makeScale(1, 1, 0.5));
+  switch (e.code) {
+    case 'bed':
+      bed(f, m, t.type === 'room.ward' || t.type === 'room.box');
+      break;
+    case 'examCouch':
+      examCouch(f, m);
+      break;
+    case 'xray':
+      xray(f, m);
+      break;
+    case 'ct':
+      ct(f, m);
+      break;
+    case 'mri':
+      mri(f, m);
+      break;
+    case 'orTable':
+      orTable(f, m);
+      break;
+    case 'anesthesia':
+      anesthesia(f, m);
+      break;
+    case 'ventilator':
+      ventilator(f, m);
+      break;
+    case 'monitor':
+      monitor(f, m);
+      break;
+    case 'ecg':
+      ecgCart(f, m);
+      break;
+    case 'analyzer':
+      analyzer(f, m.clone().multiply(new THREE.Matrix4().makeTranslation(0, 0, -0.18)));
+      break;
+    case 'us':
+      us(f, m);
+      break;
+    case 'endoscope':
+      endoscope(f, m);
+      break;
+    case 'counter':
+      counter(f, m, f);
+      break;
+    case 'console':
+      console_(f, m.clone().multiply(new THREE.Matrix4().makeTranslation(0, 0, -0.18)));
+      break;
+    case 'instrumentTable':
+      instrumentTable(f, m);
+      break;
+    case 'labBench':
+      labBench(f, m, cx, cz, t.yaw, (t.cell[0] + t.cell[1]) % 2);
+      break;
+    case 'procedureTable':
+      procedureTable(f, m);
+      break;
+  }
+  f.batch.items++;
 }
 
 /**

@@ -2,13 +2,15 @@
 // предметы со следом и поворотом, двери, клетки, где может пройти человек. Чистые функции без Three.js и DOM — их
 // проверяют тесты (tools/test/layout.test.ts) на всех шаблонах помещений.
 //
-// В движке предмет — одна клетка. В 3D кровать, кушетка, стол рентгена, КТ, МРТ и операционный стол длиной около двух
-// метров занимают две: свою и соседнюю свободную — по направлению к двери помещения (так в шаблонах «Анамнеза» у койки
-// тумбочка и монитор стоят у изголовья), иначе в обратную сторону. Куда повёрнуты остальные — по правилам карты
-// «Анамнеза» (orient.ts).
+// В движке «Анамнеза» предмет — одна клетка. В 3D кровать, кушетка, стол рентгена, КТ, МРТ и операционный стол длиной
+// около двух метров занимают две: свою и соседнюю свободную — по направлению к двери помещения (так в шаблонах «Анамнеза»
+// у койки тумбочка и монитор стоят у изголовья), иначе в обратную сторону. Куда повёрнуты остальные — по правилам карты
+// «Анамнеза» (orient.ts). У помещений больницы ПК (spec docs/specs/2026-10-build.md) клетки и поворот каждого предмета
+// знает движок — они берутся как есть; входов два.
 import type { ContentDb, Id, ObjectKind } from '../content/types';
 import { type Plan, type PlacedRoom, sizeOf, turn } from '../engine/hospital/build';
 import { CELL, walkable } from '../engine/hospital/grid';
+import { cellsOf, FACE } from '../engine/hospital/site';
 import { objectTurns, type Turn } from './orient';
 
 export type Cell = [number, number];
@@ -41,6 +43,10 @@ export interface Thing {
   yaw: number;
   /** аппарат с места шаблона */
   equipment?: Id;
+  /** предмет больницы ПК: клетки и поворот — из движка; номер предмета */
+  item?: number;
+  /** уберут, когда освободится */
+  leaving?: true;
 }
 
 export interface Door {
@@ -106,6 +112,16 @@ export function layoutOf(db: ContentDb, plan: Plan, decor: readonly { kind: Obje
   const out: Cell[] = [];
   plan.rooms.forEach((r, n) => {
     out.push(outOf(r.rot));
+    if (r.items) {
+      for (const it of r.items) {
+        const [fx, fy] = FACE[it.rot];
+        things.push({
+          kind: it.kind, room: n, type: r.type, cell: [it.x, it.y], cells: cellsOf(it, r.type).map(([x, y]): Cell => [x, y]), face: [fx, fy], yaw: yawOf(fx, fy),
+          ...(it.eq ? { equipment: it.eq } : {}), item: it.id, ...(it.leaving ? { leaving: true as const } : {}),
+        });
+      }
+      return;
+    }
     const z = sizeOf(db, r.type, r.size);
     if (!z) return;
     const at = (c: readonly [number, number]): Cell => {
@@ -127,6 +143,7 @@ export function layoutOf(db: ContentDb, plan: Plan, decor: readonly { kind: Obje
   // куда повёрнуты: правила карты «Анамнеза» (стул — к столу, стол — к тому, кто за ним, остальное — спиной к стене)
   const turns = objectTurns(plan.grid, things.map(t => ({ kind: t.kind, x: t.cell[0], y: t.cell[1] })), staffCells);
   things.forEach((t, i) => {
+    if (t.item !== undefined) return;
     t.face = FACE_OF[turns[i]];
     t.yaw = yawOf(t.face[0], t.face[1]);
   });
@@ -146,7 +163,7 @@ export function layoutOf(db: ContentDb, plan: Plan, decor: readonly { kind: Obje
   const free = (k: string) => !taken.has(k) && !reserved.has(k);
   const solid = new Set(things.filter(t => !passable(t.kind)).map(t => key(t.cell[0], t.cell[1])));
   for (const t of things) {
-    if (!isLong(t.kind, t.type) || t.room < 0) continue;
+    if (!isLong(t.kind, t.type) || t.room < 0 || t.item !== undefined) continue;
     const r = plan.rooms[t.room];
     const o = out[t.room];
     const dirs: Cell[] = [o, [-o[0], -o[1]], [o[1], o[0]], [-o[1], -o[0]]];
@@ -181,9 +198,13 @@ export function layoutOf(db: ContentDb, plan: Plan, decor: readonly { kind: Obje
   const region = regions(w, h, walk);
 
   const doors: Door[] = plan.rooms.flatMap((r, n) => (r.door.length ? [{ room: n, cells: r.door.map(([x, y]): Cell => [x, y]), out: out[n] }] : []));
-  const [ex, ey] = plan.entrance;
-  const eo: Cell = ex === 0 ? [-1, 0] : ey === 0 ? [0, -1] : ex === w - 1 ? [1, 0] : [0, 1];
-  doors.push({ room: -1, cells: [[ex, ey]], out: eo });
+  // входы: у больницы ПК — главный и для скорой, на стене корпуса; у готовой больницы «Анамнеза» — в краю участка
+  if (plan.entrances?.length) for (const e of plan.entrances) doors.push({ room: -1, cells: e.cells.map(([x, y]): Cell => [x, y]), out: [e.out[0], e.out[1]] });
+  else {
+    const [ex, ey] = plan.entrance;
+    const eo: Cell = ex === 0 ? [-1, 0] : ey === 0 ? [0, -1] : ex === w - 1 ? [1, 0] : [0, 1];
+    doors.push({ room: -1, cells: [[ex, ey]], out: eo });
+  }
   return { plan, w, h, things, occupied, walk, region, doors, out };
 }
 

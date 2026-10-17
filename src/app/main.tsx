@@ -1,12 +1,14 @@
 // Страница игры (spec docs/specs/2026-10-shell-3d.md): панели React и 3D-вид. Параметры адреса — для проверок и бенча:
 //   ?q=low|medium|high — пресет качества; ?bench=1 (&secs=15&warm=3&qualities=low,high&shots=0) — авто-бенч;
-//   ?shot=1 — только снимки; ?start=10.5 — сразу промотать смену до этого часа; ?lang=en — язык.
+//   ?shot=1 — только снимки; ?start=10.5 — сразу промотать смену до этого часа; ?lang=en — язык;
+//   ?hospital=empty|preset — с чего начать (spec docs/specs/2026-10-build.md, «Начало игры»; нет — окно спросит; бенч и
+//   снимки — всегда готовая больница). В Electron — те же ключи: --bench, --hospital empty.
 import { createRoot } from 'react-dom/client';
 import { setLang, systemLang, T, type Lang } from '../i18n';
 import type { Quality } from '../render/view';
 import { App, type Names } from '../ui/App';
 import { type Actions, Store } from '../ui/store';
-import { Game } from './game';
+import { Game, type Start } from './game';
 
 declare const __VERSION__: string;
 
@@ -33,7 +35,22 @@ const actions: Actions = {
   toggleDebug: later('toggleDebug'),
   bench: later('bench'),
   setLang: later('setLang'),
+  toggleBuild: later('toggleBuild'),
+  setTool: later('setTool'),
+  pickRoomType: later('pickRoomType'),
+  pickItem: later('pickItem'),
+  undo: later('undo'),
+  done: later('done'),
+  furnish: later('furnish'),
+  demolish: later('demolish'),
+  hire: later('hire'),
+  dismiss: later('dismiss'),
+  startGame: kind => {
+    store.set({ choose: false });
+    chosen?.(kind);
+  },
 };
+let chosen: ((kind: Start) => void) | undefined;
 const names: Names = {
   room: id => game?.names().room(id) ?? id ?? '—',
   role: id => game?.names().role(id) ?? id ?? '—',
@@ -42,7 +59,22 @@ const names: Names = {
 createRoot(document.getElementById('ui')!).render(<App store={store} actions={actions} names={names} />);
 
 const quality = (['low', 'medium', 'high'] as Quality[]).find(x => x === q.get('q')) ?? 'medium';
-Game.create(document.getElementById('view')!, store, __VERSION__, quality)
+
+/** С чего начать: ключ адреса или Electron; бенч и снимки — готовая больница; иначе спросить игрока. */
+async function startOf(): Promise<Start> {
+  const args = window.shell ? await window.shell.args() : [];
+  const has = (k: string) => q.get(k) === '1' || args.includes(`--${k}`);
+  const val = q.get('hospital') ?? (args.includes('--hospital') ? args[args.indexOf('--hospital') + 1] : null);
+  if (has('bench') || has('shot')) return 'preset';
+  if (val === 'empty' || val === 'preset') return val;
+  store.set({ choose: true });
+  return new Promise<Start>(resolve => {
+    chosen = resolve;
+  });
+}
+
+startOf()
+  .then(start => Game.create(document.getElementById('view')!, store, __VERSION__, quality, start))
   .then(async g => {
     game = g;
     window.__game = g;

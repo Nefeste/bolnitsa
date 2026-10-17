@@ -29,3 +29,8 @@ export function clock(t: number): string {
   const s = ((t % 86400) + 86400) % 86400;
   return `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}`;
 }
+
+/** Деньги: «12 000 ₽» (валюта — рубль, как касса «Анамнеза»; геймдизайн §8 — условная монета, решит владелец). */
+export function money(n: number): string {
+  return `${Math.round(n).toLocaleString(lang === 'en' ? 'en-US' : 'ru-RU')} ₽`;
+}
