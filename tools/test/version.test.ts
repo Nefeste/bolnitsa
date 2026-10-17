@@ -16,9 +16,12 @@ describe('версия', () => {
     expect(lock.packages[''].version).toBe(pkg.version);
   });
 
-  test('сборка по тегу: файлы релиза — с именем продукта, как их называет electron-builder', () => {
+  // релиз пока — только Windows x64 одним zip (решение владельца 17.10.2026; docs/05-process.md)
+  test('сборка по тегу: файл релиза — zip для Windows x64 с именем продукта, как его называет electron-builder', () => {
     expect(pkg.build.productName).toBe(pkg.productName);
     expect(pkg.build.artifactName).toBe('${productName}-${version}-${os}-${arch}.${ext}');
-    for (const pat of ['-*.AppImage', '-*.tar.gz', '-*-win-x64.zip', '-*-win-x64.exe']) expect(build.includes(`release/${pkg.productName}${pat}`)).toBe(true);
+    expect(pkg.build.win.target).toEqual([{ target: 'zip', arch: ['x64'] }]);
+    expect(build.includes(`release/${pkg.productName}-*-win-x64.zip`)).toBe(true);
+    expect(build.includes('electron-builder --win --publish never')).toBe(true);
   });
 });
