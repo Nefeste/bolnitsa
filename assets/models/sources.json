@@ -1,0 +1,172 @@
+{
+ "kenney/chair.glb": {
+  "source": "kfk/assets/kenney_furniture-kit/Models/GLTF format/chair.glb",
+  "sha256": "c8a11eec93e89e31250ba91afc1b8d56c3bec7ae86640fd1239f595ff4180883",
+  "out": "64fba1d5d436c8e35f2c22125e353f2614fe181f9ba7c0a3ed39466f6e033e79"
+ },
+ "kenney/chairDesk.glb": {
+  "source": "kfk/assets/kenney_furniture-kit/Models/GLTF format/chairDesk.glb",
+  "sha256": "46406619186034cbe92b19b79a5f1a8e3f442a17a70a7524ef2c0ad0f35095c6",
+  "out": "f6c86c1441b59deb9213cb06618045730173d0e2f1c09260ffdee348258e01fb"
+ },
+ "kenney/chairModernFrameCushion.glb": {
+  "source": "kfk/assets/kenney_furniture-kit/Models/GLTF format/chairModernFrameCushion.glb",
+  "sha256": "fd3351b077cafbd54224e20fa7a3a1b4a4304019cf44c25a6e7709ad71b852b8",
+  "out": "8676d44facb9041d4e9321041bfb6c210d841ddc59acbded89b6638a12bca72a"
+ },
+ "kenney/benchCushion.glb": {
+  "source": "kfk/assets/kenney_furniture-kit/Models/GLTF format/benchCushion.glb",
+  "sha256": "5186ad938f8b9eff255361fd1fdc48a81f08c318161cde27c93753ab95a2d354",
+  "out": "4ac45cc1b12c8b65c87c7a0b6ec6fe70038981513365bd9f9c9fb4467e1fe37b"
+ },
+ "kenney/loungeChair.glb": {
+  "source": "kfk/assets/kenney_furniture-kit/Models/GLTF format/loungeChair.glb",
+  "sha256": "ddfe6bc4b3451bca61666d7b614552d6ed2a03d82fc76244b72ae3155874dc6c",
+  "out": "f9a4670b44b9411d531dd98c5e14a1b99975469df50608765ee95e0fbe3e2805"
+ },
+ "kenney/desk.glb": {
+  "source": "kfk/assets/kenney_furniture-kit/Models/GLTF format/desk.glb",
+  "sha256": "0164fe828f028b321730fb8c74502e353583f751be74da1682d42fff7d3c5a42",
+  "out": "1847e666a996b738db965bd39fe5c94bf23e3010a7051c10a4d34826b2538daa"
+ },
+ "kenney/computerScreen.glb": {
+  "source": "kfk/assets/kenney_furniture-kit/Models/GLTF format/computerScreen.glb",
+  "sha256": "5942cbad29a2d2b956619569926e81d50a4174403d592fece6556e57632dc643",
+  "out": "9ccd873c6e977d62cee111988b663d0f55d8460010dda73fe7d5fcde3842f480"
+ },
+ "kenney/computerKeyboard.glb": {
+  "source": "kfk/assets/kenney_furniture-kit/Models/GLTF format/computerKeyboard.glb",
+  "sha256": "9d9135789de2120e9f41ce3f0a56dd1b15f40adcc7888739bb842a2d820da322",
+  "out": "95c4c66500dcdc6ae4fe98621d6ceb787a0e89fb16bafe478d8d49ac87f5231e"
+ },
+ "kenney/bookcaseClosedDoors.glb": {
+  "source": "kfk/assets/kenney_furniture-kit/Models/GLTF format/bookcaseClosedDoors.glb",
+  "sha256": "ff33f535acdb1825c0e958a293642b39665adcae0b1317b650e83d2bb687f4e2",
+  "out": "f5a696eddfcc9ee604863552d8f9a0dca1d5a34b8fd00f778bc5e6db650c445b"
+ },
+ "kenney/sideTableDrawers.glb": {
+  "source": "kfk/assets/kenney_furniture-kit/Models/GLTF format/sideTableDrawers.glb",
+  "sha256": "911145653c11b103b2c2e84f3d019205d1886186015c3b52aceddc3801ae8fdf",
+  "out": "0f52527265b8c5686e8226b1c91373ba490e04ee1a30140137b81d9a77d3fd95"
+ },
+ "kenney/table.glb": {
+  "source": "kfk/assets/kenney_furniture-kit/Models/GLTF format/table.glb",
+  "sha256": "ff1a94498d023957f4bc3ff6f55a7a82977d336dbf01a573b3364f03afe5ff61",
+  "out": "3e510b1b302acf3d2e2ecb7ec4528b521b3dd5bcb041836009efe6dfea268eef"
+ },
+ "kenney/kitchenCabinet.glb": {
+  "source": "kfk/assets/kenney_furniture-kit/Models/GLTF format/kitchenCabinet.glb",
+  "sha256": "7238c57778935ae25db5e57e9f7af3ba7068c71b005ff7cfbff3b6f3b1a13200",
+  "out": "ab66ac84b3d7aaa4d71e4e1de1f6121408af8bd5da1a3fcb46cd31e98ec08bd9"
+ },
+ "kenney/kitchenSink.glb": {
+  "source": "kfk/assets/kenney_furniture-kit/Models/GLTF format/kitchenSink.glb",
+  "sha256": "7b9610277d71f00dcf1bba49cf4d98d77ce5177e84bf76c7da2f8893e542f743",
+  "out": "e80434e5f0812e6113e9005b8449efa72a1b661122fdbbff7686d755f1b275db"
+ },
+ "kenney/bathroomSink.glb": {
+  "source": "kfk/assets/kenney_furniture-kit/Models/GLTF format/bathroomSink.glb",
+  "sha256": "39d4f19608cab7e0fed52303b2c689f5f51fae1bad9b6913cb53d838875e797e",
+  "out": "7cec1daddb1cc104686537f901ae3fbb2b13368917473a7bb77444d7f08bb58d"
+ },
+ "kenney/bathroomSinkSquare.glb": {
+  "source": "kfk/assets/kenney_furniture-kit/Models/GLTF format/bathroomSinkSquare.glb",
+  "sha256": "360853c822f268e7267c62ef20cf646f170a13d76254cc0804a1d397a4a3ea67",
+  "out": "3cc00304db5939a3a7c39527dac8ce39bcb385d404fd1d0473aa5e99b127ac2d"
+ },
+ "kenney/toilet.glb": {
+  "source": "kfk/assets/kenney_furniture-kit/Models/GLTF format/toilet.glb",
+  "sha256": "16165cfd03c56c2cb443b800570810a22ef770f65e7a468f6761d9dc14eaaeae",
+  "out": "83de6a23f27a45394f3c09b97cbff13cf104925f3085fc7f74b6eaa984b24c52"
+ },
+ "kenney/pottedPlant.glb": {
+  "source": "kfk/assets/kenney_furniture-kit/Models/GLTF format/pottedPlant.glb",
+  "sha256": "5b760eda2766f75fda36b2c5df652a1662f82981ef64cd8fa7fe7bcd386b3a15",
+  "out": "2fbb12212c2e575f96be4cb2fbae4d1577143e948981292c4c4fd81a54ff2cf1"
+ },
+ "kenney/rugRectangle.glb": {
+  "source": "kfk/assets/kenney_furniture-kit/Models/GLTF format/rugRectangle.glb",
+  "sha256": "a989d2d59c04e3071e0c90388b113a9a8f339ce1814ef984c51cb6dcd7c8e0eb",
+  "out": "15b03e4680e406e177ceb912023c0ffbf5e7dd0aa50af2713a93a610940594fd"
+ },
+ "kaykit/cabinet_medium.glb": {
+  "source": "KayKit-Furniture-Bits-1.0/addons/kaykit_furniture_bits/Assets/gltf/cabinet_medium.gltf",
+  "sha256": "139419c479c6f8b38ac24e12ce85bf81a199e05067a544db879f7e403446c9dc",
+  "out": "bcabe770c32ca6eb1129da233f19db55789e59ead7c84d8b42471e8ac7a992a3"
+ },
+ "people/Doctor_Male_Young.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/Doctor_Male_Young.gltf",
+  "sha256": "4f39182b6ecff6affac27f7c4cb2abf9529d68be4a77cc71343b40a83fe6e0cd",
+  "out": "a5287a16a3735fcfc75b440218df747b58c63bd61338cccab4ca4f778fcb187f"
+ },
+ "people/Doctor_Female_Young.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/Doctor_Female_Young.gltf",
+  "sha256": "2fd5082696aca804d77555eff96f6e07c11549e4f03661ce2467e2b9f881e5ab",
+  "out": "677cfae07fd11baa18cdf24a6141b855f659f5ae6e9a23a249c2f11e85862029"
+ },
+ "people/Doctor_Male_Old.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/Doctor_Male_Old.gltf",
+  "sha256": "882741dd558d5a4e91704c6ef88f2979f9c34d956f2da6ce83aca80e5f43a6ab",
+  "out": "cad5beb6c8fa106894705726a4c725ace66c3b3211a22acd5b680c2cf9c5334b"
+ },
+ "people/Doctor_Female_Old.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/Doctor_Female_Old.gltf",
+  "sha256": "7574bea268ed05f11bb1e4a16fdf36ab6302051b5514f20e12f4befb4c99b172",
+  "out": "0aa4cd25132ce657ad673dec7df83d4d1b822a9aa2cc5d1de68e2ea194a9f936"
+ },
+ "people/Suit_Male.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/Suit_Male.gltf",
+  "sha256": "d89d245d10c81ee637116b3400657dad2873ec1bbfb7f90579b2f77a8779fa5b",
+  "out": "e593798e03c68edd74bdba8861bcd4df0258d2f7865a665f881521a38cc0be62"
+ },
+ "people/Suit_Female.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/Suit_Female.gltf",
+  "sha256": "37cbe38d428f57aff788be0f585fb9892b6115cc014c494cb19ec65c621e1f07",
+  "out": "20ee4b1b6812f70ec2e6aa98a6dfb2e489691607c89f1884ee683567f5ce7974"
+ },
+ "people/Casual_Male.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/Casual_Male.gltf",
+  "sha256": "db66b2424af60d7799760795ca63c8a5be1c8af64e9f134217f0a3ff9e405379",
+  "out": "e1d4018b01f851c8236e0648a208bec24cb653a7e924bbd1fb995222dae7e721"
+ },
+ "people/Casual_Female.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/Casual_Female.gltf",
+  "sha256": "87327963ab0f37d004c7340d130808727f3d67b724c3d41aad01fd63c7d6fc8a",
+  "out": "3013a3e5cc765eaf1bd43a0e0e0bb67eb45ae948e3c93e29ab2b992862632857"
+ },
+ "people/Casual2_Male.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/Casual2_Male.gltf",
+  "sha256": "9e8f23af968979cc6945d11015d9fd3cb1e94d53c3b91c39cac39a80e7490a79",
+  "out": "a83778988838e5e31282d0f258b9173b95f10438d964fce81ed3c66d0dde5cdf"
+ },
+ "people/Casual2_Female.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/Casual2_Female.gltf",
+  "sha256": "b614bfe01ae69e0d9dfdfb6ff74fb53abfcc32be59858a9b89fb05ffd3062324",
+  "out": "ee38ad91991e33c655b729a82221391578ea5a44c5196e0eba8d8e27564800a3"
+ },
+ "people/Casual3_Male.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/Casual3_Male.gltf",
+  "sha256": "f84ec360f53796287cfdb6082ad82fd76464dc34845759ca7f1f2ee9e7604057",
+  "out": "a93b5f2826ccb14007c4740e9247913fdba59c213091b78a786b50974dd45fc1"
+ },
+ "people/Casual3_Female.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/Casual3_Female.gltf",
+  "sha256": "75cb6d7fa20674cb6b1dc3ad4e3c6d0d1de03f0128817ba60dcc4fad4ca008a2",
+  "out": "8be063ff5ebf3f753887364b813b880d5f495dd1f3d37b0627d674c7b8ace634"
+ },
+ "people/Casual_Bald.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/Casual_Bald.gltf",
+  "sha256": "a75e2ade5703cd02371d7f38bb6ab307d94a7db2f07d4a219f9248fdecab5e6a",
+  "out": "1023a993fb3bc2e559dd1825514334cb8684adf51d0a28cf371f6d1c2b58c4f1"
+ },
+ "people/OldClassy_Male.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/OldClassy_Male.gltf",
+  "sha256": "9ac226f58ee2f80acb2cd4c66f15cfb210937ee1744b9465425f796aa900d9b8",
+  "out": "07bf3c62b1c84806eceee5fb2a741877eac20c9817af11a9e579a6c9da1fdc79"
+ },
+ "people/OldClassy_Female.glb": {
+  "source": "uacp/public/resources/Ultimate Animated Character Pack - Nov 2019/glTF/OldClassy_Female.gltf",
+  "sha256": "0c116d90c588f357e6537f12bdab5f377f6cb30590f29826092824dc55f7c5eb",
+  "out": "4ec6f8d6a7a585a5afaa1e371a721a6f57f70b4a833cb229ff723043622454ee"
+ }
+}

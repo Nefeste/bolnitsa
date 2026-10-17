@@ -1,0 +1,42 @@
+{
+ "kenney": [
+  "chair",
+  "chairDesk",
+  "chairModernFrameCushion",
+  "benchCushion",
+  "loungeChair",
+  "desk",
+  "computerScreen",
+  "computerKeyboard",
+  "bookcaseClosedDoors",
+  "sideTableDrawers",
+  "table",
+  "kitchenCabinet",
+  "kitchenSink",
+  "bathroomSink",
+  "bathroomSinkSquare",
+  "toilet",
+  "pottedPlant",
+  "rugRectangle"
+ ],
+ "kaykit": [
+  "cabinet_medium"
+ ],
+ "people": [
+  "Doctor_Male_Young",
+  "Doctor_Female_Young",
+  "Doctor_Male_Old",
+  "Doctor_Female_Old",
+  "Suit_Male",
+  "Suit_Female",
+  "Casual_Male",
+  "Casual_Female",
+  "Casual2_Male",
+  "Casual2_Female",
+  "Casual3_Male",
+  "Casual3_Female",
+  "Casual_Bald",
+  "OldClassy_Male",
+  "OldClassy_Female"
+ ]
+}
