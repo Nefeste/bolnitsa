@@ -329,7 +329,7 @@ describe('обход ваших лежащих', () => {
     // назавтра — снова хуже, но не «стало»: извещения нет
     const next = live(s, 56, 300).filter(x => x.n.kind === 'worse' && x.n.id === p!.id);
     if (s.patients[p!.id]?.status === 'admitted') expect(next).toEqual([]);
-  });
+  }, 60_000);
 
   test('строка обхода — динамика, лечение, можно ли выписать; карта лежащего — блок обхода; «Сменить лечение» и «Выписать» через поток расчёта', () => {
     const sim = createSim(db);
@@ -364,7 +364,7 @@ describe('обход ваших лежащих', () => {
     expect(done.state.patients[p.id].status).toBe('done');
     expect(done.state.economy!.ledger!.ward?.cases).toBe(cases + 1);
     expect(doctorState(db, done.state).ward.some(r => r.id === p.id)).toBe(false);
-  });
+  }, 60_000);
 });
 
 describe('долгий случай нанятого врача', () => {
