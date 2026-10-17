@@ -3,6 +3,7 @@
 // (Web Worker в окне Electron), отрисовка — в основном. Туда — команды и ход часов, обратно — упакованный срез
 // (src/sim/pack.ts), строки новых людей и извещения. Сообщения — structured clone; массив среза передаётся без копии.
 import type { Flow, Notice, ShiftState, Command } from '../engine/shift/types';
+import type { Journey } from '../engine/shift/journey';
 import type { HospitalState } from '../engine/hospital/build';
 import type { StaffMember } from '../engine/hospital/staff';
 import type { Season } from '../content/types';
@@ -21,7 +22,12 @@ export type ToSim =
    */
   | { kind: 'tick'; seconds: number; budgetMs: number }
   /** сохранить: вернуть снимок */
-  | { kind: 'save' };
+  | { kind: 'save' }
+  /**
+   * путь пациента (spec docs/specs/2026-10-flow-ui.md): окно показывает путь этого пациента (номер в движке) — поток кладёт
+   * его в срез (`path`), когда он изменился; null — никого
+   */
+  | { kind: 'watch'; id: string | null };
 
 /** Больница и штат — когда они впервые или заново (после `start`, `load`, стройки и найма). */
 export interface World {
@@ -29,6 +35,14 @@ export interface World {
   staff: StaffMember[];
   /** стройка ПК (spec 2026-10-build): потрачено на стройку, ₽, и сколько действий можно отменить */
   works?: { spent: number; undo: number };
+  /** сломанные с утра аппараты — «помещение:место» (spec 2026-10-flow-ui: «не работает: аппарат сломан») */
+  broken?: string[];
+}
+
+/** Путь пациента, которого показывает окно (`watch`); пути нет — null (не поток для ПК или путь уже убран). */
+export interface PathView {
+  id: string;
+  journey: Journey | null;
 }
 
 export type FromSim =
@@ -36,6 +50,6 @@ export type FromSim =
    * после каждого tick и command: упакованный срез (`buf`, src/sim/pack.ts), строки новых людей, извещения, на сколько
    * часы смены отстали от часов игры (игровых секунд); `world` — если больница или штат изменились
    */
-  | { kind: 'slice'; buf: Int32Array; names: NameRow[]; notices: Notice[]; lag: number; world?: World }
+  | { kind: 'slice'; buf: Int32Array; names: NameRow[]; notices: Notice[]; lag: number; world?: World; path?: PathView }
   | { kind: 'state'; state: ShiftState }
   | { kind: 'error'; message: string };

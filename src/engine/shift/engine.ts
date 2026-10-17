@@ -1,4 +1,4 @@
-// из anamnez: src/engine/shift/engine.ts @ 96503ac, изменено: разбор приёма нанятого врача — по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults); стройка ПК — команда `site`, событие `siteFree`, приход в закрытую больницу, аппараты коек ПИТ из плана (spec 2026-10-build)
+// из anamnez: src/engine/shift/engine.ts @ 96503ac, изменено: разбор приёма нанятого врача — по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults); стройка ПК — команда `site`, событие `siteFree`, приход в закрытую больницу, аппараты коек ПИТ из плана (spec 2026-10-build); путь пациента — однострочные вызовы `journey.*` (spec 2026-10-flow-ui)
 // Движок смены: приход пациентов, сортировка, очередь, терпение, обследования со своими
 // сроками, закрытие случая и дня (spec 2026-09-first-shift, «Движок»; ADR 0005).
 //
@@ -34,6 +34,7 @@ import {
   SHIFT_START, type ShiftEvent, type ShiftPatient, type ShiftState, TRIAGE, type Triage, type VisitKind, type WardDay, type AmbulanceDay, type SurgeryDay,
 } from './types';
 import { type Ask, askFor } from './consult';
+import * as journey from './journey';
 import { COMPLICATION_DAYS, complicationAt, complicationsOf, deathsOf, onsetHours, operationFor } from './surgery';
 import { dueIn, type TargetPlace, targetResults } from './targets';
 import { siteCommand, siteFree } from './site';
@@ -453,6 +454,7 @@ function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       if (p.pending.length > 0) {
         p.status = 'away';
         p.wait++;
+        journey.away(s, p);
       } else {
         // в очередь на своё место — как вернувшийся с анализов, по времени прихода
         enqueue(s, p, p.arriveT);
@@ -831,7 +833,10 @@ function flowArrive(db: ContentDb, s: ShiftState, ev: Extract<ShiftEvent, { kind
     ...(s.economy ? { payer: kind === 'ambulance' ? 'oms' : payerOf(db, s.meta.seed, id, s.economy.reputation ?? db.economy.reputation.start) } : {}),
   };
   if (ev.stream !== 'ret') scheduleFlow(db, s, ev.stream, ev.n + 1, s.t);
+  // путь пациента (spec 2026-10-flow-ui): полна ли зона ожидания — до прихода, как её видит `arrive`
+  const full = s.queue.length >= hospitalCtx(db, s).seats;
   arrive(db, s, s.patients[id], notices);
+  journey.arrived(s, s.patients[id], () => colleaguesOf(db, s).filter((m, _, list) => colleagueTakes(db, s, s.patients[id], m, list)).length, () => forPlayer(db, s, s.patients[id]), full);
 }
 
 /**
@@ -864,6 +869,7 @@ function nurseSorts(db: ContentDb, s: ShiftState, p: ShiftPatient) {
  */
 function evict(s: ShiftState, p: ShiftPatient) {
   if (!s.flow) return;
+  journey.gone(s, p);
   const c = p.closed;
   const end = p.status === 'left' ? 'left' : p.status === 'unseen' ? 'unseen' : p.status === 'done' ? 'done' : undefined;
   // ваши приёмы — остаются (их разбор открывают), как и те, кого ждут обратно и кто лежит; приём нанятого врача уходит и без
@@ -1157,6 +1163,7 @@ function call(db: ContentDb, s: ShiftState, id: string): Notice[] {
   p.calledT ??= s.t;
   p.wait++; // прежняя проверка терпения недействительна
   s.current = id;
+  journey.called(s, p);
   // к привезённому скорой врач идёт в смотровую приёмного, к пришедшему сам — в свой кабинет (FR-HOS-4)
   const meet = meetIn(db, s, p);
   goTo(s, p);
@@ -1275,6 +1282,7 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
     s.rooms[room.id] = end;
     addPending(s, p, examId, end + after * MIN, obs, { room: room.id, start, end });
     goOut(ctx, p, examId, room.id, end);
+    journey.examOut(s, p, go.at, go.at + go.walk);
     return order;
   }
   // вопрос расспроса у вас — короче с «Быстрым опросом» (spec 2026-10-skills)
@@ -1295,6 +1303,7 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
     const start = go.at + go.walk;
     addPending(s, p, examId, start + cost + wait, first, { room: room.id, start, end: start + cost });
     goOut(ctx, p, examId, to, start + cost);
+    journey.examOut(s, p, go.at, start);
     if (e.repeat && second.length > 0) {
       const draw = s.t + e.repeat.minutes * MIN + walk;
       addPending(s, p, examId, draw + cost + wait, second, { room: room.id, start: draw, end: draw + cost }, true);
@@ -1425,6 +1434,8 @@ function finish(db: ContentDb, s: ShiftState): Notice[] {
  * Приёмы врача идут в его строку итогов, а ваши строки — только о ваших приёмах.
  */
 function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
+  // путь пациента (spec 2026-10-flow-ui): место, которое выбрал врач, — до того, как его заменит свободное
+  const wanted = p.draft.setting;
   // не дождались — результат приходит в пустоту: случай решён тем, что было известно
   p.pending = [];
   delete p.out;
@@ -1518,6 +1529,7 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase
     sum.returnsPlanned++;
   }
   if (STAYS.includes(closed.plan.setting)) admit(db, s, p);
+  journey.closed(s, p, wanted, () => ({ ward: [wardBeds(db, s).length, freeBeds(db, s).length], icu: [icuBeds(db, s).length, freeIcuBeds(db, s).length], ricu: [ricuBeds(db, s).length, freeRicuBeds(db, s).length], box: [boxBeds(db, s).length, freeBoxBeds(db, s).length] }));
   // поток для ПК (решение владельца 16.10.2026): приём нанятого врача — сразу строкой журнала, его разбор не досчитывается
   if (s.flow && p.by) evict(s, p);
   return closed;
@@ -2683,6 +2695,7 @@ function enqueue(s: ShiftState, p: ShiftPatient, queuedT: number) {
   p.wait++;
   s.queue = [...s.queue.filter(x => x !== p.id), p.id];
   sortQueue(s);
+  journey.queued(s, p);
   if (p.patience > 0) schedule(s, s.t + p.patience, { kind: 'patience', id: p.id, wait: p.wait });
 }
 
@@ -2706,6 +2719,7 @@ function results(s: ShiftState, p: ShiftPatient, notices: Notice[]) {
     p.status = 'waiting';
     p.queuedT = s.t;
     p.wait++;
+    journey.own(s, p);
   } else if (p.status === 'away' && p.pending.length === 0) {
     enqueue(s, p, p.arriveT);
     notices.push({ kind: 'resultsReady', id: p.id });
@@ -2829,6 +2843,7 @@ function staffDesks(db: ContentDb, s: ShiftState) {
     }
     p.calledT ??= s.t;
     p.wait++; // прежняя проверка терпения недействительна
+    journey.called(s, p, m.room);
     p.spent.seconds += MIN;
     schedule(s, s.t + MIN, { kind: 'colleague', id });
     busy.add(m.id);
@@ -2849,6 +2864,7 @@ function releaseWaiting(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffM
   p.status = 'away';
   delete p.out;
   p.wait++;
+  journey.away(s, p);
   p.spent.seconds += MIN;
   (s.desk ??= {})[m.id] = s.t + MIN;
   schedule(s, s.t + MIN, { kind: 'free', by: m.id });
@@ -2885,6 +2901,7 @@ function takeOver(db: ContentDb, s: ShiftState, id: string): Notice[] {
       p.status = 'inRoom';
       p.wait++;
       s.current = p.id;
+      journey.called(s, p);
       // дослушать ответ у врача и дойти до вас; вы — из смотровой приёмного, если были там (FR-HOS-4)
       const meet = meetIn(db, s, p);
       goTo(s, p);
@@ -2953,6 +2970,7 @@ function colleagueStep(db: ContentDb, s: ShiftState, p: ShiftPatient, ev?: Shift
       p.status = 'away';
       delete p.out;
       p.wait++;
+      journey.away(s, p);
       const away = cost + MIN;
       p.spent.seconds += away;
       (s.desk ??= {})[m.id] = s.t + away;
@@ -2994,6 +3012,7 @@ function openConsult(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffMemb
   const until = s.t + db.consults!.wait * MIN;
   p.asked = true;
   (s.consults ??= []).push({ id: p.id, by: m.id, at: s.t, until, why: ask.why, lead: ask.lead });
+  journey.asked(s, p, m.id, until);
   const day = colleagueDay(s, m.id);
   day.asked = (day.asked ?? 0) + 1;
   p.spent.seconds += until - s.t;
@@ -3041,6 +3060,7 @@ function answerConsult(db: ContentDb, s: ShiftState, cmd: Extract<Command, { kin
   p.queuedT = s.t;
   p.wait++;
   delete p.out;
+  journey.own(s, p, true);
   // минута — передать карту, и этот врач свободен
   (s.desk ??= {})[m.id] = s.t + MIN;
   schedule(s, s.t + MIN, { kind: 'free', by: m.id });

@@ -3,7 +3,7 @@
 // поток не захлёбывается кадрами, если не успевает.
 import type { Command, Notice, ShiftState } from '../engine/shift/types';
 import type { NameRow } from './pack';
-import type { FromSim, ToSim, World } from './protocol';
+import type { FromSim, PathView, ToSim, World } from './protocol';
 
 export interface Slice {
   buf: Int32Array;
@@ -11,6 +11,8 @@ export interface Slice {
   notices: Notice[];
   lag: number;
   world?: World;
+  /** путь пациента, которого показывает окно (`watch`) — когда он изменился */
+  path?: PathView;
 }
 
 export class SimClient {
@@ -46,7 +48,7 @@ export class SimClient {
       this.roundTrips.push(performance.now() - this.sentAt);
       if (this.roundTrips.length > 2000) this.roundTrips.splice(0, 1000);
     }
-    this.onSlice({ buf: msg.buf, names: msg.names, notices: msg.notices, lag: msg.lag, ...(msg.world ? { world: msg.world } : {}) });
+    this.onSlice({ buf: msg.buf, names: msg.names, notices: msg.notices, lag: msg.lag, ...(msg.world ? { world: msg.world } : {}), ...(msg.path ? { path: msg.path } : {}) });
   }
 
   start(msg: Extract<ToSim, { kind: 'start' }>) {
@@ -73,6 +75,11 @@ export class SimClient {
     this.ticking = true;
     this.sentAt = performance.now();
     this.post({ kind: 'tick', seconds, budgetMs });
+  }
+
+  /** Показывать путь этого пациента (номер в движке); null — никого (spec docs/specs/2026-10-flow-ui.md). */
+  watch(id: string | null) {
+    this.post({ kind: 'watch', id });
   }
 
   save(): Promise<ShiftState> {
