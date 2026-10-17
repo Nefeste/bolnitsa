@@ -168,8 +168,15 @@ describe('нужное помещению — из каталога', () => {
       { kind: 'noObject', object: 'chair', need: 2, have: 0 },
       { kind: 'noObject', object: 'desk', need: 1, have: 0 },
     ]);
+    // в «не работает: …» — первая причина; «закрыто на перестройку» — последней: видно, чего ещё не хватает
+    const kinds = (st: Site) => {
+      const plan = planOfSite(db, st);
+      return problemsOf(db, plan, plan.rooms[0], () => false).map(p => p.kind);
+    };
+    expect(kinds(s)).toEqual(['noDoor', 'noObject', 'noObject', 'noStaff', 'closed']);
     s = ok(furnish(db, s, 'r1')).site;
     expect(planOfSite(db, s).rooms[0].issues).toEqual([{ kind: 'closed' }]);
+    expect(kinds(s)).toEqual(['noDoor', 'noStaff', 'closed']);
   });
 
   test('«Обставить» — каждый тип и размер в прямоугольнике образца: всё нужное, аппараты на местах, люди у предметов', () => {

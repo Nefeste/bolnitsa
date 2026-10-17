@@ -75,6 +75,36 @@ describe('стройка в смене', () => {
     expect(working(s).has(waiting)).toBe(true);
   });
 
+  test('предмет и дверь командой движка: поставить, переставить, убрать дверь и поставить снова; нельзя — причина, ничего не меняется', () => {
+    const s = emptyShift(db, 4);
+    const [reception, waiting] = buildProto(db, s);
+    const room = (id: string) => s.hospital!.site!.rooms.find(r => r.id === id)!;
+    site(db, s, { kind: 'item', room: waiting, item: { kind: 'plant', x: 18, y: 7, rot: 0 } });
+    const id = room(waiting).items.at(-1)!.id;
+    // переставить и повернуть — бесплатно, тот же номер
+    expect(site(db, s, { kind: 'move', room: waiting, id, x: 12, y: 7, rot: 1 }).cost).toBe(0);
+    expect(room(waiting).items.find(i => i.id === id)).toMatchObject({ kind: 'plant', x: 12, y: 7, rot: 1 });
+    // нельзя: на стул, чужой предмет, вне помещения — причина, больница та же
+    const chair = room(waiting).items.find(i => i.kind === 'chair')!;
+    const before = hash(s.hospital);
+    const spent = s.works!.spent;
+    expect(site(db, s, { kind: 'move', room: waiting, id, x: chair.x, y: chair.y, rot: 0 }, false).error).toEqual({ kind: 'occupied', item: 'chair' });
+    expect(site(db, s, { kind: 'item', room: waiting, item: { kind: 'bed', x: 12, y: 11, rot: 1 } }, false).error).toEqual({ kind: 'notHere' });
+    expect(site(db, s, { kind: 'item', room: waiting, item: { kind: 'plant', x: 22, y: 20, rot: 0 } }, false).error).toEqual({ kind: 'notInRoom' });
+    expect(hash(s.hospital)).toBe(before);
+    expect(s.works!.spent).toBe(spent);
+    // без двери регистратура не работает — больница закрыта; дверь снова и «Готово» — открыта
+    expect(site(db, s, { kind: 'undoor', room: reception }).cost).toBe(-1000);
+    expect(room(reception).door).toBeUndefined();
+    site(db, s, { kind: 'done' });
+    const plan = hospitalCtx(db, s).plan;
+    expect(problemsOf(db, plan, plan.rooms.find(r => r.id === reception)!, hospitalCtx(db, s).staffed)[0]).toEqual({ kind: 'noDoor' });
+    expect(working(s).has(reception)).toBe(false);
+    expect(site(db, s, { kind: 'door', room: reception, cells: [[9, 12]] }).cost).toBe(2000);
+    site(db, s, { kind: 'done' });
+    expect(working(s).has(reception)).toBe(true);
+  });
+
   test('снос — половина назад, люди — в резерв; «Нанять» берёт из резерва; уволить', () => {
     const s = emptyShift(db, 4);
     const ids = buildProto(db, s);

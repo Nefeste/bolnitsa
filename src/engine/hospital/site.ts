@@ -916,7 +916,7 @@ export function moveItem(db: ContentDb, site: Site, roomId: string, id: number, 
   const it = room?.items.find(i => i.id === id);
   if (!room || !it || it.leaving) return fail({ kind: 'nothing' });
   if (it.x === to.x && it.y === to.y && it.rot === to.rot) return fail({ kind: 'nothing' });
-  const c = checkItem(db, site, roomId, { kind: it.kind, ...(it.eq ? { eq: it.eq } : {}), ...to }, id);
+  const c = checkItem(db, site, roomId, { kind: it.kind, ...(it.eq ? { eq: it.eq } : {}), x: to.x, y: to.y, rot: to.rot }, id);
   if (!c.ok) return c;
   const moved: SiteItem = { ...it, x: to.x, y: to.y, rot: to.rot };
   delete moved.short;
@@ -1105,7 +1105,8 @@ function bedSlots(r: SiteRoom, rules: RoomRules, machines: SiteItem[]): Record<I
 /**
  * Где стоят люди помещения — по предметам (spec «Где стоят люди»): сидящий по образцу — на стуле у стола (первым — дальний
  * от двери), стоящий — у предмета, у которого стоит в образце; пациент — на столе аппарата, на кушетке, на стуле у стола
- * ближе к двери или у стола со стороны двери. Только для отрисовки: движку нужно число мест.
+ * ближе к двери или у стола со стороны двери; стоят — на полу, до которого дойти от двери. Только для отрисовки: движку
+ * нужно число мест.
  */
 function spotsOf(db: ContentDb, r: SiteRoom, rules: RoomRules, live: SiteItem[]): { staff: Record<Id, Cell>; patient?: Cell } {
   const occ = new Map<string, SiteItem>();
@@ -1114,7 +1115,11 @@ function spotsOf(db: ContentDb, r: SiteRoom, rules: RoomRules, live: SiteItem[])
   const taken = new Set<string>();
   const d0 = r.door?.[0] ?? [r.x + Math.floor(r.w / 2), r.y + r.h - 1];
   const dist = (x: number, y: number) => Math.abs(x - d0[0]) + Math.abs(y - d0[1]);
-  const free = (x: number, y: number) => isInterior(r, x, y) && !occ.has(key(x, y)) && !taken.has(key(x, y)) && !inner.has(key(x, y));
+  // стоят только там, куда дойти от двери: на куске пола за ней (ряд за сплошным рядом предметов — не место)
+  const floor = pieces(r, new Set(occ.keys()));
+  const main = mainPiece(r, floor);
+  const free = (x: number, y: number) =>
+    isInterior(r, x, y) && !occ.has(key(x, y)) && !taken.has(key(x, y)) && !inner.has(key(x, y)) && (main < 0 || floor.of.get(key(x, y)) === main);
   const byKind = (k: ObjectKind | 'slot') => live.filter(i => (k === 'slot' ? i.eq !== undefined : i.kind === k && !i.eq)).sort((a, b) => a.id - b.id);
   const atDesk = (it: SiteItem) => N4.some(([dx, dy]) => {
     const o = occ.get(key(it.x + dx, it.y + dy));

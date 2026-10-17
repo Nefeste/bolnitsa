@@ -28,8 +28,11 @@ export type Problem =
   /** больница ПК: не хватает нужной мебели */
   | { kind: 'noObject'; object: ObjectKind; need: number; have: number };
 
-/** Порядок причин больницы ПК: первая — та, что в «не работает: …». */
-const ORDER: Problem['kind'][] = ['closed', 'leaving', 'noDoor', 'singleDoor', 'noPath', 'noObject', 'noEquipment', 'noStaff', 'noPlace'];
+/**
+ * Порядок причин больницы ПК: первая — та, что в «не работает: …». «Закрыто на перестройку» — последней: пока строят,
+ * видно, чего ещё не хватает.
+ */
+const ORDER: Problem['kind'][] = ['leaving', 'noDoor', 'singleDoor', 'noPath', 'noObject', 'noEquipment', 'noStaff', 'noPlace', 'closed'];
 
 /**
  * Есть ли человек на должности в помещении — решает штат (часть 8); в вашем кабинете врач — вы.
