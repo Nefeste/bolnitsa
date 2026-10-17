@@ -21,7 +21,7 @@ import { type Layout, layoutOf } from '../render/layout';
 import { type Index, type Model, modelOf } from '../render/models';
 import { Paths } from '../render/path';
 import { Places } from '../render/place';
-import { Population } from '../render/population';
+import { Population, YOU } from '../render/population';
 import { Stage } from '../render/stage';
 import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
@@ -30,6 +30,7 @@ import { type Slice, SimClient } from '../sim/client';
 import type { World } from '../sim/protocol';
 import type { Actions, RoomCard, Speed, Store, Tab } from '../ui/store';
 import { Builder, objectName, whyText } from './build';
+import { Doctor } from './doctor';
 import { Labels } from './labels';
 
 /** Больница и поток части 2а — вопросы к гейм-дизайну в спецификации, «Вопросы к гейм-дизайну». */
@@ -93,6 +94,8 @@ export class Game {
   places!: Places;
   ghosts!: Ghosts;
   readonly builder = new Builder(this);
+  /** режим врача (spec docs/specs/2026-10-doctor-mode.md): карта пациента, окно врача, фигура */
+  readonly doctor = new Doctor(this);
   /** стройка: потрачено и сколько действий можно отменить */
   works = { spent: 0, undo: 0 };
   start: Start = 'preset';
@@ -174,7 +177,10 @@ export class Game {
     this.client = new SimClient('./sim.js');
     this.client.onSlice = s => this.onSlice(s);
     this.client.onError = m => store.set({ error: m });
-    this.client.start({ kind: 'start', seed: SCENE.seed, season: SCENE.season, hospital: this.hospital, staff: this.staff, flow: SCENE.flow });
+    // зерно смены — из адреса (`?seed=`; сценарий в браузере берёт смену, где просьба приходит рано), иначе — сцены
+    const seed = Number(new URLSearchParams(location.search).get('seed')) || SCENE.seed;
+    this.client.start({ kind: 'start', seed, season: SCENE.season, hospital: this.hospital, staff: this.staff, flow: SCENE.flow });
+    this.doctor.start();
     // пустое здание — часы стоят, пока игрок не пустит их
     if (this.start === 'empty') this.speed = 0;
     this.bindInput();
@@ -218,6 +224,7 @@ export class Game {
       this.stage.setLayout(layout, furnished);
       this.crowd.relayout(layout, paths);
       this.pop.relayout(layout, places, this.staff, hospital.rooms);
+      this.doctor.relayout();
     }
     this.layout = layout;
     this.furnished = furnished;
@@ -314,10 +321,14 @@ export class Game {
     if (s.world) this.applyWorld(s.world);
     this.pop.sync(s.buf, s.names);
     for (const n of s.notices) {
-      if (n.kind === 'site') this.builder.onResult(n);
+      if (n.kind === 'site' && n.cmd === 'office') this.doctor.onOffice(n);
+      else if (n.kind === 'site') this.builder.onResult(n);
       else this.notice(n);
     }
     if (this.ff && this.ffStop(s.notices)) this.setSpeed(0);
+    // режим врача: состояние, карта, автопауза — после «До утра», чтобы автопауза её остановила
+    this.doctor.onSlice(s);
+    if (s.doctor || s.card !== undefined || s.refused) this.hud();
   }
 
   private notice(n: Exclude<Notice, { kind: 'site' }>) {
@@ -325,8 +336,9 @@ export class Game {
       n.kind === 'arrived' ? (n.triage === 'red' ? T.notices.arrivedRed : T.notices.arrived)
       : n.kind === 'left' ? T.notices.left
       : n.kind === 'ambulance' ? T.notices.ambulance
-      : n.kind === 'resultsReady' ? T.notices.resultsReady
+      : n.kind === 'resultsReady' ? this.doctor.resultsText(n.id)
       : n.kind === 'arrest' ? T.notices.arrest
+      : n.kind === 'consult' ? this.doctor.consultText(n)
       : T.notices.shiftEnd;
     this.notices.unshift({ t: this.t, text });
     if (this.notices.length > 60) this.notices.length = 60;
@@ -335,7 +347,7 @@ export class Game {
   /** «До утра» останавливается на срочном: «красный», скорая; и в 20:00. */
   private ffStop(notices: Notice[]): boolean {
     if (this.t >= this.ffUntil) return true;
-    return notices.some(n => n.kind === 'ambulance' || (n.kind === 'arrived' && n.triage === 'red'));
+    return notices.some(n => n.kind === 'ambulance' || (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'consult');
   }
 
   // ---------------------------------------------------------------- кадр
@@ -416,7 +428,13 @@ export class Game {
       gpuMs: gs.length ? gs.reduce((x, y) => x + y, 0) / gs.length : null,
       people: this.crowd.walkers.size,
       selected: this.selected && sel ? { key: this.selected, info: sel } : undefined,
+      doctor: { ...this.doctor.hud },
     });
+  }
+
+  /** Панели — заново сейчас, а не через 100 мс (режим врача: ответ потока, открыть и закрыть карту). */
+  refresh() {
+    this.hud();
   }
 
   // ---------------------------------------------------------------- действия панелей
@@ -428,10 +446,13 @@ export class Game {
 
   readonly actions: Actions = {
     setSpeed: s => {
+      // карта пациента открыта — мир стоит (spec 2026-10-doctor-mode, «Время в карте»)
+      if (this.doctor.open) return;
       this.setSpeed(s);
       this.hud();
     },
     untilMorning: () => {
+      if (this.doctor.open) return;
       // заглушка: промотка как можно быстрее — до 20:00 или до первого срочного (геймдизайн §2, «До утра»)
       const day = Math.floor(this.t / 86400) * 86400;
       this.ffUntil = this.t % 86400 < 20 * 3600 ? day + 20 * 3600 : day + 86400 + 8 * 3600;
@@ -472,6 +493,7 @@ export class Game {
       document.title = T.app.title;
       this.store.set({ lang: l });
       this.texts();
+      this.doctor.relang();
     },
     // стройка (spec docs/specs/2026-10-build.md)
     toggleBuild: () => {
@@ -501,6 +523,7 @@ export class Game {
     dismiss: id => this.command({ kind: 'dismiss', id }),
     // начало выбирают до игры (main.tsx)
     startGame: () => {},
+    doctor: a => this.doctor.dispatch(a),
   };
 
   /** Карточка помещения по клику на пол. */
@@ -578,6 +601,7 @@ export class Game {
 
   /** Esc и ПКМ без протяжки: в стройке — призрак, инструмент, стройка; иначе — снять выбор. */
   private cancel() {
+    if (this.doctor.close()) return;
     if (this.builder.cancel()) this.hud();
     else this.actions.select(undefined);
   }
@@ -607,7 +631,10 @@ export class Game {
           return;
         }
         const key = this.stage.pickPerson(e.clientX, e.clientY, this.crowd);
-        if (key) this.actions.select(key);
+        // ваша фигура — карта больного у вас в кабинете (spec 2026-10-doctor-mode)
+        const yours = key === YOU ? this.doctor.hud.state?.current?.id : undefined;
+        if (yours) this.actions.doctor({ kind: 'open', id: yours });
+        else if (key && key !== YOU) this.actions.select(key);
         else {
           const cell = this.stage.pickCell(e.clientX, e.clientY, this.layout);
           if (cell && cell.room >= 0) this.selectRoom(cell.room);
@@ -647,6 +674,8 @@ export class Game {
     window.addEventListener('keydown', e => {
       if ((e.target as HTMLElement | null)?.tagName === 'INPUT') return;
       const k = e.code;
+      // карта пациента открыта: клавиши игры молчат, Esc — закрыть карту (spec 2026-10-doctor-mode)
+      if (this.doctor.open && k !== 'Escape') return;
       if (k === 'Space') {
         e.preventDefault();
         this.actions.setSpeed(this.speed === 0 && !this.ff ? 1 : 0);
