@@ -5,14 +5,14 @@
 import type { Doing, PersonSlice, ShiftSlice } from '../engine/shift/slice';
 import type { ShiftState, Triage, VisitKind } from '../engine/shift/types';
 
-/** Заголовок: чисел. */
-export const HEADER = 12;
+/** Заголовок: чисел (с частью 5б — касса за сутки и репутация, spec docs/specs/2026-10-economy.md). */
+export const HEADER = 14;
 /** На человека: чисел. */
 export const STRIDE = 8;
 export const FORMAT = 1;
 
 /** Поля заголовка. */
-export const H = { format: 0, t: 1, day: 2, dayOpen: 3, count: 4, arrived: 5, seen: 6, left: 7, cash: 8, lag: 9, queue: 10, reserved: 11 } as const;
+export const H = { format: 0, t: 1, day: 2, dayOpen: 3, count: 4, arrived: 5, seen: 6, left: 7, cash: 8, lag: 9, queue: 10, reserved: 11, today: 12, reputation: 13 } as const;
 /** Поля человека. */
 export const P = { handle: 0, status: 1, triage: 2, room: 3, by: 4, doing: 5, bed: 6, flags: 7 } as const;
 /** Кассы нет — в этом режиме движка нет экономики. */
@@ -80,6 +80,9 @@ export function packSlice(s: ShiftState, slice: ShiftSlice, lag: number, handles
   buf[H.cash] = slice.cash ?? NO_CASH;
   buf[H.lag] = Math.min(2147483647, Math.round(lag));
   buf[H.queue] = slice.queue;
+  // касса ПК (spec docs/specs/2026-10-economy.md): изменение с 08:00 и репутация; кассы нет — NO_CASH
+  buf[H.today] = slice.today ?? NO_CASH;
+  buf[H.reputation] = slice.reputation ?? NO_CASH;
   const names: NameRow[] = [];
   const present = new Set<string>();
   slice.people.forEach((p, i) => {

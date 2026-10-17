@@ -6,12 +6,13 @@
 // призрак на занятом, R, взять и переставить, снос, Ctrl+Z, Esc, ПКМ; двойная дверь палаты; часы идут — пациенты
 // приходят, их принимают. Ошибок в консоли и запросов наружу нет.
 // Снимки — tools/app/out/e2e.png и e2e-build-*.png; `--shots high` — снимки стройки в этом качестве (на время снимка).
-// Часть 4 — режим врача: tools/app/e2e-doctor.mjs.
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|4] [--shots low|medium|high]
+// Часть 4 — режим врача: tools/app/e2e-doctor.mjs. Часть 5 — касса, планёрка, обход: tools/app/e2e-economy.mjs.
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|4|5] [--shots low|medium|high]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { doctorPart } from './e2e-doctor.mjs';
+import { economyPart } from './e2e-economy.mjs';
 import { findChromium } from './e2e-lib.mjs';
 import { serve } from './serve.mjs';
 
@@ -71,11 +72,14 @@ const PROTO = [
 ];
 
 const only = arg('only', '');
+const part = n => !only || only === n;
 try {
-  if (only !== '2' && only !== '4') await partOne();
-  if (only !== '1' && only !== '4') await partTwo();
+  if (part('1')) await partOne();
+  if (part('2')) await partTwo();
   // часть 4 — режим врача (spec docs/specs/2026-10-doctor-mode.md): tools/app/e2e-doctor.mjs
-  if (!only || only === '4') await doctorPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  if (part('4')) await doctorPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  // часть 5 — касса, планёрка, обход (spec docs/specs/2026-10-economy.md): tools/app/e2e-economy.mjs
+  if (part('5')) await economyPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);
@@ -88,7 +92,8 @@ try {
 }
 
 async function partOne() {
-  await page.goto(`http://127.0.0.1:${port}/index.html?q=${arg('q', 'low')}&lang=ru&hospital=preset`);
+  // поток — числами сцены (6 в час, скорая 1 в час), как до потока от больницы части 5б: та же толпа, что прежде
+  await page.goto(`http://127.0.0.1:${port}/index.html?q=${arg('q', 'low')}&lang=ru&hospital=preset&flow=6,1`);
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
   ok('страница загрузилась, первый кадр нарисован');
   // дать потоку расчёта и людям пожить: ×4 на несколько секунд

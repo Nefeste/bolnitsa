@@ -3,12 +3,15 @@
 //   ?shot=1 — только снимки; ?start=10.5 — сразу промотать смену до этого часа; ?lang=en — язык;
 //   ?hospital=empty|preset — с чего начать (spec docs/specs/2026-10-build.md, «Начало игры»; нет — окно спросит; бенч и
 //   снимки — всегда готовая больница). В Electron — те же ключи: --bench, --hospital empty.
+//   ?flow=6,1 — поток числами (сами в час, машин скорой в час), а не от больницы (spec docs/specs/2026-10-economy.md):
+//   сценарий режима врача в браузере; авто-бенч и снимки — всегда числа сцены, та же толпа, что прежде.
 import { createRoot } from 'react-dom/client';
 import { setLang, systemLang, T, type Lang } from '../i18n';
 import type { Quality } from '../render/view';
 import { App, type Names } from '../ui/App';
 import { type Actions, Store } from '../ui/store';
-import { Game, type Start } from './game';
+import type { Flow } from '../engine/shift/types';
+import { AUTO, Game, SCENE, type Start } from './game';
 
 declare const __VERSION__: string;
 
@@ -46,6 +49,7 @@ const actions: Actions = {
   hire: later('hire'),
   dismiss: later('dismiss'),
   doctor: later('doctor'),
+  money: later('money'),
   startGame: kind => {
     store.set({ choose: false });
     chosen?.(kind);
@@ -74,8 +78,17 @@ async function startOf(): Promise<Start> {
   });
 }
 
+/** Поток: от больницы; авто-бенч и снимки — числа сцены (та же толпа, что прежде); `?flow=6,1` — эти числа. */
+async function flowOf(): Promise<Flow> {
+  const args = window.shell ? await window.shell.args() : [];
+  const has = (k: string) => q.get(k) === '1' || args.includes(`--${k}`);
+  if (has('bench') || has('shot')) return SCENE.flow;
+  const [walk, amb] = (q.get('flow') ?? '').split(',').map(Number);
+  return Number.isFinite(walk) && walk > 0 ? { perHour: walk, ...(Number.isFinite(amb) && amb > 0 ? { ambulancePerHour: amb } : {}) } : AUTO;
+}
+
 startOf()
-  .then(start => Game.create(document.getElementById('view')!, store, __VERSION__, quality, start))
+  .then(async start => Game.create(document.getElementById('view')!, store, __VERSION__, quality, start, await flowOf()))
   .then(async g => {
     game = g;
     window.__game = g;

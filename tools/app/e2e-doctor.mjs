@@ -1,5 +1,6 @@
 // Сценарий в браузере, часть 4 — режим врача (spec docs/specs/2026-10-doctor-mode.md, «Тесты»): готовая больница, зерно 11
-// — нанятый терапевт просит посмотреть больного к 08:55. Просьба — автопауза и вкладка; «Посмотреть» — карта пациента:
+// и поток числами — 6 в час, скорая 1 в час (`flow=6,1`, как до потока от больницы части 5б), — нанятый терапевт просит
+// посмотреть больного к 08:55. Просьба — автопауза и вкладка; «Посмотреть» — карта пациента:
 // вопрос, осмотр, анализ с ожиданием результата, уровень «Врач» убирает «Похоже на», гипотеза, диагноз, лечение,
 // «Завершить приём» — разбор с оценками. Затем «Взять случай» у больного нанятого врача с карты, «Мой кабинет» —
 // переезд и обратно, «Не принимаю», «Свои больные». Снимки карты — `e2e-doctor-*.jpg` (JPEG: для документов).
@@ -26,7 +27,7 @@ export async function doctorPart({ page, port, out, ok, fail, q, shots }) {
   /** Ждать, пока вид карты станет новее `v` (поток ответил на действие). */
   const fresher = v => until(prev => (window.__game.store.get().doctor?.card?.version ?? 0) > prev, v);
 
-  await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&hospital=preset&seed=11`);
+  await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&hospital=preset&seed=11&flow=6,1`);
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
   await until(() => !!window.__game.store.get().doctor?.state && !!window.__game.crowd.walkers.get('you'));
   const office0 = (await hud()).d?.state?.office;

@@ -1,6 +1,6 @@
 // Режим врача в окне (spec docs/specs/2026-10-doctor-mode.md, «Окно»): что панели знают о враче и о чём просят игру.
 // Состояние врача и вид карты приходят из потока расчёта готовыми (src/sim/doctor.ts) — правды о больном в них нет.
-import type { BodySystem } from '../../content/types';
+import type { BodySystem, Id } from '../../content/types';
 import type { Command, Difficulty } from '../../engine/shift/types';
 import type { CardView, DoctorState } from '../../sim/doctor';
 
@@ -22,6 +22,8 @@ export interface DoctorHud {
   folded: boolean;
   /** кого позвать после разбора: первый из ждущих вас, нет — из общей очереди; вы заняты — никого */
   next?: { id: string; who: string };
+  /** ваши лежащие, которым в 08:00 стало хуже (spec 2026-10-economy, «Обход») — отмечены до следующей планёрки */
+  worse?: string[];
 }
 
 export type DoctorAction =
@@ -42,7 +44,9 @@ export type DoctorAction =
   | { kind: 'office'; room?: string }
   | { kind: 'level'; level: Difficulty }
   | { kind: 'autopause'; on: boolean }
-  | { kind: 'ward'; id: string; how: 'discharge' | 'transfer' }
+  | { kind: 'ward'; id: string; how: 'discharge' | 'transfer' | 'operate' }
+  /** обход (spec docs/specs/2026-10-economy.md): сменить лечение лежащего — лист назначений целиком */
+  | { kind: 'replan'; id: string; treatments: Id[] }
   | { kind: 'fold'; folded: boolean }
   /** позвать первого из ждущих вас */
   | { kind: 'next' };

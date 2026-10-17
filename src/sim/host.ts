@@ -69,7 +69,7 @@ export function createSim(db: ContentDb): SimHost {
       try {
         switch (msg.kind) {
           case 'start':
-            s = newFlowShift(db, { seed: msg.seed, season: msg.season, hospital: msg.hospital, staff: msg.staff, flow: msg.flow });
+            s = newFlowShift(db, { seed: msg.seed, season: msg.season, hospital: msg.hospital, staff: msg.staff, flow: msg.flow, ...(msg.economy ? { economy: msg.economy } : {}) });
             fresh();
             return slice([]);
           case 'load':

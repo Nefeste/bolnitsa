@@ -5,7 +5,7 @@ import { type ReactNode, useState } from 'react';
 import { type BodySystem, SYSTEMS } from '../../content/types';
 import { clock, T } from '../../i18n';
 import type { PersonInfo } from '../../render/population';
-import type { AskRow, PatientRow } from '../../sim/doctor';
+import type { AskRow, PatientRow, WardRow } from '../../sim/doctor';
 import type { Actions, Hud, RoomCard } from '../store';
 import { Levels } from './Card';
 
@@ -120,16 +120,9 @@ export function Dock({ hud, actions }: { hud: Hud; actions: Actions }) {
         {st.ward.length > 0 ? (
           <>
             <div className="label">{t.lists.ward}</div>
-            <ul>
+            <ul id="dock-ward">
               {st.ward.map(r => (
-                <Row key={r.id} r={r} hint={`${r.diagnosis} · ${T.case.ward.days(r.days, r.norm)} · ${T.case.ward.state[r.state]}`}>
-                  <button type="button" className="small" disabled={r.busy} onClick={() => actions.doctor({ kind: 'ward', id: r.id, how: 'discharge' })}>
-                    {T.case.ward.discharge}
-                  </button>
-                  <button type="button" className="small" onClick={() => actions.doctor({ kind: 'ward', id: r.id, how: 'transfer' })}>
-                    {T.case.ward.transfer}
-                  </button>
-                </Row>
+                <WardItem key={r.id} r={r} worse={d.worse?.includes(r.id) ?? false} actions={actions} />
               ))}
             </ul>
           </>
@@ -150,6 +143,52 @@ export function Dock({ hud, actions }: { hud: Hud; actions: Actions }) {
         ) : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * Строка «Обхода» (spec docs/specs/2026-10-economy.md, «Обход»): как идёт, динамика витальных, лечение, операция; «Сменить
+ * лечение» открывает карту с листом назначений, «Выписать», «Перевести», «В операционную». Стало хуже в 08:00 — отмечена.
+ */
+function WardItem({ r, worse, actions }: { r: WardRow; worse: boolean; actions: Actions }) {
+  const w = T.case.ward;
+  return (
+    <li className={`prow ward t-${r.triage}${worse ? ' worse' : ''}`} id={`dw-${r.id}`}>
+      <div className="who">
+        {r.who}
+        <div className="small">
+          {r.diagnosis} · {w.days(r.days, r.norm)}
+        </div>
+        <div className={`small ${r.state === 'worse' || r.state === 'reaction' ? 'bad' : r.state === 'ready' || r.state === 'better' ? 'ok' : 'muted'}`}>
+          {worse ? `⚠ ${T.round.worseShort} · ` : ''}
+          {r.stateText}
+        </div>
+        {r.unit ? <div className="small muted">{r.unit}</div> : null}
+        {r.vitals.map(v => (
+          <div key={v.label} className="small muted mono">
+            {v.label}: {v.values}
+          </div>
+        ))}
+        {r.op ? <div className="small">{r.op}</div> : null}
+        <div className="small muted">{T.round.treatments(r.treatments)}</div>
+        <div className="row">
+          <button type="button" className="small" id={`ward-replan-${r.id}`} title={T.round.replanHint} onClick={() => actions.doctor({ kind: 'open', id: r.id })}>
+            {T.round.replan}
+          </button>
+          <button type="button" className="small" id={`ward-discharge-${r.id}`} disabled={!r.canDischarge} onClick={() => actions.doctor({ kind: 'ward', id: r.id, how: 'discharge' })}>
+            {w.discharge}
+          </button>
+          <button type="button" className="small" disabled={!r.canTransfer} onClick={() => actions.doctor({ kind: 'ward', id: r.id, how: 'transfer' })}>
+            {w.transfer}
+          </button>
+          {r.operate ? (
+            <button type="button" className="small" disabled={r.operate.disabled} title={r.operate.hint} onClick={() => actions.doctor({ kind: 'ward', id: r.id, how: 'operate' })}>
+              {T.round.operate}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </li>
   );
 }
 

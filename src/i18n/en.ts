@@ -1,8 +1,11 @@
 // Строки игры по-английски: тот же вид, что ru.ts, — пропущенная строка не соберётся (tsc).
 import { doctorEn } from './doctor.en';
+import { economyEn } from './economy.en';
 import type { Strings } from './ru';
 
 export const en: Strings = {
+  // часть 5б (spec docs/specs/2026-10-economy.md)
+  ...economyEn,
   app: {
     title: 'Hospital',
     loading: 'Loading…',
@@ -15,18 +18,16 @@ export const en: Strings = {
     pause: 'Pause',
     speed: (k: number) => `×${k}`,
     morning: 'Until morning',
-    morningSoon: '“Until morning” comes in the next part: for now it fast-forwards to the end of the shift',
+    morningSoon: 'fast-forwards to the 08:00 meeting and stops on autopause events',
     cash: 'Cash',
     noCash: '—',
-    noCashHint: 'The engine’s “Shift” mode has no money yet — cash comes with the “Economy and day” part',
+    noCashHint: 'No cash: an engine shift without money',
     reputation: 'Reputation',
     arrived: 'arrived',
     seen: 'seen',
     left: 'left',
     queue: 'waiting',
     lag: (min: number) => `simulation is ${min} min behind`,
-    built: 'Building',
-    builtHint: 'Spent on building: demolition gives half the price back, undo the whole price. No cash yet (part 5)',
     closed: (why: string) => `Hospital closed: ${why}`,
     closedHint: 'Patients come when reception, the waiting area and a doctor’s office with a doctor work',
   },
@@ -180,7 +181,7 @@ export const en: Strings = {
     posts: 'Posts',
     vacant: 'nobody',
     you: 'you — your office',
-    hire: (name: string, salary: string) => `Hire: ${name} — ${salary} per shift`,
+    hire: (name: string, salary: string) => `Hire: ${name} — ${salary} per day`,
     dismiss: 'Dismiss',
     demolish: (back: string) => `Demolish — ${back} back`,
     furnish: (cost: string) => `Furnish — ${cost}`,

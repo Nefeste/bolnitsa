@@ -1,4 +1,4 @@
-// из anamnez: tools/content/load.ts @ 96503ac, изменено: hospital/consults.yaml — «Просят посмотреть» (spec 2026-10-consults); hospital/day.yaml — сутки целиком (spec 2026-10-day)
+// из anamnez: tools/content/load.ts @ 96503ac, изменено: hospital/consults.yaml — «Просят посмотреть» (spec 2026-10-consults); hospital/day.yaml — сутки целиком (spec 2026-10-day); hospital/inflow.yaml и hospital/money.yaml — поток от больницы и касса ПК (spec 2026-10-economy)
 // Сборка медицинской базы из YAML в память: схема, ссылки, полосы → числа
 // (`docs/11-content.md` §6, `docs/04-data-model.md` §1). Используют build.ts, тесты и
 // «виртуальный врач» — все читают одну и ту же базу.
@@ -20,7 +20,7 @@ import {
   type LinkSrc, PREVALENCE, type PresetSrc, presetSchema, type ProbabilitySrc, type ProfessionSrc, professionSchema, type RiskSrc, type RoleSrc, riskSchema, roleSchema, type RoomSrc, roomSchema,
   type TipSrc, tipSchema, type TreatmentSrc, treatmentSchema, versionSchema, type AchievementSrc, achievementSchema, type ScoreSrc, scoreSchema,
   type RuleSrc, ruleSchema, type TargetSrc, targetSchema, type SkillSrc, skillSchema,
-  type ConsultsSrc, consultsSchema, type DaySrc, daySchema,
+  type ConsultsSrc, consultsSchema, type DaySrc, daySchema, type InflowSrc, inflowSchema, type MoneySrc, moneySchema,
 } from './schema';
 
 export const CONTENT_DIR = join(import.meta.dir, '../../content');
@@ -43,6 +43,26 @@ export function dayErrors(day: DaySrc): string[] {
   const half = Math.floor(walk.length / 2);
   if (walk.length >= 2 && sum(walk.slice(0, half)) <= sum(walk.slice(walk.length - half))) out.push(`${f}: walk — утром не больше, чем к закрытию, а сами приходят больше утром (геймдизайн §5)`);
   if (sum(day.ambulance.slice(16, 24)) <= sum(day.ambulance.slice(0, 8))) out.push(`${f}: ambulance — вечером не больше, чем ночью, а скорая везёт больше вечером (геймдизайн §5)`);
+  return out;
+}
+
+/**
+ * Поток от больницы (spec docs/specs/2026-10-economy.md): ориентиры геймдизайна §5 — больница с кабинетами и местами смотровой
+ * ориентира при репутации 50 и часах приёма по умолчанию (`day.yaml`) получает в сутки сами и скорая вместе — в `day`, скорая —
+ * в `ambulance`. Сами — `walkIn` в час на кабинет по форме `walk` в часы приёма, скорая — `ambulance` в сутки на место.
+ */
+export function inflowErrors(inflow: InflowSrc, day: DaySrc): string[] {
+  const out: string[] = [];
+  const f = 'hospital/inflow.yaml';
+  const [open, close] = day.hours;
+  const hours = day.walk.slice(open, close).reduce((a, b) => a + b, 0) / 100;
+  for (const t of inflow.targets) {
+    const walk = inflow.walkIn * t.offices * hours;
+    const amb = inflow.ambulance * t.bays;
+    const total = Math.round(walk + amb);
+    if (total < t.day[0] || total > t.day[1]) out.push(`${f}: ${t.name} (${t.offices} каб., ${t.bays} мест) — ${total} в сутки, а ориентир геймдизайна §5 — ${t.day[0]}–${t.day[1]}`);
+    if (Math.round(amb) < t.ambulance[0] || Math.round(amb) > t.ambulance[1]) out.push(`${f}: ${t.name} — скорая ${Math.round(amb)} в сутки, а ориентир геймдизайна §5 — ${t.ambulance[0]}–${t.ambulance[1]}`);
+  }
   return out;
 }
 
@@ -179,6 +199,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   let economy: EconomySrc | undefined;
   let consults: ConsultsSrc | undefined;
   let day: DaySrc | undefined;
+  let inflow: InflowSrc | undefined;
+  let money: MoneySrc | undefined;
   let contentVersion = 0;
 
   for (const file of files) {
@@ -244,6 +266,10 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       consults = check(consultsSchema);
     } else if (rel === 'hospital/day.yaml') {
       day = check(daySchema);
+    } else if (rel === 'hospital/inflow.yaml') {
+      inflow = check(inflowSchema);
+    } else if (rel === 'hospital/money.yaml') {
+      money = check(moneySchema);
     } else if (top === 'campaign' && rel.split('/')[1] === 'characters') {
       const c = check(characterSchema);
       if (c) { expectId(c.id, 'char'); put(characters, c); }
@@ -269,7 +295,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       const x = check(skillSchema);
       if (x) { expectId(x.id, 'skill'); put(skills, x); }
     } else {
-      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, people/professions, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, hospital/consults.yaml, hospital/day.yaml, campaign/characters, campaign/chapters, campaign/tips, achievements, scores, rules, targets, career/skills)`);
+      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, people/professions, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, hospital/consults.yaml, hospital/day.yaml, hospital/inflow.yaml, hospital/money.yaml, campaign/characters, campaign/chapters, campaign/tips, achievements, scores, rules, targets, career/skills)`);
     }
   }
   if (!contentVersion) errors.push('version.yaml: нет contentVersion');
@@ -280,6 +306,10 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   // сутки целиком (spec 2026-10-day): часы приёма, форма потока по часам — в среднем 100, утром сами чаще, вечером — скорая
   if (!day) errors.push('hospital/day.yaml: нет часов приёма и формы потока по часам');
   else errors.push(...dayErrors(day));
+  // поток от больницы и касса ПК (spec 2026-10-economy): ориентиры §5 — по форме суток
+  if (!inflow) errors.push('hospital/inflow.yaml: нет чисел потока от больницы');
+  else if (day) errors.push(...inflowErrors(inflow, day));
+  if (!money) errors.push('hospital/money.yaml: нет предела минуса и кредита');
 
   // --- ссылки ---
   const hasF = (id: string) => id in findings;
@@ -920,6 +950,9 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     ...(consults ? { consults } : {}),
     // сутки целиком (spec 2026-10-day): без файла — ошибка сборки выше
     ...(day ? { day } : {}),
+    // поток от больницы и касса ПК (spec 2026-10-economy): без файлов — ошибка сборки выше
+    ...(inflow ? { inflow } : {}),
+    ...(money ? { money } : {}),
     revealedBy,
   };
   for (const c of Object.values(conditions).sort((a, b) => (a.id < b.id ? -1 : 1))) {

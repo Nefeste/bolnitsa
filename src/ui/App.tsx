@@ -8,6 +8,7 @@ import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
 import { Card } from './doctor/Card';
 import { Asks, Dock, OfficeRow, TakeCase } from './doctor/Dock';
+import { Meeting, Reports, signed } from './Meeting';
 import { type Actions, type Hud, type RoomCard, type Speed, type Store, type Tab, type Tool, useHud } from './store';
 
 /** Названия из базы: помещения, должности, признаки. */
@@ -50,22 +51,48 @@ function TopBar({ hud, actions }: P) {
           ⏭ {T.top.morning}
         </Btn>
       </span>
-      <span className="stat" title={hud.cash === undefined ? T.top.noCashHint : undefined}>
-        {T.top.cash}: <b>{hud.cash === undefined ? T.top.noCash : `${hud.cash.toLocaleString('ru-RU')} ₽`}</b>
-      </span>
-      <span className="stat">
-        {T.top.reputation}: <b>{T.top.noCash}</b>
-      </span>
+      <Money hud={hud} />
       <span className="stat" id="counts">
         {T.top.arrived} <b>{hud.arrived}</b> · {T.top.seen} <b>{hud.seen}</b> · {T.top.left} <b>{hud.left}</b> · {T.top.queue} <b>{hud.queue}</b>
-      </span>
-      <span className="stat" id="spent" title={T.top.builtHint}>
-        {T.top.built}: <b>{money(hud.build.spent)}</b>
       </span>
 
       {hud.lag > 2 ? <span className="stat warn">{T.top.lag(Math.round(hud.lag))}</span> : null}
       <span className="notice" title={hud.notices.map(n => `${clock(n.t)} ${n.text}`).join('\n')}>{last ? `🔔 ${clock(last.t)} ${last.text}` : '🔔'}</span>
     </div>
+  );
+}
+
+/**
+ * Касса с изменением с 08:00 и репутация (spec docs/specs/2026-10-economy.md, «Верхняя полоса»): ниже предела минуса касса
+ * красная; у репутации — куда сдвинулась на последней планёрке.
+ */
+function Money({ hud }: { hud: Hud }) {
+  const e = hud.economy;
+  if (hud.cash === undefined || !e)
+    return (
+      <span className="stat" id="cash" title={T.top.noCashHint}>
+        {T.top.cash}: <b>{T.top.noCash}</b>
+      </span>
+    );
+  const below = hud.cash < -e.limit;
+  const rep = e.meeting?.summary.economy?.reputation;
+  const arrow = rep && rep.to > rep.from ? ' ↑' : rep && rep.to < rep.from ? ' ↓' : '';
+  return (
+    <>
+      <span className={`stat${below ? ' bad' : ''}`} id="cash" title={below ? T.money.below(money(e.limit)) : T.money.cashHint(money(e.limit))}>
+        {T.money.cash}: <b id="cash-now">{money(hud.cash)}</b>
+        {e.today !== undefined ? (
+          <span className={e.today >= 0 ? 'ok' : 'bad'} id="cash-today">
+            {' '}
+            {T.money.today(signed(e.today))}
+          </span>
+        ) : null}
+      </span>
+      <span className="stat" id="reputation" title={T.money.repHint(rep?.score)}>
+        {T.money.reputation}: <b id="reputation-now">{e.reputation ?? T.top.noCash}</b>
+        {arrow}
+      </span>
+    </>
   );
 }
 
@@ -339,6 +366,8 @@ function RightTabs({ hud, actions }: P) {
       </ul>
     );
   else if (hud.tab === 'asks') body = <Asks hud={hud} actions={actions} />;
+  // планёрка и часы приёма (spec docs/specs/2026-10-economy.md)
+  else if (hud.tab === 'reports') body = <Reports e={hud.economy} actions={actions} />;
   else if (hud.tab) body = <p>{T.tabs.soon}</p>;
   return (
     <div className="right" id="right">
@@ -496,6 +525,8 @@ export function App({ store, actions, names }: { store: Store; actions: Actions;
       <BottomCard {...p} />
       {!hud.build.on ? <Dock hud={hud} actions={actions} /> : null}
       {hud.doctor?.card ? <Card key={hud.doctor.card.id} v={hud.doctor.card} level={hud.doctor.level} meanwhile={hud.doctor.meanwhile} next={hud.doctor.next} actions={actions} /> : null}
+      {/* планёрка в 08:00 (spec docs/specs/2026-10-economy.md) — когда карта пациента закрыта */}
+      {hud.economy?.open && !hud.doctor?.card ? <Meeting e={hud.economy} actions={actions} /> : null}
       {hud.debug ? <DebugMenu {...p} /> : null}
       {!hud.ready || hud.status || hud.error ? (
         <div className="status panel" id="status">

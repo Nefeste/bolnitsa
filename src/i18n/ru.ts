@@ -1,7 +1,10 @@
 // Строки игры по-русски (устав, docs/05-rules.md: все строки для игрока — здесь). Английский — en.ts, того же вида.
 import { doctorRu } from './doctor.ru';
+import { economyRu } from './economy.ru';
 
 export const ru = {
+  // часть 5б (spec docs/specs/2026-10-economy.md): касса, планёрка, часы приёма, кредит, обход — `money`, `meeting`, `round`
+  ...economyRu,
   app: {
     title: 'Больница',
     loading: 'Загрузка…',
@@ -14,18 +17,16 @@ export const ru = {
     pause: 'Пауза',
     speed: (k: number) => `×${k}`,
     morning: 'До утра',
-    morningSoon: '«До утра» — в следующей части: пока промотка до конца смены',
+    morningSoon: 'проматывает до планёрки в 08:00 и останавливается на событиях автопаузы',
     cash: 'Касса',
     noCash: '—',
-    noCashHint: 'Денег в «Смене» движка нет — касса появится с частью «Экономика и день»',
+    noCashHint: 'Кассы нет: смена движка без денег',
     reputation: 'Репутация',
     arrived: 'пришли',
     seen: 'приняты',
     left: 'ушли',
     queue: 'ждут врача',
     lag: (min: number) => `расчёт отстаёт на ${min} мин`,
-    built: 'Стройка',
-    builtHint: 'Потрачено на стройку: снос — минус половина цены, отмена — минус цена действия. Кассы ещё нет (часть 5)',
     closed: (why: string) => `Больница закрыта: ${why}`,
     closedHint: 'Пациенты приходят, когда работают регистратура, зона ожидания и кабинет врача с врачом',
   },
@@ -179,7 +180,7 @@ export const ru = {
     posts: 'Должности',
     vacant: 'никого',
     you: 'вы — ваш кабинет',
-    hire: (name: string, salary: string) => `Нанять: ${name} — ${salary} в смену`,
+    hire: (name: string, salary: string) => `Нанять: ${name} — ${salary} в сутки`,
     dismiss: 'Уволить',
     demolish: (back: string) => `Снести — вернётся ${back}`,
     furnish: (cost: string) => `Обставить — ${cost}`,

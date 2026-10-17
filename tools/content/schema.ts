@@ -1,4 +1,4 @@
-// из anamnez: tools/content/schema.ts @ 96503ac, изменено: hospital/consults.yaml — «Просят посмотреть» (spec 2026-10-consults); hospital/day.yaml — сутки целиком (spec 2026-10-day)
+// из anamnez: tools/content/schema.ts @ 96503ac, изменено: hospital/consults.yaml — «Просят посмотреть» (spec 2026-10-consults); hospital/day.yaml — сутки целиком (spec 2026-10-day); hospital/inflow.yaml и hospital/money.yaml, `long` у consults.yaml — поток от больницы, касса ПК, долгий случай (spec 2026-10-economy)
 // Схема исходных записей медицинской базы (YAML в content/, `docs/11-content.md` §4).
 // Строгие объекты: опечатка в имени поля — ошибка сборки, а не молча пропущенное поле.
 import { z } from 'zod';
@@ -863,6 +863,30 @@ export const consultsSchema = z.strictObject({
   unsure: z.tuple([pct, pct, pct, pct, pct]),
   close: z.number().int().min(1).max(100),
   wait: z.number().int().min(1).max(24 * 60),
+  // долгий случай (spec docs/specs/2026-10-economy.md): сколько игровых часов без диагноза, прежде чем просить «долго»
+  long: z.number().int().min(1).max(24),
+});
+
+/**
+ * Поток от больницы «Больницы» (spec docs/specs/2026-10-economy.md): сами — человек в час на работающий кабинет нанятого
+ * врача, скорая — машин в сутки на место смотровой приёмного, поправка репутации ±%; ориентиры геймдизайна §5 — сколько в
+ * сутки у больницы с этими кабинетами и местами. Ориентиры сверяет сборка (`tools/content/load.ts`).
+ */
+const range = z.tuple([z.number().int().min(0), z.number().int().min(0)]);
+export const inflowSchema = z.strictObject({
+  walkIn: z.number().positive().max(20),
+  ambulance: z.number().min(0).max(48),
+  reputation: z.number().int().min(0).max(99),
+  targets: z.array(z.strictObject({ name: z.string().min(1), offices: z.number().int().min(0), bays: z.number().int().min(0), day: range, ambulance: range })).min(1),
+});
+
+/**
+ * Касса ПК «Больницы» (spec docs/specs/2026-10-economy.md): до какого минуса оплачивается стройка, ₽; кредит банка ниже
+ * предела — сумма до нуля кассы вверх до `step`, на `days` суток, надбавка `fee` %.
+ */
+export const moneySchema = z.strictObject({
+  overdraft: z.number().int().min(0),
+  loan: z.strictObject({ step: z.number().int().min(1), days: z.number().int().min(1).max(365), fee: z.number().int().min(0).max(100) }),
 });
 
 /**
@@ -1190,6 +1214,8 @@ export type PresetSrc = z.infer<typeof presetSchema>;
 export type EconomySrc = z.infer<typeof economySchema>;
 export type ConsultsSrc = z.infer<typeof consultsSchema>;
 export type DaySrc = z.infer<typeof daySchema>;
+export type InflowSrc = z.infer<typeof inflowSchema>;
+export type MoneySrc = z.infer<typeof moneySchema>;
 export type CharacterSrc = z.infer<typeof characterSchema>;
 export type ChapterSrc = z.infer<typeof chapterSchema>;
 export type TipSrc = z.infer<typeof tipSchema>;

@@ -3,7 +3,8 @@
 // идут часы. Действие — новая больница (`s.hospital` — новый объект): план, требования и то, что работает, движок
 // считает заново, свободные нанятые врачи зовут ждущих. Занятое (на койке лежат, аппаратом обследуют, в помещении
 // кто-то есть) убирается, когда освободится: проверка — событием очереди `siteFree`, поэтому итог не зависит от того,
-// каким шагом идут часы. Койка лежащего — номер в помещении; после стройки номер переносится на тот же предмет.
+// каким шагом идут часы. Койка лежащего — номер в помещении; после стройки номер переносится на тот же предмет. С кассой
+// (spec docs/specs/2026-10-economy.md) стройка платится из неё сразу и не ниже предела минуса: не хватает — отказ `money`.
 import { Rng } from '../core/rng';
 import { DOCTOR, standInOf } from '../hospital/requirements';
 import {
@@ -11,6 +12,7 @@ import {
   setOffice, type Site, type SiteCommand, type SiteError, type SiteRoom, SITE_UNDO, type Works,
 } from '../hospital/site';
 import { salaryOf, type StaffMember } from '../hospital/staff';
+import { payWorks, shortOf } from './money';
 import type { ContentDb } from '../../content/types';
 import type { Notice, ShiftEvent, ShiftPatient, ShiftState } from './types';
 
@@ -195,9 +197,13 @@ export function siteCommand(db: ContentDb, s: ShiftState, cmd: SiteCommand): Not
       break;
   }
   if (!r.ok) return no(cmd.kind, r.error);
+  // касса (spec 2026-10-economy): трата не уведёт её ниже предела минуса — иначе стройка ждёт денег
+  const need = shortOf(db, s, r.cost);
+  if (need > 0) return no(cmd.kind, { kind: 'money', need });
   remember(s, works, site, r.room ?? ('room' in cmd ? cmd.room : undefined));
   commit(db, s, site, r.site);
   works.spent += r.cost;
+  payWorks(s, r.cost);
   return [{ kind: 'site', cmd: cmd.kind, ok: true, cost: r.cost, ...(later ? { later: true as const } : {}), ...(r.room ? { room: r.room } : {}) }];
 }
 
@@ -221,6 +227,8 @@ function undo(db: ContentDb, s: ShiftState, works: Works, site: Site): Notice[] 
   if (step.nextStaff !== undefined) s.nextStaff = step.nextStaff;
   else delete s.nextStaff;
   works.spent = step.spent;
+  // касса (spec 2026-10-economy): цена действия — назад целиком
+  payWorks(s, cost);
   commit(db, s, site, restored);
   return [{ kind: 'site', cmd: 'undo', ok: true, cost, ...(step.room ? { room: step.room } : {}) }];
 }

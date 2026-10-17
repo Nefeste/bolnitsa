@@ -3,6 +3,7 @@
 // числа и короткие строки: поток упаковывает их в Int32Array (src/sim/pack.ts). Чистая функция состояния: ничего не
 // меняет.
 import { REGISTRATION, type ShiftPatient, type ShiftState, TRIAGE, type Triage, type VisitKind } from './types';
+import { cashNow, dayNet } from './money';
 
 /**
  * Что человек делает — то, что движок знает и без отрисовки, по правилам карты «Анамнеза» (`src/state/clinicMap.ts`
@@ -37,8 +38,11 @@ export interface ShiftSlice {
   arrived: number;
   seen: number;
   left: number;
-  /** касса, ₽; нет — экономики в этом режиме нет («Смена» движка) */
+  /** касса, ₽; нет — экономики в этом режиме нет («Смена» движка). С частью 5б (spec 2026-10-economy) — касса сейчас */
   cash?: number;
+  /** касса ПК (spec 2026-10-economy): изменение с планёрки 08:00, ₽, и репутация 0–100 */
+  today?: number;
+  reputation?: number;
   /** ждут врача */
   queue: number;
 }
@@ -111,6 +115,6 @@ export function sliceOf(s: ShiftState, office?: string): ShiftSlice {
   for (const c of Object.values(s.summary.colleagues ?? {})) seen += c.seen;
   return {
     t: s.t, day: s.day, dayOpen: s.dayOpen, people, arrived: s.summary.arrived, seen, left: s.summary.left,
-    ...(s.economy ? { cash: s.economy.cash } : {}), queue: s.queue.length,
+    ...(s.economy ? { cash: cashNow(s)!, today: dayNet(s), reputation: s.economy.reputation ?? 50 } : {}), queue: s.queue.length,
   };
 }
