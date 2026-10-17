@@ -57,7 +57,9 @@ Studio-wide rules are in the charter's `docs/05-rules.md`. In addition here:
 - **The engine is pure TypeScript**: no UI, no `Date`, no `Math.random`, seeded randomness,
   `apply(state, command)` and `advance(state, seconds)` (charter ADR 0004).
 - **No network.** The game works fully offline and sends nothing anywhere (charter ADR 0008,
-  0014). Steam integration, when it comes, is a separate decision.
+  0014). Steam achievements and Steam Cloud go through the player's Steam client, and only
+  closer to 1.0 (stage Д; owner's decision 17.10.2026, `docs/adr/0003-steam.md`). Until then the
+  game never calls Steam.
 - **Generators for graphics only, by studio ADR 0020**
   ([`adr/0020-generators-pc.md`](https://github.com/Nefeste/gornitsa/blob/main/adr/0020-generators-pc.md)):
   images, textures and 3D models may come from generators; every file goes into the project's
