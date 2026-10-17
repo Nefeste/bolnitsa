@@ -1,5 +1,5 @@
 // из spikes/render-3d: src/view.ts — изменено: участок любого размера; пресеты — с мягким затенением и выборками;
-// солнце идёт по часам смены; камера двигается и клавишами.
+// солнце идёт по часам смены; камера двигается и клавишами; камера летит к человеку из списка (spec 2026-10-flow-ui).
 //
 // Отрисовщик, свет и камера. Пресеты качества меняют тени, сглаживание, затенение и разрешение кадра; сглаживание
 // задаётся при создании контекста WebGL, поэтому смена пресета пересоздаёт WebGLRenderer — геометрия и текстуры
@@ -159,6 +159,8 @@ export class IsoCamera {
   readonly ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 500);
   readonly persp = new THREE.PerspectiveCamera(20, 1, 1, 700);
   aspect = 16 / 9;
+  /** куда камера летит (вкладка «Пациенты»: клик — к человеку); сдвиг, масштаб, общий план — отменяют */
+  private fly: { x: number; z: number; half: number } | null = null;
 
   constructor(
     private w: number,
@@ -186,6 +188,7 @@ export class IsoCamera {
 
   /** Сдвиг точки взгляда на dx, dy точек экрана (высота экрана — hPx). */
   pan(dxPx: number, dyPx: number, hPx: number) {
+    this.fly = null;
     const k = (2 * this.half) / hPx;
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
@@ -196,15 +199,40 @@ export class IsoCamera {
   }
 
   zoom(k: number) {
+    this.fly = null;
     this.half = THREE.MathUtils.clamp(this.half * k, 3, Math.max(this.w, this.h) * 0.75);
   }
 
   overview() {
+    this.fly = null;
     this.target.set(this.w / 2, 0, this.h / 2);
     this.half = Math.max(this.h * 0.7, this.w * 0.4);
   }
 
+  /** Плавно к точке (x, z) участка; ближе `half`, если камера дальше. */
+  flyTo(x: number, z: number, half = 9) {
+    this.fly = { x, z, half: Math.min(this.half, half) };
+  }
+
+  /** Летит ли камера сейчас. */
+  get flying(): boolean {
+    return this.fly !== null;
+  }
+
   update(dt: number) {
+    if (this.fly) {
+      // за полсекунды почти долетает: каждое мгновение — доля оставшегося пути
+      const k = Math.min(1, dt * 7);
+      this.target.x += (this.fly.x - this.target.x) * k;
+      this.target.z += (this.fly.z - this.target.z) * k;
+      this.half += (this.fly.half - this.half) * k;
+      if (Math.abs(this.fly.x - this.target.x) + Math.abs(this.fly.z - this.target.z) < 0.02 && Math.abs(this.fly.half - this.half) < 0.02) {
+        this.target.x = this.fly.x;
+        this.target.z = this.fly.z;
+        this.half = this.fly.half;
+        this.fly = null;
+      }
+    }
     const d = this.yawTo - this.yaw;
     this.yaw += Math.abs(d) < 1e-3 ? d : d * Math.min(1, dt * 10);
     const dir = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), Math.cos(this.yaw) * Math.cos(this.pitch));

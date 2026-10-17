@@ -48,6 +48,10 @@ const actions: Actions = {
   demolish: later('demolish'),
   hire: later('hire'),
   dismiss: later('dismiss'),
+  filterPatients: later('filterPatients'),
+  focus: later('focus'),
+  toggleLayers: later('toggleLayers'),
+  toggleQueues: later('toggleQueues'),
   doctor: later('doctor'),
   money: later('money'),
   startGame: kind => {

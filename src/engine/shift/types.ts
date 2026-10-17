@@ -1,4 +1,4 @@
-// из anamnez: src/engine/shift/types.ts @ 96503ac, изменено: ClosedCase.review — разбор по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults); стройка ПК — команда, событие, извещение и счётчики (spec 2026-10-build); сутки целиком — часы приёма, планёрка и обход (spec 2026-10-day); касса и поток от больницы, планёрка, обход, долгий случай (spec 2026-10-economy)
+// из anamnez: src/engine/shift/types.ts @ 96503ac, изменено: ClosedCase.review — разбор по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults); стройка ПК — команда, событие, извещение и счётчики (spec 2026-10-build); сутки целиком — часы приёма, планёрка и обход (spec 2026-10-day); путь пациента — поле `journeys` (spec 2026-10-flow-ui); касса и поток от больницы, планёрка, обход, долгий случай (spec 2026-10-economy)
 // Смена в амбулатории (spec 2026-09-first-shift, «Движок»; `04-data-model.md` §2).
 //
 // Состояние — обычный сериализуемый объект: сохранение — снимок (ADR 0010). Случайность
@@ -17,6 +17,7 @@ import type { Grade, ScoreNote } from '../med/score';
 import type { Observation, Patient } from '../med/types';
 import type { Bed, Stay, StayResult } from './ward';
 import type { TargetResult } from './targets';
+import type { Journeys } from './journey';
 
 export const SHIFT_SCHEMA_VERSION = 1;
 
@@ -642,4 +643,6 @@ export interface ShiftState {
   consults?: Consult[];
   /** стройка ПК (spec 2026-10-build): потрачено на стройку и отмена */
   works?: Works;
+  /** поток для ПК: путь пациента — что с ним было и почему ждал; сутки после ухода (spec 2026-10-flow-ui) */
+  journeys?: Journeys;
 }

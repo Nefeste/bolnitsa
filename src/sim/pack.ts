@@ -1,20 +1,23 @@
 // Упакованный срез (spec docs/specs/2026-10-engine-speed.md, часть 5; docs/specs/2026-10-shell-3d.md, «Обмен между
 // потоками»): Int32Array, который поток расчёта передаёт потоку отрисовки без копии (`transferList`). Строки — номера
 // пациентов, пол, возраст, жалоба — уходят отдельной таблицей и только у новых: у каждого человека в больнице свой номер
-// в срезе (`handle`), он не меняется, пока человек в больнице.
+// в срезе (`handle`), он не меняется, пока человек в больнице. Формат 2 (spec docs/specs/2026-10-flow-ui.md): у человека —
+// с какого момента он делает то, что делает, до какого часа ждёт в общей очереди и просьба нанятого врача о нём.
 import type { Doing, PersonSlice, ShiftSlice } from '../engine/shift/slice';
 import type { ShiftState, Triage, VisitKind } from '../engine/shift/types';
 
 /** Заголовок: чисел (с частью 5б — касса за сутки и репутация, spec docs/specs/2026-10-economy.md). */
 export const HEADER = 14;
 /** На человека: чисел. */
-export const STRIDE = 8;
-export const FORMAT = 1;
+export const STRIDE = 12;
+export const FORMAT = 2;
 
 /** Поля заголовка. */
 export const H = { format: 0, t: 1, day: 2, dayOpen: 3, count: 4, arrived: 5, seen: 6, left: 7, cash: 8, lag: 9, queue: 10, reserved: 11, today: 12, reputation: 13 } as const;
 /** Поля человека. */
-export const P = { handle: 0, status: 1, triage: 2, room: 3, by: 4, doing: 5, bed: 6, flags: 7 } as const;
+export const P = { handle: 0, status: 1, triage: 2, room: 3, by: 4, doing: 5, bed: 6, flags: 7, since: 8, limit: 9, askAt: 10, askUntil: 11 } as const;
+/** Нет времени: срока терпения, просьбы. */
+export const NO_TIME = -1;
 /** Кассы нет — в этом режиме движка нет экономики. */
 export const NO_CASH = -2147483648;
 
@@ -101,6 +104,11 @@ export function packSlice(s: ShiftState, slice: ShiftSlice, lag: number, handles
     buf[o + P.doing] = DOINGS.indexOf(p.doing);
     buf[o + P.bed] = p.bed ?? -1;
     buf[o + P.flags] = KINDS.indexOf(p.kind);
+    // часть 3 (spec docs/specs/2026-10-flow-ui.md): время текущего занятия, терпение, просьба врача
+    buf[o + P.since] = p.since ?? slice.t;
+    buf[o + P.limit] = p.limit ?? NO_TIME;
+    buf[o + P.askAt] = p.asks ? p.asks.at : NO_TIME;
+    buf[o + P.askUntil] = p.asks ? p.asks.until : NO_TIME;
   });
   handles.keep(present);
   return { buf, names };
@@ -118,6 +126,12 @@ export interface PersonView {
   doing: Doing;
   bed: number;
   kind: VisitKind;
+  /** с какого момента делает то, что делает (игровые секунды) */
+  since: number;
+  /** до какого часа ждёт в общей очереди; NO_TIME — не уходит или не в ней */
+  limit: number;
+  /** нанятый врач просит вас посмотреть его: с какого часа и до какого ждёт ответа */
+  ask?: { at: number; until: number };
 }
 
 export function personAt(buf: Int32Array, i: number): PersonView {
@@ -131,6 +145,9 @@ export function personAt(buf: Int32Array, i: number): PersonView {
     doing: DOINGS[buf[o + P.doing]],
     bed: buf[o + P.bed],
     kind: KINDS[buf[o + P.flags]],
+    since: buf[o + P.since],
+    limit: buf[o + P.limit],
+    ...(buf[o + P.askUntil] !== NO_TIME ? { ask: { at: buf[o + P.askAt], until: buf[o + P.askUntil] } } : {}),
   };
 }
 

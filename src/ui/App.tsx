@@ -9,6 +9,7 @@ import type { WallMode } from '../render/world';
 import { Card } from './doctor/Card';
 import { Asks, Dock, OfficeRow, TakeCase } from './doctor/Dock';
 import { Meeting, Reports, signed } from './Meeting';
+import { Layers, PathSection, PatientsTab } from './flow';
 import { type Actions, type Hud, type RoomCard, type Speed, type Store, type Tab, type Tool, useHud } from './store';
 
 /** Названия из базы: помещения, должности, признаки. */
@@ -151,9 +152,7 @@ function LeftTools({ hud, actions }: P) {
         <button type="button" id="build" onClick={actions.toggleBuild} title="B">
           🏗 {T.left.build}
         </button>
-        <button type="button" disabled title={T.left.overlaysSoon}>
-          ▦ {T.left.overlays}
-        </button>
+        <Layers hud={hud} actions={actions} />
       </div>
     );
   const tools: [Tool, string, string][] = [
@@ -329,20 +328,7 @@ function RightTabs({ hud, actions }: P) {
     ['goals', T.tabs.goals],
   ];
   let body: ReactNode = null;
-  if (hud.tab === 'patients')
-    body = hud.patients.length ? (
-      <ul>
-        {hud.patients.map(p => (
-          <li key={p.key}>
-            <button type="button" className={`row t-${p.triage}`} onClick={() => actions.select(p.key)}>
-              {p.text}
-            </button>
-          </li>
-        ))}
-      </ul>
-    ) : (
-      <p>{T.tabs.empty}</p>
-    );
+  if (hud.tab === 'patients') body = <PatientsTab hud={hud} actions={actions} />;
   else if (hud.tab === 'staff')
     body = (
       <ul>
@@ -385,6 +371,8 @@ function RightTabs({ hud, actions }: P) {
 
 function personLines(info: PersonInfo, names: Names): [string, string][] {
   if (info.kind === 'staff') return [[T.card.staff, names.role(info.role)], [T.card.where, names.room(info.room)]];
+  // ушёл — на карте его нет: кто и как пришёл, остальное — в пути (spec 2026-10-flow-ui)
+  if (info.gone) return [[T.card.complaint, names.finding(info.complaint)], [T.card.visit, T.visit[info.visit as keyof typeof T.visit] ?? info.visit]];
   return [
     [T.card.complaint, names.finding(info.complaint)],
     [T.card.where, info.room ? names.room(info.room) : T.card.corridor],
@@ -416,7 +404,8 @@ function BottomCard({ hud, actions, names }: P) {
             </div>
           ))}
         </dl>
-        {info.kind === 'patient' ? <TakeCase info={info} said={hud.doctor?.said} actions={actions} /> : null}
+        {info.kind === 'patient' && !info.gone ? <TakeCase info={info} said={hud.doctor?.said} actions={actions} /> : null}
+        {info.kind === 'patient' ? <PathSection hud={hud} /> : null}
       </div>
     );
   }

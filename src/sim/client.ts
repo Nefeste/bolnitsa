@@ -3,7 +3,7 @@
 // поток не захлёбывается кадрами, если не успевает.
 import type { Command, Notice, ShiftState } from '../engine/shift/types';
 import type { NameRow } from './pack';
-import type { DoctorAct, DoctorOut, FromSim, ToSim, World } from './protocol';
+import type { DoctorAct, DoctorOut, FromSim, PathView, ToSim, World } from './protocol';
 
 /** Срез и, если изменились, режим врача (spec docs/specs/2026-10-doctor-mode.md). */
 export interface Slice extends DoctorOut {
@@ -12,6 +12,10 @@ export interface Slice extends DoctorOut {
   notices: Notice[];
   lag: number;
   world?: World;
+  /** путь пациента, которого показывает окно (`watch`) — когда он изменился */
+  path?: PathView;
+  /** сломанные с утра аппараты, «помещение:место», — когда список изменился */
+  broken?: string[];
 }
 
 export class SimClient {
@@ -50,6 +54,7 @@ export class SimClient {
     this.onSlice({
       buf: msg.buf, names: msg.names, notices: msg.notices, lag: msg.lag, ...(msg.world ? { world: msg.world } : {}),
       ...(msg.doctor ? { doctor: msg.doctor } : {}), ...(msg.card !== undefined ? { card: msg.card } : {}), ...(msg.refused ? { refused: msg.refused } : {}),
+      ...(msg.path ? { path: msg.path } : {}), ...(msg.broken ? { broken: msg.broken } : {}),
     });
   }
 
@@ -82,6 +87,11 @@ export class SimClient {
     this.ticking = true;
     this.sentAt = performance.now();
     this.post({ kind: 'tick', seconds, budgetMs });
+  }
+
+  /** Показывать путь этого пациента (номер в движке); null — никого (spec docs/specs/2026-10-flow-ui.md). */
+  watch(id: string | null) {
+    this.post({ kind: 'watch', id });
   }
 
   save(): Promise<ShiftState> {
