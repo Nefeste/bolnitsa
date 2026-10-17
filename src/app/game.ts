@@ -35,7 +35,7 @@ import type { Actions, Hud, RoomCard, Speed, Store, Tab } from '../ui/store';
 import { Builder, objectName, whyText } from './build';
 import { Chips } from './chips';
 import { Doctor } from './doctor';
-import { dur, moodOf, pathCard, type PatientRow, patientRows, roomChip, roomLoads, tintOf } from './flow';
+import { chipShown, dur, moodOf, pathCard, type PatientRow, patientRows, roomChip, roomLoads, tintOf } from './flow';
 import { Labels } from './labels';
 import { Money } from './money';
 import { startCash } from '../engine/shift/money';
@@ -524,7 +524,7 @@ export class Game {
     if (!r) return undefined;
     const last = this.pop.lastOf(id);
     return {
-      kind: 'patient', id, sex: r.sex, age: r.age, ...(r.complaint ? { complaint: r.complaint } : {}), triage: last?.triage ?? 'green', doing: last?.doing ?? 'waiting',
+      kind: 'patient', id, ...(r.name ? { name: r.name } : {}), sex: r.sex, age: r.age, ...(r.complaint ? { complaint: r.complaint } : {}), triage: last?.triage ?? 'green', doing: last?.doing ?? 'waiting',
       visit: KINDS[Number(last?.kind ?? 1)] ?? 'walkIn', gone: true,
     };
   }
@@ -546,13 +546,18 @@ export class Game {
     const loads = roomLoads(people.map(([, p]) => p), plan, by => this.office[by] ?? -1, this.hall, t, type => !!(db.rooms[type]?.beds || db.rooms[type]?.emergency));
     const mine = doctorRoom(plan);
     this.chips.detailed = hud.layers.queues;
-    this.chips.set(plan.rooms.map((r, i) => ({ id: r.id, x: r.x + r.w / 2, z: r.y + r.h / 2, chip: roomChip(loads[i], this.problems[i], r.id === mine) })));
+    this.chips.set(
+      plan.rooms.flatMap((r, i) => {
+        const chip = roomChip(loads[i], this.problems[i], r.id === mine);
+        return chipShown(chip, hud.layers.queues) ? [{ id: r.id, x: r.x + r.w / 2, z: r.y + r.h / 2, chip }] : [];
+      }),
+    );
     this.stage.tint.group.visible = hud.layers.queues;
     if (hud.layers.queues) this.stage.tint.set(loads.map((l, i) => tintOf(l, this.problems[i] !== undefined)));
     let patients: PatientRow[] = [];
     let patientsAll = 0;
     if (hud.tab === 'patients') {
-      const list = people.map(([key, p]) => ({ ...p, key, id: p.row.id, title: T.card.patient(p.row.sex, p.row.age) }));
+      const list = people.map(([key, p]) => ({ ...p, key, id: p.row.id, title: T.card.patient(p.row.sex, p.row.age, p.row.name) }));
       ({ rows: patients, total: patientsAll } = patientRows(list, t, hud.patientFilter));
     }
     // ушёл, когда кончилось терпение: час — его срок из среза (извещение при промотке приходит позже), ждал — до него
@@ -561,7 +566,7 @@ export class Game {
       const last = this.pop.lastOf(x.id);
       const f = r?.sex === 'f';
       const text = last && last.limit >= 0 ? T.flow.goneRow(f, clock(last.limit), dur(last.limit - last.since)) : T.flow.goneAt(f, clock(x.t));
-      return { key: `id:${x.id}`, id: x.id, title: r ? T.card.patient(r.sex, r.age) : x.id, text, triage: last?.triage ?? 'green' };
+      return { key: `id:${x.id}`, id: x.id, title: r ? T.card.patient(r.sex, r.age, r.name) : x.id, text, triage: last?.triage ?? 'green' };
     });
     // путь выбранного пациента: поток расчёта кладёт его в срез, когда он изменился
     const sel = this.selected;
@@ -679,6 +684,9 @@ export class Game {
       if (w) this.stage.cam.flyTo(w.x, w.z);
       this.actions.select(key);
     },
+    // «Найти» из панели врача (spec docs/specs/2026-10-owner-play.md): в больнице — к нему; идёт к выходу — к нему; ушёл —
+    // карточка с путём
+    find: id => this.actions.focus(this.pop.keyOf(id) ?? this.pop.walkerKey(id) ?? `id:${id}`),
     toggleLayers: () => {
       const l = this.store.get().layers;
       this.store.set({ layers: { ...l, open: !l.open } });

@@ -408,6 +408,8 @@ export const doctorEn: DoctorStrings = {
     office: (name: string) => `your office: ${name}`,
     openCard: 'Open the card',
     call: 'Call in',
+    find: 'Find',
+    findHint: 'Show on the hospital map',
     take: 'Take the case',
     takeHint: 'The case becomes yours with everything already found out',
     queued: (name: string) => `${name} is in your queue: you are with another patient`,

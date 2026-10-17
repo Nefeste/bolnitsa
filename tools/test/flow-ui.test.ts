@@ -3,7 +3,7 @@
 // Чистые функции src/app/flow.ts — без DOM и Three.js; строки — русские (язык по умолчанию).
 import { describe, expect, test } from 'bun:test';
 import {
-  dur, LONG_WAIT, moodOf, NO_FILTER, pathCard, type PathNames, patientRows, roomChip, roomLoads, type Seen, tintOf, UNHAPPY, WAIT_BAD, WAIT_OK,
+  chipShown, dur, LONG_WAIT, moodOf, NO_FILTER, pathCard, type PathNames, patientRows, roomChip, roomLoads, type Seen, tintOf, UNHAPPY, WAIT_BAD, WAIT_OK,
 } from '../../src/app/flow';
 import type { Plan } from '../../src/engine/hospital/build';
 import type { Journey } from '../../src/engine/shift/journey';
@@ -152,6 +152,23 @@ describe('помещения и слой очередей', () => {
     expect(roomChip({ ...idle, busy: true }, undefined, false)).toMatchObject({ tone: 'busy', icon: 'busy', text: 'занято' });
     expect(roomChip(idle, undefined, true)).toMatchObject({ icon: 'mine', text: 'ваш кабинет' });
     expect(roomChip(idle, undefined, false)).toMatchObject({ tone: 'ok', icon: 'ok', text: 'работает' });
+  });
+
+  // spec docs/specs/2026-10-owner-play.md: «Работает» и «Койки» над каждым помещением — лишнее; без слоя — что требует взгляда
+  test('без слоя — только требующие взгляда и ваш кабинет; в слое — все', () => {
+    const idle = { queue: 0, wait: 0, busy: false, ask: false };
+    const shown = (chip: ReturnType<typeof roomChip>) => [chipShown(chip, false), chipShown(chip, true)];
+    expect(shown(roomChip(loads[0], undefined, false))).toEqual([true, true]); // долго ждут
+    expect(shown(roomChip(loads[1], undefined, false))).toEqual([true, true]); // просит врач
+    expect(shown(roomChip(loads[2], undefined, false))).toEqual([true, true]); // очередь ждёт дольше обычного
+    expect(shown(roomChip(loads[3], undefined, false))).toEqual([false, true]); // койки 1/2
+    expect(shown(roomChip({ ...idle, beds: [2, 2] }, undefined, false))).toEqual([true, true]); // все койки заняты
+    expect(shown(roomChip(idle, { kind: 'noStaff', text: 'нет рентгенолога' }, false))).toEqual([true, true]);
+    expect(shown(roomChip(idle, { kind: 'closed', text: '' }, false))).toEqual([true, true]);
+    expect(shown(roomChip({ ...idle, busy: true }, undefined, false))).toEqual([false, true]); // занято
+    expect(shown(roomChip({ ...idle, queue: 1, wait: 60 }, undefined, false))).toEqual([false, true]); // короткая очередь
+    expect(shown(roomChip(idle, undefined, true))).toEqual([true, true]); // ваш кабинет
+    expect(shown(roomChip(idle, undefined, false))).toEqual([false, true]); // работает
   });
 
   test('цвет пола: по самому долгому ожиданию, по койкам, занято, не работает, пусто', () => {

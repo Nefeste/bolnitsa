@@ -176,8 +176,10 @@ async function partOne() {
     await page.mouse.click(target.x, target.y);
     await page.waitForTimeout(400);
     const title = await page.evaluate(() => document.getElementById('card-title')?.textContent ?? '');
-    if (title) ok(`клик по человеку — карточка: «${title}»`);
-    else fail('клик по человеку не открыл карточку');
+    // у пациента — имя (spec docs/specs/2026-10-owner-play.md), а не «Пациент, 20 лет»
+    const named = !target.key.startsWith('p:') || /^\S+ \S+, \d+/.test(title);
+    if (title && named) ok(`клик по человеку — карточка: «${title}»`);
+    else fail(`клик по человеку: карточка «${title}»`);
   } else fail('не нашёл человека в кадре');
   // стены вниз и обратно
   await page.click('#walls-down');
@@ -434,11 +436,12 @@ async function partThree() {
   const icons = await page.evaluate(() => window.__game.stage.icons.shown);
   if (icons.long + icons.unhappy > 0) ok(`значки над людьми: ${JSON.stringify(icons)}`);
   else fail(`нет значков «ждёт долго» и «недоволен»: ${JSON.stringify(icons)}`);
+  // без слоя — только требующие взгляда и ваш кабинет (spec docs/specs/2026-10-owner-play.md): «Работает» и «Койки» скрыты
   const chips = await page.evaluate(() => window.__game.chips.dump());
   const rooms = await page.evaluate(() => window.__game.plan.rooms.length);
-  const queue = chips.filter(c => c.icon === 'queue');
-  if (chips.length === rooms && queue.length > 0 && chips.some(c => ['ok', 'busy', 'bed', 'mine'].includes(c.icon))) ok(`значки помещений: ${chips.length}; ${queue.map(c => c.text).join(', ')}`);
-  else fail(`значки помещений: ${JSON.stringify(chips.slice(0, 8))}`);
+  const quiet = chips.filter(c => c.icon !== 'mine' && !['bad', 'off', 'ask', 'queue'].includes(c.tone));
+  if (chips.length < rooms && quiet.length === 0) ok(`значки помещений без слоя: ${chips.length} из ${rooms} — ${chips.map(c => c.text).join(', ') || 'нет'}`);
+  else fail(`значки помещений без слоя: ${JSON.stringify(chips.slice(0, 8))}`);
   // снимок: зал ожидания крупно — значки над людьми и помещениями
   const hall = await page.evaluate(() => {
     const r = window.__game.plan.rooms.find(x => x.type === 'room.waiting');
@@ -494,8 +497,11 @@ async function partThree() {
   await page.click('#card .close').catch(() => {});
   await page.keyboard.press('KeyL');
   await page.waitForTimeout(400);
-  const layer = await page.evaluate(() => ({ painted: window.__game.stage.tint.painted, chips: window.__game.chips.dump().filter(c => /очередь \d+ · до/.test(c.text)).map(c => c.text) }));
-  if (layer.painted > 0 && layer.chips.length > 0) ok(`слой «Очереди и загрузка»: окрашено ${layer.painted}, ${layer.chips.join(', ')}`);
+  const layer = await page.evaluate(() => {
+    const all = window.__game.chips.dump();
+    return { painted: window.__game.stage.tint.painted, all: all.length, quiet: all.filter(c => ['ok', 'busy', 'bed'].includes(c.icon)).length, chips: all.filter(c => /очередь \d+ · до/.test(c.text)).map(c => c.text) };
+  });
+  if (layer.painted > 0 && layer.chips.length > 0 && layer.all === rooms && layer.quiet > 0) ok(`слой «Очереди и загрузка»: окрашено ${layer.painted}, значков ${layer.all} (спокойных ${layer.quiet}), ${layer.chips.join(', ')}`);
   else fail(`слой: ${JSON.stringify(layer)}`);
   await page.keyboard.press('Tab');
   await page.evaluate(([x, z]) => {

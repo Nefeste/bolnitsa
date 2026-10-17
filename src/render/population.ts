@@ -22,7 +22,11 @@ export const YOU = 'you';
 /** Что показать о человеке в панели; `gone` — пациент ушёл, на карте его нет (spec 2026-10-flow-ui). */
 export type PersonInfo =
   | { kind: 'staff'; role: Id; room?: string; sex: 'm' | 'f' }
-  | { kind: 'patient'; id: string; sex: 'm' | 'f'; age: number; complaint?: Id; triage: Triage; doing: Doing; room?: string; by?: Id; visit: string; gone?: true };
+  | {
+      kind: 'patient'; id: string; name?: string; sex: 'm' | 'f'; age: number; complaint?: Id; triage: Triage; doing: Doing; room?: string; by?: Id; visit: string; gone?: true;
+      /** на экране ещё идёт туда, где с ним это делают (spec docs/specs/2026-10-owner-play.md) */
+      walking?: true;
+    };
 
 /** Что окно знает о пациенте из среза (часть 3): как `Seen` в src/app/flow.ts. */
 export interface PatientNow {
@@ -287,9 +291,13 @@ export class Population {
     if (!l) return undefined;
     const room = l.room >= 0 ? this.layout.plan.rooms[l.room]?.id : undefined;
     const by = l.by >= 0 ? this.staff[l.by]?.role : undefined;
+    // движок уже перевёл его туда, а на экране он ещё в пути: карточка говорит «идёт…», а не «у врача»
+    const w = this.crowd.walkers.get(key);
+    const walking = !!w && w.state === 'walk' && w.goals.length > 0;
     return {
-      kind: 'patient', id: l.row.id, sex: l.row.sex, age: l.row.age, ...(l.row.complaint ? { complaint: l.row.complaint } : {}), triage: l.triage, doing: l.doing,
+      kind: 'patient', id: l.row.id, ...(l.row.name ? { name: l.row.name } : {}), sex: l.row.sex, age: l.row.age, ...(l.row.complaint ? { complaint: l.row.complaint } : {}), triage: l.triage, doing: l.doing,
       ...(room ? { room } : {}), ...(by ? { by } : {}), visit: ['appointment', 'walkIn', 'return', 'ambulance'][Number(l.kind)] ?? 'walkIn',
+      ...(walking ? { walking: true as const } : {}),
     };
   }
 

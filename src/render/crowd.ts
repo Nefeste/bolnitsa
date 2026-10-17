@@ -122,7 +122,7 @@ export class Crowd {
     this.paths = paths;
     this.exit = exitOf(l, 'main');
     this.ambulance = exitOf(l, 'ambulance');
-    for (const w of this.walkers.values()) if (w.state === 'walk') this.startWalk(w, w.leaving ? null : (w.goals[0] ?? null));
+    for (const w of this.walkers.values()) if (w.state === 'walk') this.startWalk(w, w.goals[0] ?? null);
   }
 
   /** Новый человек: персонал — сразу на месте, пациент — входит с улицы (привезённый скорой — у входа для скорой). */
@@ -192,13 +192,17 @@ export class Crowd {
     if (w.state === 'walk') this.startWalk(w, w.goals[0]);
   }
 
-  /** Человека больше нет в срезе: уходит к выходу. Персонал и лежащие исчезают сразу, если выход не нужен. */
+  /**
+   * Человека больше нет в срезе: уходит к выходу. Остановку, где с ним что-то делают и до которой он ещё не дошёл (кабинет
+   * врача), он сначала проходит (spec docs/specs/2026-10-owner-play.md): приём в движке короче дороги на экране, и без
+   * неё человек уходил домой, не дойдя до врача. Персонал и лежащие исчезают сразу, если выход не нужен.
+   */
   leave(w: Walker) {
     if (w.leaving) return;
     w.leaving = true;
-    w.goals = [];
+    w.goals = w.goals.filter(g => g.kind === 'act' && g.key !== w.at?.key).slice(-1);
     w.dwell = 0;
-    if (w.state === 'walk') this.startWalk(w, null);
+    if (w.state === 'walk') this.startWalk(w, w.goals[0] ?? null);
   }
 
   remove(key: string) {
@@ -285,7 +289,8 @@ export class Crowd {
           w.fy = w.y;
           return;
         }
-        this.startWalk(w, w.leaving ? null : next);
+        // уходит — сперва оставшаяся остановка, потом к выходу
+        this.startWalk(w, next ?? null);
         return;
       }
       case 'standUp': {
@@ -393,7 +398,7 @@ export class Crowd {
         this.setClip(w, speed > RUN_FROM ? RUN : speed > 0 ? WALK : IDLE, true);
         if (!done) return;
         w.pts = null;
-        if (w.leaving) {
+        if (w.leaving && w.goals.length === 0) {
           w.state = 'gone';
           return;
         }
@@ -427,8 +432,7 @@ export class Crowd {
   /** Встал со стула или с постели: к следующей цели, к выходу или стоит рядом. */
   private afterRise(w: Walker) {
     w.at = undefined;
-    if (w.leaving) this.startWalk(w, null);
-    else if (w.goals.length) this.startWalk(w, w.goals[0]);
+    if (w.leaving || w.goals.length) this.startWalk(w, w.goals[0] ?? null);
     else {
       w.state = 'idle';
       this.setClip(w, IDLE, true);

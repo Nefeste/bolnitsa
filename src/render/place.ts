@@ -269,8 +269,10 @@ export class Places {
       case 'exam':
       case 'surgery': {
         if (!room) return this.waitSpot(w.key, taken);
-        // в кабинет врача и на операцию — без остановок; на обследовании человек хотя бы немного побудет
-        const kind: LegKind = w.doing === 'exam' ? 'act' : 'go';
+        // у врача и на обследовании человек хотя бы немного побудет, даже если движок ушёл вперёд (spec
+        // docs/specs/2026-10-owner-play.md: приём короче дороги на экране — иначе он не доходил до врача); на операцию — без
+        // остановок
+        const kind: LegKind = w.doing === 'surgery' ? 'go' : 'act';
         // анализы — забор крови в процедурной (как карта «Анамнеза»)
         if (room.type === 'room.lab') return inRoom('room.procedure', kind) ?? standAt(l, nearestWalk(l, doorInside(l, w.room), taken), kind, dwell);
         return room.patient ? spotAtCell(l, a, room.patient, kind, dwell, taken) : standAt(l, nearestWalk(l, doorInside(l, w.room), taken), kind, dwell);

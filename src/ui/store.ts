@@ -190,6 +190,8 @@ export interface Actions {
   /** часть 3 (spec docs/specs/2026-10-flow-ui.md): фильтры «Пациентов», камера к человеку и выбор, слои карты */
   filterPatients(patch: Partial<PatientFilter>): void;
   focus(key: string): void;
+  /** «Найти» (spec docs/specs/2026-10-owner-play.md): пациент по номеру в движке — камера к нему и его карточка */
+  find(id: string): void;
   toggleLayers(): void;
   toggleQueues(): void;
   /** режим врача (spec docs/specs/2026-10-doctor-mode.md) */

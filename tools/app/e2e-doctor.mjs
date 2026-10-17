@@ -45,6 +45,21 @@ export async function doctorPart({ page, port, out, ok, fail, q, shots }) {
   else fail(`просьба: скорость ${a.speed}, вкладка ${a.tab}`);
   ok(`снимок: ${join(out, 'e2e-doctor-0-asks.jpg')} (${await shot('e2e-doctor-0-asks.jpg')} КБ)`);
 
+  // «Найти» (spec docs/specs/2026-10-owner-play.md): камера к пациенту, его карточка на карте — с именем, как в просьбе
+  await page.click(`#ask-find-${ask.id}`);
+  await until(() => !window.__game.stage.cam.flying, null, 20000).catch(() => {});
+  await page.waitForSelector('#card-title', { timeout: 10000 }).catch(() => {});
+  const found = await page.evaluate(() => {
+    const g = window.__game;
+    const c = g.stage.cam;
+    const w = g.crowd.walkers.get(g.selected);
+    return { sel: g.selected, d: w ? Math.hypot(c.target.x - w.x, c.target.z - w.z) : -1, title: document.getElementById('card-title')?.textContent ?? '' };
+  });
+  const name = ask.who.split(',')[0];
+  if (found.sel?.startsWith('p:') && found.d >= 0 && found.d < 2 && found.title.startsWith(`${name},`)) ok(`«Найти»: камера у пациента (${found.d.toFixed(2)} м), карточка «${found.title}»`);
+  else fail(`«Найти»: ${JSON.stringify(found)}, в просьбе — «${ask.who}»`);
+  await page.click('#card .close').catch(() => {});
+
   // «Посмотреть» — карта пациента; мир стоит
   await page.click(`#ask-look-${ask.id}`);
   await page.waitForSelector('#dcard', { timeout: 20000 });

@@ -1,6 +1,7 @@
 // Значки состояния помещений (spec docs/specs/2026-10-flow-ui.md, «Значки состояния помещений»; геймдизайн §13): над
-// помещением — работает, занято, очередь N, нет персонала, закрыто, «не работает: причина». Слой DOM поверх 3D-вида, как
-// подписи стройки (labels.ts): текст меняется 10 раз в секунду, место — каждый кадр. Значки нарисованы кодом (SVG).
+// помещением — работает, занято, очередь N, нет персонала, закрыто, «не работает: причина»; без слоя «Очереди и загрузка» —
+// только требующие взгляда (`chipShown`, spec docs/specs/2026-10-owner-play.md). Слой DOM поверх 3D-вида, как подписи
+// стройки (labels.ts): текст меняется 10 раз в секунду, место — каждый кадр. Значки нарисованы кодом (SVG).
 import * as THREE from 'three';
 import type { Stage } from '../render/stage';
 import type { ChipIcon, RoomChip } from './flow';
@@ -65,6 +66,7 @@ export class Chips {
       x.el.className = `roomchip t-${r.chip.tone}`;
       x.el.dataset.room = r.id;
       x.el.dataset.icon = r.chip.icon;
+      x.el.dataset.tone = r.chip.tone;
       x.el.title = r.chip.long ?? r.chip.text;
       x.el.innerHTML = `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">${SVG[r.chip.icon]}</svg>`;
       const s = document.createElement('span');
@@ -93,7 +95,7 @@ export class Chips {
   }
 
   /** Значки в кадре — для сценария в браузере: помещение → значок и текст. */
-  dump(): { room: string; icon: string; text: string }[] {
-    return [...this.els.entries()].map(([room, x]) => ({ room, icon: x.el.dataset.icon ?? '', text: x.el.textContent ?? '' }));
+  dump(): { room: string; icon: string; tone: string; text: string }[] {
+    return [...this.els.entries()].map(([room, x]) => ({ room, icon: x.el.dataset.icon ?? '', tone: x.el.dataset.tone ?? '', text: x.el.textContent ?? '' }));
   }
 }

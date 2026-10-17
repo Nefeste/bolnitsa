@@ -421,6 +421,8 @@ export const doctorRu = {
     office: (name: string) => `ваш кабинет: ${name}`,
     openCard: 'Открыть карту',
     call: 'Позвать',
+    find: 'Найти',
+    findHint: 'Показать на карте больницы',
     take: 'Взять случай',
     takeHint: 'Случай перейдёт к вам вместе со всем, что уже узнано',
     queued: (name: string) => `${name} — в вашей очереди: вы с другим пациентом`,

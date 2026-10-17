@@ -331,6 +331,15 @@ export function roomChip(load: RoomLoad, problem: { kind: Problem['kind'] | 'bro
   return { tone: 'ok', icon: 'ok', text: T.flow.room.works };
 }
 
+/**
+ * Значок виден и без слоя (spec docs/specs/2026-10-owner-play.md): то, что требует взгляда, — не работает, закрыто, просит
+ * врач, долго ждут, койки заняты все, — и ваш кабинет. «Работает», «занято», «койки» и короткая очередь — в слое «Очереди
+ * и загрузка»: над каждым помещением они лишние.
+ */
+export function chipShown(chip: RoomChip, layer: boolean): boolean {
+  return layer || chip.tone === 'bad' || chip.tone === 'off' || chip.tone === 'ask' || chip.tone === 'queue' || chip.icon === 'mine';
+}
+
 /** Цвет пола в слое «Очереди и загрузка»: по ожиданию, по койкам, занято; не работает — серый; пусто — нет цвета. */
 export function tintOf(load: RoomLoad, down: boolean): number | null {
   // насыщенные: кадр потом переводится в тон и затеняется, и полупрозрачный пол бледнеет
