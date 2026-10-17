@@ -1,11 +1,10 @@
 # Сборка ПК-версии — только на тег версии vX.Y.Z (ADR студии 0019): слияние в main её не
 # запускает, ручного запуска нет. Тег ставит владелец.
 #
-# Пока игры нет, собирается проба 3D-вида spikes/render-3d (решение владельца 16.10.2026:
-# вид не хуже Project Hospital на Three.js; spikes/render-3d/README.md): Electron, Windows (zip и
-# portable .exe) и Linux (AppImage и tar.gz) — всё из Linux, без wine (как у пробы карты,
-# spikes/map-render/README.md, «Сборка»). Проба карты spikes/map-render (v0.0.1) больше не
-# собирается. Когда появится игра, сборка переедет на неё.
+# Собирается игра из корня репозитория (spec docs/specs/2026-10-shell-3d.md, «Сборка»): оболочка
+# Electron, 3D-вид, панели и поток расчёта над движком. Windows (zip и portable .exe) и Linux
+# (AppImage и tar.gz) — всё из Linux, без wine, как собирались пробы. Пробы spikes/map-render
+# (v0.0.1) и spikes/render-3d (v0.0.2) больше не собираются: их код и числа остаются в spikes/.
 # Файлы уходят в релиз на этот тег; версии 0.x — пре-релизы. Репозиторий закрыт: релиз видят
 # только участники.
 name: Сборка ПК
@@ -26,18 +25,15 @@ jobs:
     name: Windows и Linux
     runs-on: ubuntu-24.04
     timeout-minutes: 40
-    defaults:
-      run:
-        working-directory: spikes/render-3d
     steps:
       - uses: actions/checkout@v5
 
-      # тег — та же версия, что в package.json пробы: v0.0.2 при 0.0.1 — ошибка, а не чужой релиз
+      # тег — та же версия, что в package.json игры: v0.0.4 при 0.0.3 — ошибка, а не чужой релиз
       - name: Тег и версия
         run: |
           V=$(node -p "require('./package.json').version")
           if [ "$GITHUB_REF_NAME" != "v$V" ]; then
-            echo "::error::Тег $GITHUB_REF_NAME, а в spikes/render-3d/package.json версия $V."
+            echo "::error::Тег $GITHUB_REF_NAME, а в package.json версия $V."
             exit 1
           fi
 
@@ -45,7 +41,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: spikes/render-3d/package-lock.json
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
 
       # Electron и инструменты electron-builder скачиваются один раз и кэшируются
       - uses: actions/cache@v4
@@ -53,13 +51,16 @@ jobs:
           path: |
             ~/.cache/electron
             ~/.cache/electron-builder
-          key: electron-${{ runner.os }}-${{ hashFiles('spikes/render-3d/package-lock.json') }}
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - run: npm ci --no-audit --no-fund
+      # бандл медицинской базы не хранится в репозитории: сборка и валидатор — перед типами и страницей
+      - name: Медицинская база — сборка и валидатор
+        run: npm run content
       - name: Типы
-        run: npm run typecheck
-      - name: Страница
-        run: npm run build
+        run: npx tsc --noEmit
+      - name: Страница и поток расчёта
+        run: node tools/app/build.mjs
       - name: Windows и Linux
         run: npx electron-builder --linux --win --publish never
       - run: ls -la release
@@ -67,14 +68,16 @@ jobs:
       - name: Описание релиза
         run: |
           {
-            echo "Проба 3D-вида больницы на ПК: Three.js, модели CC0, люди со скелетной анимацией, Electron (spikes/render-3d)."
+            echo "«Больница» — оболочка игры и 3D-вид больницы над движком: смена идёт, пациенты приходят, ждут, идут на приём и в палаты."
+            echo "Стройки ещё нет (часть 2б). Что сделано и что проверить — docs/specs/2026-10-shell-3d.md."
             echo
-            echo "**Windows:** \`*-win-x64.zip\` — распаковать и запустить \`BolnitsaProbe3D.exe\`; \`*-win-x64.exe\` — то же одним файлом."
+            echo "**Windows:** \`*-win-x64.zip\` — распаковать и запустить \`Bolnitsa.exe\`; \`*-win-x64.exe\` — то же одним файлом."
             echo "**Linux:** \`*.AppImage\` или \`*.tar.gz\`."
             echo
+            echo "Авто-бенч: \`Bolnitsa.exe --bench\` (или кнопка «Авто-бенч» в меню отладки — клавиша слева от 1 или кнопка «Отладка») — итог bench-electron-*.json и четыре снимка рядом с программой."
+            echo
             echo "Сборка не подписана: Windows может спросить «Запустить всё равно?»."
-            echo "Что делать с пробой — spikes/render-3d/README.md, «Инструкция для владельца»."
-            echo "Модели — CC0 (Kenney, KayKit, Quaternius): spikes/render-3d/assets/LICENSES.md."
+            echo "Модели — CC0 (Kenney, KayKit, Quaternius): assets/LICENSES.md."
             echo
             echo "Собрано из коммита ${{ github.sha }}, сборка ${{ github.run_number }}."
           } > release.md
@@ -83,12 +86,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: Проба 3D ${{ github.ref_name }}
-          body_path: spikes/render-3d/release.md
+          name: Больница ${{ github.ref_name }}
+          body_path: release.md
           prerelease: ${{ startsWith(github.ref_name, 'v0.') }}
           fail_on_unmatched_files: true
           files: |
-            spikes/render-3d/release/BolnitsaProbe3D-*.AppImage
-            spikes/render-3d/release/BolnitsaProbe3D-*.tar.gz
-            spikes/render-3d/release/BolnitsaProbe3D-*-win-x64.zip
-            spikes/render-3d/release/BolnitsaProbe3D-*-win-x64.exe
+            release/Bolnitsa-*.AppImage
+            release/Bolnitsa-*.tar.gz
+            release/Bolnitsa-*-win-x64.zip
+            release/Bolnitsa-*-win-x64.exe
