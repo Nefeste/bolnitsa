@@ -27,10 +27,14 @@ decisions this project departs from and on what owner's decision.
 The project documents itself in [`docs/`](docs/README.md), in Russian. Start there:
 
 - `docs/README.md` — index and reading order.
-- `docs/01-product.md` — what the game is, for whom, what is deliberately absent, vocabulary.
+- `docs/01-product.md` — what the game is, its pillars, for whom, what is deliberately absent, vocabulary
+  (UI and code terms must match it).
+- `docs/08-game-design.md` — the game as it should ship in 1.0; **all game-design numbers live only there**.
+- `docs/specs/2026-10-v1.md` — the path to 1.0: stages, what each contains, release gates.
 - `docs/specs/2026-10-prototype.md` — the live specification: what the prototype must answer.
 - `docs/05-process.md` — how work and builds go here (PC specifics).
-- `docs/07-roadmap.md` — stages and owner questions.
+- `docs/07-roadmap.md` — prototype parts and their state, owner questions.
+- `docs/09-market.md` — competitors, price, Steam dates.
 - `docs/adr/` — decisions that are expensive to reverse; read the relevant one *before*
   proposing the opposite.
 
