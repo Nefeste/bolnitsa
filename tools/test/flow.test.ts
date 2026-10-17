@@ -1,6 +1,6 @@
 // Поток пациентов для ПК (spec docs/specs/2026-10-engine-speed.md, ч. 2–3): приток в час, пациент — к приходу, ушедшие —
 // строками журнала; детерминизм — тот же хэш у двух смен с одним зерном и при другом шаге времени; «красных»,
-// повторных и привезённых скорой ведут нанятые врачи.
+// повторных и привезённых скорой ведут нанятые врачи. Сутки — целиком, итог — на планёрке в 08:00 (spec 2026-10-day).
 import { describe, expect, test } from 'bun:test';
 import { apply, newFlowShift } from '../../src/engine/shift/engine';
 import { DAY, type ShiftState } from '../../src/engine/shift/types';
@@ -65,9 +65,10 @@ describe('поток для ПК', () => {
     for (const p of Object.values(s.patients)) {
       if (p.closed?.by) expect(p.closed.outcome.returns !== undefined || p.status === 'admitted' || ['admit', 'icu', 'ricu', 'box', 'surgery'].includes(p.closed.plan.setting)).toBe(true);
     }
-    liveUntil(db, s, 18);
-    apply(db, s, { kind: 'closeDay' });
-    const day = s.history[s.history.length - 1];
+    // итог суток — на планёрке в 08:00 (spec 2026-10-day): все приёмы нанятых врачей этих суток — строки журнала и лежащие
+    liveUntil(db, s, 32);
+    expect(s.history.length).toBe(1);
+    const day = s.history[0];
     const cols = Object.values(day.colleagues ?? {});
     const seen = cols.reduce((n, c) => n + c.seen, 0);
     expect(seen).toBe((s.gone ?? []).filter(r => r.by !== undefined).length + Object.values(s.patients).filter(p => p.closed?.by).length);
@@ -77,19 +78,20 @@ describe('поток для ПК', () => {
     expect(cols.some(c => (c.admitted ?? 0) + (c.referred ?? 0) > 0)).toBe(true);
   }, 120_000);
 
-  test('«красных», повторных и привезённых скорой ведут нанятые врачи — до конца дня никто не висит', () => {
+  test('«красных», повторных и привезённых скорой ведут нанятые врачи — к утру в очереди не висит никто', () => {
     const s = start(15);
-    for (let d = 0; d < 2; d++) {
-      if (d > 0) apply(db, s, { kind: 'nextDay' });
-      liveUntil(db, s, 20);
-      const waiting = Object.values(s.patients).filter(p => p.status === 'waiting' || p.status === 'inRoom' || p.status === 'away');
-      expect(waiting).toEqual([]);
-      apply(db, s, { kind: 'closeDay' });
+    // сутки целиком (spec 2026-10-day): сами приходят до 20:00, скорая — и ночью; к 08:00 очередь к врачу разобрана — ждут
+    // врача только привезённые за последний час
+    for (let d = 1; d <= 2; d++) {
+      liveUntil(db, s, 32);
+      const queued = Object.values(s.patients).filter(p => p.status === 'waiting' && p.by === undefined);
+      expect(queued.filter(p => p.arriveT < s.t - 3600)).toEqual([]);
+      expect(s.day).toBe(d + 1);
     }
     const seen = [...Object.values(s.patients), ...(s.gone ?? [])];
     expect(seen.some(p => p.kind === 'ambulance')).toBe(true);
     expect(seen.some(p => p.kind === 'return' || p.returnOf !== undefined)).toBe(true);
     expect(s.history.every(h => h.unseen === 0)).toBe(true);
-    expect(Math.floor(s.t / DAY) + 1).toBe(2);
+    expect(Math.floor(s.t / DAY) + 1).toBe(3);
   }, 180_000);
 });

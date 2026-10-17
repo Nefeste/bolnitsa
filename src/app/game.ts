@@ -327,6 +327,8 @@ export class Game {
       : n.kind === 'ambulance' ? T.notices.ambulance
       : n.kind === 'resultsReady' ? T.notices.resultsReady
       : n.kind === 'arrest' ? T.notices.arrest
+      : n.kind === 'consult' ? T.notices.consult
+      : n.kind === 'morning' ? T.notices.morning
       : T.notices.shiftEnd;
     this.notices.unshift({ t: this.t, text });
     if (this.notices.length > 60) this.notices.length = 60;

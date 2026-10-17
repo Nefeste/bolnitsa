@@ -1,4 +1,4 @@
-// из anamnez: tools/content/load.ts @ 96503ac, изменено: hospital/consults.yaml — «Просят посмотреть» (spec 2026-10-consults)
+// из anamnez: tools/content/load.ts @ 96503ac, изменено: hospital/consults.yaml — «Просят посмотреть» (spec 2026-10-consults); hospital/day.yaml — сутки целиком (spec 2026-10-day)
 // Сборка медицинской базы из YAML в память: схема, ссылки, полосы → числа
 // (`docs/11-content.md` §6, `docs/04-data-model.md` §1). Используют build.ts, тесты и
 // «виртуальный врач» — все читают одну и ту же базу.
@@ -20,10 +20,31 @@ import {
   type LinkSrc, PREVALENCE, type PresetSrc, presetSchema, type ProbabilitySrc, type ProfessionSrc, professionSchema, type RiskSrc, type RoleSrc, riskSchema, roleSchema, type RoomSrc, roomSchema,
   type TipSrc, tipSchema, type TreatmentSrc, treatmentSchema, versionSchema, type AchievementSrc, achievementSchema, type ScoreSrc, scoreSchema,
   type RuleSrc, ruleSchema, type TargetSrc, targetSchema, type SkillSrc, skillSchema,
-  type ConsultsSrc, consultsSchema,
+  type ConsultsSrc, consultsSchema, type DaySrc, daySchema,
 } from './schema';
 
 export const CONTENT_DIR = join(import.meta.dir, '../../content');
+
+/**
+ * Сутки целиком (spec docs/specs/2026-10-day.md): часы приёма — `открытие < закрытие`; сами в часы приёма по умолчанию — в
+ * среднем ровно 100 % (тогда `perHour` потока — «сколько в час»), скорая за сутки — тоже; утром сами приходят чаще, чем к
+ * закрытию (первая половина часов приёма больше второй), а скорая вечером (16:00–24:00) чаще, чем ночью (00:00–08:00), —
+ * как в геймдизайне, §5.
+ */
+export function dayErrors(day: DaySrc): string[] {
+  const out: string[] = [];
+  const f = 'hospital/day.yaml';
+  const [open, close] = day.hours;
+  if (open >= close) out.push(`${f}: часы приёма ${open}–${close} — открытие не раньше закрытия`);
+  const sum = (xs: readonly number[]) => xs.reduce((a, b) => a + b, 0);
+  const walk = day.walk.slice(open, close);
+  if (open < close && sum(walk) !== 100 * walk.length) out.push(`${f}: walk в часы приёма ${open}–${close} в среднем ${(sum(walk) / walk.length).toFixed(1)} %, а должно быть ровно 100`);
+  if (sum(day.ambulance) !== 2400) out.push(`${f}: ambulance за сутки в среднем ${(sum(day.ambulance) / 24).toFixed(1)} %, а должно быть ровно 100`);
+  const half = Math.floor(walk.length / 2);
+  if (walk.length >= 2 && sum(walk.slice(0, half)) <= sum(walk.slice(walk.length - half))) out.push(`${f}: walk — утром не больше, чем к закрытию, а сами приходят больше утром (геймдизайн §5)`);
+  if (sum(day.ambulance.slice(16, 24)) <= sum(day.ambulance.slice(0, 8))) out.push(`${f}: ambulance — вечером не больше, чем ночью, а скорая везёт больше вечером (геймдизайн §5)`);
+  return out;
+}
 
 /** Баланс, пока economy.yaml не прочитан (ошибка сборки всё равно будет). */
 export const NO_ECONOMY: ContentDb['economy'] = {
@@ -157,6 +178,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   const skills: Record<string, SkillSrc> = {};
   let economy: EconomySrc | undefined;
   let consults: ConsultsSrc | undefined;
+  let day: DaySrc | undefined;
   let contentVersion = 0;
 
   for (const file of files) {
@@ -220,6 +242,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       economy = check(economySchema);
     } else if (rel === 'hospital/consults.yaml') {
       consults = check(consultsSchema);
+    } else if (rel === 'hospital/day.yaml') {
+      day = check(daySchema);
     } else if (top === 'campaign' && rel.split('/')[1] === 'characters') {
       const c = check(characterSchema);
       if (c) { expectId(c.id, 'char'); put(characters, c); }
@@ -245,7 +269,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       const x = check(skillSchema);
       if (x) { expectId(x.id, 'skill'); put(skills, x); }
     } else {
-      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, people/professions, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, hospital/consults.yaml, campaign/characters, campaign/chapters, campaign/tips, achievements, scores, rules, targets, career/skills)`);
+      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, people/professions, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, hospital/consults.yaml, hospital/day.yaml, campaign/characters, campaign/chapters, campaign/tips, achievements, scores, rules, targets, career/skills)`);
     }
   }
   if (!contentVersion) errors.push('version.yaml: нет contentVersion');
@@ -253,6 +277,9 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   // «Просят посмотреть» (spec 2026-10-consults): слабый врач сомневается не реже сильного — порог не растёт с навыком
   if (!consults) errors.push('hospital/consults.yaml: нет порогов «Просят посмотреть»');
   else if (consults.unsure.some((x, i) => i > 0 && x > consults!.unsure[i - 1])) errors.push(`hospital/consults.yaml: unsure ${consults.unsure.join(', ')} — порог растёт с навыком, а сильный врач сомневается не чаще слабого`);
+  // сутки целиком (spec 2026-10-day): часы приёма, форма потока по часам — в среднем 100, утром сами чаще, вечером — скорая
+  if (!day) errors.push('hospital/day.yaml: нет часов приёма и формы потока по часам');
+  else errors.push(...dayErrors(day));
 
   // --- ссылки ---
   const hasF = (id: string) => id in findings;
@@ -891,6 +918,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       : NO_ECONOMY,
     // без порогов (ошибка сборки всё равно будет) врачи не просят
     ...(consults ? { consults } : {}),
+    // сутки целиком (spec 2026-10-day): без файла — ошибка сборки выше
+    ...(day ? { day } : {}),
     revealedBy,
   };
   for (const c of Object.values(conditions).sort((a, b) => (a.id < b.id ? -1 : 1))) {
