@@ -10,7 +10,8 @@ import type { WallMode } from '../render/world';
 import type { DoctorAction, DoctorHud } from './doctor/types';
 import type { EconomyHud, MoneyAction } from '../app/money';
 
-export type Speed = 0 | 1 | 2 | 4;
+/** Скорость игры (spec docs/specs/2026-10-walk.md): ×1, ×3, ×12; 0 — пауза. */
+export type Speed = 0 | 1 | 3 | 12;
 export type Tab = 'patients' | 'staff' | 'asks' | 'journal' | 'reports' | 'goals';
 
 /** Инструменты стройки (spec docs/specs/2026-10-build.md, «Экран и управление»). */

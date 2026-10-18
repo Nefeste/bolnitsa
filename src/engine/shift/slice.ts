@@ -6,6 +6,7 @@
 import { examQueued, phaseOf } from './journey';
 import { REGISTRATION, type ShiftPatient, type ShiftState, TRIAGE, type Triage, type VisitKind } from './types';
 import { cashNow, dayNet } from './money';
+import { waitsAt } from './walking';
 
 /**
  * Что человек делает — то, что движок знает и без отрисовки, по правилам карты «Анамнеза» (`src/state/clinicMap.ts`
@@ -34,6 +35,8 @@ export interface PersonSlice {
    */
   since?: number;
   limit?: number;
+  /** поток для ПК (spec 2026-10-walk): идёт туда, где делает то, что делает, — дойдёт к этому часу */
+  arrive?: number;
 }
 
 export interface ShiftSlice {
@@ -61,7 +64,7 @@ const ROOM_OF_STAFF = new WeakMap<object, Map<string, string>>();
  * Что делает пациент и где; `rooms` — кабинет нанятого врача по номеру человека; `yours` — ваш кабинет (spec
  * 2026-10-doctor-mode): у вашего больного на приёме — он.
  */
-function doingOf(s: ShiftState, p: ShiftPatient, rooms: Map<string, string> | undefined, yours?: string): { doing: Doing; room?: string; bed?: number } {
+function doingOf(s: ShiftState, p: ShiftPatient, rooms: Map<string, string> | undefined, yours?: string): { doing: Doing; room?: string; bed?: number; arrive?: number } {
   const office = p.by ? rooms?.get(p.by) : yours;
   if (p.kind === 'ambulance' && (p.status === 'waiting' || p.status === 'inRoom')) {
     return { doing: 'ambulance', ...(p.bay ? { room: p.bay.room, bed: p.bay.bed } : {}) };
@@ -70,7 +73,17 @@ function doingOf(s: ShiftState, p: ShiftPatient, rooms: Map<string, string> | un
     // ушёл от врача на обследование: в том кабинете — до `until`, потом идёт назад; у кабинета очередь — ждёт её
     // (spec 2026-10-flow-ui), а не стоит у аппарата вместе с тем, кого обследуют
     if (p.out && p.out.until > s.t) return { doing: examQueued(s, p, p.out.until) ? 'examQueue' : 'exam', room: p.out.room };
-    return { doing: 'office', ...(office ? { room: office } : {}) };
+    // поток для ПК (spec 2026-10-walk): позвали — идёт, приём начнётся, когда дойдёт
+    const going = p.walk && p.walk.to === office && p.walk.at > s.t ? { arrive: p.walk.at } : {};
+    return { doing: 'office', ...(office ? { room: office } : {}), ...going };
+  }
+  if (p.status === 'waiting' && p.regAt !== undefined) {
+    // поток для ПК (spec 2026-10-walk): от входа — к регистратуре, к медсестре, в свою зону ожидания; следующий к врачу —
+    // у двери его кабинета
+    if (p.step === 0 && s.t < p.regAt + REGISTRATION) return { doing: 'registration', ...(p.regAt > s.t ? { arrive: p.regAt } : {}) };
+    if (p.step === 0 && p.triAt !== undefined && s.t < p.triAt + TRIAGE) return { doing: 'triage', ...(p.triAt > s.t ? { arrive: p.triAt } : {}) };
+    const w = waitsAt(p);
+    return { doing: 'waiting', ...(w.at ? { room: w.at } : {}), ...(w.t !== undefined && w.t > s.t ? { arrive: w.t } : {}) };
   }
   if (p.status === 'waiting') {
     // только что пришедший — у регистратора и у медсестры; вернувшийся с обследований — сразу в зал
@@ -113,6 +126,7 @@ export function sliceOf(s: ShiftState, office?: string): ShiftSlice {
     people.push({
       id: p.id, status: p.status, triage: p.triage, ...(d.room ? { room: d.room } : {}), ...(p.by ? { by: p.by } : {}), doing: d.doing,
       ...(d.bed !== undefined ? { bed: d.bed } : {}), kind: p.kind, since: ph.since, ...(ph.limit !== undefined ? { limit: ph.limit } : {}),
+      ...(d.arrive !== undefined ? { arrive: d.arrive } : {}),
     });
   }
   // «Просят посмотреть» (spec 2026-10-consults): у кого нанятый врач ждёт вашего ответа

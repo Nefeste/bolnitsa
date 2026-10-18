@@ -24,8 +24,11 @@ export type PersonInfo =
   | { kind: 'staff'; role: Id; room?: string; sex: 'm' | 'f' }
   | {
       kind: 'patient'; id: string; name?: string; sex: 'm' | 'f'; age: number; complaint?: Id; triage: Triage; doing: Doing; room?: string; by?: Id; visit: string; gone?: true;
-      /** на экране ещё идёт туда, где с ним это делают (spec docs/specs/2026-10-owner-play.md) */
+      /** ещё идёт туда, где с ним это делают (spec docs/specs/2026-10-owner-play.md), и к какому часу дойдёт (spec 2026-10-walk) */
       walking?: true;
+      arrive?: number;
+      /** следующий к врачу — ждёт у двери его кабинета (spec 2026-10-walk) */
+      door?: true;
     };
 
 /** Что окно знает о пациенте из среза (часть 3): как `Seen` в src/app/flow.ts. */
@@ -41,6 +44,8 @@ export interface PatientNow {
   since: number;
   limit: number;
   ask?: { at: number; until: number };
+  /** идёт — к какому часу дойдёт (spec 2026-10-walk); нет — NO_TIME */
+  arrive: number;
 }
 
 /** Сколько строк пришедших помнить (для «Ушли» и карточки ушедшего). */
@@ -174,14 +179,16 @@ export class Population {
       }
     }
     const n = buf[H.count];
-    const waiting: string[] = [];
+    const waiting: { key: string; room: number }[] = [];
     const benched: string[] = [];
     const present = new Set<string>();
     for (let i = 0; i < n; i++) {
       const o = HEADER + i * STRIDE;
       const key = `p:${buf[o + P.handle]}`;
       const doing = DOINGS[buf[o + P.doing]];
-      if (doing === 'waiting') waiting.push(key);
+      // поток для ПК (spec 2026-10-walk): ждёт в своей зоне ожидания — номер помещения плана
+      const roomH = buf[o + P.room];
+      if (doing === 'waiting') waiting.push({ key, room: roomH >= 0 ? (this.roomIndex[roomH] ?? -1) : -1 });
       if (doing === 'examQueue' || doing === 'results') benched.push(key);
     }
     this.places.sync(waiting, benched);
@@ -202,7 +209,10 @@ export class Population {
       const now: PatientNow = {
         row, status: STATUSES[buf[o + P.status]], triage: TRIAGES[buf[o + P.triage]], doing, room, by: buf[o + P.by], bed: buf[o + P.bed], kind: String(buf[o + P.flags]),
         since: buf[o + P.since], limit: buf[o + P.limit], ...(askUntil !== NO_TIME ? { ask: { at: buf[o + P.askAt], until: askUntil } } : {}),
+        arrive: buf[o + P.arrive],
       };
+      // идёт — дойти к часу движка (spec 2026-10-walk)
+      const due = now.arrive === NO_TIME ? NaN : now.arrive;
       this.last.set(key, now);
       this.byId.set(row.id, now);
       const spot: Spot = this.places.spot({ key, doing, room, bed: buf[o + P.bed] }, taken);
@@ -212,11 +222,12 @@ export class Population {
         const look = this.pick('patient', row.sex, row.age >= OLD_AGE, row.seed);
         this.paints.set(key, { clothes: new THREE.Color(CLOTHES[row.seed % CLOTHES.length]), skin: new THREE.Color(SKIN[(row.seed >>> 3) % SKIN.length]) });
         // привезённый скорой — через вход для скорой
-        this.crowd.add(key, look, spot, false, KINDS[buf[o + P.flags]] === 'ambulance');
+        this.crowd.add(key, look, spot, false, KINDS[buf[o + P.flags]] === 'ambulance', due);
         continue;
       }
       // к врачу зовут — идёт сразу, без остановок; после стройки — к новому месту (то же место — тот же ключ: не встаёт)
-      if (this.dirty || !prev || prev.doing !== doing || prev.room !== room || w.goals.length === 0) this.crowd.retarget(w, spot, doing === 'office' && prev?.doing !== 'office');
+      if (this.dirty || !prev || prev.doing !== doing || prev.room !== room || w.goals.length === 0) this.crowd.retarget(w, spot, doing === 'office' && prev?.doing !== 'office', due);
+      else w.due = due;
     }
     this.dirty = false;
     for (const [key, w] of this.crowd.walkers) {
@@ -291,13 +302,16 @@ export class Population {
     if (!l) return undefined;
     const room = l.room >= 0 ? this.layout.plan.rooms[l.room]?.id : undefined;
     const by = l.by >= 0 ? this.staff[l.by]?.role : undefined;
-    // движок уже перевёл его туда, а на экране он ещё в пути: карточка говорит «идёт…», а не «у врача»
+    // идёт туда, где с ним это делают: движок знает, к какому часу дойдёт (spec 2026-10-walk); на экране ещё в пути —
+    // тоже идёт: карточка говорит «идёт…», а не «у врача»
     const w = this.crowd.walkers.get(key);
-    const walking = !!w && w.state === 'walk' && w.goals.length > 0;
+    const coming = l.arrive !== NO_TIME && l.arrive > this.t;
+    const walking = coming || (!!w && w.state === 'walk' && w.goals.length > 0);
+    const door = l.doing === 'waiting' && l.room >= 0 && this.layout.plan.rooms[l.room]?.type !== 'room.waiting';
     return {
       kind: 'patient', id: l.row.id, ...(l.row.name ? { name: l.row.name } : {}), sex: l.row.sex, age: l.row.age, ...(l.row.complaint ? { complaint: l.row.complaint } : {}), triage: l.triage, doing: l.doing,
       ...(room ? { room } : {}), ...(by ? { by } : {}), visit: ['appointment', 'walkIn', 'return', 'ambulance'][Number(l.kind)] ?? 'walkIn',
-      ...(walking ? { walking: true as const } : {}),
+      ...(walking ? { walking: true as const } : {}), ...(coming ? { arrive: l.arrive } : {}), ...(door ? { door: true as const } : {}),
     };
   }
 

@@ -32,7 +32,7 @@ const Btn = ({ on, onClick, children, title, disabled, id }: { on?: boolean; onC
 );
 
 function TopBar({ hud, actions }: P) {
-  const speeds: Speed[] = [1, 2, 4];
+  const speeds: Speed[] = [1, 3, 12];
   const last = hud.notices[0];
   return (
     <div className="top panel" id="top">
@@ -369,15 +369,22 @@ function RightTabs({ hud, actions }: P) {
   );
 }
 
+/** Что делает пациент — для карточки: идёт — куда и к какому часу дойдёт. */
+function doingLine(info: Extract<PersonInfo, { kind: 'patient' }>): string {
+  const what = info.door ? (info.walking ? T.card.toDoor : T.card.atDoor) : info.walking ? T.going[info.doing] : T.doing[info.doing];
+  return info.arrive !== undefined ? `${what} · ${T.card.arrives(clock(info.arrive))}` : what;
+}
+
 function personLines(info: PersonInfo, names: Names): [string, string][] {
   if (info.kind === 'staff') return [[T.card.staff, names.role(info.role)], [T.card.where, names.room(info.room)]];
   // ушёл — на карте его нет: кто и как пришёл, остальное — в пути (spec 2026-10-flow-ui)
   if (info.gone) return [[T.card.complaint, names.finding(info.complaint)], [T.card.visit, T.visit[info.visit as keyof typeof T.visit] ?? info.visit]];
   return [
     [T.card.complaint, names.finding(info.complaint)],
-    // ещё идёт (spec docs/specs/2026-10-owner-play.md): куда, а не «у врача» — движок уже там, человек на экране ещё нет
+    // ещё идёт (spec docs/specs/2026-10-owner-play.md): куда, а не «у врача», и к какому часу дойдёт (spec 2026-10-walk);
+    // следующий к врачу — у двери его кабинета
     [info.walking ? T.card.whereTo : T.card.where, info.room ? names.room(info.room) : T.card.corridor],
-    [T.card.doing, info.walking ? T.going[info.doing] : T.doing[info.doing]],
+    [T.card.doing, doingLine(info)],
     [T.card.triage, T.triage[info.triage]],
     [T.card.by, info.by ? names.role(info.by) : T.card.byNobody],
     [T.card.visit, T.visit[info.visit as keyof typeof T.visit] ?? info.visit],
