@@ -8,6 +8,7 @@ import type { Crowd, Walker } from './crowd';
 import { buildDoors, type Doors } from './doors';
 import { batchMeshes, type Furnished } from './furniture';
 import { GpuTimer } from './gpu';
+import { Highlight, type RoomRect } from './highlight';
 import { Icons } from './icons';
 import { buildLamps, type Lamps } from './lamps';
 import { FloorTint } from './overlay';
@@ -51,7 +52,8 @@ export class Stage {
   private floorTex = new Map<FloorKind, FloorTex>();
   private aniso: number;
   private marks: THREE.InstancedMesh;
-  private ring: THREE.Mesh;
+  /** выделение и наведение: рамки помещений, кольца у людей, вспышки стройки */
+  readonly highlight = new Highlight();
   /** поверх готового кадра: значки над людьми (часть 3) */
   readonly over = new THREE.Scene();
   readonly icons: Icons;
@@ -101,9 +103,9 @@ export class Stage {
     this.marks.frustumCulled = false;
     this.marks.setColorAt(0, MARK.red);
     this.scene.add(this.marks);
-    this.ring = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.52, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x2fb5c9, transparent: true, opacity: 0.9, depthWrite: false }));
-    this.ring.visible = false;
-    this.scene.add(this.ring);
+    this.scene.add(this.highlight.group);
+    // туман: земля за участком растворяется в цвете фона, а не обрывается краем плоскости; границы — по камере в кадре
+    this.scene.fog = new THREE.Fog(0x2a3236, 1, 1000);
     this.icons = new Icons(init.capacity);
     this.over.add(this.icons.mesh);
     this.tint.setLayout(layout);
@@ -177,8 +179,11 @@ export class Stage {
     this.post?.setSize();
   }
 
-  /** Кадр: камера, срез стен, двери, светильники, люди, свет по часу смены — и отрисовка. */
-  frame(dt: number, hour: number, crowd: Crowd, paint: (w: Walker) => Paint, triageOf: (key: string) => string | undefined, selected?: string) {
+  /**
+   * Кадр: камера, срез стен, двери, светильники, люди, свет по часу смены — и отрисовка. `pick` — что выделить: выбранное и
+   * наведённое помещение, человек под курсором (spec 2026-10-aaa-polish, «Выделение и наведение»).
+   */
+  frame(dt: number, hour: number, crowd: Crowd, paint: (w: Walker) => Paint, triageOf: (key: string) => string | undefined, selected?: string, pick?: { room: RoomRect | null; selRoom: RoomRect | null; under?: string }) {
     const cam = this.cam;
     cam.update(dt);
     const u = this.walls.uniforms;
@@ -190,27 +195,31 @@ export class Stage {
       this.light.setHour(hour);
       this.lamps.setHour(hour, this.floors.map(m => m.material as THREE.MeshStandardMaterial));
     }
+    const fog = this.scene.fog as THREE.Fog;
+    fog.color.copy(this.light.background);
+    fog.near = cam.distance + cam.half * 2.2;
+    fog.far = cam.distance + cam.half * 6 + 40;
     this.lamps.update(u, cam.half);
     this.doors.update(dt, (x, z, r) => crowd.near(x, z, r), u);
     const cull = cam.half * Math.max(1, cam.aspect) * 1.25 + 3;
     this.view.update(crowd, paint, cam.target, cull, cam.half <= PRESETS[this.quality].fullHalf);
-    this.updateMarks(crowd, triageOf, selected);
+    this.updateMarks(crowd, triageOf);
+    const feet = (key: string | undefined) => {
+      const w = key ? crowd.walkers.get(key) : undefined;
+      // у ног; у лежащего — на постели
+      return w ? { x: w.x, y: w.lie > 0.5 ? w.y : 0, z: w.z } : null;
+    };
+    this.highlight.update(dt, pick?.selRoom ?? null, pick?.room ?? null, feet(selected), feet(pick?.under));
     this.icons.update(crowd, this.iconOf, cam.half);
     this.updateYou(crowd);
     this.draw();
   }
 
   private m4 = new THREE.Matrix4();
-  private updateMarks(crowd: Crowd, triageOf: (key: string) => string | undefined, selected?: string) {
+  private updateMarks(crowd: Crowd, triageOf: (key: string) => string | undefined) {
     let n = 0;
-    this.ring.visible = false;
     const spin = (performance.now() / 600) % (Math.PI * 2);
     for (const w of crowd.walkers.values()) {
-      if (w.key === selected) {
-        this.ring.visible = true;
-        // у ног; у лежащего — на постели
-        this.ring.position.set(w.x, (w.lie > 0.5 ? w.y : 0) + 0.02, w.z);
-      }
       if (w.staff) continue;
       const t = triageOf(w.key);
       if (t !== 'red' && t !== 'yellow') continue;

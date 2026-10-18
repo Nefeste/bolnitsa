@@ -129,11 +129,12 @@ export function buildLamps(l: Layout): Lamps {
       }
     },
     setHour(hour, materials) {
-      // вечером (после 18) и ночью свет сильнее; днём пятна чуть заметны
+      // вечером (после 18) и ночью свет сильнее; днём пятна чуть заметны. Ночью рассеянный свет гаснет (view.ts), и
+      // помещения держатся на этих пятнах — они втрое ярче дневных (spec 2026-10-aaa-polish, «Свет»)
       const evening = hour >= 18 ? Math.min(1, (hour - 18) / 2) : hour < 7 ? 1 : 0;
-      const k = 0.35 + 0.9 * evening;
+      const k = 0.35 + 1.45 * evening;
       for (const mat of materials) mat.lightMapIntensity = k;
-      material.emissiveIntensity = 0.7 + 0.6 * evening;
+      material.emissiveIntensity = 0.7 + 0.9 * evening;
     },
   };
 }

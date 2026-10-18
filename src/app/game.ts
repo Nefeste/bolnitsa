@@ -8,7 +8,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { Cell, ContentDb, Id, Season } from '../content/types';
 import { type HospitalState, type Plan, planOf } from '../engine/hospital/build';
 import { DOCTOR, doctorRoom, openBlocks, type Problem, problemsOf, standInOf, type Staffing, workingRooms } from '../engine/hospital/requirements';
-import { demolishRefund, emptySite, furnishOf, hospitalOf, priceOf, rulesOf, type SiteCommand } from '../engine/hospital/site';
+import { demolishRefund, emptySite, furnishOf, hospitalOf, priceOf, rulesOf, type SiteCommand, type SiteResult } from '../engine/hospital/site';
 import { siteOfPreset } from '../engine/hospital/site-preset';
 import { presetStaff, salaryOf, type StaffMember, staffingOf } from '../engine/hospital/staff';
 import type { Notice } from '../engine/shift/types';
@@ -20,6 +20,7 @@ import { CATALOG, EXTRA_MODELS } from '../render/catalog';
 import { Crowd } from '../render/crowd';
 import { furnish, type Furnished } from '../render/furniture';
 import { Ghosts } from '../render/ghost';
+import type { RoomRect } from '../render/highlight';
 import { type Layout, layoutOf } from '../render/layout';
 import { type Index, type Model, modelOf } from '../render/models';
 import { Paths } from '../render/path';
@@ -36,9 +37,12 @@ import { Builder, objectName, whyText } from './build';
 import { Chips } from './chips';
 import { Doctor } from './doctor';
 import { chipShown, dur, moodOf, pathCard, type PatientRow, patientRows, roomChip, roomLoads, tintOf } from './flow';
+import { type HintKey, hintOf } from './hints';
+import { HoverLabel } from './hover';
 import { Labels } from './labels';
 import { Money } from './money';
 import { startCash } from '../engine/shift/money';
+import { GAME_PER_REAL } from '../engine/shift/walking';
 import type { Flow } from '../engine/shift/types';
 
 /**
@@ -53,8 +57,12 @@ export const AUTO: Flow = { perHour: 0, auto: true };
 /** С чего начать (spec docs/specs/2026-10-build.md, «Начало игры»): пустое здание или готовая больница 2а. */
 export type Start = 'empty' | 'preset';
 
-/** Игровых секунд в секунду на ×1: минута за секунду (геймдизайн §2). */
-export const GAME_PER_REAL = 60;
+/**
+ * Игровых секунд в секунду на ×1 — «спокойный» темп, решение владельца 17.10.2026 (spec docs/specs/2026-10-walk.md): приём
+ * на экране — около 23 секунд, люди идут 1,6 м/с, и движок считает их дорогу с той же скоростью. Число — у движка
+ * (`src/engine/shift/walking.ts`): скорость пешком в движке выводится из него.
+ */
+export { GAME_PER_REAL };
 
 /** Мост к оболочке Electron (electron/preload.cjs); в браузере его нет. */
 export interface ShellBridge {
@@ -125,6 +133,15 @@ export class Game {
   /** первый `world` из потока — та же больница, что окно отправило: сцену не пересобирать */
   private fresh = true;
   private labels!: Labels;
+  /** подпись под курсором (spec docs/specs/2026-10-aaa-polish.md, «Выделение и наведение») */
+  private hoverLabel!: HoverLabel;
+  /** под курсором: человек или помещение (номер в плане; -1 — нет) — для подсветки и подписи */
+  private under: { key?: string; room: number } = { room: -1 };
+  /** состояние каждого помещения словами — и когда значок над ним скрыт — для подписи под курсором */
+  private roomState: string[] = [];
+  /** подсказки первых минут (spec 2026-10-aaa-polish): закрытые игроком; смотрел ли он уже карточку или вкладку */
+  private seenHints = new Set<HintKey>();
+  private looked = false;
   /** часть 3: значки помещений, чей путь показан и он сам, ушедшие не дождавшись, причины «не работает», сломанное */
   chips!: Chips;
   private watching: string | null = null;
@@ -251,6 +268,7 @@ export class Game {
       this.stage.scene.add(this.ghosts.group);
       this.labels = new Labels(this.stage);
       this.chips = new Chips(this.stage);
+      this.hoverLabel = new HoverLabel();
       this.stage.iconOf = w => this.iconOf(w);
     } else {
       places.carry(this.places);
@@ -371,8 +389,10 @@ export class Game {
     this.pop.sync(s.buf, s.names);
     for (const n of s.notices) {
       if (n.kind === 'site' && n.cmd === 'office') this.doctor.onOffice(n);
-      else if (n.kind === 'site') this.builder.onResult(n);
-      else this.notice(n);
+      else if (n.kind === 'site') {
+        this.builder.onResult(n);
+        this.flashOf(n);
+      } else this.notice(n);
     }
     if (this.ff && this.ffStop(s.notices)) this.setSpeed(0);
     // режим врача: состояние, карта, автопауза — после «До утра», чтобы автопауза её остановила
@@ -435,14 +455,19 @@ export class Game {
       if (cell?.[0] !== h?.[0] || cell?.[1] !== h?.[1]) this.builder.move(cell);
     }
     const a = performance.now();
-    this.crowd.speed = this.ff ? 4 : this.speed;
+    // люди идут с той скоростью, с какой их дорогу считает движок (spec 2026-10-walk): «До утра» — как на ×12
+    this.crowd.speed = this.ff ? 12 : this.speed;
+    this.crowd.rate = this.crowd.speed * GAME_PER_REAL;
+    this.crowd.t = this.t;
     this.crowd.update(this.speed === 0 && !this.ff ? 0 : dt);
     const b = performance.now();
-    this.stage.frame(dt, (this.t % 86400) / 3600, this.crowd, this.pop.paint, k => this.pop.triageOf(k), this.ringKey());
+    this.pickUnder();
+    this.stage.frame(dt, (this.t % 86400) / 3600, this.crowd, this.pop.paint, k => this.pop.triageOf(k), this.ringKey(), this.pickOf());
     this.labels.visible = this.builder.on;
     this.labels.frame();
     this.chips.visible = !this.builder.on;
     this.chips.frame();
+    this.hoverLabel.frame(this.mouse.x, this.mouse.y);
     const c = performance.now();
     this.push(this.frames.sim, b - a);
     this.push(this.frames.draw, c - b);
@@ -473,9 +498,12 @@ export class Game {
     const flow = this.flowHud();
     const room = this.roomSel ? this.roomCard(this.roomSel) : undefined;
     if (this.roomSel && !room) this.roomSel = undefined;
+    // открыл карточку или вкладку — «щёлкните по человеку» больше не нужно (spec 2026-10-aaa-polish)
+    if (this.selected || this.roomSel || this.store.get().tab) this.looked = true;
     this.store.set({
       build: this.builder.hud(),
       room,
+      hint: this.hintNow(),
       t: this.t, day: this.day, speed: this.speed, ff: this.ff,
       ...(s ? { arrived: s.buf[H.arrived], seen: s.buf[H.seen], left: s.buf[H.left], queue: s.buf[H.queue], lag: s.lag / 60, cash: s.buf[H.cash] === -2147483648 ? undefined : s.buf[H.cash] } : {}),
       notices: [...this.notices],
@@ -546,12 +574,10 @@ export class Game {
     const loads = roomLoads(people.map(([, p]) => p), plan, by => this.office[by] ?? -1, this.hall, t, type => !!(db.rooms[type]?.beds || db.rooms[type]?.emergency));
     const mine = doctorRoom(plan);
     this.chips.detailed = hud.layers.queues;
-    this.chips.set(
-      plan.rooms.flatMap((r, i) => {
-        const chip = roomChip(loads[i], this.problems[i], r.id === mine);
-        return chipShown(chip, hud.layers.queues) ? [{ id: r.id, x: r.x + r.w / 2, z: r.y + r.h / 2, chip }] : [];
-      }),
-    );
+    const chips = plan.rooms.map((r, i) => roomChip(loads[i], this.problems[i], r.id === mine));
+    // состояние словами — и у помещений без значка: его показывает подпись под курсором
+    this.roomState = chips.map(c => c.long ?? c.text);
+    this.chips.set(plan.rooms.flatMap((r, i) => (chipShown(chips[i], hud.layers.queues) ? [{ id: r.id, x: r.x + r.w / 2, z: r.y + r.h / 2, chip: chips[i] }] : [])));
     this.stage.tint.group.visible = hud.layers.queues;
     if (hud.layers.queues) this.stage.tint.set(loads.map((l, i) => tintOf(l, this.problems[i] !== undefined)));
     let patients: PatientRow[] = [];
@@ -584,6 +610,84 @@ export class Game {
   /** Панели — заново сейчас, а не через 100 мс (режим врача: ответ потока, открыть и закрыть карту). */
   refresh() {
     this.hud();
+  }
+
+  // ---------------------------------------------------------------- выделение, наведение, подсказки (spec docs/specs/2026-10-aaa-polish.md)
+
+  /**
+   * Что под курсором — каждый кадр: человек ближе 30 точек, иначе помещение. В стройке — только помещение, при протяжке
+   * и сдвиге камеры — ничего; карта пациента и планёрка закрывают карту. Курсор над человеком — «рука»: по нему можно щёлкнуть.
+   */
+  private pickUnder() {
+    const m = this.mouse;
+    const modal = this.doctor.open || this.money.open;
+    if (!m.inside || m.drag || modal || this.builder.drag) this.under = { room: -1 };
+    else {
+      const key = this.builder.on ? undefined : this.stage.pickPerson(m.x, m.y, this.crowd);
+      if (key) this.under = { key, room: -1 };
+      else {
+        const cell = this.stage.pickCell(m.x, m.y, this.layout);
+        this.under = { room: cell && cell.room >= 0 ? cell.room : -1 };
+      }
+    }
+    this.stage.renderer.domElement.style.cursor = this.under.key ? 'pointer' : '';
+    this.hoverText();
+  }
+
+  /** Подпись под курсором: человек — кто и что делает; ваша фигура — «Вы — врач»; помещение — название и состояние. */
+  private hoverText() {
+    const u = this.under;
+    const { db } = this;
+    if (u.key === YOU) return this.hoverLabel.set(T.doctor.title, this.doctor.hud.state?.current ? T.doctor.openCard : undefined);
+    if (u.key) {
+      const info = this.pop.info(u.key);
+      if (!info) return this.hoverLabel.set();
+      if (info.kind === 'staff') return this.hoverLabel.set(named(db.roles[info.role]?.name, info.role), info.room ? this.names().room(info.room) : undefined);
+      const what = info.door ? (info.walking ? T.card.toDoor : T.card.atDoor) : info.walking ? T.going[info.doing] : T.doing[info.doing];
+      return this.hoverLabel.set(T.card.patient(info.sex, info.age, info.name), what);
+    }
+    const r = this.layout.plan.rooms[u.room];
+    if (r) return this.hoverLabel.set(named(db.rooms[r.type]?.name, r.type), this.roomState[u.room]);
+    this.hoverLabel.set();
+  }
+
+  /** Подпись под курсором словами — для сценария в браузере. */
+  get hoverLabelText(): string {
+    return this.hoverLabel.text;
+  }
+
+  /** Что подсветить на карте: выбранное и наведённое помещение, человек под курсором (кольцо выбранного — `ringKey`). */
+  private pickOf(): { room: RoomRect | null; selRoom: RoomRect | null; under?: string } {
+    const rooms = this.layout.plan.rooms;
+    const rect = (r: (typeof rooms)[number] | undefined): RoomRect | null => (r ? { x: r.x, y: r.y, w: r.w, h: r.h } : null);
+    return { selRoom: rect(this.roomSel ? rooms.find(r => r.id === this.roomSel) : undefined), room: rect(rooms[this.under.room]), under: this.under.key };
+  }
+
+  /** Отклик стройки: пол помещения вспыхивает — после удачи белым, после отказа красным; «Готово» — не действие. */
+  private flashOf(n: SiteResult) {
+    if (!n.room || n.cmd === 'done') return;
+    const r = this.layout.plan.rooms.find(x => x.id === n.room);
+    if (r) this.stage.highlight.flash({ x: r.x, y: r.y, w: r.w, h: r.h }, n.ok);
+  }
+
+  /** Подсказка первых минут — по тому, что движок знает о больнице (`openBlocks`), часам, пришедшим и просьбам. */
+  private hintNow(): Hud['hint'] {
+    const { db, plan } = this;
+    if (!this.hospital.site || this.doctor.open || this.money.open) return undefined;
+    const block = openBlocks(db, plan, this.working, this.staffed)[0];
+    const b = this.builder;
+    const key = hintOf(
+      {
+        ...(block ? { block } : {}), buildOn: b.on, drawing: b.tool === 'room' && !!b.roomType, paused: this.speed === 0 && !this.ff,
+        arrived: this.lastSlice?.buf[H.arrived] ?? 0, asks: this.doctor.hud.state?.asks.length ?? 0, looked: this.looked,
+      },
+      this.seenHints,
+    );
+    if (!key) return undefined;
+    const h = T.hints;
+    const name = block ? named(db.rooms[block.room]?.name, block.room) : '';
+    const text = key === 'furnish' ? h.furnish(name) : key === 'door' ? h.door(name) : key === 'hire' ? h.hire(name) : key === 'machine' ? h.machine(name) : h[key];
+    return { key, text };
   }
 
   // ---------------------------------------------------------------- действия панелей
@@ -698,6 +802,13 @@ export class Game {
     },
     doctor: a => this.doctor.dispatch(a),
     money: a => this.money.dispatch(a),
+    // подсказки первых минут и панель вида (spec docs/specs/2026-10-aaa-polish.md)
+    dismissHint: () => {
+      const h = this.store.get().hint;
+      if (h) this.seenHints.add(h.key);
+      this.hud();
+    },
+    toggleView: () => this.store.set({ viewOpen: !this.store.get().viewOpen }),
   };
 
   /** Карточка помещения по клику на пол. */
@@ -789,7 +900,10 @@ export class Game {
       'wheel',
       e => {
         e.preventDefault();
-        this.stage.cam.zoom(Math.exp(e.deltaY * 0.0012));
+        // масштаб — плавно и к точке земли под курсором, как в картах (spec 2026-10-aaa-polish, «Камера»)
+        const rect = el.getBoundingClientRect();
+        const g = this.stage.cam.groundAt(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+        this.stage.cam.zoom(Math.exp(e.deltaY * 0.0012), g ? { x: g.x, z: g.z } : null);
       },
       { passive: false },
     );
@@ -855,8 +969,8 @@ export class Game {
         e.preventDefault();
         this.actions.setSpeed(this.speed === 0 && !this.ff ? 1 : 0);
       } else if (k === 'Digit1') this.actions.setSpeed(1);
-      else if (k === 'Digit2') this.actions.setSpeed(2);
-      else if (k === 'Digit3') this.actions.setSpeed(4);
+      else if (k === 'Digit2') this.actions.setSpeed(3);
+      else if (k === 'Digit3') this.actions.setSpeed(12);
       else if (k === 'Digit4') this.actions.untilMorning();
       else if (k === 'KeyQ') this.stage.cam.rotate(-1);
       else if (k === 'KeyE') this.stage.cam.rotate(1);

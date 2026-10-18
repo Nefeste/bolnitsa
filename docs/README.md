@@ -28,7 +28,8 @@
     3D-моделей поднимут вид; снимки оболочки и 3D-вида — [`2026-10-shell-3d/`](reports/2026-10-shell-3d/), стройки —
     [`2026-10-build/`](reports/2026-10-build/), режима врача — [`2026-10-doctor-mode/`](reports/2026-10-doctor-mode/), людей
     и потока — [`2026-10-flow-ui/`](reports/2026-10-flow-ui/), кассы, планёрки и обхода —
-    [`2026-10-economy/`](reports/2026-10-economy/).
+    [`2026-10-economy/`](reports/2026-10-economy/); [`2026-10-aaa-audit.md`](reports/2026-10-aaa-audit.md) — аудит
+    против лучшего в жанре по десяти направлениям, снимки «до» и «после» — [`2026-10-aaa/`](reports/2026-10-aaa/).
 
 Медицинская модель и правила медицинской базы — в «Анамнезе»
 (`Nefeste/anamnez`: `docs/10-medical-model.md`, `docs/11-content.md`); здесь не повторяются.

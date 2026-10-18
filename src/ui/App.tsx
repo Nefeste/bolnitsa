@@ -32,8 +32,7 @@ const Btn = ({ on, onClick, children, title, disabled, id }: { on?: boolean; onC
 );
 
 function TopBar({ hud, actions }: P) {
-  const speeds: Speed[] = [1, 2, 4];
-  const last = hud.notices[0];
+  const speeds: Speed[] = [1, 3, 12];
   return (
     <div className="top panel" id="top">
       <span className="clock" id="clock">
@@ -58,7 +57,17 @@ function TopBar({ hud, actions }: P) {
       </span>
 
       {hud.lag > 2 ? <span className="stat warn">{T.top.lag(Math.round(hud.lag))}</span> : null}
-      <span className="notice" title={hud.notices.map(n => `${clock(n.t)} ${n.text}`).join('\n')}>{last ? `🔔 ${clock(last.t)} ${last.text}` : '🔔'}</span>
+    </div>
+  );
+}
+
+/** Последнее извещение — под часами, целиком (в верхней полосе оно ужималось до многоточия); вся лента — в «Журнале». */
+function Notice({ hud }: P) {
+  const last = hud.notices[0];
+  if (!last) return null;
+  return (
+    <div className="notice panel" id="notice" title={hud.notices.map(n => `${clock(n.t)} ${n.text}`).join('\n')}>
+      🔔 {clock(last.t)} {last.text}
     </div>
   );
 }
@@ -97,6 +106,10 @@ function Money({ hud }: { hud: Hud }) {
   );
 }
 
+/**
+ * Панель вида — свёрнута в одну кнопку «Вид» (spec docs/specs/2026-10-aaa-polish.md, «Интерфейс»): стены, качество и камера
+ * нужны не каждую минуту, а место под ними — значкам помещений и извещениям.
+ */
 function ViewBar({ hud, actions }: P) {
   const walls: [WallMode, string][] = [
     ['full', T.view.wallsFull],
@@ -108,8 +121,20 @@ function ViewBar({ hud, actions }: P) {
     ['medium', T.view.medium],
     ['high', T.view.high],
   ];
+  const menu = (
+    <Btn id="view-menu" on={hud.viewOpen} onClick={actions.toggleView} title={T.view.menuHint}>
+      ⚙ {T.view.menu}
+    </Btn>
+  );
+  if (!hud.viewOpen)
+    return (
+      <div className="viewbar panel" id="viewbar">
+        {menu}
+      </div>
+    );
   return (
-    <div className="viewbar panel" id="viewbar">
+    <div className="viewbar panel open" id="viewbar">
+      {menu}
       <span className="label">{T.view.walls}</span>
       {walls.map(([m, s]) => (
         <Btn key={m} id={`walls-${m}`} on={hud.walls === m} onClick={() => actions.setWalls(m)}>
@@ -369,19 +394,40 @@ function RightTabs({ hud, actions }: P) {
   );
 }
 
+/** Что делает пациент — для карточки: идёт — куда и к какому часу дойдёт. */
+function doingLine(info: Extract<PersonInfo, { kind: 'patient' }>): string {
+  const what = info.door ? (info.walking ? T.card.toDoor : T.card.atDoor) : info.walking ? T.going[info.doing] : T.doing[info.doing];
+  return info.arrive !== undefined ? `${what} · ${T.card.arrives(clock(info.arrive))}` : what;
+}
+
 function personLines(info: PersonInfo, names: Names): [string, string][] {
   if (info.kind === 'staff') return [[T.card.staff, names.role(info.role)], [T.card.where, names.room(info.room)]];
   // ушёл — на карте его нет: кто и как пришёл, остальное — в пути (spec 2026-10-flow-ui)
   if (info.gone) return [[T.card.complaint, names.finding(info.complaint)], [T.card.visit, T.visit[info.visit as keyof typeof T.visit] ?? info.visit]];
   return [
     [T.card.complaint, names.finding(info.complaint)],
-    // ещё идёт (spec docs/specs/2026-10-owner-play.md): куда, а не «у врача» — движок уже там, человек на экране ещё нет
+    // ещё идёт (spec docs/specs/2026-10-owner-play.md): куда, а не «у врача», и к какому часу дойдёт (spec 2026-10-walk);
+    // следующий к врачу — у двери его кабинета
     [info.walking ? T.card.whereTo : T.card.where, info.room ? names.room(info.room) : T.card.corridor],
-    [T.card.doing, info.walking ? T.going[info.doing] : T.doing[info.doing]],
+    [T.card.doing, doingLine(info)],
     [T.card.triage, T.triage[info.triage]],
     [T.card.by, info.by ? names.role(info.by) : T.card.byNobody],
     [T.card.visit, T.visit[info.visit as keyof typeof T.visit] ?? info.visit],
   ];
+}
+
+/** Подсказка первых минут (spec docs/specs/2026-10-aaa-polish.md, «Первые минуты»): одна строка внизу, крестик закрывает. */
+function HintStrip({ hud, actions }: P) {
+  const h = hud.hint;
+  if (!h) return null;
+  return (
+    <div className="hintstrip panel" id="hint" data-key={h.key}>
+      <span id="hint-text">{h.text}</span>
+      <button type="button" className="close small" id="hint-close" onClick={actions.dismissHint} title={T.hints.close}>
+        ✕
+      </button>
+    </div>
+  );
 }
 
 function BottomCard({ hud, actions, names }: P) {
@@ -479,10 +525,15 @@ function DebugMenu({ hud, actions }: P) {
   );
 }
 
-/** Начало игры (spec docs/specs/2026-10-build.md, «Начало игры»): пустое здание или готовая больница. */
-function StartChooser({ actions }: P) {
+/**
+ * Начало игры (spec docs/specs/2026-10-build.md, «Начало игры»): пустое здание или готовая больница. Первые слова — о чём
+ * игра (spec docs/specs/2026-10-aaa-polish.md, «Первые минуты»); имя игры — рабочее, марку решает владелец.
+ */
+function StartChooser({ hud, actions }: P) {
   return (
     <div className="start panel" id="start">
+      <div className="game">{T.app.title}</div>
+      <p className="intro">{T.start.intro}</p>
       <h2>{T.start.title}</h2>
       <button type="button" id="start-empty" onClick={() => actions.startGame('empty')}>
         <b>{T.start.empty}</b>
@@ -492,6 +543,7 @@ function StartChooser({ actions }: P) {
         <b>{T.start.preset}</b>
         <span>{T.start.presetHint}</span>
       </button>
+      <div className="muted small">{T.start.version(hud.version)}</div>
     </div>
   );
 }
@@ -504,11 +556,16 @@ export function App({ store, actions, names }: { store: Store; actions: Actions;
   return (
     <>
       <TopBar {...p} />
-      {hud.closed ? (
-        <div className="banner panel" id="closed" title={T.top.closedHint}>
-          {T.top.closed(hud.closed)}
-        </div>
-      ) : null}
+      {/* под часами посередине: «закрыта» — что не так, подсказка первых минут — что сделать, последнее извещение (spec 2026-10-aaa-polish) */}
+      <div className="topcenter" id="topcenter">
+        {hud.closed ? (
+          <div className="banner panel" id="closed" title={T.top.closedHint}>
+            {T.top.closed(hud.closed)}
+          </div>
+        ) : null}
+        <HintStrip {...p} />
+        <Notice {...p} />
+      </div>
       <ViewBar {...p} />
       <LeftTools {...p} />
       <RightTabs {...p} />

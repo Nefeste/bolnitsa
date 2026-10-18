@@ -134,7 +134,8 @@ describe('путь пациента', () => {
       const last = j.steps[j.steps.length - 1];
       expect(last.k).toBe('queue');
       expect(j.end!.patience!).toBeGreaterThan(0);
-      expect(j.end!.t - last.t).toBe(j.end!.patience!);
+      // терпение — с того, как сел в зале ожидания (spec 2026-10-walk)
+      expect(j.end!.t - ((last.k === 'queue' && last.sat) || last.t)).toBe(j.end!.patience!);
     }
   }, 120_000);
 
@@ -225,7 +226,8 @@ describe('путь пациента', () => {
     let r = sim.handle({ kind: 'watch', id: '1-w0003' });
     expect(r.kind === 'slice' && r.path).toEqual({ id: '1-w0003', journey: null });
     const got: number[] = [];
-    for (let i = 0; i < (3 * 3600) / 60; i++) {
+    // ходьба в движке (spec 2026-10-walk): путь до конца — дольше прежних трёх часов
+    for (let i = 0; i < (6 * 3600) / 60; i++) {
       r = sim.handle({ kind: 'tick', seconds: 60, budgetMs: 50 });
       if (r.kind === 'slice' && r.path?.journey) got.push(r.path.journey.steps.length + (r.path.journey.end ? 100 : 0));
     }
@@ -296,7 +298,9 @@ describe('путь пациента', () => {
         if (p.limit !== undefined) {
           limited++;
           expect(q.status === 'waiting' && q.by === undefined).toBe(true);
-          expect(p.limit).toBe(p.since! + q.patience);
+          // терпение — с того, как сел в зале ожидания (spec 2026-10-walk)
+          const last = s.journeys!.of[p.id].steps.at(-1)!;
+          expect(p.limit).toBe((last.k === 'queue' && last.sat !== undefined ? last.sat : p.since!) + q.patience);
           expect(back[i].limit).toBe(p.limit);
         } else expect(back[i].limit).toBe(-1);
         if (p.asks) {
@@ -318,8 +322,18 @@ describe('путь пациента', () => {
       for (const p of sliceOf(s).people) {
         const q = s.patients[p.id];
         // привезённый скорой лежит в смотровой и на обследованиях: каталок ещё нет (spec 2026-10-flow-ui, «Чего в части нет»)
-        if (q.status !== 'inRoom' || !q.out || q.out.until <= s.t || q.kind === 'ambulance') continue;
-        const x = [...s.journeys!.of[p.id].steps].reverse().find(y => y.k === 'exam' && y.end === q.out!.until) as Extract<Step, { k: 'exam' }>;
+        if (q.kind === 'ambulance') continue;
+        // от врача — на время приёма; отпущенный ждать результатов — на следующее (с ходьбой в движке, spec 2026-10-walk,
+        // врач чаще отпускает его и зовёт другого)
+        let end: number | undefined;
+        if (q.status === 'inRoom' && q.out && q.out.until > s.t) end = q.out.until;
+        else if (q.status === 'away') {
+          const next = q.pending.filter(y => y.room && y.start !== undefined && y.start > s.t).sort((u, v) => u.start! - v.start!)[0];
+          if (next && !q.pending.some(y => y.start !== undefined && s.t >= y.start && s.t < (y.end ?? y.readyAt))) end = next.end ?? next.readyAt;
+        }
+        if (end === undefined) continue;
+        const x = [...s.journeys!.of[p.id].steps].reverse().find(y => y.k === 'exam' && y.end === end) as Extract<Step, { k: 'exam' }> | undefined;
+        if (!x) continue;
         const waits = x.start > x.at && s.t < x.start;
         expect(p.doing).toBe(waits ? 'examQueue' : 'exam');
         if (waits) queue++;

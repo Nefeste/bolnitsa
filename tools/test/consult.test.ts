@@ -271,7 +271,9 @@ describe('«Просят посмотреть»: сколько и кто', () =
     expect(weak).toBeGreaterThan(0);
   }, 120_000);
 
-  test('на потоке с навыками по весам кандидатов просит небольшая доля приёмов (цель — 5–10 %)', () => {
+  // с ходьбой в движке (spec 2026-10-walk) в большой больнице бенчмарка случаи идут дольше и «долгих» просьб больше: доля
+  // — 11–13 % вместо 7–9 % (замер — spec 2026-10-consults, «Замер»); порог «долго» — решение владельца, его не трогаем
+  test('на потоке с навыками по весам кандидатов просит небольшая доля приёмов (цель — 5–10 %, с ходьбой — до 15 %)', () => {
     // больница бенчмарка на 50 пациентов: 34 кабинета, 70 в час; навыки — по весам кандидатов вперемешку по кабинетам, как в
     // tools/bench/consults.ts: k-й терапевт — навык, в чью долю попадает дробная часть k · φ
     const big = hospitalFor(db, 34, 100, { emergency: true });
@@ -292,7 +294,7 @@ describe('«Просят посмотреть»: сколько и кто', () =
     const asked = cols.reduce((a, c) => a + (c.asked ?? 0), 0);
     expect(seen).toBeGreaterThan(300);
     expect(asked / seen).toBeGreaterThan(0.03);
-    expect(asked / seen).toBeLessThan(0.12);
+    expect(asked / seen).toBeLessThan(0.15);
   }, 180_000);
 });
 
@@ -314,7 +316,8 @@ function dayWith(seed: number, step: number): { hours: string[]; closed: string;
   let asked = 0;
   for (let t = 8 * 3600 + 1200; t <= 20 * 3600; t += 1200) {
     while (s.t < t) asked += apply(db, s, { kind: 'advance', seconds: Math.min(step, t - s.t) }).filter(x => x.kind === 'consult').length;
-    for (const cmd of answers(s)) apply(db, s, cmd);
+    // просьба может прийти и пока идёт ответ (направленный идёт к другому врачу — тот освобождается позже, spec 2026-10-walk)
+    for (const cmd of answers(s)) asked += apply(db, s, cmd).filter(x => x.kind === 'consult').length;
     if (t % 3600 === 0) hours.push(hash(s));
   }
   apply(db, s, { kind: 'closeDay' });

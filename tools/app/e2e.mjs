@@ -102,7 +102,7 @@ async function partOne() {
   await page.goto(`http://127.0.0.1:${port}/index.html?q=${arg('q', 'low')}&lang=ru&hospital=preset&flow=6,1`);
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
   ok('страница загрузилась, первый кадр нарисован');
-  // дать потоку расчёта и людям пожить: ×4 на несколько секунд — и до первого пациента (без видеокарты и при занятом
+  // дать потоку расчёта и людям пожить: ×12 на несколько секунд — и до первого пациента (без видеокарты и при занятом
   // процессоре кадров мало, часы идут медленнее)
   await page.keyboard.press('Digit3');
   await page.waitForTimeout(6000);
@@ -128,7 +128,7 @@ async function partOne() {
   else fail('пациентов нет');
   if (s.calls > 10 && s.tris > 10000) ok(`кадр: ${s.calls} вызовов, ${s.tris} треугольников`);
   else fail('кадр пустой');
-  if (s.speed === 4 && s.t > 8 * 3600) ok(`часы идут: ${s.clock}, ×${s.speed}`);
+  if (s.speed === 12 && s.t > 8 * 3600) ok(`часы идут: ${s.clock}, ×${s.speed}`);
   else fail('часы не идут');
   // больница видна: в середине кадра не один цвет фона
   const shot = await page.screenshot({ path: join(out, 'e2e.png') });
@@ -181,7 +181,30 @@ async function partOne() {
     if (title && named) ok(`клик по человеку — карточка: «${title}»`);
     else fail(`клик по человеку: карточка «${title}»`);
   } else fail('не нашёл человека в кадре');
-  // стены вниз и обратно
+  // выделение (spec docs/specs/2026-10-aaa-polish.md): у выбранного человека — кольцо; наведение на другого — тонкое кольцо
+  // и подпись «кто · что делает»
+  const hl = await page.evaluate(() => window.__game.stage.highlight.dump());
+  if (hl.ring) ok('у выбранного человека — кольцо выделения');
+  else fail(`кольца у выбранного нет: ${JSON.stringify(hl)}`);
+  const other = await page.evaluate(sel => {
+    const g = window.__game;
+    // любой другой человек в кадре — пациент или человек штата (у штата подпись — должность), не под панелями
+    for (const w of g.crowd.walkers.values()) {
+      if (w.key === sel || w.key === 'you') continue;
+      const p = g.stage.screenOf(w);
+      if (p && p.x > 320 && p.x < 960 && p.y > 150 && p.y < 560) return { ...p, key: w.key };
+    }
+    return null;
+  }, target?.key ?? '');
+  if (other) {
+    await page.mouse.move(other.x, other.y);
+    await page.waitForTimeout(250);
+    const hover = await page.evaluate(() => ({ ...window.__game.stage.highlight.dump(), text: window.__game.hoverLabelText, cursor: window.__game.stage.renderer.domElement.style.cursor }));
+    if (hover.hoverRing && hover.text.length > 0 && hover.cursor === 'pointer') ok(`наведение на человека: кольцо, курсор-рука, подпись «${hover.text}»`);
+    else fail(`наведение на человека: ${JSON.stringify(hover)}`);
+  } else fail('не нашёл второго человека в кадре');
+  // панель вида свёрнута в кнопку «Вид»: стены вниз и обратно
+  if (!(await page.$('#walls-down'))) await page.click('#view-menu');
   await page.click('#walls-down');
   const mode = await page.evaluate(() => window.__game.stage.walls.uniforms.uMode.value);
   if (mode === 2) ok('стены — вниз');
@@ -222,9 +245,16 @@ async function partTwo() {
   const closed = await page.textContent('#closed');
   if (closed?.includes('регистратур')) ok(`пустое здание: «${closed}», часы на паузе`);
   else fail(`пустое здание: нет «закрыта» (${closed})`);
+  // подсказки первых минут (spec docs/specs/2026-10-aaa-polish.md): до стройки — «B — стройка», в стройке — как протянуть
+  const hint = () => page.evaluate(() => ({ key: document.getElementById('hint')?.dataset.key ?? '', text: document.getElementById('hint-text')?.textContent ?? '' }));
+  const h0 = await hint();
   await page.keyboard.press('KeyB');
   if (await page.$('#tool-room')) ok('B — стройка открыта');
   else fail('B не открыл стройку');
+  await page.waitForTimeout(250);
+  const h1 = await hint();
+  if (h0.key === 'build' && h0.text.includes('B') && h1.key === 'draw') ok(`подсказки: «${h0.text}» → «${h1.text}»`);
+  else fail(`подсказки: ${JSON.stringify([h0, h1])}`);
   let first = '';
   for (const [i, [type, x, y, w, h, roles]] of PROTO.entries()) {
     // последнее — с камерой на весь ряд: снимок с подписями построенных
@@ -247,8 +277,17 @@ async function partTwo() {
     await page.mouse.up();
     await until(n => window.__game.hospital.site.rooms.length === n, i + 1);
     const id = await page.evaluate(() => window.__game.hospital.site.rooms.at(-1).id);
-    // «Обставить» в карточке нового помещения
+    // «Обставить» в карточке нового помещения; новое помещение выбрано — рамка по полу (spec 2026-10-aaa-polish)
     await until(() => !!document.getElementById('card-furnish'));
+    if (i === 0) {
+      const sel = await page.evaluate(() => window.__game.stage.highlight.dump());
+      if (sel.sel) ok('построенное помещение выбрано: рамка по полу');
+      else fail(`рамки выбранного помещения нет: ${JSON.stringify(sel)}`);
+      // первая причина «не работает» у пустого помещения — дверь или мебель (порядок `problemsOf`): подсказка — по ней
+      const hf = await hint();
+      if (hf.key === 'door' || hf.key === 'furnish') ok(`подсказка: «${hf.text}»`);
+      else fail(`подсказка после постройки: ${JSON.stringify(hf)}`);
+    }
     await page.click('#card-furnish');
     await until(rid => window.__game.hospital.site.rooms.find(r => r.id === rid)?.items.length > 0, id);
     // дверь — посередине нижней стены
@@ -376,14 +415,28 @@ async function partTwo() {
   if (one.includes('двойная') && !two.includes('двойная')) ok(`палата: «${one}» → «${two}»`);
   else fail(`палата: «${one}» → «${two}»`);
 
-  // выйти из стройки — открыто; часы ×4 — приходят и принимают
+  // выйти из стройки — открыто; часы ×12 — приходят и принимают
   await page.keyboard.press('KeyB');
   await until(() => !document.getElementById('closed'));
   const working = await page.evaluate(() => [...window.__game.working].length);
   if (working >= 6) ok(`стройка закрыта (B): работают ${working} помещений, больница открыта`);
   else fail(`работают ${working}`);
   await look(24, 16, 16);
+  // больница открыта, часы стоят — подсказка «пробел»; наведение на помещение — подпись «название · состояние»
+  await page.waitForTimeout(250);
+  const hr = await hint();
+  if (hr.key === 'run') ok(`подсказка: «${hr.text}»`);
+  else fail(`подсказка открытой больницы: ${JSON.stringify(hr)}`);
+  const wp = await at(15, 9);
+  await page.mouse.move(wp.x, wp.y);
+  await page.waitForTimeout(250);
+  const hoverRoom = await page.evaluate(() => ({ text: window.__game.hoverLabelText, ...window.__game.stage.highlight.dump() }));
+  if (hoverRoom.text.includes('Зона ожидания') && hoverRoom.hover) ok(`наведение на помещение: рамка и подпись «${hoverRoom.text}»`);
+  else fail(`наведение на помещение: ${JSON.stringify(hoverRoom)}`);
   await page.keyboard.press('Digit3');
+  await page.waitForTimeout(250);
+  if ((await hint()).key !== 'run') ok('часы пошли — подсказка «пробел» ушла');
+  else fail('подсказка «пробел» осталась при идущих часах');
   await until(() => window.__game.store.get().seen > 0, null, 120000);
   const c = await page.evaluate(() => {
     const h = window.__game.store.get();
@@ -409,7 +462,7 @@ async function partThree() {
   await page.evaluate(() => window.__game.actions.doctor({ kind: 'autopause', on: false }));
   // окно врача (часть 4) — свернуть кнопкой: значки и слой видны на всей карте
   await page.click('#dock .close', { timeout: 20000 });
-  // пациенты ходят: на ×4 кто-то идёт по срезу — пришёл, позвали к врачу, на обследование (кадров без видеокарты мало)
+  // пациенты ходят: на ×12 кто-то идёт по срезу — пришёл, позвали к врачу, на обследование (кадров без видеокарты мало)
   const before = await page.evaluate(() => [...window.__game.crowd.walkers.values()].filter(w => !w.staff).map(w => [w.key, w.x, w.z]));
   await page.keyboard.press('Digit3');
   const moved = await page
@@ -431,6 +484,43 @@ async function partThree() {
     .catch(() => null);
   if (moved) ok(`пациенты ходят: сдвинулись ${moved.n} из ${moved.of}, идут ${moved.walking} (${moved.clock})`);
   else fail('пациенты стоят');
+  // ходьба в движке (spec docs/specs/2026-10-walk.md): идущий — в карточке «идёт … · дойдёт к ЧЧ:ММ»; дошёл (в движке и на
+  // экране) — «идёт» и срок пропадают
+  await page.keyboard.press('Digit1');
+  const going = await page
+    .waitForFunction(
+      () => {
+        const g = window.__game;
+        for (const [key, now] of g.pop.patients()) if (now.arrive > g.t + 60 && g.crowd.walkers.get(key)?.state === 'walk') return key;
+        return null;
+      },
+      null,
+      { timeout: 60000, polling: 100 },
+    )
+    .then(h => h.jsonValue())
+    .catch(() => null);
+  if (going) {
+    await page.evaluate(k => window.__game.actions.select(k), going);
+    await page.waitForTimeout(300);
+    const on = await page.evaluate(() => document.querySelector('#card dl')?.textContent ?? '');
+    const there = await page
+      .waitForFunction(
+        k => {
+          const g = window.__game;
+          const n = g.pop.now(k);
+          return !n || (n.arrive <= g.t && g.crowd.walkers.get(k)?.state !== 'walk');
+        },
+        going,
+        { timeout: 60000, polling: 100 },
+      )
+      .then(() => true)
+      .catch(() => false);
+    await page.waitForTimeout(300);
+    const off = await page.evaluate(() => document.querySelector('#card dl')?.textContent ?? '');
+    if (/идёт .*дойдёт к \d\d:\d\d/.test(on) && there && !off.includes('дойдёт') && !off.includes('идёт')) ok(`идёт — «${on.match(/Что делает(.*?)Срочность/)?.[1] ?? on}»; дошёл — «${off.match(/Что делает(.*?)Срочность/)?.[1] ?? off}»`);
+    else fail(`идущий: «${on}» → «${off}» (дошёл: ${there})`);
+    await page.evaluate(() => window.__game.actions.select(undefined));
+  } else fail('нет идущего со сроком прихода');
   await page.keyboard.press('Space');
   // значки над людьми и помещениями
   const icons = await page.evaluate(() => window.__game.stage.icons.shown);
