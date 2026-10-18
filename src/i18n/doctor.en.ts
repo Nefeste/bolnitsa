@@ -412,6 +412,18 @@ export const doctorEn: DoctorStrings = {
     findHint: 'Show on the hospital map',
     take: 'Take the case',
     takeHint: 'The case becomes yours with everything already found out',
+    view: 'Chart',
+    viewHint: 'What their doctor knows: questions and answers, results, what they think and decided — the case stays with the doctor',
+    lead: {
+      seeking: 'looking for the diagnosis',
+      thinks: (dx: string, conf?: string) => (conf ? `thinks: ${dx} — ${conf}` : `thinks: ${dx}`),
+      decided: (dx: string, plan: string) => `decided: ${dx} · ${plan}`,
+      someone: 'a hired doctor',
+      where: {
+        home: 'home', ward: 'to hospital', ambulance: 'ambulance', admit: 'to the ward', surgery: 'to surgery', transfer: 'transfer',
+        icu: 'to the ICU', ricu: 'to intensive care', box: 'to the isolation box',
+      } as Record<string, string>,
+    },
     queued: (name: string) => `${name} is in your queue: you are with another patient`,
     lists: {
       office: 'In your office',
@@ -420,6 +432,7 @@ export const doctorEn: DoctorStrings = {
       away: 'Waiting for results',
       ward: 'Rounds',
       closed: 'Closed',
+      theirs: (n: number) => `In wards with doctors: ${n}`,
     },
     nobody: 'nobody',
     more: (n: number) => `and ${patients(n)} more`,

@@ -76,10 +76,23 @@ function CardWindow({ v, level, meanwhile, next, actions }: P) {
       </div>
       {!v.active && !v.decision ? (
         <div className="dbanner" id="dcard-where">
-          {c.notActive[v.where ?? 'other']}
+          {/* больной нанятого врача (spec docs/specs/2026-10-two-ways.md, F1): кто ведёт и что думает или решил */}
+          {v.lead ? (
+            <span id="dcard-lead">
+              <b>{v.lead.by}</b> · {v.lead.text}
+              {v.where === 'admitted' ? ` · ${c.notActive.admitted}` : ''}
+            </span>
+          ) : (
+            c.notActive[v.where ?? 'other']
+          )}
           {v.callable ? (
             <button type="button" id="dcard-call" onClick={() => actions.doctor({ kind: 'take', id: v.id })}>
               {T.doctor.call}
+            </button>
+          ) : null}
+          {v.take ? (
+            <button type="button" id="dcard-take" title={T.doctor.takeHint} onClick={() => actions.doctor({ kind: 'take', id: v.id })}>
+              {T.doctor.take}
             </button>
           ) : null}
         </div>

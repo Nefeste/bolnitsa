@@ -24,13 +24,16 @@ export interface DoctorHud {
   next?: { id: string; who: string };
   /** ваши лежащие, которым в 08:00 стало хуже (spec 2026-10-economy, «Обход») — отмечены до следующей планёрки */
   worse?: string[];
+  /** раскрыт список лежащих у нанятых врачей (spec 2026-10-two-ways, F2) */
+  theirsOpen?: boolean;
 }
 
 export type DoctorAction =
   /** «Взять случай», «Позвать», «Посмотреть» — поток решает, что это за команда */
   | { kind: 'take'; id: string }
-  /** открыть карту своего больного */
+  /** открыть карту больного: своего или, для чтения, — любого (spec 2026-10-two-ways, F1) */
   | { kind: 'open'; id: string }
+  | { kind: 'theirsOpen'; open: boolean }
   | { kind: 'close' }
   /** действие в открытой карте: вопрос, осмотр, назначение, «Подождать», диагноз, лечение, место, «Завершить приём» */
   | { kind: 'act'; cmd: Command }

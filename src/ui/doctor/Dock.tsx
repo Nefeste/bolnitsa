@@ -138,6 +138,21 @@ export function Dock({ hud, actions }: { hud: Hud; actions: Actions }) {
             </ul>
           </>
         ) : null}
+        {/* лежащие у нанятых врачей (spec docs/specs/2026-10-two-ways.md, F2): свёрнуты, их бывает много */}
+        {st.theirs.length > 0 ? (
+          <>
+            <button type="button" className="small" id="dock-theirs" onClick={() => actions.doctor({ kind: 'theirsOpen', open: !d.theirsOpen })}>
+              {d.theirsOpen ? '▾' : '▸'} {t.lists.theirs(st.theirs.length)}
+            </button>
+            {d.theirsOpen ? (
+              <ul id="dock-theirs-list">
+                {st.theirs.map(r => (
+                  <WardItem key={r.id} r={r} worse={false} actions={actions} />
+                ))}
+              </ul>
+            ) : null}
+          </>
+        ) : null}
         {st.closed.length > 0 ? (
           <>
             <div className="label">{t.lists.closed}</div>
@@ -182,6 +197,7 @@ function WardItem({ r, worse, actions }: { r: WardRow; worse: boolean; actions: 
         ))}
         {r.op ? <div className="small">{r.op}</div> : null}
         <div className="small muted">{T.round.treatments(r.treatments)}</div>
+        {r.by ? <div className="small muted">{T.card.by}: {r.by}</div> : null}
         <div className="row">
           <Find id={r.id} find={actions.find} prefix="ward-find" />
           <button type="button" className="small" id={`ward-replan-${r.id}`} title={T.round.replanHint} onClick={() => actions.doctor({ kind: 'open', id: r.id })}>
@@ -273,6 +289,10 @@ function Ask({ a, colleagues, actions }: { a: AskRow; colleagues: { id: string; 
         <button type="button" id={`ask-look-${a.id}`} className="on" onClick={() => actions.doctor({ kind: 'take', id: a.id })}>
           {t.look}
         </button>
+        {/* посмотреть, не забирая (spec docs/specs/2026-10-two-ways.md, F1) */}
+        <button type="button" id={`ask-view-${a.id}`} title={T.doctor.viewHint} onClick={() => actions.doctor({ kind: 'open', id: a.id })}>
+          {T.doctor.view}
+        </button>
         <Find id={a.id} find={actions.find} prefix="ask-find" />
         <button type="button" id={`ask-self-${a.id}`} onClick={() => actions.doctor({ kind: 'consult', id: a.id, answer: 'self' })}>
           {t.self}
@@ -305,6 +325,10 @@ export function TakeCase({ info, said, actions }: { info: Extract<PersonInfo, { 
     <div className="row">
       <button type="button" id="card-take" className="on" title={T.doctor.takeHint} onClick={() => actions.doctor({ kind: 'take', id: info.id })}>
         {T.doctor.take}
+      </button>
+      {/* карта больного — посмотреть, не забирая (spec docs/specs/2026-10-two-ways.md, F1) */}
+      <button type="button" id="card-view" title={T.doctor.viewHint} onClick={() => actions.doctor({ kind: 'open', id: info.id })}>
+        {T.doctor.view}
       </button>
       {said ? <span className={`small ${said.ok ? 'ok' : 'bad'}`} id="card-said">{said.text}</span> : null}
     </div>

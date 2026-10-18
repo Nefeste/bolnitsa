@@ -220,6 +220,9 @@ export class Doctor {
       case 'mineOpen':
         this.hud.mineOpen = a.open;
         break;
+      case 'theirsOpen':
+        this.hud.theirsOpen = a.open;
+        break;
       case 'office':
         client.command({ kind: 'site', cmd: { kind: 'office', ...(a.room ? { room: a.room } : {}) } });
         break;

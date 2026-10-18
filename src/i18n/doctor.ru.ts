@@ -425,6 +425,19 @@ export const doctorRu = {
     findHint: 'Показать на карте больницы',
     take: 'Взять случай',
     takeHint: 'Случай перейдёт к вам вместе со всем, что уже узнано',
+    /** карта больного нанятого врача — посмотреть, не забирая (spec docs/specs/2026-10-two-ways.md, F1) */
+    view: 'Карта',
+    viewHint: 'Что знает его врач: вопросы и ответы, результаты, что он думает и решил — случай остаётся у врача',
+    lead: {
+      seeking: 'ищет диагноз',
+      thinks: (dx: string, conf?: string) => (conf ? `думает: ${dx} — ${conf}` : `думает: ${dx}`),
+      decided: (dx: string, plan: string) => `решил: ${dx} · ${plan}`,
+      someone: 'нанятый врач',
+      where: {
+        home: 'дома', ward: 'в стационар', ambulance: 'скорая', admit: 'в палату', surgery: 'в операционную', transfer: 'перевод',
+        icu: 'в ПИТ', ricu: 'в реанимацию', box: 'в бокс',
+      } as Record<string, string>,
+    },
     queued: (name: string) => `${name} — в вашей очереди: вы с другим пациентом`,
     lists: {
       office: 'У вас в кабинете',
@@ -433,6 +446,8 @@ export const doctorRu = {
       away: 'Ждут результатов',
       ward: 'Обход',
       closed: 'Закрытые',
+      /** лежащие у нанятых врачей (spec 2026-10-two-ways, F2) */
+      theirs: (n: number) => `Лежат у врачей: ${n}`,
     },
     nobody: 'никого',
     more: (n: number) => `и ещё ${patients(n)}`,
