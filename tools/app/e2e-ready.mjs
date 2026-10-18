@@ -18,6 +18,8 @@ export async function readyPart({ page, port, out, ok, fail, q, shots }) {
     if (shots) await page.evaluate(x => window.__game.actions.setQuality(x), q);
     return Math.round(buf.length / 1024);
   };
+  // программный WebGL в «высоком» рисует кадр до секунды: камера и строка призрака догоняют не сразу — ждём их, а не время
+  const frames = () => page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
   const at = (x, y) => page.evaluate(([cx, cy]) => window.__game.stage.screenOfCell(cx, cy), [x, y]);
   const look = async (x, y, half = 10) => {
     await page.evaluate(([cx, cy, h]) => {
@@ -25,10 +27,15 @@ export async function readyPart({ page, port, out, ok, fail, q, shots }) {
       g.stage.cam.target.set(cx, 0, cy);
       g.stage.cam.half = h;
     }, [x, y, half]);
-    await page.waitForTimeout(200);
+    await frames();
   };
   const hint = () => page.evaluate(() => ({ key: document.getElementById('hint')?.dataset.key ?? '', text: document.getElementById('hint-text')?.textContent ?? '' }));
-  const ghost = () => page.$eval('#ghost', el => ({ ok: el.classList.contains('ok'), text: el.textContent ?? '' })).catch(() => ({ ok: false, text: '' }));
+  /** Строка призрака на экране — та, что у стройки сейчас. */
+  const settled = () => until(() => (document.getElementById('ghost')?.textContent ?? '') === (window.__game.builder.ghost?.text ?? ''));
+  const ghost = async () => {
+    await settled();
+    return page.$eval('#ghost', el => ({ ok: el.classList.contains('ok'), text: el.textContent ?? '' })).catch(() => ({ ok: false, text: '' }));
+  };
   const rooms = () => page.evaluate(() => window.__game.hospital.site.rooms.length);
   const roomOf = id => page.evaluate(i => {
     const r = window.__game.hospital.site.rooms.find(x => x.id === i);
@@ -38,7 +45,11 @@ export async function readyPart({ page, port, out, ok, fail, q, shots }) {
   const hover = async (x, y) => {
     const p = await at(x, y);
     await page.mouse.move(p.x, p.y);
-    await page.waitForTimeout(150);
+    await until(([cx, cy]) => {
+      const h = window.__game.builder.hover;
+      return !!h && h[0] === cx && h[1] === cy;
+    }, [x, y]);
+    await settled();
     return p;
   };
 
@@ -94,7 +105,7 @@ export async function readyPart({ page, port, out, ok, fail, q, shots }) {
   const wp = await hover(14, 22);
   const before = await page.evaluate(() => ({ rot: window.__game.builder.rot, ghost: window.__game.ghosts.group.children.map(c => c.children.length) }));
   await page.keyboard.press('KeyR');
-  await page.waitForTimeout(150);
+  await settled();
   const after = await page.evaluate(() => ({ rot: window.__game.builder.rot, turned: window.__game.builder.turned }));
   const gw = await ghost();
   const kb = await shot('e2e-ready-1.jpg');
