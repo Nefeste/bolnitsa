@@ -37,6 +37,8 @@ export class Doctor {
   private figureAt = -1;
   /** «Взять случай» отправлен: больной у вас — карта; в вашей очереди — сказать об этом */
   private taking: string | undefined;
+  /** «Открыть карту» отправлено: карты нет — сказать (карта ушедшего хранится сутки, spec 2026-10-discharged-card) */
+  private opening: string | undefined;
 
   constructor(private g: Game) {}
 
@@ -92,6 +94,10 @@ export class Doctor {
     if (s.card !== undefined) {
       if (s.card) this.hud.card = s.card;
       else delete this.hud.card;
+      if (this.opening !== undefined && (!s.card || s.card.id === this.opening)) {
+        if (!s.card) this.say(false, T.doctor.noCard);
+        this.opening = undefined;
+      }
       this.settle();
     }
     if (s.refused) {
@@ -275,6 +281,8 @@ export class Doctor {
         client.doctor({ kind: 'take', id: a.id });
         break;
       case 'open':
+        delete this.hud.said;
+        this.opening = a.id;
         this.view(a.id);
         break;
       case 'close':

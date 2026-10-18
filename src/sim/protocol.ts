@@ -9,7 +9,7 @@ import type { StaffMember } from '../engine/hospital/staff';
 import type { Season } from '../content/types';
 import type { Lang } from '../i18n';
 import type { Difficulty } from '../engine/shift/types';
-import type { CardView, DoctorState, Refusal } from './doctor';
+import type { CardView, DoctorState, Refusal, SeenList } from './doctor';
 import type { NameRow } from './pack';
 import type { SaveMeta } from './packing';
 
@@ -79,10 +79,12 @@ export type FromSim =
 
 /**
  * Режим врача в срезе (spec docs/specs/2026-10-doctor-mode.md): состояние врача и вид открытой карты — когда изменились
- * (`card: null` — карта закрыта или больного нет); `refused` — почему поток не сделал `take` или `case`.
+ * (`card: null` — карта закрыта или больного нет); «Приняты» — приняты и ушли за сутки, когда список изменился (spec
+ * docs/specs/2026-10-discharged-card.md); `refused` — почему поток не сделал `take` или `case`.
  */
 export interface DoctorOut {
   doctor?: DoctorState;
   card?: CardView | null;
+  seen?: SeenList;
   refused?: { act: 'take' | 'case'; id: string; why: Refusal };
 }

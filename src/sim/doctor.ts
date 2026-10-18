@@ -17,6 +17,7 @@ import {
   hospitalCtx, icuBeds, isOut, moreUrgent, observationsOf, operationOf, type OrBlock, orBlock, reviewedCase, reviewFor, ricuBeds, targetPlace, wardBeds,
 } from '../engine/shift/engine';
 import { inBox, inIcu, inRicu, orQueueOf, stayEquipment } from '../engine/shift/engine';
+import { KEEP } from '../engine/shift/journey';
 import { minutesTo, targetStart, targetsFor } from '../engine/shift/targets';
 import { type ClosedCase, type Command, type ConsultWhy, DAY, type Difficulty, type ShiftPatient, type ShiftState, type Triage } from '../engine/shift/types';
 import { daysIn, stayNorm, vitalOn, WARD_VITALS, type WardState, wardState } from '../engine/shift/ward';
@@ -164,9 +165,39 @@ export interface CardView extends VisitView {
   round?: RoundView;
   /** больной нанятого врача (spec docs/specs/2026-10-two-ways.md, F1): кто ведёт и что думает или что решил */
   lead?: { by: string; text: string };
+  /**
+   * решение нанятого врача (spec docs/specs/2026-10-discharged-card.md): диагноз, лечение и где лечить — у закрытого им
+   * приёма, кроме лежащего (у того — обход)
+   */
+  decided?: { diagnosis: { id: Id; name: string }; treatments: { id: Id; name: string }[]; setting: string };
   /** «Взять случай» сейчас можно */
   take?: true;
 }
+
+/** «Приняты» (spec docs/specs/2026-10-discharged-card.md): принят и ушёл — домой или в другую больницу; без правды о болезни. */
+export interface SeenRow {
+  id: string;
+  name: string;
+  sex: 'm' | 'f';
+  age: number;
+  triage: Triage;
+  /** когда закрыт приём, игровые секунды */
+  at: number;
+  setting: Setting;
+  /** диагноз врача, который вёл */
+  diagnosis: string;
+  /** кто вёл: должность и навык; нет — вы */
+  by?: string;
+}
+
+/** «Приняты»: строки — новые сверху, не больше `SEEN`; `total` — всех за сутки. */
+export interface SeenList {
+  rows: SeenRow[];
+  total: number;
+}
+
+/** Строк «Приняты» — не больше: новые сверху. */
+export const SEEN = 50;
 
 /** Сколько строк общей очереди показывать. */
 export const OTHERS = 5;
@@ -185,6 +216,13 @@ const closedDay = (p: ShiftPatient) => Math.floor(p.closed!.at / DAY) + 1;
 /** Поток для ПК (spec 2026-10-owner-play-2): ваш пациент ещё идёт к вам — когда встретитесь; встретились — undefined. */
 export function comingAt(s: ShiftState): number | undefined {
   return s.meet !== undefined && s.meet > s.t ? s.meet : undefined;
+}
+
+/** Карта ушедшего из состояния (spec 2026-10-discharged-card): сутки после ухода; новые — в конце списка. */
+function pastOf(s: ShiftState, id: string): ShiftPatient | undefined {
+  const past = s.past ?? [];
+  for (let i = past.length - 1; i >= 0; i--) if (past[i].p.id === id) return past[i].p;
+  return undefined;
 }
 
 /** Ваш больной: у вас, ждёт вас, на ваших обследованиях, ваш закрытый или лежащий. */
@@ -362,7 +400,10 @@ function leadOf(db: ContentDb, s: ShiftState, p: ShiftPatient, level: Difficulty
   const t = T.doctor.lead;
   const who = staffName(db, s, by);
   const dx = (id: Id) => lowerFirst(named(db.conditions[id]?.name, id));
-  if (p.closed) return { by: who, text: t.decided(dx(p.closed.diagnosis), planText(db, p.closed.plan)) };
+  const closed = p.closed;
+  // принят и ушёл (spec 2026-10-discharged-card): чем кончилось и когда; диагноз и лечение — блоком решения в карте
+  if (closed && p.status !== 'admitted' && !closed.stay) return { by: who, text: t.released(closed.plan.setting, hhmm(minuteOfDay(closed.at))) };
+  if (closed) return { by: who, text: t.decided(dx(closed.diagnosis), planText(db, closed.plan)) };
   const ph = p.phase;
   if (!ph?.diagnosis) return { by: who, text: t.seeking };
   const c = ph.confidence;
@@ -563,7 +604,9 @@ function targetLines(db: ContentDb, s: ShiftState, p: ShiftPatient): CaseTarget[
  * доживает его минуты); остальные — какие есть. Больного нет в состоянии — `null`.
  */
 export function cardView(db: ContentDb, s: ShiftState, id: string, level: Difficulty, version: number): CardView | null {
-  const p = s.patients[id];
+  // ушедший из состояния — его карта сутки (spec 2026-10-discharged-card): для чтения, такая, каким он ушёл
+  const here = s.patients[id];
+  const p = here ?? pastOf(s, id);
   if (!p) return null;
   const mine = p.id === s.current;
   // ваш, но ещё идёт к вам (spec 2026-10-owner-play-2): карта — для чтения, приём — когда войдёт
@@ -571,16 +614,18 @@ export function cardView(db: ContentDb, s: ShiftState, id: string, level: Diffic
   const now = mine && s.until !== undefined ? s.until : s.t;
   const seen = mine && s.until !== undefined ? seenAt(p, s.until) : p;
   const watching = p.by !== undefined && !p.closed;
+  // в больнице, приём не закрыт и не у нанятого врача: что можно у постели и сколько минут — для действий карты
+  const live = here !== undefined && !p.closed && !watching;
   const arrived = arrivedOf(seen, watching ? s.t : Infinity);
   const asking = watching ? p.results.filter(r => r.at > s.t).map(r => ({ exam: r.exam, readyAt: minuteOfDay(r.at) })) : [];
   const prev = p.returnOf ? s.patients[p.returnOf] : undefined;
   const bedside: Record<Id, number> = {};
-  if (!p.closed && !watching) {
+  if (live) {
     for (const [eid, e] of Object.entries(db.exams)) if (e.bedside && bedsideOf(db, s, p, eid)) bedside[eid] = e.bedside.time.procedure;
   }
   const unavailable: Record<Id, string> = Object.fromEntries(Object.entries(unavailableOf(db, s)).filter(([eid]) => bedside[eid] === undefined));
   const minutes: Record<Id, number> = {};
-  if (!p.closed && !watching) {
+  if (live) {
     for (const [eid, e] of Object.entries(db.exams)) {
       const m = askMinutes(db, s.meta.skills, e, e.time.procedure);
       if (m !== e.time.procedure) minutes[eid] = m + (e.time.report ?? 0) + (e.time.turnaround ?? 0);
@@ -615,23 +660,60 @@ export function cardView(db: ContentDb, s: ShiftState, id: string, level: Diffic
     bedsideEquipment: bedsideEquipment(db, s, p),
     rooms: hospitalCtx(db, s).rooms,
     ...(ricu ? { ricu } : {}),
-    ...(p.by ? {} : { targets: targetLines(db, s, p) }),
+    // сроки идут, пока он в больнице; ушедшему — нет
+    ...(p.by || !here ? {} : { targets: targetLines(db, s, p) }),
     ...(p.departments ? { departments: p.departments } : {}),
     ...(wardBeds(db, s).length > 0 || hospitalCtx(db, s).plan.rooms.some(r => db.rooms[r.type]?.icu || db.rooms[r.type]?.box) ? { settings: settingOptions(db, s, p) } : {}),
   });
   const yours = yoursOf(db, s, p);
   const where: CardView['where'] = mine && !p.closed ? (coming !== undefined ? 'coming' : undefined)
     : yours === 'waiting' ? 'waiting' : yours === 'away' ? 'away' : p.status === 'admitted' ? 'admitted' : p.closed ? 'done'
-      : p.status === 'left' || p.status === 'unseen' ? 'gone' : 'other';
+      : !here || p.status === 'left' || p.status === 'unseen' ? 'gone' : 'other';
   // лежащий — блок обхода (spec 2026-10-economy); у нанятого врача — тоже: главврач меняет лечение (spec 2026-10-two-ways, F2)
   const round = p.status === 'admitted' && p.stay && p.closed ? roundOf(db, s, p) : undefined;
   // больной нанятого врача (spec 2026-10-two-ways, F1): кто ведёт и что думает; можно ли взять
   const lead = leadOf(db, s, p, level);
+  // решение нанятого врача (spec 2026-10-discharged-card): диагноз, лечение, где лечить; у лежащего — обход
+  const c = p.closed;
+  const decided: CardView['decided'] = c?.by && !round
+    ? {
+      diagnosis: { id: c.diagnosis, name: named(db.conditions[c.diagnosis]?.name, c.diagnosis) },
+      treatments: c.plan.treatments.map(tx => ({ id: tx, name: named(db.treatments[tx]?.name, tx) })),
+      setting: T.case.patient.setting[c.plan.setting] ?? c.plan.setting,
+    }
+    : undefined;
   const take = !mine && !p.closed && yours === undefined && takeCommand(db, s, id).cmd !== undefined;
   return {
     ...view, id, active: mine && !p.closed && coming === undefined, ...(where ? { where } : {}), ...(coming !== undefined ? { coming } : {}), ...(where === 'waiting' && !s.current ? { callable: true } : {}), ...(round ? { round } : {}),
-    ...(lead ? { lead } : {}), ...(take ? { take: true as const } : {}),
+    ...(lead ? { lead } : {}), ...(decided ? { decided } : {}), ...(take ? { take: true as const } : {}),
   };
+}
+
+/**
+ * «Приняты» (spec 2026-10-discharged-card): приняты и ушли за сутки — домой или в другую больницу. Нанятыми врачами — из
+ * карт ушедших; вами и теми, кого ждут обратно, — из состояния (они остаются в нём неделю).
+ */
+export function seenList(db: ContentDb, s: ShiftState): SeenList {
+  const from = s.t - KEEP;
+  const all: ShiftPatient[] = [];
+  for (const x of s.past ?? []) if (x.p.closed && x.t > from) all.push(x.p);
+  for (const p of Object.values(s.patients)) if (p.closed && p.status === 'done' && !p.closed.stay && p.closed.at > from) all.push(p);
+  all.sort((a, b) => b.closed!.at - a.closed!.at || (a.id < b.id ? 1 : -1));
+  const rows = all.slice(0, SEEN).map(p => {
+    const c = p.closed!;
+    return {
+      id: p.id, name: patientName(p.patient), sex: p.patient.sex, age: p.patient.age, triage: p.triage, at: c.at, setting: c.plan.setting,
+      diagnosis: named(db.conditions[c.diagnosis]?.name, c.diagnosis), ...(c.by ? { by: staffName(db, s, c.by) } : {}),
+    };
+  });
+  return { rows, total: all.length };
+}
+
+/** Подпись «Приняты»: закрыли приём (вы или нанятый врач), кто-то ушёл из состояния, сменились сутки или язык. */
+function seenKey(s: ShiftState): string {
+  let n = s.summary.seen;
+  for (const c of Object.values(s.summary.colleagues ?? {})) n += c.seen;
+  return `${s.day}:${n}:${s.past?.length ?? 0}:${s.past?.at(-1)?.p.id ?? ''}:${currentLang}`;
 }
 
 /**
@@ -641,7 +723,8 @@ export function cardView(db: ContentDb, s: ShiftState, id: string, level: Diffic
  */
 function cardKey(s: ShiftState, id: string): string {
   const p = s.patients[id];
-  if (!p) return 'gone';
+  // ушедший — карта такая, каким ушёл (spec 2026-10-discharged-card); сутки — навык врача, который вёл
+  if (!p) return pastOf(s, id) ? `past|${s.day}` : 'gone';
   const live = s.current === id && comingAt(s) === undefined && !p.closed;
   return [
     p.step, p.results.length, p.pending.length, p.status, p.closed ? `${p.closed.at}:${p.closed.outcome.kind}` : '', s.current ?? '', s.until ?? '', p.out?.back ?? '', s.meet ?? '',
@@ -663,6 +746,7 @@ export class DoctorDesk {
   level: Difficulty = DEFAULT_LEVEL;
   private sent = '';
   private cardSent = '';
+  private seenSent = '';
   private version = 0;
 
   constructor(private db: ContentDb) {
@@ -676,6 +760,7 @@ export class DoctorDesk {
     if (lang !== currentLang) setLang(lang);
     this.sent = '';
     this.cardSent = '';
+    this.seenSent = '';
   }
 
   /** Новая смена или сохранение — окну всё заново. */
@@ -683,11 +768,12 @@ export class DoctorDesk {
     this.focus = null;
     this.sent = '';
     this.cardSent = '';
+    this.seenSent = '';
   }
 
-  /** Что добавить к срезу: состояние врача и вид карты — если изменились. */
-  out(s: ShiftState): { doctor?: DoctorState; card?: CardView | null } {
-    const out: { doctor?: DoctorState; card?: CardView | null } = {};
+  /** Что добавить к срезу: состояние врача, вид карты и «Приняты» — если изменились. */
+  out(s: ShiftState): { doctor?: DoctorState; card?: CardView | null; seen?: SeenList } {
+    const out: { doctor?: DoctorState; card?: CardView | null; seen?: SeenList } = {};
     const state = doctorState(this.db, s);
     const json = JSON.stringify(state);
     if (json !== this.sent) {
@@ -698,6 +784,11 @@ export class DoctorDesk {
     if (key !== this.cardSent) {
       this.cardSent = key;
       out.card = this.focus === null ? null : cardView(this.db, s, this.focus, this.level, ++this.version);
+    }
+    const seen = seenKey(s);
+    if (seen !== this.seenSent) {
+      this.seenSent = seen;
+      out.seen = seenList(this.db, s);
     }
     return out;
   }

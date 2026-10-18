@@ -414,10 +414,17 @@ export const doctorEn: DoctorStrings = {
     takeHint: 'The case becomes yours with everything already found out',
     view: 'Chart',
     viewHint: 'What is known: questions and answers, the examination, what was ordered and the results, what their doctor thinks; the clock keeps going',
+    noCard: 'The card is gone: the patient left more than a day ago',
     lead: {
       seeking: 'looking for the diagnosis',
       thinks: (dx: string, conf?: string) => (conf ? `thinks: ${dx} — ${conf}` : `thinks: ${dx}`),
       decided: (dx: string, plan: string) => `decided: ${dx} · ${plan}`,
+      released: (setting: string, at: string): string =>
+        setting === 'home' ? `sent home at ${at}`
+        : setting === 'ward' ? `referred to hospital at ${at}`
+        : setting === 'ambulance' ? `called an ambulance at ${at}`
+        : setting === 'transfer' ? `transferred to another hospital at ${at}`
+        : `closed the visit at ${at}`,
       someone: 'a hired doctor',
       where: {
         home: 'home', ward: 'to hospital', ambulance: 'ambulance', admit: 'to the ward', surgery: 'to surgery', transfer: 'transfer',
@@ -495,6 +502,7 @@ export const doctorEn: DoctorStrings = {
       coming: (at: string) => `On the way to you — in at ${at}. The visit starts when they come in`,
       course: 'Course of the visit',
       courseEmpty: 'Nothing asked or ordered yet',
+      decided: 'Decision',
       ordered: (name: string, at: string) => `ordered: ${name} — ready by ${at}`,
       talk: 'History',
       exam: 'Examination and results',

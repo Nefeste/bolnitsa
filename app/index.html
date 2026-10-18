@@ -208,6 +208,10 @@
     .dmeanwhile { background: rgba(140,170,255,.13); }
     .dwait { background: rgba(76,175,110,.15); }
     .dwait > span { flex: 1; }
+    /* решение нанятого врача (spec docs/specs/2026-10-discharged-card.md): диагноз, лечение, где лечить */
+    .ddecided { padding: 5px 8px; border-radius: 4px; margin: 2px 0; background: rgba(47,181,201,.12); display: flex; flex-direction: column; gap: 2px; }
+    .ddecided > div { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; }
+    .dcard .ddecided .label { display: inline-block; margin: 0; min-width: 96px; }
     .dcols { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1.15fr 1.1fr; gap: 10px; margin-top: 6px; }
     /* чужая карта — для чтения (spec docs/specs/2026-10-owner-play-2.md): уже, одна лента; часы идут, план виден по бокам */
     .dcard.read { left: max(1.5%, calc(50% - 330px)); right: max(1.5%, calc(50% - 330px)); }

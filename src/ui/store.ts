@@ -108,6 +108,9 @@ export interface Hud {
   patientsAll: number;
   patientFilter: PatientFilter;
   gone: PatientRow[];
+  /** «Приняты» (spec docs/specs/2026-10-discharged-card.md): приняты и ушли — последние, новые сверху; всех за сутки */
+  seenRows: PatientRow[];
+  seenAll: number;
   /** «Путь пациента» выбранного: лента, итог, почему ушёл; `none` — пути нет (пришёл до этой версии) */
   path?: { lines: PathLine[]; summary: string; left?: string } | { none: true };
   /** слои карты: меню открыто; «Очереди и загрузка» включён */
@@ -161,8 +164,10 @@ export const initial: Hud = {
   notices: [],
   patients: [],
   patientsAll: 0,
-  patientFilter: { triage: 'all', where: 'all', long: false, gone: false },
+  patientFilter: { triage: 'all', where: 'all', long: false, list: 'present' },
   gone: [],
+  seenRows: [],
+  seenAll: 0,
   layers: { open: false, queues: false },
   staffList: [],
   debug: false,

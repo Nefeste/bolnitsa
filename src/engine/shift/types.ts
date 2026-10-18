@@ -676,4 +676,15 @@ export interface ShiftState {
   works?: Works;
   /** поток для ПК: путь пациента — что с ним было и почему ждал; сутки после ухода (spec 2026-10-flow-ui) */
   journeys?: Journeys;
+  /**
+   * поток для ПК: карты ушедших из состояния (`evict`) — для чтения, по порядку ухода; сутки после ухода и не больше
+   * 600, как их пути (spec 2026-10-discharged-card)
+   */
+  past?: PastPatient[];
+}
+
+/** Ушедший из состояния (spec 2026-10-discharged-card): когда ушёл и он сам — каким был в этот момент. */
+export interface PastPatient {
+  t: number;
+  p: ShiftPatient;
 }

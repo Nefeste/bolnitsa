@@ -1,7 +1,8 @@
 // Карта пациента на ПК (spec docs/specs/2026-10-doctor-mode.md, «Карта пациента»; геймдизайн §6): большое окно поверх
 // карты, шапка и три колонки — опрос · осмотр и результаты · гипотезы и решение; после «Завершить приём» — итог и разбор.
 // Чужая карта и ваш, пока он не вошёл, — для чтения (spec docs/specs/2026-10-owner-play-2.md): окно уже, одна лента «Ход
-// приёма» по времени, без кнопок действий.
+// приёма» по времени, без кнопок действий; у закрытого нанятым врачом — его решение над лентой, и после ухода больного
+// (spec docs/specs/2026-10-discharged-card.md).
 // Приём «Анамнеза» целиком (его PatientCard, Talk, Examine, Referral, Differential, DecisionScreen, OutcomeScreen —
 // логика та же, разметка своя). Вид приходит из потока расчёта готовым (правды в нём нет); отсюда — только знание о
 // медицине из базы: списки обследований, их минуты и цена, «Что это?».
@@ -105,6 +106,8 @@ function CardWindow({ v, level, meanwhile, next, actions }: P) {
           ) : null}
         </div>
       ) : null}
+      {/* решение нанятого врача (spec docs/specs/2026-10-discharged-card.md): диагноз, лечение, где лечить */}
+      {v.decided ? <Decided d={v.decided} explain={setTerm} /> : null}
       {v.hints.length > 0 && !v.decision && !read ? (
         <div className="dlikely" id="dcard-likely">
           <b>{t.likelyShort}:</b> {v.hints.map(h => `${h.name} — ${h.word ?? t.outOf10(h.outOf10)}`).join(' · ')}
@@ -183,6 +186,39 @@ function Course({ v, explain }: { v: CardView; explain: (x: TermInfo) => void })
           <div className="doc">{c.ordered(x.name, x.at)}</div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/** Решение нанятого врача у закрытого им приёма (spec docs/specs/2026-10-discharged-card.md): названия — «Что это?» из базы. */
+function Decided({ d, explain }: { d: NonNullable<CardView['decided']>; explain: (x: TermInfo) => void }) {
+  const p = T.case.patient;
+  return (
+    <div className="ddecided" id="dcard-decided">
+      <b>{T.doctor.card.decided}</b>
+      <div>
+        <span className="label">{p.diagnosisLabel}</span>
+        <button type="button" className="said" id="decided-dx" onClick={() => explain(conditionTerm(d.diagnosis.id))}>
+          {d.diagnosis.name}
+        </button>
+      </div>
+      <div id="decided-tx">
+        <span className="label">{p.treatmentLabel}</span>
+        {d.treatments.length === 0 ? (
+          <span className="muted">{p.noTreatment}</span>
+        ) : (
+          d.treatments.map((x, i) => (
+            <button key={x.id} type="button" className="said" onClick={() => explain(treatmentTerm(x.id))}>
+              {x.name}
+              {i < d.treatments.length - 1 ? ',' : ''}
+            </button>
+          ))
+        )}
+      </div>
+      <div>
+        <span className="label">{p.settingLabel}</span>
+        <span id="decided-setting">{d.setting}</span>
+      </div>
     </div>
   );
 }

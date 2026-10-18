@@ -428,10 +428,19 @@ export const doctorRu = {
     /** карта больного нанятого врача — посмотреть, не забирая (spec docs/specs/2026-10-two-ways.md, F1) */
     view: 'Карта',
     viewHint: 'Что о нём известно: вопросы и ответы, осмотр, назначенное и результаты, что думает его врач; часы не стоят',
+    /** карта ушедшего хранится сутки (spec 2026-10-discharged-card) */
+    noCard: 'Карты уже нет: больной ушёл больше суток назад',
     lead: {
       seeking: 'ищет диагноз',
       thinks: (dx: string, conf?: string) => (conf ? `думает: ${dx} — ${conf}` : `думает: ${dx}`),
       decided: (dx: string, plan: string) => `решил: ${dx} · ${plan}`,
+      /** принят и ушёл (spec 2026-10-discharged-card): чем кончилось и когда; диагноз и лечение — блоком «Решение» */
+      released: (setting: string, at: string): string =>
+        setting === 'home' ? `отпустил домой в ${at}`
+        : setting === 'ward' ? `направил в стационар в ${at}`
+        : setting === 'ambulance' ? `вызвал скорую в ${at}`
+        : setting === 'transfer' ? `перевёл в другую больницу в ${at}`
+        : `закончил приём в ${at}`,
       someone: 'нанятый врач',
       where: {
         home: 'дома', ward: 'в стационар', ambulance: 'скорая', admit: 'в палату', surgery: 'в операционную', transfer: 'перевод',
@@ -515,6 +524,8 @@ export const doctorRu = {
       /** «Ход приёма» в чужой карте (spec 2026-10-owner-play-2): что спрашивали, что нашли, что назначили и что пришло */
       course: 'Ход приёма',
       courseEmpty: 'Ещё ничего не спрашивали и не назначали',
+      /** решение нанятого врача у закрытого им приёма (spec 2026-10-discharged-card) */
+      decided: 'Решение',
       ordered: (name: string, at: string) => `назначено: ${name} — будет к ${at}`,
       talk: 'Опрос',
       exam: 'Осмотр и результаты',

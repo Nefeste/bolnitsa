@@ -72,11 +72,14 @@ export interface PatientFilter {
   where: Where | 'all';
   /** только ждущие `LONG_WAIT` и дольше */
   long: boolean;
-  /** «Ушли»: ушедшие, не дождавшись */
-  gone: boolean;
+  /**
+   * какой список: «В больнице»; «Приняты» — приняты и ушли за сутки (spec docs/specs/2026-10-discharged-card.md); «Ушли» —
+   * ушедшие, не дождавшись
+   */
+  list: 'present' | 'seen' | 'gone';
 }
 
-export const NO_FILTER: PatientFilter = { triage: 'all', where: 'all', long: false, gone: false };
+export const NO_FILTER: PatientFilter = { triage: 'all', where: 'all', long: false, list: 'present' };
 
 export interface PatientRow {
   /** человек на экране (`p:<номер>`); ушедший — `id:<номер в движке>` */
