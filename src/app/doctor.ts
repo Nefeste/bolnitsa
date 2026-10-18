@@ -206,6 +206,18 @@ export class Doctor {
     return T.round.worse(row?.who ?? id);
   }
 
+  /** Строка журнала: ваш пациент вошёл к вам или вернулся с обследования (spec 2026-10-owner-play-2). */
+  reachedText(id: string): string {
+    const who = this.hud.state?.current?.id === id ? this.hud.state.current.who : undefined;
+    return who ? T.doctor.notices.reached(who) : T.doctor.notices.reachedSomeone;
+  }
+
+  /** Уровень медицины из сохранения (spec 2026-10-saves): только из списка уровней. */
+  restoreLevel(level: string) {
+    const l = LEVELS.find(x => x === level);
+    if (l) this.hud.level = l;
+  }
+
   /** Строка журнала: готовы результаты вашего больного. */
   resultsText(id: string): string {
     const st = this.hud.state;

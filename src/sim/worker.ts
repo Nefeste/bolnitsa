@@ -2,7 +2,10 @@
 // над `createSim` (host.ts). База — тот же собранный `content.json`, что у страницы; пока она грузится, сообщения ждут.
 // Срез уходит без копии (transferList).
 import type { ContentDb } from '../content/types';
+import { SAVE_SCHEMA } from '../engine/shift/migrate';
+import { cashNow } from '../engine/shift/money';
 import { createSim, type SimHost } from './host';
+import { pack } from './packing';
 import type { FromSim, ToSim } from './protocol';
 
 interface Scope {
@@ -15,8 +18,24 @@ let sim: SimHost | undefined;
 const waiting: ToSim[] = [];
 
 function reply(msg: ToSim) {
+  if (msg.kind === 'pack') return packSave(msg);
   const out = sim!.handle(msg);
   scope.postMessage(out, out.kind === 'slice' ? [out.buf.buffer as ArrayBuffer] : []);
+}
+
+/**
+ * Файл сохранения (spec docs/specs/2026-10-saves.md): снимок — здесь же в JSON (до первого ожидания: дальше он меняется),
+ * сжатие — потом; байты уходят в окно без копии.
+ */
+function packSave(msg: Extract<ToSim, { kind: 'pack' }>) {
+  const out = sim!.handle({ kind: 'save' });
+  if (out.kind !== 'state') return scope.postMessage({ kind: 'packFailed', message: out.kind === 'error' ? out.message : out.kind });
+  const s = out.state;
+  const cash = cashNow(s);
+  const meta = { ...msg.meta, day: s.day, t: s.t, ...(cash !== undefined ? { cash } : {}) };
+  pack({ schema: SAVE_SCHEMA, meta, ...(msg.view !== undefined ? { view: msg.view } : {}), state: s })
+    .then(bytes => scope.postMessage({ kind: 'packed', bytes, meta }, [bytes.buffer as ArrayBuffer]))
+    .catch(e => scope.postMessage({ kind: 'packFailed', message: e instanceof Error ? e.message : String(e) }));
 }
 
 scope.onmessage = e => {

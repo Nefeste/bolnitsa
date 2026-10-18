@@ -117,13 +117,16 @@ export async function ownerTwoPart({ page, port, out, ok, fail, q, shots }) {
     const b = [...document.querySelectorAll('#dock .dlists li button')].find(x => x.textContent === 'Позвать' && !x.disabled);
     return b ? b.closest('li')?.id ?? null : null;
   };
+  // строку выбирают на паузе: на ходу её пациента может раньше позвать нанятый врач
   const row = await until(callable, null, 120000).then(h => h.jsonValue());
-  const who = row.replace(/^dr-/, '');
+  await page.evaluate(() => window.__game.actions.setSpeed(0));
+  const now = await page.evaluate(callable);
+  const who = (now ?? row).replace(/^dr-/, '');
+  await page.locator(`#dr-${who} button`, { hasText: 'Позвать' }).click();
+  await until(x => window.__game.store.get().doctor?.state?.current?.id === x, who);
   await page.evaluate(() => window.__game.actions.setSpeed(3));
   const tc = (await hud()).t;
-  await page.locator(`#${row} button`, { hasText: 'Позвать' }).click();
-  await until(x => window.__game.store.get().doctor?.state?.current?.id === x, who);
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(600);
   const w = await page.evaluate(() => ({
     card: !!document.getElementById('dcard'), speed: window.__game.speed, t: window.__game.t,
     label: document.querySelector('#dock .dlists .label')?.textContent ?? '', said: document.getElementById('dock-said')?.textContent ?? '',

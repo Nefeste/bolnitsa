@@ -1,7 +1,8 @@
 // из spikes/render-3d: electron/main.cjs (из spikes/map-render) — изменено: страница игры и поток расчёта из dist/,
 // мост `shell` (аргументы, перезапуск без vsync), окно игры.
 // Оболочка Electron (spec docs/specs/2026-10-shell-3d.md, «Процессы и потоки»): окно, страница из dist/ по своей схеме
-// app:// (без dev-сервера и без сети), запись итога бенча и снимков в файлы рядом с .exe/AppImage.
+// app:// (без dev-сервера и без сети), запись итога бенча и снимков в файлы рядом с .exe/AppImage; сохранения игры — в
+// папке игры пользователя, при выходе — сохранение (spec docs/specs/2026-10-saves.md).
 //
 //   electron .                          — игра
 //   electron . --bench [--secs 15]      — авто-бенч: пресеты × общий план и крупный план, 4 снимка; итог — bench-*.json и *.png
@@ -14,6 +15,7 @@ const { app, BrowserWindow, ipcMain, protocol, session } = require('electron');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { savesIn } = require('./saves.cjs');
 
 const t0 = Date.now();
 const argv = process.argv;
@@ -159,6 +161,13 @@ app.whenReady().then(async () => {
     timings.processStartToFirstFrameMs = Math.round(process.uptime() * 1000);
     console.log(`[startup] process start to first frame: ${timings.processStartToFirstFrameMs} ms`);
   });
+  // сохранения (spec docs/specs/2026-10-saves.md): страница называет ячейку, файлы — в папке игры пользователя
+  const saves = savesIn(path.join(app.getPath('userData'), 'saves'));
+  ipcMain.handle('saves:read', (_e, name) => saves.read(name));
+  ipcMain.handle('saves:write', (_e, name, bytes) => saves.write(name, bytes));
+  ipcMain.handle('saves:move', (_e, from, to) => saves.move(from, to));
+  ipcMain.handle('saves:remove', (_e, name) => saves.remove(name));
+  ipcMain.handle('saves:list', () => saves.list());
   // перезапуск с другими ключами (авто-бенч без vsync из меню): ключи вертикальной синхронизации — до старта процесса
   ipcMain.on('shell:relaunch', (_e, extra) => {
     const keep = argv.slice(1).filter(a => !['--bench', '--uncapped', '--stay'].includes(a));
@@ -182,7 +191,21 @@ app.whenReady().then(async () => {
     },
   });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  win.webContents.on('will-navigate', e => e.preventDefault());
+  // страница игры может открыть себя заново — загрузить сохранение, новая игра; наружу — никуда
+  win.webContents.on('will-navigate', e => {
+    if (!e.url.startsWith('app://game/')) e.preventDefault();
+  });
+  // выход (spec docs/specs/2026-10-saves.md): окно сначала просит страницу сохраниться и закрывается, когда она ответит;
+  // не ответила за 10 секунд — закрывается всё равно
+  let closing = false;
+  win.on('close', e => {
+    if (closing) return;
+    closing = true;
+    e.preventDefault();
+    win.webContents.send('shell:closing');
+    setTimeout(() => win.isDestroyed() || win.destroy(), 10000);
+  });
+  ipcMain.on('shell:close-now', () => win.isDestroyed() || win.destroy());
   win.once('ready-to-show', () => {
     timings.readyToShowMs = Date.now() - t0;
     win.show();

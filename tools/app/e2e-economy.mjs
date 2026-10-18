@@ -135,6 +135,11 @@ export async function economyPart({ page, port, out, ok, fail, q, shots }) {
   await page.click('#meeting-close');
   await until(() => !window.__game.store.get().economy?.open && window.__game.speed === 1);
   ok('«Продолжить» — планёрка закрыта, часы идут ×1');
+  // утро — сохранение само (spec docs/specs/2026-10-saves.md): ячейка «утро» второго дня в меню игры
+  const auto = await until(() => window.__game.store.get().menu.rows.find(r => r.meta?.kind === 'auto' && r.meta.day === 2) ?? null, null, 30000)
+    .then(h => h.jsonValue(), () => null);
+  if (auto?.slot === 'auto-1') ok(`утреннее сохранение: ячейка ${auto.slot}, день ${auto.meta.day}, ${Math.floor((auto.meta.t % 86400) / 3600)}:00`);
+  else fail(`утреннего сохранения нет: ${JSON.stringify(await page.evaluate(() => window.__game.store.get().menu.rows))}`);
 
   // ---------------------------------------------------------------- ваш лежащий: «Обход»
   const card = () => page.evaluate(() => window.__game.store.get().doctor?.card ?? null);

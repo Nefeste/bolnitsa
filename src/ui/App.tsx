@@ -2,7 +2,8 @@
 // репутация, стройка, извещения; слева — стройка (spec docs/specs/2026-10-build.md) и слои; справа — вкладки; снизу —
 // карточка выбранного. Панели тонкие: читают хранилище (store.ts) и просят игру (Actions); 3D-кадр живёт вне React.
 import { type ReactNode, useState } from 'react';
-import { clock, type Lang, money, T } from '../i18n';
+import type { SaveRow } from '../app/saves';
+import { clock, type Lang, lang, money, T } from '../i18n';
 import type { PersonInfo } from '../render/population';
 import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
@@ -176,6 +177,10 @@ function LeftTools({ hud, actions }: P) {
   if (!b.on)
     return (
       <div className="left panel" id="left">
+        {/* меню игры (spec docs/specs/2026-10-saves.md): сохранить, загрузить, новая игра */}
+        <button type="button" id="game-menu-open" className={hud.menu.open ? 'on' : undefined} title={T.saves.menuHint} onClick={actions.toggleMenu}>
+          ☰ {T.saves.menu}
+        </button>
         <button type="button" id="build" onClick={actions.toggleBuild} title="B">
           🏗 {T.left.build}
         </button>
@@ -599,11 +604,92 @@ function DebugMenu({ hud, actions }: P) {
  * docs/specs/2026-10-real-hospital.md) или городская больница. Первые слова — о чём игра (spec
  * docs/specs/2026-10-aaa-polish.md, «Первые минуты»); имя игры — рабочее, марку решает владелец.
  */
+/** С чего начинали — словами: пустое здание, поликлиника, городская больница. */
+const startName = (start: string): string => (start === 'empty' ? T.start.empty : start === 'poly' ? T.start.poly : T.start.preset);
+
+/** Когда записано — дата и время по часам компьютера. */
+const when = (iso: string): string => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString(lang === 'en' ? 'en-GB' : 'ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+};
+
+/** Строка сохранения: день и час, больница, какое, когда записано. */
+function saveText(r: SaveRow): { title: string; sub: string } {
+  const m = r.meta;
+  if (!m) return { title: r.slot, sub: T.saves.noMeta };
+  return { title: T.saves.row(m.day, clock(m.t)), sub: [startName(m.start), T.saves.kind[m.kind] ?? m.kind, T.saves.savedAt(when(m.savedAt))].join(' · ') };
+}
+
+/** Список сохранений (spec docs/specs/2026-10-saves.md): «Загрузить», в меню игры — и «Удалить». */
+function SaveList({ rows, load, remove, prefix }: { rows: SaveRow[]; load: (slot: string) => void; remove?: (slot: string) => void; prefix: string }) {
+  if (rows.length === 0) return <p className="muted small">{T.saves.none}</p>;
+  return (
+    <ul className="saves" id={`${prefix}-list`}>
+      {rows.map(r => {
+        const x = saveText(r);
+        return (
+          <li key={r.slot} id={`${prefix}-${r.slot}`}>
+            <div className="who">
+              <b>{x.title}</b> <small className="muted">{x.sub}</small>
+            </div>
+            <button type="button" className="small" id={`${prefix}-load-${r.slot}`} onClick={() => load(r.slot)}>
+              {T.saves.load}
+            </button>
+            {remove ? (
+              <button type="button" className="small" id={`${prefix}-remove-${r.slot}`} onClick={() => remove(r.slot)}>
+                {T.saves.remove}
+              </button>
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** Меню игры: «Сохранить», сохранения, «Новая игра». */
+function GameMenu({ hud, actions }: P) {
+  if (!hud.menu.open) return null;
+  return (
+    <div className="gamemenu panel" id="game-menu">
+      <div className="row">
+        <b>{T.saves.title}</b>
+        <button type="button" className="close" onClick={actions.toggleMenu} title="Esc">
+          ✕
+        </button>
+      </div>
+      <button type="button" id="save-new" className="on" title={T.saves.saveHint} onClick={actions.saveGame}>
+        {T.saves.save}
+      </button>
+      <SaveList rows={hud.menu.rows} load={actions.loadGame} remove={actions.deleteGame} prefix="save" />
+      <button type="button" id="new-game" title={T.saves.newGameHint} onClick={actions.newGame}>
+        {T.saves.newGame}
+      </button>
+    </div>
+  );
+}
+
 function StartChooser({ hud, actions }: P) {
+  const saves = hud.startSaves ?? [];
+  // «Продолжить» — самое новое сохранение с шапкой
+  const last = saves.find(r => r.meta);
   return (
     <div className="start panel" id="start">
       <div className="game">{T.app.title}</div>
       <p className="intro">{T.start.intro}</p>
+      {hud.startProblem ? (
+        <div className="ghostline bad" id="start-problem">
+          {hud.startProblem}
+        </div>
+      ) : null}
+      {last ? (
+        <button type="button" id="start-continue" className="on" onClick={() => actions.startGame({ load: last.slot })}>
+          <b>{T.saves.continue}</b>
+          <span>
+            {saveText(last).title} · {saveText(last).sub}
+          </span>
+        </button>
+      ) : null}
       <h2>{T.start.title}</h2>
       <button type="button" id="start-empty" onClick={() => actions.startGame('empty')}>
         <b>{T.start.empty}</b>
@@ -617,6 +703,12 @@ function StartChooser({ hud, actions }: P) {
         <b>{T.start.preset}</b>
         <span>{T.start.presetHint}</span>
       </button>
+      {saves.length > 1 ? (
+        <>
+          <h2>{T.saves.loadTitle}</h2>
+          <SaveList rows={saves} load={slot => actions.startGame({ load: slot })} prefix="start-save" />
+        </>
+      ) : null}
       <div className="muted small">{T.start.version(hud.version)}</div>
     </div>
   );
@@ -642,6 +734,7 @@ export function App({ store, actions, names }: { store: Store; actions: Actions;
       </div>
       <ViewBar {...p} />
       <LeftTools {...p} />
+      <GameMenu {...p} />
       <RightTabs {...p} />
       <BottomCard {...p} />
       {!hud.build.on ? <Dock hud={hud} actions={actions} /> : null}

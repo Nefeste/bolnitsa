@@ -45,6 +45,8 @@ import { Money } from './money';
 import { startCash } from '../engine/shift/money';
 import { GAME_PER_REAL } from '../engine/shift/walking';
 import type { Flow } from '../engine/shift/types';
+import type { SaveFile, SaveMeta } from '../sim/packing';
+import { type Disk, listSlots, nextManual, pageDisk, removeSlot, type ShellSaves, writeAuto, writeSlot } from './saves';
 
 /**
  * Больница и поток части 2а — вопросы к гейм-дизайну в спецификации, «Вопросы к гейм-дизайну». С частью 5б поток игры — от
@@ -90,6 +92,23 @@ export interface ShellBridge {
   firstFrame(ms: number): void;
   relaunch(args: string[]): void;
   args(): Promise<string[]>;
+  /** сохранения в папке игры (spec docs/specs/2026-10-saves.md) */
+  saves: ShellSaves;
+  /** окно закрывают: сохраниться и позвать `closeNow` */
+  onClosing(cb: () => void): void;
+  closeNow(): void;
+}
+
+/** Вид окна в сохранении (spec docs/specs/2026-10-saves.md): камера, уровень медицины, автопауза. */
+export interface SavedView {
+  camera?: { x: number; z: number; half: number; yaw: number; projection: 'persp' | 'ortho' };
+  level?: string;
+  autopause?: boolean;
+}
+
+/** Где лежат сохранения: папка игры в Electron, хранилище страницы в браузере. */
+export function diskOf(): Disk {
+  return window.shell?.saves ?? pageDisk();
 }
 
 declare global {
@@ -116,6 +135,17 @@ loader.setMeshoptDecoder(MeshoptDecoder);
 
 async function loadGltf(url: string) {
   return loader.loadAsync(url);
+}
+
+/**
+ * Открыть игру заново (spec docs/specs/2026-10-saves.md): загрузить сохранение (`load`) или новая игра — экран начала.
+ * Качество и язык остаются; с чего начинать, зерно и поток — нет.
+ */
+function reopen(extra: Record<string, string>) {
+  const q = new URLSearchParams(location.search);
+  for (const k of ['load', 'hospital', 'seed', 'flow', 'start']) q.delete(k);
+  for (const [k, v] of Object.entries(extra)) q.set(k, v);
+  location.search = q.toString();
 }
 
 export class Game {
@@ -180,6 +210,10 @@ export class Game {
   selected: string | undefined;
   /** «Следить» (spec docs/specs/2026-10-owner-play-2.md): за кем идёт камера — ключ человека на карте */
   private following: string | undefined;
+  /** сохранения (spec docs/specs/2026-10-saves.md): где лежат, что открыли при старте, запись по очереди */
+  readonly disk: Disk = diskOf();
+  private loaded: SaveFile | undefined;
+  private saving: Promise<unknown> = Promise.resolve();
   readonly load: LoadTimes = { content: 0, furniture: 0, people: 0, scene: 0, total: 0 };
   firstFrameMs = 0;
   private last = 0;
@@ -200,13 +234,15 @@ export class Game {
   ) {}
 
   /** База, модели, больница, поток — и первый кадр. */
-  static async create(host: HTMLElement, store: Store, version: string, quality: Quality, start: Start = 'preset', flow: Flow = AUTO): Promise<Game> {
+  /** `loaded` — открыть сохранение (spec docs/specs/2026-10-saves.md): больница, поток и вид — из него, часы на паузе. */
+  static async create(host: HTMLElement, store: Store, version: string, quality: Quality, start: Start = 'preset', flow: Flow = AUTO, loaded?: SaveFile): Promise<Game> {
     const t0 = performance.now();
     store.set({ status: T.app.loading, version });
     const db = (await (await fetch('./content.json')).json()) as ContentDb;
     const g = new Game(db, store, host, version);
     g.start = start;
-    g.flow = flow;
+    g.flow = loaded?.state.flow ?? flow;
+    g.loaded = loaded;
     g.load.content = Math.round(performance.now() - t0);
     await g.build(quality);
     g.load.total = Math.round(performance.now() - t0);
@@ -231,10 +267,17 @@ export class Game {
 
     store.set({ status: T.app.loadingWorld });
     const ts = performance.now();
-    // больница ПК (spec docs/specs/2026-10-build.md): пустое здание, готовая больница 2а в том же виде или поликлиника
-    const { site, staff } = hospitalAt(db, this.start);
-    this.staff = staff;
-    this.hospital = hospitalOf(db, site);
+    // больница ПК (spec docs/specs/2026-10-build.md): пустое здание, готовая больница 2а в том же виде или поликлиника;
+    // сохранение — его больница
+    const saved = this.loaded?.state;
+    if (saved?.hospital) {
+      this.staff = saved.staff ?? [];
+      this.hospital = saved.hospital;
+    } else {
+      const { site, staff } = hospitalAt(db, this.start);
+      this.staff = staff;
+      this.hospital = hospitalOf(db, site);
+    }
     this.setWorld(true, quality);
     this.load.scene = Math.round(performance.now() - ts);
 
@@ -244,11 +287,15 @@ export class Game {
     // зерно смены — из адреса (`?seed=`; сценарий в браузере берёт смену, где просьба приходит рано), иначе — сцены
     const seed = Number(new URLSearchParams(location.search).get('seed')) || SCENE.seed;
     // касса (spec docs/specs/2026-10-economy.md): пустое здание — бюджет песочницы, готовая больница и поликлиника — его доля
-    this.client.start({ kind: 'start', seed, season: SCENE.season, hospital: this.hospital, staff: this.staff, flow: this.flow, economy: { cash: startCash(this.db, this.start) } });
+    if (saved) this.client.load(saved);
+    else this.client.start({ kind: 'start', seed, season: SCENE.season, hospital: this.hospital, staff: this.staff, flow: this.flow, economy: { cash: startCash(this.db, this.start) } });
+    this.applyView(this.loaded?.view);
     this.doctor.start();
     this.money.start();
-    // пустое здание — часы стоят, пока игрок не пустит их
-    if (this.start === 'empty') this.speed = 0;
+    // пустое здание — часы стоят, пока игрок не пустит их; сохранение — тоже: осмотреться
+    if (this.start === 'empty' || saved) this.speed = 0;
+    this.loaded = undefined;
+    void this.refreshSaves();
     this.bindInput();
     window.addEventListener('resize', () => this.stage.resize());
     store.set({ ready: true, status: '', quality, walls: this.stage.wallMode, speed: this.speed });
@@ -445,9 +492,63 @@ export class Game {
       : n.kind === 'consult' ? this.doctor.consultText(n)
       : n.kind === 'morning' ? T.notices.morning
       : n.kind === 'worse' ? this.doctor.worseText(n.id)
+      : n.kind === 'reached' ? this.doctor.reachedText(n.id)
       : T.notices.shiftEnd;
     this.notices.unshift({ t: this.t, text });
     if (this.notices.length > 60) this.notices.length = 60;
+    // утро — сохранение само (spec docs/specs/2026-10-saves.md): три последних утра
+    if (n.kind === 'morning') void this.save('auto');
+  }
+
+  // ---------------------------------------------------------------- сохранения (spec docs/specs/2026-10-saves.md)
+
+  /** Вид окна в сохранение: камера, уровень медицины, автопауза. */
+  private viewOf(): SavedView {
+    const c = this.stage.cam;
+    return { camera: { x: c.target.x, z: c.target.z, half: c.half, yaw: c.yaw, projection: c.projection }, level: this.doctor.hud.level, autopause: this.doctor.hud.autopause };
+  }
+
+  /** Вид из сохранения; чего нет или не то — остаётся как есть. */
+  private applyView(v: unknown) {
+    const view = (v ?? {}) as SavedView;
+    const c = view.camera;
+    if (c && [c.x, c.z, c.half, c.yaw].every(Number.isFinite)) {
+      this.stage.cam.target.set(c.x, 0, c.z);
+      this.stage.cam.half = c.half;
+      this.stage.cam.setYawNow(c.yaw);
+      if (c.projection === 'persp' || c.projection === 'ortho') this.actions.setProjection(c.projection);
+    }
+    if (typeof view.autopause === 'boolean') this.doctor.hud.autopause = view.autopause;
+    if (typeof view.level === 'string') this.doctor.restoreLevel(view.level);
+  }
+
+  /**
+   * Сохранить: поток сжимает снимок с шапкой и видом, окно кладёт байты в ячейку — утреннюю (сдвигом), «при выходе» или
+   * новую свою. Записи — строго по очереди; не вышло — строка в извещениях, игра идёт дальше.
+   */
+  save(kind: SaveMeta['kind']): Promise<SaveMeta | null> {
+    const run = async () => {
+      const { bytes, meta } = await this.client.pack({ kind, savedAt: new Date().toISOString(), version: this.version, start: this.start }, this.viewOf());
+      if (kind === 'auto') await writeAuto(this.disk, bytes, meta);
+      else await writeSlot(this.disk, kind === 'exit' ? 'exit' : await nextManual(this.disk), bytes, meta);
+      await this.refreshSaves();
+      this.notices.unshift({ t: this.t, text: kind === 'auto' ? T.saves.autoSaved(meta.day) : T.saves.saved(meta.day, clock(meta.t)) });
+      this.hud();
+      return meta;
+    };
+    const p = this.saving.then(run, run).catch(e => {
+      this.notices.unshift({ t: this.t, text: T.saves.failed(e instanceof Error ? e.message : String(e)) });
+      this.hud();
+      return null;
+    });
+    this.saving = p;
+    return p;
+  }
+
+  /** Список сохранений — для меню игры. */
+  private async refreshSaves() {
+    const rows = await listSlots(this.disk).catch(() => []);
+    this.store.set({ menu: { ...this.store.get().menu, rows } });
   }
 
   /**
@@ -859,6 +960,16 @@ export class Game {
       const l = this.store.get().layers;
       this.store.set({ layers: { ...l, open: !l.open } });
     },
+    // меню игры (spec docs/specs/2026-10-saves.md): сохранить, загрузить, удалить, новая игра
+    toggleMenu: () => {
+      const m = this.store.get().menu;
+      this.store.set({ menu: { ...m, open: !m.open } });
+      if (!m.open) void this.refreshSaves();
+    },
+    saveGame: () => void this.save('manual'),
+    loadGame: slot => reopen({ load: slot }),
+    deleteGame: slot => void removeSlot(this.disk, slot).then(() => this.refreshSaves()),
+    newGame: () => reopen({}),
     toggleQueues: () => {
       const l = this.store.get().layers;
       this.store.set({ layers: { ...l, queues: !l.queues } });
@@ -958,6 +1069,7 @@ export class Game {
     if (this.doctor.close()) return;
     if (this.money.open) return this.money.dispatch({ kind: 'close' });
     if (this.builder.cancel()) this.hud();
+    else if (this.store.get().menu.open) this.actions.toggleMenu();
     else if (this.following) this.unfollow();
     else this.actions.select(undefined);
   }

@@ -3,6 +3,7 @@
 // поток не захлёбывается кадрами, если не успевает.
 import type { Command, Notice, ShiftState } from '../engine/shift/types';
 import type { NameRow } from './pack';
+import type { SaveMeta } from './packing';
 import type { DoctorAct, DoctorOut, FromSim, PathView, ToSim, World } from './protocol';
 
 /** Срез и, если изменились, режим врача (spec docs/specs/2026-10-doctor-mode.md). */
@@ -24,6 +25,8 @@ export class SimClient {
   /** игровые секунды, которые часы игры прошли, а в поток ещё не отправлены (с дробью) */
   private owed = 0;
   private saves: ((s: ShiftState) => void)[] = [];
+  /** файлы сохранения в пути (spec docs/specs/2026-10-saves.md): по очереди, как ответы потока */
+  private packs: { ok: (r: { bytes: Uint8Array; meta: SaveMeta }) => void; fail: (e: Error) => void }[] = [];
   /** время на поток: от отправки `tick` до ответа, мс — для бенча */
   readonly roundTrips: number[] = [];
   private sentAt = 0;
@@ -46,6 +49,14 @@ export class SimClient {
       this.saves.shift()?.(msg.state);
       return;
     }
+    if (msg.kind === 'packed') {
+      this.packs.shift()?.ok({ bytes: msg.bytes, meta: msg.meta });
+      return;
+    }
+    if (msg.kind === 'packFailed') {
+      this.packs.shift()?.fail(new Error(msg.message));
+      return;
+    }
     if (this.ticking) {
       this.ticking = false;
       this.roundTrips.push(performance.now() - this.sentAt);
@@ -61,6 +72,20 @@ export class SimClient {
   start(msg: Extract<ToSim, { kind: 'start' }>) {
     this.owed = 0;
     this.post(msg);
+  }
+
+  /** Открыть сохранение (spec docs/specs/2026-10-saves.md): снимок, уже прошедший миграции. */
+  load(state: ShiftState) {
+    this.owed = 0;
+    this.post({ kind: 'load', state });
+  }
+
+  /** Файл сохранения: поток сжимает снимок с шапкой и видом окна. */
+  pack(meta: Omit<SaveMeta, 'day' | 't' | 'cash'>, view?: unknown): Promise<{ bytes: Uint8Array; meta: SaveMeta }> {
+    return new Promise((ok, fail) => {
+      this.packs.push({ ok, fail });
+      this.post({ kind: 'pack', meta, ...(view !== undefined ? { view } : {}) });
+    });
   }
 
   command(cmd: Command) {
