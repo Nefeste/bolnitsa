@@ -102,7 +102,7 @@ describe('ходьба в движке', () => {
     expect(sliced).toBeGreaterThan(0);
   }, 60_000);
 
-  test('вы зовёте — часы идут, пока он дойдёт до вашего кабинета', () => {
+  test('вы зовёте — он идёт к вашему кабинету часами игры, приём — когда дойдёт (spec 2026-10-owner-play-2)', () => {
     const s = city(5);
     liveTo(db, s, 10);
     const free = () => s.queue.find(id => !s.patients[id].by && s.patients[id].calledT === undefined && s.patients[id].kind !== 'ambulance');
@@ -116,7 +116,9 @@ describe('ходьба в движке', () => {
     const t0 = s.t;
     apply(db, s, { kind: 'call', id });
     expect(s.current).toBe(id);
-    expect(s.t).toBeGreaterThanOrEqual(t0 + walk);
+    // дорога не проживается разом: часы те же, встреча — когда дойдёт
+    expect(s.t).toBe(t0);
+    expect(s.meet).toBeGreaterThanOrEqual(t0 + walk);
     if (walk > 0) expect(p.walk).toEqual({ to: office, at: t0 + walk });
     // теперь он ваш: нанятый врач его не позовёт
     expect(p.doc).toBeUndefined();

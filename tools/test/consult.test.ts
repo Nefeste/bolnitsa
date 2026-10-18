@@ -182,6 +182,11 @@ describe('«Просят посмотреть» в потоке для ПК', ()
     expect(s.consults?.some(x => x.id === n.id) ?? false).toBe(false);
     expect(stepOf(s, n.id)).toEqual([]);
     expect(s.summary.colleagues?.[n.by]?.taken).toBe(1);
+    // идёт к вам из его кабинета (spec 2026-10-owner-play-2): до встречи решать нечего
+    const draft = structuredClone(p.draft);
+    apply(db, s, { kind: 'finish' });
+    expect([p.closed, p.draft]).toEqual([undefined, draft]);
+    while (s.meet !== undefined) apply(db, s, { kind: 'advance', seconds: 15 });
     // вы решаете — приём ваш: в ваших строках итогов, с оценкой и разбором, и в журнал не уходит
     apply(db, s, { kind: 'diagnose', id: c.lead[0].id });
     apply(db, s, { kind: 'finish' });

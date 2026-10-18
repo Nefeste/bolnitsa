@@ -53,6 +53,7 @@ const actions: Actions = {
   filterPatients: later('filterPatients'),
   focus: later('focus'),
   find: later('find'),
+  follow: later('follow'),
   toggleLayers: later('toggleLayers'),
   toggleQueues: later('toggleQueues'),
   doctor: later('doctor'),

@@ -154,12 +154,16 @@ export class Money {
 
   // ---------------------------------------------------------------- экран
 
-  /** Открыть планёрку с автопаузой; карта пациента открыта — после неё. `was` — к какой скорости вернёт «Продолжить». */
+  /**
+   * Открыть планёрку с автопаузой; ваш пациент перед вами — после приёма, чужая карта закрывается. `was` — к какой
+   * скорости вернёт «Продолжить».
+   */
   private show(was: Speed) {
-    if (this.g.doctor.open) {
+    if (this.g.doctor.holding) {
       this.pending = true;
       return;
     }
+    this.g.doctor.close();
     if (!this.hud.open) this.before = was;
     this.g.setSpeed(0);
     this.hud.open = true;
@@ -167,7 +171,7 @@ export class Money {
 
   /** Кадр панелей: планёрка ждала, пока закроют карту пациента. */
   frame() {
-    if (this.pending && !this.g.doctor.open) {
+    if (this.pending && !this.g.doctor.holding) {
       this.pending = false;
       this.show(this.g.speed);
     }

@@ -39,13 +39,17 @@ const Seg = ({ on, onClick, children, id, title }: { on: boolean; onClick: () =>
 
 function Row({ p, actions, gone }: { p: PatientRow; actions: Actions; gone?: boolean }) {
   return (
-    <li>
+    <li className="patli">
       <button type="button" className={`row patrow t-${p.triage}`} onClick={() => actions.focus(p.key)} title={gone ? undefined : T.flow.flyHint} data-id={p.id}>
         <span className="ptitle">
           {p.title}
           {p.mood ? <MoodIcon mood={p.mood} /> : null}
         </span>
         <span className="ptext">{p.text}</span>
+      </button>
+      {/* у любого пациента (spec docs/specs/2026-10-owner-play-2.md): чужая — для чтения, часы идут */}
+      <button type="button" className="small patopen" id={`pat-open-${p.id}`} title={T.doctor.viewHint} onClick={() => actions.doctor({ kind: 'open', id: p.id })}>
+        {T.doctor.openCard}
       </button>
     </li>
   );

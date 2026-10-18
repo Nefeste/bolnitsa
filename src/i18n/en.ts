@@ -205,6 +205,8 @@ export const en: Strings = {
     atDoor: "waiting at the office door",
     toDoor: 'walking to the office door',
     arrives: (time: string) => `there by ${time}`,
+    follow: 'Follow',
+    followHint: 'The camera keeps this person in the middle of the view and goes after them. Release — again, Esc or move the camera',
     staff: 'Staff',
     room: 'Room',
     roomStaff: 'Staff',

@@ -442,7 +442,12 @@ export function apply(db: ContentDb, s: ShiftState, cmd: Command, more?: () => b
   }
 }
 
+/** Действия приёма: идут, только когда вы с пациентом. */
+const VISIT = new Set<Command['kind']>(['exam', 'waitResults', 'sendAway', 'diagnose', 'hypothesis', 'toggleTreatment', 'setting', 'finish']);
+
 function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
+  // поток для ПК (spec 2026-10-owner-play-2): пациент ещё идёт к вам — приём не начат
+  if (s.meet !== undefined && s.meet > s.t && VISIT.has(cmd.kind)) return [];
   switch (cmd.kind) {
     case 'advance':
       return s.dayOpen ? later(db, s, undefined, cmd.seconds) : [];
@@ -454,6 +459,9 @@ function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       const p = current(s);
       if (!p || (p.pending.length === 0 && !isOut(s, p))) return [];
       p.step++;
+      // поток для ПК (spec 2026-10-owner-play-2): ждут часами игры — время не проживается разом; вернётся или будет готово
+      // — извещение
+      if (s.flow) return [];
       // и пока он не вернётся с обследования (0.5.12): что делают при нём — тогда
       const target = Math.min(...p.pending.map(x => x.readyAt), ...(isOut(s, p) ? [p.out!.back] : []));
       // привезла скорая, пока ждали, — ожидание кончается с её приездом: врачу пора в смотровую
@@ -1375,7 +1383,20 @@ function call(db: ContentDb, s: ShiftState, id: string): Notice[] {
   delete p.nextAt;
   doors(db, s);
   goTo(s, p);
+  // поток для ПК (spec 2026-10-owner-play-2): дорога — часами игры, а не разом; приём — когда встретитесь
+  if (s.flow) return meetAt(s, p, s.t + Math.max(meet, walk));
   return later(db, s, p, Math.max(meet, walk));
+}
+
+/**
+ * Поток для ПК (spec 2026-10-owner-play-2): вы встретитесь с пациентом в час `at` — он дойдёт до кабинета или вы до
+ * смотровой; дорога `road` — в счёт приёма, как прежде; в этот час — извещение «вошёл к вам».
+ */
+function meetAt(s: ShiftState, p: ShiftPatient, at: number, road = at - s.t): Notice[] {
+  p.spent.seconds += road;
+  s.meet = at;
+  schedule(s, at, { kind: 'reach', id: p.id });
+  return [];
 }
 
 /**
@@ -1507,7 +1528,7 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
     // узкие места суток (spec 2026-10-economy): очередь у кабинета обследования
     if (s.flow) meeting.examWait(s, room.id, go.at + go.walk, start);
     addPending(s, p, examId, end + after * MIN, obs, { room: room.id, start, end });
-    goOut(ctx, p, examId, room.id, end, walkSpeed(s));
+    goOut(ctx, s, p, examId, room.id, end);
     journey.examOut(s, p, go.at, go.at + go.walk);
     return order;
   }
@@ -1528,7 +1549,7 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
     const go = outFrom(ctx, s, p, to, s.t + order);
     const start = go.at + go.walk;
     addPending(s, p, examId, start + cost + wait, first, { room: room.id, start, end: start + cost });
-    goOut(ctx, p, examId, to, start + cost, walkSpeed(s));
+    goOut(ctx, s, p, examId, to, start + cost);
     journey.examOut(s, p, go.at, start);
     if (e.repeat && second.length > 0) {
       const draw = s.t + e.repeat.minutes * MIN + walk;
@@ -1572,9 +1593,13 @@ function outFrom(ctx: HospitalCtx, s: ShiftState, p: ShiftPatient, to: string, l
   return out ? { at: Math.max(leave, out.until), walk: walkSeconds(ctx.plan, out.room, to, v) } : { at: leave, walk: walkSeconds(ctx.plan, fromRoom(ctx, p), to, v) };
 }
 
-/** Ушёл на обследование (0.5.12): там — до `until`, у врача снова — когда дойдёт обратно. */
-function goOut(ctx: HospitalCtx, p: ShiftPatient, exam: Id, room: string, until: number, speed: number) {
-  p.out = { exam, room, until, back: until + walkSeconds(ctx.plan, room, fromRoom(ctx, p), speed) };
+/**
+ * Ушёл на обследование (0.5.12): там — до `until`, у врача снова — когда дойдёт обратно. Ваш, в потоке для ПК (spec
+ * 2026-10-owner-play-2), — в этот час извещение «вошёл к вам».
+ */
+function goOut(ctx: HospitalCtx, s: ShiftState, p: ShiftPatient, exam: Id, room: string, until: number) {
+  p.out = { exam, room, until, back: until + walkSeconds(ctx.plan, room, fromRoom(ctx, p), walkSpeed(s)) };
+  if (s.flow && !p.by) schedule(s, p.out.back, { kind: 'reach', id: p.id });
 }
 
 /** Где и как сделать обследование этому пациенту сейчас: у постели или в кабинете, время — с поправкой аппарата и человека; нельзя — null. */
@@ -2872,6 +2897,19 @@ function handle(db: ContentDb, s: ShiftState, ev: ShiftEvent, notices: Notice[])
       return morning(db, s, notices);
     case 'rounds':
       return rounds(db, s);
+    case 'reach': {
+      // поток для ПК (spec 2026-10-owner-play-2): ваш пациент дошёл — если он ещё ваш и не ушёл на другое обследование
+      const p = s.patients[ev.id];
+      if (!p || s.current !== p.id || (s.meet !== undefined && s.meet > s.t)) return;
+      if (isOut(s, p)) {
+        // взяли у врача, пока он был на снимке, — встретитесь, когда вернётся
+        if (s.meet !== undefined) meetAt(s, p, p.out!.back);
+        return;
+      }
+      delete s.meet;
+      notices.push({ kind: 'reached', id: p.id });
+      return;
+    }
   }
 }
 
@@ -3361,7 +3399,9 @@ function takeOver(db: ContentDb, s: ShiftState, id: string): Notice[] {
       delete p.next;
       delete p.nextAt;
       goTo(s, p);
-      notices = [...advanceBy(db, s, busy - s.t), ...spend(db, s, p, Math.max(meet, walk))];
+      // поток для ПК (spec 2026-10-owner-play-2): дослушать и дойти — часами игры
+      if (s.flow) notices = meetAt(s, p, busy + Math.max(meet, walk), Math.max(meet, walk));
+      else notices = [...advanceBy(db, s, busy - s.t), ...spend(db, s, p, Math.max(meet, walk))];
     } else {
       // впереди — по времени прихода, как вернувшийся с обследований; в потоке для ПК — в зал у вашего кабинета
       if (s.flow) {

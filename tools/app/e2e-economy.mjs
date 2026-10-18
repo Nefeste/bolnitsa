@@ -145,7 +145,8 @@ export async function economyPart({ page, port, out, ok, fail, q, shots }) {
     return st && !st.current ? (st.yours[0] ?? st.others[0])?.id ?? null : null;
   }, null, 120000).then(h => h.jsonValue());
   await page.evaluate(id => window.__game.actions.doctor({ kind: 'take', id }), who);
-  await page.waitForSelector('#dcard', { timeout: 20000 });
+  // идёт к вам — карта, когда войдёт (spec docs/specs/2026-10-owner-play-2.md)
+  await page.waitForSelector('#dcard:not(.read)', { timeout: 60000 });
   let v = (await card()).version;
   // диагноз — первый из «Похоже на» (уровень «Студент»), нет подсказок — первый в списке
   const dx = (await card()).hints[0]?.id ?? (await page.$eval('#dx-select option:nth-child(2)', o => o.value));
@@ -163,7 +164,9 @@ export async function economyPart({ page, port, out, ok, fail, q, shots }) {
   const rowText = await text(`#dw-${who}`);
   if (draft.setting === 'admit' && row && rowText.includes('Лечение')) ok(`ваш лежащий в «Обходе»: «${rowText.slice(0, 160)}»`);
   else fail(`«Обход»: черновик ${JSON.stringify(draft)}, строка ${row}, «${rowText}»`);
-  // «Сменить лечение» — карта с блоком обхода; добавить лечение из листа назначений
+  // «Сменить лечение» — карта с блоком обхода; добавить лечение из листа назначений. Карта лежащего часы не держит
+  // (spec 2026-10-owner-play-2) — пауза, чтобы вид карты менялся только от действий
+  await page.evaluate(() => window.__game.actions.setSpeed(0));
   await page.click(`#ward-replan-${who}`);
   await page.waitForSelector('#dcard-round', { timeout: 20000 });
   const r0 = (await card()).round;
