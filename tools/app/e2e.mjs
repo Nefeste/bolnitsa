@@ -181,7 +181,30 @@ async function partOne() {
     if (title && named) ok(`клик по человеку — карточка: «${title}»`);
     else fail(`клик по человеку: карточка «${title}»`);
   } else fail('не нашёл человека в кадре');
-  // стены вниз и обратно
+  // выделение (spec docs/specs/2026-10-aaa-polish.md): у выбранного человека — кольцо; наведение на другого — тонкое кольцо
+  // и подпись «кто · что делает»
+  const hl = await page.evaluate(() => window.__game.stage.highlight.dump());
+  if (hl.ring) ok('у выбранного человека — кольцо выделения');
+  else fail(`кольца у выбранного нет: ${JSON.stringify(hl)}`);
+  const other = await page.evaluate(sel => {
+    const g = window.__game;
+    // любой другой человек в кадре — пациент или человек штата (у штата подпись — должность), не под панелями
+    for (const w of g.crowd.walkers.values()) {
+      if (w.key === sel || w.key === 'you') continue;
+      const p = g.stage.screenOf(w);
+      if (p && p.x > 320 && p.x < 960 && p.y > 150 && p.y < 560) return { ...p, key: w.key };
+    }
+    return null;
+  }, target?.key ?? '');
+  if (other) {
+    await page.mouse.move(other.x, other.y);
+    await page.waitForTimeout(250);
+    const hover = await page.evaluate(() => ({ ...window.__game.stage.highlight.dump(), text: window.__game.hoverLabelText, cursor: window.__game.stage.renderer.domElement.style.cursor }));
+    if (hover.hoverRing && hover.text.length > 0 && hover.cursor === 'pointer') ok(`наведение на человека: кольцо, курсор-рука, подпись «${hover.text}»`);
+    else fail(`наведение на человека: ${JSON.stringify(hover)}`);
+  } else fail('не нашёл второго человека в кадре');
+  // панель вида свёрнута в кнопку «Вид»: стены вниз и обратно
+  if (!(await page.$('#walls-down'))) await page.click('#view-menu');
   await page.click('#walls-down');
   const mode = await page.evaluate(() => window.__game.stage.walls.uniforms.uMode.value);
   if (mode === 2) ok('стены — вниз');
@@ -222,9 +245,16 @@ async function partTwo() {
   const closed = await page.textContent('#closed');
   if (closed?.includes('регистратур')) ok(`пустое здание: «${closed}», часы на паузе`);
   else fail(`пустое здание: нет «закрыта» (${closed})`);
+  // подсказки первых минут (spec docs/specs/2026-10-aaa-polish.md): до стройки — «B — стройка», в стройке — как протянуть
+  const hint = () => page.evaluate(() => ({ key: document.getElementById('hint')?.dataset.key ?? '', text: document.getElementById('hint-text')?.textContent ?? '' }));
+  const h0 = await hint();
   await page.keyboard.press('KeyB');
   if (await page.$('#tool-room')) ok('B — стройка открыта');
   else fail('B не открыл стройку');
+  await page.waitForTimeout(250);
+  const h1 = await hint();
+  if (h0.key === 'build' && h0.text.includes('B') && h1.key === 'draw') ok(`подсказки: «${h0.text}» → «${h1.text}»`);
+  else fail(`подсказки: ${JSON.stringify([h0, h1])}`);
   let first = '';
   for (const [i, [type, x, y, w, h, roles]] of PROTO.entries()) {
     // последнее — с камерой на весь ряд: снимок с подписями построенных
@@ -247,8 +277,17 @@ async function partTwo() {
     await page.mouse.up();
     await until(n => window.__game.hospital.site.rooms.length === n, i + 1);
     const id = await page.evaluate(() => window.__game.hospital.site.rooms.at(-1).id);
-    // «Обставить» в карточке нового помещения
+    // «Обставить» в карточке нового помещения; новое помещение выбрано — рамка по полу (spec 2026-10-aaa-polish)
     await until(() => !!document.getElementById('card-furnish'));
+    if (i === 0) {
+      const sel = await page.evaluate(() => window.__game.stage.highlight.dump());
+      if (sel.sel) ok('построенное помещение выбрано: рамка по полу');
+      else fail(`рамки выбранного помещения нет: ${JSON.stringify(sel)}`);
+      // первая причина «не работает» у пустого помещения — дверь или мебель (порядок `problemsOf`): подсказка — по ней
+      const hf = await hint();
+      if (hf.key === 'door' || hf.key === 'furnish') ok(`подсказка: «${hf.text}»`);
+      else fail(`подсказка после постройки: ${JSON.stringify(hf)}`);
+    }
     await page.click('#card-furnish');
     await until(rid => window.__game.hospital.site.rooms.find(r => r.id === rid)?.items.length > 0, id);
     // дверь — посередине нижней стены
@@ -383,7 +422,21 @@ async function partTwo() {
   if (working >= 6) ok(`стройка закрыта (B): работают ${working} помещений, больница открыта`);
   else fail(`работают ${working}`);
   await look(24, 16, 16);
+  // больница открыта, часы стоят — подсказка «пробел»; наведение на помещение — подпись «название · состояние»
+  await page.waitForTimeout(250);
+  const hr = await hint();
+  if (hr.key === 'run') ok(`подсказка: «${hr.text}»`);
+  else fail(`подсказка открытой больницы: ${JSON.stringify(hr)}`);
+  const wp = await at(15, 9);
+  await page.mouse.move(wp.x, wp.y);
+  await page.waitForTimeout(250);
+  const hoverRoom = await page.evaluate(() => ({ text: window.__game.hoverLabelText, ...window.__game.stage.highlight.dump() }));
+  if (hoverRoom.text.includes('Зона ожидания') && hoverRoom.hover) ok(`наведение на помещение: рамка и подпись «${hoverRoom.text}»`);
+  else fail(`наведение на помещение: ${JSON.stringify(hoverRoom)}`);
   await page.keyboard.press('Digit3');
+  await page.waitForTimeout(250);
+  if ((await hint()).key !== 'run') ok('часы пошли — подсказка «пробел» ушла');
+  else fail('подсказка «пробел» осталась при идущих часах');
   await until(() => window.__game.store.get().seen > 0, null, 120000);
   const c = await page.evaluate(() => {
     const h = window.__game.store.get();

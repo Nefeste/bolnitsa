@@ -55,6 +55,8 @@ const actions: Actions = {
   toggleQueues: later('toggleQueues'),
   doctor: later('doctor'),
   money: later('money'),
+  dismissHint: later('dismissHint'),
+  toggleView: later('toggleView'),
   startGame: kind => {
     store.set({ choose: false });
     chosen?.(kind);

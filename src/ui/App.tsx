@@ -97,6 +97,10 @@ function Money({ hud }: { hud: Hud }) {
   );
 }
 
+/**
+ * Панель вида — свёрнута в одну кнопку «Вид» (spec docs/specs/2026-10-aaa-polish.md, «Интерфейс»): стены, качество и камера
+ * нужны не каждую минуту, а место под ними — значкам помещений и извещениям.
+ */
 function ViewBar({ hud, actions }: P) {
   const walls: [WallMode, string][] = [
     ['full', T.view.wallsFull],
@@ -108,8 +112,20 @@ function ViewBar({ hud, actions }: P) {
     ['medium', T.view.medium],
     ['high', T.view.high],
   ];
+  const menu = (
+    <Btn id="view-menu" on={hud.viewOpen} onClick={actions.toggleView} title={T.view.menuHint}>
+      ⚙ {T.view.menu}
+    </Btn>
+  );
+  if (!hud.viewOpen)
+    return (
+      <div className="viewbar panel" id="viewbar">
+        {menu}
+      </div>
+    );
   return (
-    <div className="viewbar panel" id="viewbar">
+    <div className="viewbar panel open" id="viewbar">
+      {menu}
       <span className="label">{T.view.walls}</span>
       {walls.map(([m, s]) => (
         <Btn key={m} id={`walls-${m}`} on={hud.walls === m} onClick={() => actions.setWalls(m)}>
@@ -391,6 +407,20 @@ function personLines(info: PersonInfo, names: Names): [string, string][] {
   ];
 }
 
+/** Подсказка первых минут (spec docs/specs/2026-10-aaa-polish.md, «Первые минуты»): одна строка внизу, крестик закрывает. */
+function HintStrip({ hud, actions }: P) {
+  const h = hud.hint;
+  if (!h) return null;
+  return (
+    <div className="hintstrip panel" id="hint" data-key={h.key}>
+      <span id="hint-text">{h.text}</span>
+      <button type="button" className="close small" id="hint-close" onClick={actions.dismissHint} title={T.hints.close}>
+        ✕
+      </button>
+    </div>
+  );
+}
+
 function BottomCard({ hud, actions, names }: P) {
   if (hud.selected) {
     const info = hud.selected.info;
@@ -486,10 +516,15 @@ function DebugMenu({ hud, actions }: P) {
   );
 }
 
-/** Начало игры (spec docs/specs/2026-10-build.md, «Начало игры»): пустое здание или готовая больница. */
-function StartChooser({ actions }: P) {
+/**
+ * Начало игры (spec docs/specs/2026-10-build.md, «Начало игры»): пустое здание или готовая больница. Первые слова — о чём
+ * игра (spec docs/specs/2026-10-aaa-polish.md, «Первые минуты»); имя игры — рабочее, марку решает владелец.
+ */
+function StartChooser({ hud, actions }: P) {
   return (
     <div className="start panel" id="start">
+      <div className="game">{T.app.title}</div>
+      <p className="intro">{T.start.intro}</p>
       <h2>{T.start.title}</h2>
       <button type="button" id="start-empty" onClick={() => actions.startGame('empty')}>
         <b>{T.start.empty}</b>
@@ -499,6 +534,7 @@ function StartChooser({ actions }: P) {
         <b>{T.start.preset}</b>
         <span>{T.start.presetHint}</span>
       </button>
+      <div className="muted small">{T.start.version(hud.version)}</div>
     </div>
   );
 }
@@ -511,11 +547,15 @@ export function App({ store, actions, names }: { store: Store; actions: Actions;
   return (
     <>
       <TopBar {...p} />
-      {hud.closed ? (
-        <div className="banner panel" id="closed" title={T.top.closedHint}>
-          {T.top.closed(hud.closed)}
-        </div>
-      ) : null}
+      {/* под часами посередине: «закрыта» — что не так, подсказка первых минут — что сделать (spec 2026-10-aaa-polish) */}
+      <div className="topcenter" id="topcenter">
+        {hud.closed ? (
+          <div className="banner panel" id="closed" title={T.top.closedHint}>
+            {T.top.closed(hud.closed)}
+          </div>
+        ) : null}
+        <HintStrip {...p} />
+      </div>
       <ViewBar {...p} />
       <LeftTools {...p} />
       <RightTabs {...p} />

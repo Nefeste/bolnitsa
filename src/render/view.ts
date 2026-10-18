@@ -56,12 +56,20 @@ export function gpuString(r: THREE.WebGLRenderer): string {
 
 // ---------------------------------------------------------------- свет и время суток
 
+/** Отражения окружения (RoomEnvironment): днём — доля, ночью — на столько меньше: окружение — комната при дневном свете. */
+const ENV_DAY = 0.3;
+const ENV_NIGHT_DROP = 0.75;
+
 export class Daylight {
   readonly sun = new THREE.DirectionalLight(0xffffff, 3);
   readonly hemi = new THREE.HemisphereLight(0xdfe9f2, 0x8a7f70, 1.2);
   private envTex: THREE.Texture | null = null;
   private envOwner: THREE.WebGLRenderer | null = null;
   hour = 12;
+  /** доля ночи 0–1 по последнему `setHour` — для окружения и проверок */
+  night = 0;
+  /** цвет фона по часу — его же берёт туман сцены (stage.ts): край земли растворяется в фоне */
+  readonly background = new THREE.Color(0x2a3236);
 
   constructor(
     private scene: THREE.Scene,
@@ -105,7 +113,7 @@ export class Daylight {
       this.envTex = null;
     }
     this.scene.environment = this.envTex;
-    this.scene.environmentIntensity = 0.3;
+    this.scene.environmentIntensity = ENV_DAY * (1 - this.night * ENV_NIGHT_DROP);
   }
 
   setShadowSize(n: number) {
@@ -129,16 +137,20 @@ export class Daylight {
     const low = 1 - Math.min(1, el / 0.6);
     // сумерки — с 18:30 до 20:00 (зима; дневная смена кончается в 20:00): к вечеру видно свет светильников
     const night = hour >= 18.5 ? Math.min(1, (hour - 18.5) / 1.5) : hour < 6.5 ? 1 - Math.max(0, hour - 6) / 0.5 : 0;
-    const warm = new THREE.Color(0xfff4e6).lerp(new THREE.Color(0xff8a3c), low);
+    this.night = night;
+    // ночью солнца нет — остаётся слабый холодный свет неба, чтобы читались силуэты вне помещений
+    const warm = new THREE.Color(0xfff4e6).lerp(new THREE.Color(0xff8a3c), low).lerp(new THREE.Color(0x8fa6c8), night);
     this.sun.color.copy(warm);
-    this.sun.intensity = (1.6 + 2.2 * (1 - low)) * (1 - night * 0.9);
-    // вечером и ночью внутри горит свет: фон теплеет и слабеет немного (свет на полу — от светильников, lamps.ts), иначе
-    // помещения проваливаются в темноту
+    this.sun.intensity = (1.6 + 2.2 * (1 - low)) * (1 - night * 0.95);
+    // вечером и ночью внутри горит свет: рассеянный свет гаснет заметно (spec 2026-10-aaa-polish, «Свет»: в 21:30 кадр
+    // был таким же светлым, как днём), а помещения держат тёплые пятна светильников на полу (lamps.ts) — не темнота
     this.hemi.color.set(0xdfe9f2).lerp(new THREE.Color(0xffd6a8), low * 0.45).lerp(new THREE.Color(0xb8b0a0), night * 0.6);
-    this.hemi.intensity = 0.75 - low * 0.12 - night * 0.12;
+    this.hemi.intensity = 0.75 - low * 0.12 - night * 0.42;
     this.hemi.groundColor.set(0x8a7f70).lerp(new THREE.Color(0x5c4a3a), night);
+    this.scene.environmentIntensity = ENV_DAY * (1 - night * ENV_NIGHT_DROP);
     // фон — тёмный: за участком ничего нет (замечание владельца: не плоская зелень до горизонта)
-    this.scene.background = new THREE.Color(0x2a3236).lerp(new THREE.Color(0x3a3430), low * 0.5).lerp(new THREE.Color(0x141a24), night);
+    this.background.set(0x2a3236).lerp(new THREE.Color(0x3a3430), low * 0.5).lerp(new THREE.Color(0x141a24), night);
+    this.scene.background = this.background;
   }
 }
 

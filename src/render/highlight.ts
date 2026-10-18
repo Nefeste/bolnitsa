@@ -1,7 +1,8 @@
 // Выделение и наведение на карте (spec docs/specs/2026-10-aaa-polish.md, «Выделение и наведение»): у выбранного
 // помещения — рамка по полу цветом акцента, у помещения под курсором — тихая белая; у выбранного человека — кольцо с
-// пульсом, у человека под курсором — тонкое; вспышка пола помещения после стройки. Плоские сетки чуть выше пола: глубину
-// не пишут, затенение их не видит. Рамка — чистая геометрия (`frameQuads`), её проверяют тесты (tools/test/highlight.test.ts).
+// пульсом, у человека под курсором — тонкое; вспышка пола помещения — отклик стройки. Плоские сетки чуть выше пола:
+// глубину не пишут, затенение их не видит. Рамка — чистая геометрия (`frameQuads`), её и смену состояний проверяют
+// тесты без WebGL (tools/test/highlight.test.ts).
 import * as THREE from 'three';
 
 /** Цвет выделения — акцент панелей (app/index.html, `--accent`). */
@@ -131,5 +132,10 @@ export class Highlight {
   /** Сколько вспышек гаснет сейчас — для проверок. */
   get flashing(): number {
     return this.flashes.length;
+  }
+
+  /** Что видно — для тестов и сценария в браузере. */
+  dump(): { sel: boolean; hover: boolean; ring: boolean; hoverRing: boolean; flashing: number } {
+    return { sel: this.sel.visible, hover: this.hover.visible, ring: this.ring.visible, hoverRing: this.hoverRing.visible, flashing: this.flashes.length };
   }
 }
