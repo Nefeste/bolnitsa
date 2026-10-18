@@ -236,22 +236,22 @@ describe('репутация и поток от неё', () => {
     expect(reputationPct(db, 0)).toBe(70);
     expect(reputationPct(db, 50)).toBe(100);
     expect(reputationPct(db, 100)).toBe(130);
-    expect(walkPerHour(db, { offices: 2, bays: 0 }, 100)).toBeCloseTo(db.inflow!.walkIn * 2 * 1.3, 10);
+    expect(walkPerHour(db, { offices: 2, bays: 0, booked: [] }, 100)).toBeCloseTo(db.inflow!.walkIn * 2 * 1.3, 10);
   });
 });
 
 describe('поток от больницы', () => {
-  test('кабинеты нанятых терапевтов (специалисты — нет), места смотровой; без нанятых — ваш кабинет', () => {
-    // городская: терапевт один, специалисты к ним записанных берут — в поток не входят; смотровая L — три места
-    expect(capacityOf(db, city())).toEqual({ offices: 1, bays: 3 });
+  test('кабинеты нанятых терапевтов, места смотровой, специалисты со своей записью; без нанятых — ваш кабинет', () => {
+    // городская: терапевт один; к трём специалистам — своя запись (spec 2026-10-specialists); смотровая L — три места
+    expect(capacityOf(db, city())).toEqual({ offices: 1, bays: 3, booked: ['p13', 'p5', 'p6'] });
     const s = empty();
-    expect(capacityOf(db, s)).toEqual({ offices: 0, bays: 0 });
+    expect(capacityOf(db, s)).toEqual({ offices: 0, bays: 0, booked: [] });
     const ids = buildClinic(s);
-    expect(capacityOf(db, s)).toEqual({ offices: 1, bays: 0 });
+    expect(capacityOf(db, s)).toEqual({ offices: 1, bays: 0, booked: [] });
     // «Мой кабинет» на кабинете терапевта: терапевт — в резерв, принимаете вы — и поток по вашему кабинету
     const office = ids[2];
     site(db, s, { kind: 'office', room: office });
-    expect(capacityOf(db, s)).toEqual({ offices: 1, bays: 0 });
+    expect(capacityOf(db, s)).toEqual({ offices: 1, bays: 0, booked: [] });
   });
 
   test('новый кабинет днём — следующий приход сразу по новой частоте; без кабинетов сами не приходят', () => {

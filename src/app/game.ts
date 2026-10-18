@@ -7,7 +7,7 @@ import { MeshoptSimplifier } from 'three/addons/libs/meshopt_simplifier.module.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { Cell, ContentDb, Id, Season } from '../content/types';
 import { type HospitalState, type Plan, planOf } from '../engine/hospital/build';
-import { DOCTOR, doctorRoom, openBlocks, type Problem, problemsOf, standInOf, type Staffing, workingRooms } from '../engine/hospital/requirements';
+import { DOCTOR, doctorRoom, openBlocks, type Problem, problemsOf, standInOf, standInsOf, type Staffing, workingRooms } from '../engine/hospital/requirements';
 import { demolishRefund, emptySite, furnishOf, hospitalOf, priceOf, readyCost, rulesOf, type Site, type SiteCommand, type SiteResult } from '../engine/hospital/site';
 import { siteOfPlan } from '../engine/hospital/site-plan';
 import { siteOfPreset } from '../engine/hospital/site-preset';
@@ -608,7 +608,12 @@ export class Game {
     let patients: PatientRow[] = [];
     let patientsAll = 0;
     if (hud.tab === 'patients') {
-      const list = people.map(([key, p]) => ({ ...p, key, id: p.row.id, title: T.card.patient(p.row.sex, p.row.age, p.row.name) }));
+      // записан к специалисту — так и в строке (spec docs/specs/2026-10-specialists.md)
+      const title = (p: (typeof people)[number][1]) => {
+        const who = T.card.patient(p.row.sex, p.row.age, p.row.name);
+        return p.row.to ? `${who} · ${T.card.booked(this.names().dat(p.row.to))}` : who;
+      };
+      const list = people.map(([key, p]) => ({ ...p, key, id: p.row.id, title: title(p) }));
       ({ rows: patients, total: patientsAll } = patientRows(list, t, hud.patientFilter));
     }
     // ушёл, когда кончилось терпение: час — его срок из среза (извещение при промотке приходит позже), ждал — до него
@@ -805,7 +810,7 @@ export class Game {
     },
     furnish: room => this.command({ kind: 'furnish', room }),
     demolish: room => this.command({ kind: 'demolish', room }),
-    hire: (room, role) => this.command({ kind: 'hire', room, role }),
+    hire: (room, role, as) => this.command({ kind: 'hire', room, role, ...(as ? { as } : {}) }),
     dismiss: id => this.command({ kind: 'dismiss', id }),
     // начало выбирают до игры (main.tsx)
     startGame: () => {},
@@ -890,12 +895,17 @@ export class Game {
     if (t.needsEquipment) needs.push({ name: T.objects.machine, need: 1, have: live.filter(i => i.eq).length });
     const post = (m: StaffMember) => db.roles[m.role]?.stands ?? m.role;
     const mine = doctorRoom(plan) === r.id;
+    // на место врача — терапевт или специалист (spec docs/specs/2026-10-specialists.md): терапевт первым
+    const doctors = [...new Set([standInOf(db, DOCTOR), ...standInsOf(db, DOCTOR)].filter((x): x is Id => x !== undefined))];
     const posts = t.staff.map(role => {
       const m = here.find(x => post(x) === role);
       const hire = role === DOCTOR ? (standInOf(db, DOCTOR) ?? role) : role;
       return {
         role, name: named(db.roles[hire]?.name, hire), salary: money(salaryOf(db, hire, 3)), ...(role === DOCTOR && mine ? { you: true } : {}),
         ...(m ? { who: `${named(db.roles[m.role]?.name, m.role)} · ${m.skill}`, staffId: m.id } : {}),
+        ...(role === DOCTOR && doctors.length > 1
+          ? { options: doctors.map(x => ({ role: x, name: named(db.roles[x]?.name, x), salary: money(salaryOf(db, x, 3)), hint: named(db.roles[x]?.texts.hint) })) }
+          : {}),
       };
     });
     const f = furnishOf(db, site, id);
@@ -1062,6 +1072,7 @@ export class Game {
       },
       role: (id: string | undefined) => (id ? named(db.roles[id]?.name, id) : '—'),
       finding: (id: string | undefined) => (id ? named(db.findings[id]?.name, id) : '—'),
+      dat: (id: string | undefined) => (id ? T.card.dat(named(db.roles[id]?.dat, ''), named(db.roles[id]?.name, id)) : '—'),
     };
   }
 

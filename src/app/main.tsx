@@ -69,6 +69,7 @@ const names: Names = {
   room: id => game?.names().room(id) ?? id ?? '—',
   role: id => game?.names().role(id) ?? id ?? '—',
   finding: id => game?.names().finding(id) ?? id ?? '—',
+  dat: id => game?.names().dat(id) ?? id ?? '—',
 };
 createRoot(document.getElementById('ui')!).render(<App store={store} actions={actions} names={names} />);
 

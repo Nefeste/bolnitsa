@@ -42,6 +42,8 @@ export interface NameRow {
   seed: number;
   /** имя, как в карте пациента; нет — тесты без имён */
   name?: string;
+  /** записан к специалисту — его должность (spec docs/specs/2026-10-specialists.md) */
+  to?: string;
 }
 
 /** Номера в срезе: свой у каждого, пока он в больнице. */
@@ -105,9 +107,11 @@ export function packSlice(
     const { h, fresh } = handles.of(p.id);
     if (fresh) {
       const pt = s.patients[p.id]?.patient;
+      const to = s.patients[p.id]?.to;
+      const role = to !== undefined ? s.staff?.find(m => m.id === to)?.role : undefined;
       names.push({
         h, id: p.id, sex: pt?.sex ?? 'm', age: pt?.age ?? 40, ...(pt?.complaints[0] ? { complaint: pt.complaints[0] } : {}), seed: pt?.seed ?? 0,
-        ...(pt && nameOf ? { name: nameOf(pt) } : {}),
+        ...(pt && nameOf ? { name: nameOf(pt) } : {}), ...(role ? { to: role } : {}),
       });
     }
     const o = HEADER + i * STRIDE;

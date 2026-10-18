@@ -87,8 +87,9 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # patient's path, the queues overlay; then the doctor mode: a consult, a whole case, «Take
                                    # the case», «My office»; then money: building from cash, «Until morning» to the 08:00
                                    # meeting, the «Обход» list; then ready rooms: four clicks open the empty building, R, one
-                                   # undo; then the start screen's three cards and the polyclinic); screenshots in
-                                   # tools/app/out/; `-- --only 1|2|3|4|5|6|7` for one part
+                                   # undo; then the start screen's three cards and the polyclinic; then specialists: hire a
+                                   # gastroenterologist in the polyclinic, «по записи к …»); screenshots in tools/app/out/;
+                                   # `-- --only 1|2|3|4|5|6|7|8` for one part
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
 npm run dist:win                   # build + Windows x64 zip → release/ (from Linux, no wine) — the only release file for now

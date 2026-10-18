@@ -42,7 +42,7 @@ import { siteCommand, siteFree } from './site';
 import { arrivalAfter, dayOf, hospitalDay, hoursOf, returnWindow, roundsAt, validHours } from './day';
 import { type Bed, daysIn, type StayEnd, stayNorm, wardCourse, wardState } from './ward';
 import { accrue, offerOf, openEconomy, payWorks, repay, shortOf, takeLoan } from './money';
-import { ambulancePerHour, type Capacity, walkPerHour } from './inflow';
+import { ambulancePerHour, bookedPerHour, type Capacity, walkPerHour } from './inflow';
 import * as meeting from './meeting';
 
 const MIN = 60;
@@ -815,22 +815,28 @@ function planFlow(db: ContentDb, s: ShiftState) {
   scheduleFlow(db, s, 'walk', 0, base + SHIFT_START);
   // больница ПК (spec 2026-10-build): смотровую могут построить днём — машины едут, а принимает их `flowArrive`
   if (emergencyBays(db, s).length > 0 || s.hospital?.site) scheduleFlow(db, s, 'amb', 0, base + SHIFT_START);
+  // по записи к специалисту (spec 2026-10-specialists): у каждого свой поток — только в потоке от больницы
+  if (s.flow?.auto) for (const to of capacityOf(db, s).booked) scheduleFlow(db, s, 'book', 0, base + SHIFT_START, to);
 }
 
 /**
  * В час, по часам суток (spec 2026-10-day): пришедших сами — только в часы приёма, по форме `walk` базы, с репутацией чаще
  * или реже, как запись в песочнице; машин скорой — по форме `ambulance`, круглые сутки.
  */
-function flowRate(db: ContentDb, s: ShiftState, stream: 'walk' | 'amb', hour: number): number {
+function flowRate(db: ContentDb, s: ShiftState, stream: 'walk' | 'amb' | 'book', hour: number): number {
   const f = s.flow!;
   const day = dayOf(db);
-  // поток от больницы (spec 2026-10-economy): сами — по кабинетам и репутации, скорая — по местам смотровой
+  // поток от больницы (spec 2026-10-economy): сами — по кабинетам и репутации, скорая — по местам смотровой; по записи —
+  // к каждому специалисту поровну, по той же форме часов приёма, что сами (spec 2026-10-specialists)
   if (f.auto) {
     const c = capacityOf(db, s);
     if (stream === 'amb') return (ambulancePerHour(db, c) * day.ambulance[hour]) / 100;
     const [open, close] = hoursOf(db, f);
-    return hour < open || hour >= close ? 0 : (walkPerHour(db, c, s.economy?.reputation ?? db.economy.reputation.start) * day.walk[hour]) / 100;
+    if (hour < open || hour >= close) return 0;
+    const reputation = s.economy?.reputation ?? db.economy.reputation.start;
+    return ((stream === 'book' ? bookedPerHour(db, reputation) : walkPerHour(db, c, reputation)) * day.walk[hour]) / 100;
   }
+  if (stream === 'book') return 0;
   if (stream === 'amb') return ((f.ambulancePerHour ?? 0) * day.ambulance[hour]) / 100;
   const [open, close] = hoursOf(db, f);
   if (hour < open || hour >= close) return 0;
@@ -843,17 +849,21 @@ function flowRate(db: ContentDb, s: ShiftState, stream: 'walk' | 'amb', hour: nu
  * логарифм — целочисленный (`log2`, как у фибрилляции); частота — по часам суток (`arrivalAfter`, spec 2026-10-day). Приход
  * может прийтись и на следующие сутки — его отменит планёрка: в 08:00 потоки начинаются заново.
  */
-function scheduleFlow(db: ContentDb, s: ShiftState, stream: 'walk' | 'amb', n: number, from: number) {
-  const u = branch(s, `flow:${s.day}:${stream}:${n}`).range(1, P_ONE) / P_ONE;
+function scheduleFlow(db: ContentDb, s: ShiftState, stream: 'walk' | 'amb' | 'book', n: number, from: number, to?: string) {
+  const u = branch(s, `flow:${s.day}:${stream}:${to ? `${to}:` : ''}${n}`).range(1, P_ONE) / P_ONE;
   const t = arrivalAfter(from, -log2(u) * Math.LN2, h => flowRate(db, s, stream, h));
-  if (t !== undefined) schedule(s, t, { kind: 'flow', stream, n });
+  if (t !== undefined) schedule(s, t, { kind: 'flow', stream, n, ...(to ? { to } : {}) });
 }
 
 /** Пришёл следующий из потока: пациент генерируется сейчас — из своего зерна, тот же, когда бы его ни сгенерировали. */
 function flowArrive(db: ContentDb, s: ShiftState, ev: Extract<ShiftEvent, { kind: 'flow' }>, notices: Notice[]) {
+  // по записи (spec 2026-10-specialists): к тому, кто сегодня принимает и к кому записываются; нет его — поток кончился,
+  // вернётся — заново (`rebook`)
+  const to = ev.stream === 'book' ? colleaguesOf(db, s).find(m => m.id === ev.to && capacityOf(db, s).booked.includes(m.id)) : undefined;
+  if (ev.stream === 'book' && !to) return;
   // больница ПК (spec 2026-10-build): в закрытую не приходят — следующий в свой час; скорая — если работает смотровая
-  if (s.hospital?.site && !siteOpen(db, s, ev.stream)) {
-    if (ev.stream !== 'ret') scheduleFlow(db, s, ev.stream, ev.n + 1, s.t);
+  if (s.hospital?.site && !siteOpen(db, s, ev.stream === 'book' ? 'walk' : ev.stream)) {
+    if (ev.stream !== 'ret') scheduleFlow(db, s, ev.stream, ev.n + 1, s.t, ev.to);
     return;
   }
   const d = s.day;
@@ -863,22 +873,24 @@ function flowArrive(db: ContentDb, s: ShiftState, ev: Extract<ShiftEvent, { kind
   const ret = ev.stream === 'ret' ? s.returns.find(x => x.day === d && x.of === ev.of) : undefined;
   if (ev.stream === 'ret' && (!ret || !s.patients[ret.of])) return;
   const as = ret?.as ? db.conditions[ret.as] : undefined;
-  const kind: VisitKind = ev.stream === 'amb' || as?.arrival === 'ambulance' ? 'ambulance' : ev.stream === 'ret' ? 'return' : 'walkIn';
-  const key = ev.stream === 'ret' ? `return:${ev.of}` : `flow:${ev.stream}:${ev.n}`;
-  const id = ev.stream === 'ret' ? `${d}-r${ev.of}` : `${d}-${ev.stream === 'amb' ? 'a' : 'w'}${String(ev.n).padStart(4, '0')}`;
+  const kind: VisitKind = ev.stream === 'amb' || as?.arrival === 'ambulance' ? 'ambulance' : ev.stream === 'ret' ? 'return' : ev.stream === 'book' ? 'appointment' : 'walkIn';
+  const key = ev.stream === 'ret' ? `return:${ev.of}` : ev.stream === 'book' ? `flow:book:${ev.to}:${ev.n}` : `flow:${ev.stream}:${ev.n}`;
+  const id = ev.stream === 'ret' ? `${d}-r${ev.of}` : ev.stream === 'book' ? `${bookPrefix(d, ev.to!)}${String(ev.n).padStart(3, '0')}` : `${d}-${ev.stream === 'amb' ? 'a' : 'w'}${String(ev.n).padStart(4, '0')}`;
+  // записанный к специалисту болен болезнью его профиля, которую больница принимает (как запись «Анамнеза», часть 59)
   const patient = ret ? returningPatient(db, s, ret)
     : ev.stream === 'amb' ? ambulancePatient(db, s, d, key, admits, varied)
-      : generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${key}`), { ...gen, walkIn: true });
+      : generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${key}`), { ...gen, walkIn: true, ...(to ? { only: profileHere(db, to, admits) } : {}) });
   const own = ret ? [...new Set([...(s.patients[ret.of]?.departments ?? []), ...admits])] : admits;
   s.patients[id] = {
     id, patient, arriveT: s.t, kind, triage: 'green', status: 'coming', queuedT: 0, wait: 0, patience: 0,
     results: [], pending: [], done: [], step: 0, spent: { seconds: 0, money: 0 }, draft: { treatments: [], setting: 'home' },
     ...(ret ? { returnOf: ret.of, returnReason: ret.reason } : {}),
     ...(ret && s.patients[ret.of]?.closed?.stay?.end === 'early' ? { afterEarly: true as const } : {}),
+    ...(to ? { to: to.id } : {}),
     ...(own.length > 1 ? { departments: own } : {}),
     ...(s.economy ? { payer: kind === 'ambulance' ? 'oms' : payerOf(db, s.meta.seed, id, s.economy.reputation ?? db.economy.reputation.start) } : {}),
   };
-  if (ev.stream !== 'ret') scheduleFlow(db, s, ev.stream, ev.n + 1, s.t);
+  if (ev.stream !== 'ret') scheduleFlow(db, s, ev.stream, ev.n + 1, s.t, ev.to);
   // путь пациента (spec 2026-10-flow-ui): полна ли зона ожидания — до прихода, как её видит `arrive`
   const full = s.queue.length >= hospitalCtx(db, s).seats;
   arrive(db, s, s.patients[id], notices);
@@ -1133,11 +1145,22 @@ function setHours(db: ContentDb, s: ShiftState, open: number, close: number): No
 function restream(db: ContentDb, s: ShiftState, stream: 'walk' | 'amb') {
   const next = s.events.find(e => e.event.kind === 'flow' && e.event.stream === stream);
   if (next) s.events = s.events.filter(e => e !== next);
-  scheduleFlow(db, s, stream, next?.event.kind === 'flow' ? next.event.n : arrivedToday(s, stream === 'walk' ? 'w' : 'a'), s.t);
+  scheduleFlow(db, s, stream, next?.event.kind === 'flow' ? next.event.n : arrivedToday(s, `${s.day}-${stream === 'walk' ? 'w' : 'a'}`), s.t);
 }
 
-function arrivedToday(s: ShiftState, letter: 'w' | 'a'): number {
-  const prefix = `${s.day}-${letter}`;
+/** Номер записанного к специалисту `to` в сутки `day` — без порядкового номера (spec 2026-10-specialists). */
+const bookPrefix = (day: number, to: string) => `${day}-b${to}-`;
+
+/**
+ * Записываются к другим специалистам (spec 2026-10-specialists): кто перестал принимать — его следующий записанный не придёт;
+ * кто начал — его поток с этой минуты, номера продолжают сегодняшние.
+ */
+function rebook(db: ContentDb, s: ShiftState, was: readonly string[], now: readonly string[]) {
+  s.events = s.events.filter(e => e.event.kind !== 'flow' || e.event.stream !== 'book' || now.includes(e.event.to!));
+  for (const to of now) if (!was.includes(to)) scheduleFlow(db, s, 'book', arrivedToday(s, bookPrefix(s.day, to)), s.t, to);
+}
+
+function arrivedToday(s: ShiftState, prefix: string): number {
   let n = 0;
   for (const id of [...Object.keys(s.patients), ...(s.gone ?? []).map(r => r.id)]) if (id.startsWith(prefix)) n = Math.max(n, Number(id.slice(prefix.length)) + 1);
   return n;
@@ -1156,9 +1179,13 @@ export function capacityOf(db: ContentDb, s: ShiftState): Capacity {
   const ctx = hospitalCtx(db, s);
   let c = capacities.get(ctx);
   if (!c) {
-    const hired = colleaguesOf(db, s).filter(m => !db.roles[m.role]?.profile).length;
+    const list = colleaguesOf(db, s);
+    const hired = list.filter(m => !db.roles[m.role]?.profile).length;
     const yours = doctorRoom(ctx.plan);
-    c = { offices: hired > 0 ? hired : yours !== undefined && ctx.working.has(yours) ? 1 : 0, bays: emergencyBays(db, s).length };
+    // к специалисту записываются с болезнями его профиля, которые больница принимает (spec 2026-10-specialists)
+    const admits = departmentsOf(db, s);
+    const booked = list.filter(m => (profileHere(db, m, admits)?.length ?? 0) > 0).map(m => m.id);
+    c = { offices: hired > 0 ? hired : yours !== undefined && ctx.working.has(yours) ? 1 : 0, bays: emergencyBays(db, s).length, booked };
     capacities.set(ctx, c);
   }
   return c;
@@ -1170,6 +1197,7 @@ function reflow(db: ContentDb, s: ShiftState, was: Capacity | undefined) {
   const now = capacityOf(db, s);
   if (now.offices !== was.offices) restream(db, s, 'walk');
   if (now.bays !== was.bays) restream(db, s, 'amb');
+  if (now.booked.join() !== was.booked.join()) rebook(db, s, was.booked, now.booked);
 }
 
 function ledgerOf(s: ShiftState): Ledger {

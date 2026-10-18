@@ -39,7 +39,7 @@ export const economyEn: EconomyStrings = {
       `${role}, skill ${skill}: ${seen} ${pl(seen, 'patient', 'patients')}${seen > 0 ? `, correct ${correct} %` : ''}`,
     hiredMore: (asked: number, taken: number, unsafe: number) =>
       [asked > 0 ? `asked you to look — ${asked}` : '', taken > 0 ? `you took over — ${taken}` : '', unsafe > 0 ? `decisions with a safety remark — ${unsafe}` : ''].filter(Boolean).join(', '),
-    idle: 'sees only patients booked to him — none in the flow',
+    idle: 'nobody booked with him',
     you: (seen: number, correct: number) => `You: ${seen} ${pl(seen, 'patient', 'patients')}, correct ${correct}`,
     cash: 'Cash for the day',
     income: (rub: string) => `Income: ${rub}`,
@@ -104,7 +104,7 @@ export const economyEn: EconomyStrings = {
       toilet: 'No toilet: reputation loses 10 every day.',
       audit: (rub: string) => `The insurer did not pay ${rub} for tests without indication: doctors order too much.`,
       worse: 'Your inpatients are worse — check the round in the doctor’s panel: change treatment, transfer, operate.',
-      idle: 'In the prototype specialists do not see walk-ins — nobody is referred to them. Replace them with a therapist: “Dismiss”, then “Hire”.',
+      idle: 'Nobody booked with a specialist: patients book with the diseases of his profile that the hospital admits — with the infectious disease doctor only while a box works.',
       fine: 'The hospital copes. The flow grows with doctors’ offices and reputation.',
     },
     hours: 'Outpatient hours',
