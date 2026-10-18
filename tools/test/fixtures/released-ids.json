@@ -1,5 +1,5 @@
 {
-  "version": "0.5.20",
+  "version": "0.4.0",
   "base": 78,
   "ids": {
     "achievements": [
@@ -1285,6 +1285,9 @@
     ],
     "scores": [
       "score.news2"
+    ],
+    "sites": [
+      "site.polyclinic"
     ],
     "skills": [
       "skill.infectious_history",

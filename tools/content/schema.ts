@@ -1,4 +1,4 @@
-// из anamnez: tools/content/schema.ts @ 96503ac, изменено: hospital/consults.yaml — «Просят посмотреть» (spec 2026-10-consults); hospital/day.yaml — сутки целиком (spec 2026-10-day); hospital/inflow.yaml и hospital/money.yaml, `long` у consults.yaml — поток от больницы, касса ПК, долгий случай (spec 2026-10-economy)
+// из anamnez: tools/content/schema.ts @ 96503ac, изменено: hospital/consults.yaml — «Просят посмотреть» (spec 2026-10-consults); hospital/day.yaml — сутки целиком (spec 2026-10-day); hospital/inflow.yaml и hospital/money.yaml, `long` у consults.yaml — поток от больницы, касса ПК, долгий случай (spec 2026-10-economy); hospital/sites — готовые больницы из готовых помещений (spec 2026-10-real-hospital)
 // Схема исходных записей медицинской базы (YAML в content/, `docs/11-content.md` §4).
 // Строгие объекты: опечатка в имени поля — ошибка сборки, а не молча пропущенное поле.
 import { z } from 'zod';
@@ -749,6 +749,23 @@ export const presetSchema = z.strictObject({
   staff: z.array(z.strictObject({ role: roleId, room: int, later: z.literal(true).optional() })).default([]),
 });
 
+/**
+ * Готовая больница из готовых помещений (spec 2026-10-real-hospital) — своё «Больницы»: помещения в пустом здании игры в
+ * порядке постройки; каждое ставится, как готовое помещение стройки, — тип, образец, левый верхний угол, поворот (дверная
+ * сторона, как у готовой больницы). `mine` — ваш кабинет, он один. Люди — на всех должностях, кроме вашей.
+ */
+export const siteSchema = z.strictObject({
+  id: z.string().regex(/^site\.[a-z0-9_]+$/),
+  rooms: z.array(z.strictObject({
+    type: roomId,
+    size: z.enum(['S', 'M', 'L']),
+    x: int,
+    y: int,
+    rot: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]),
+    mine: z.literal(true).optional(),
+  })).min(1),
+});
+
 /** Поправка чувствительности и специфичности, процентные пункты. */
 const pp = z.tuple([z.number().int().min(-20).max(20), z.number().int().min(-20).max(20)]);
 /** Черта кандидата: вес при выборе, зарплата и скорость в процентах, поправка чтения снимка, навык (от, до), рост. */
@@ -1211,6 +1228,7 @@ export type RoomSrc = z.infer<typeof roomSchema>;
 export type EquipmentSrc = z.infer<typeof equipmentSchema>;
 export type RoleSrc = z.infer<typeof roleSchema>;
 export type PresetSrc = z.infer<typeof presetSchema>;
+export type SiteSrc = z.infer<typeof siteSchema>;
 export type EconomySrc = z.infer<typeof economySchema>;
 export type ConsultsSrc = z.infer<typeof consultsSchema>;
 export type DaySrc = z.infer<typeof daySchema>;

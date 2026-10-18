@@ -8,7 +8,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { Cell, ContentDb, Id, Season } from '../content/types';
 import { type HospitalState, type Plan, planOf } from '../engine/hospital/build';
 import { DOCTOR, doctorRoom, openBlocks, type Problem, problemsOf, standInOf, type Staffing, workingRooms } from '../engine/hospital/requirements';
-import { demolishRefund, emptySite, furnishOf, hospitalOf, priceOf, readyCost, rulesOf, type SiteCommand, type SiteResult } from '../engine/hospital/site';
+import { demolishRefund, emptySite, furnishOf, hospitalOf, priceOf, readyCost, rulesOf, type Site, type SiteCommand, type SiteResult } from '../engine/hospital/site';
+import { siteOfPlan } from '../engine/hospital/site-plan';
 import { siteOfPreset } from '../engine/hospital/site-preset';
 import { presetStaff, salaryOf, type StaffMember, staffingOf } from '../engine/hospital/staff';
 import type { Notice } from '../engine/shift/types';
@@ -50,12 +51,28 @@ import type { Flow } from '../engine/shift/types';
  * больницы (`AUTO`, spec docs/specs/2026-10-economy.md); числа сцены — для авто-бенча и снимков (та же толпа, что прежде) и
  * для сценария в браузере (`?flow=6,1`).
  */
-export const SCENE = { preset: 'preset.city', seed: 1, season: 'winter' as Season, flow: { perHour: 6, ambulancePerHour: 1 } };
+export const SCENE = { preset: 'preset.city', poly: 'site.polyclinic', seed: 1, season: 'winter' as Season, flow: { perHour: 6, ambulancePerHour: 1 } };
 /** Поток от больницы (spec docs/specs/2026-10-economy.md): кабинеты, места смотровой, репутация. */
 export const AUTO: Flow = { perHour: 0, auto: true };
 
-/** С чего начать (spec docs/specs/2026-10-build.md, «Начало игры»): пустое здание или готовая больница 2а. */
-export type Start = 'empty' | 'preset';
+/**
+ * С чего начать (spec docs/specs/2026-10-build.md, «Начало игры»): пустое здание, готовая больница 2а или поликлиника из
+ * готовых помещений (spec docs/specs/2026-10-real-hospital.md).
+ */
+export type Start = 'empty' | 'preset' | 'poly';
+
+/** Больница начала и её люди: поликлиника — по записи базы, той же функцией, что команда стройки `ready`. */
+function hospitalAt(db: ContentDb, start: Start): { site: Site; staff: StaffMember[] } {
+  if (start === 'empty') return { site: emptySite(), staff: [] };
+  if (start === 'poly') {
+    const p = siteOfPlan(db, db.sites![SCENE.poly]);
+    // сборка базы проверяет, что план строится и всё в нём работает (tools/content/load.ts, checkSites)
+    if (!p.ok) throw new Error(`${SCENE.poly}: room ${p.room} — ${p.error.kind}`);
+    return { site: p.site, staff: p.staff };
+  }
+  const rec = db.presets[SCENE.preset];
+  return { site: siteOfPreset(db, rec), staff: presetStaff(db, rec) };
+}
 
 /**
  * Игровых секунд в секунду на ×1 — «спокойный» темп, решение владельца 17.10.2026 (spec docs/specs/2026-10-walk.md): приём
@@ -212,10 +229,9 @@ export class Game {
 
     store.set({ status: T.app.loadingWorld });
     const ts = performance.now();
-    // больница ПК (spec docs/specs/2026-10-build.md): пустое здание или готовая больница 2а в том же виде
-    const rec = db.presets[SCENE.preset];
-    const site = this.start === 'empty' ? emptySite() : siteOfPreset(db, rec);
-    this.staff = this.start === 'empty' ? [] : presetStaff(db, rec);
+    // больница ПК (spec docs/specs/2026-10-build.md): пустое здание, готовая больница 2а в том же виде или поликлиника
+    const { site, staff } = hospitalAt(db, this.start);
+    this.staff = staff;
     this.hospital = hospitalOf(db, site);
     this.setWorld(true, quality);
     this.load.scene = Math.round(performance.now() - ts);
@@ -225,7 +241,7 @@ export class Game {
     this.client.onError = m => store.set({ error: m });
     // зерно смены — из адреса (`?seed=`; сценарий в браузере берёт смену, где просьба приходит рано), иначе — сцены
     const seed = Number(new URLSearchParams(location.search).get('seed')) || SCENE.seed;
-    // касса (spec docs/specs/2026-10-economy.md): пустое здание — бюджет песочницы, готовая больница — его доля
+    // касса (spec docs/specs/2026-10-economy.md): пустое здание — бюджет песочницы, готовая больница и поликлиника — его доля
     this.client.start({ kind: 'start', seed, season: SCENE.season, hospital: this.hospital, staff: this.staff, flow: this.flow, economy: { cash: startCash(this.db, this.start) } });
     this.doctor.start();
     this.money.start();

@@ -560,8 +560,9 @@ function DebugMenu({ hud, actions }: P) {
 }
 
 /**
- * Начало игры (spec docs/specs/2026-10-build.md, «Начало игры»): пустое здание или готовая больница. Первые слова — о чём
- * игра (spec docs/specs/2026-10-aaa-polish.md, «Первые минуты»); имя игры — рабочее, марку решает владелец.
+ * Начало игры (spec docs/specs/2026-10-build.md, «Начало игры»): пустое здание, поликлиника по нормам (spec
+ * docs/specs/2026-10-real-hospital.md) или городская больница. Первые слова — о чём игра (spec
+ * docs/specs/2026-10-aaa-polish.md, «Первые минуты»); имя игры — рабочее, марку решает владелец.
  */
 function StartChooser({ hud, actions }: P) {
   return (
@@ -572,6 +573,10 @@ function StartChooser({ hud, actions }: P) {
       <button type="button" id="start-empty" onClick={() => actions.startGame('empty')}>
         <b>{T.start.empty}</b>
         <span>{T.start.emptyHint}</span>
+      </button>
+      <button type="button" id="start-poly" onClick={() => actions.startGame('poly')}>
+        <b>{T.start.poly}</b>
+        <span>{T.start.polyHint}</span>
       </button>
       <button type="button" id="start-preset" onClick={() => actions.startGame('preset')}>
         <b>{T.start.preset}</b>

@@ -1,4 +1,4 @@
-// из anamnez: tools/content/load.ts @ 96503ac, изменено: hospital/consults.yaml — «Просят посмотреть» (spec 2026-10-consults); hospital/day.yaml — сутки целиком (spec 2026-10-day); hospital/inflow.yaml и hospital/money.yaml — поток от больницы и касса ПК (spec 2026-10-economy)
+// из anamnez: tools/content/load.ts @ 96503ac, изменено: hospital/consults.yaml — «Просят посмотреть» (spec 2026-10-consults); hospital/day.yaml — сутки целиком (spec 2026-10-day); hospital/inflow.yaml и hospital/money.yaml — поток от больницы и касса ПК (spec 2026-10-economy); hospital/sites — готовые больницы из готовых помещений (spec 2026-10-real-hospital)
 // Сборка медицинской базы из YAML в память: схема, ссылки, полосы → числа
 // (`docs/11-content.md` §6, `docs/04-data-model.md` §1). Используют build.ts, тесты и
 // «виртуальный врач» — все читают одну и ту же базу.
@@ -9,7 +9,9 @@ import type { z } from 'zod';
 import { type AttrSpec, beyond, byParams, type Cell, type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Link, membersOf, type Preset, type Profession, type Risk, type RoomType, type RulePoints, type StaffRole, type Treatment } from '../../src/content/types';
 import { planOf, presetHospital } from '../../src/engine/hospital/build';
 import { presetStaff, staffingOf } from '../../src/engine/hospital/staff';
-import { problemsOf } from '../../src/engine/hospital/requirements';
+import { openBlocks, problemsOf, workingRooms } from '../../src/engine/hospital/requirements';
+import { planOfSite } from '../../src/engine/hospital/site';
+import { siteOfPlan } from '../../src/engine/hospital/site-plan';
 import { ALLERGY_EXAM } from '../../src/engine/career/achievements';
 import { fingerprint } from '../../src/engine/core/hash';
 import { P_ONE } from '../../src/engine/core/rng';
@@ -17,7 +19,7 @@ import { SETTING_ORDER } from '../../src/engine/med/plan';
 import { findBrand } from './brands';
 import {
   BANDS, type ChapterSrc, chapterSchema, type CharacterSrc, characterSchema, type ConditionSrc, conditionSchema, type EconomySrc, economySchema, type EquipmentSrc, equipmentSchema, type ExamSrc, examSchema, type FindingSrc, findingSchema,
-  type LinkSrc, PREVALENCE, type PresetSrc, presetSchema, type ProbabilitySrc, type ProfessionSrc, professionSchema, type RiskSrc, type RoleSrc, riskSchema, roleSchema, type RoomSrc, roomSchema,
+  type LinkSrc, PREVALENCE, type PresetSrc, presetSchema, type SiteSrc, siteSchema, type ProbabilitySrc, type ProfessionSrc, professionSchema, type RiskSrc, type RoleSrc, riskSchema, roleSchema, type RoomSrc, roomSchema,
   type TipSrc, tipSchema, type TreatmentSrc, treatmentSchema, versionSchema, type AchievementSrc, achievementSchema, type ScoreSrc, scoreSchema,
   type RuleSrc, ruleSchema, type TargetSrc, targetSchema, type SkillSrc, skillSchema,
   type ConsultsSrc, consultsSchema, type DaySrc, daySchema, type InflowSrc, inflowSchema, type MoneySrc, moneySchema,
@@ -188,6 +190,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   const equipment: Record<string, EquipmentSrc> = {};
   const roles: Record<string, RoleSrc> = {};
   const presets: Record<string, PresetSrc> = {};
+  const sites: Record<string, SiteSrc> = {};
   const characters: Record<string, CharacterSrc> = {};
   const chapters: Record<string, ChapterSrc> = {};
   const tips: Record<string, TipSrc> = {};
@@ -260,6 +263,9 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     } else if (top === 'hospital' && rel.split('/')[1] === 'presets') {
       const p = check(presetSchema);
       if (p) { expectId(p.id, 'preset'); put(presets, p); }
+    } else if (top === 'hospital' && rel.split('/')[1] === 'sites') {
+      const p = check(siteSchema);
+      if (p) { expectId(p.id, 'site'); put(sites, p); }
     } else if (rel === 'hospital/economy.yaml') {
       economy = check(economySchema);
     } else if (rel === 'hospital/consults.yaml') {
@@ -295,7 +301,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       const x = check(skillSchema);
       if (x) { expectId(x.id, 'skill'); put(skills, x); }
     } else {
-      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, people/professions, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, hospital/consults.yaml, hospital/day.yaml, hospital/inflow.yaml, hospital/money.yaml, campaign/characters, campaign/chapters, campaign/tips, achievements, scores, rules, targets, career/skills)`);
+      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, people/professions, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/sites, hospital/economy.yaml, hospital/consults.yaml, hospital/day.yaml, hospital/inflow.yaml, hospital/money.yaml, campaign/characters, campaign/chapters, campaign/tips, achievements, scores, rules, targets, career/skills)`);
     }
   }
   if (!contentVersion) errors.push('version.yaml: нет contentVersion');
@@ -953,6 +959,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     // поток от больницы и касса ПК (spec 2026-10-economy): без файлов — ошибка сборки выше
     ...(inflow ? { inflow } : {}),
     ...(money ? { money } : {}),
+    // готовые больницы из готовых помещений (spec 2026-10-real-hospital); проверка — checkSites ниже
+    ...(Object.keys(sites).length ? { sites: Object.fromEntries(Object.values(sites).sort((a, b) => (a.id < b.id ? -1 : 1)).map(p => [p.id, { id: p.id, rooms: p.rooms.map(r => ({ ...r })) }])) } : {}),
     revealedBy,
   };
   for (const c of Object.values(conditions).sort((a, b) => (a.id < b.id ? -1 : 1))) {
@@ -1158,6 +1166,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   }
   if (errors.length === 0) {
     checkPresets(db, errors);
+    checkSites(db, errors);
     checkCampaign(db, errors);
     checkAchievements(db, errors);
     checkSkills(db, errors);
@@ -1377,6 +1386,32 @@ function checkPresets(db: ContentDb, errors: string[]) {
     for (const r of plan.rooms) {
       for (const pr of problemsOf(db, plan, r, staffed)) errors.push(`${p.id}: ${r.type} (${r.id}) не работает: ${pr.kind}${pr.kind === 'noStaff' ? ` ${pr.role}` : ''}`);
     }
+  }
+}
+
+/**
+ * Готовые больницы из готовых помещений (spec 2026-10-real-hospital) строятся той же функцией, что команда стройки `ready`:
+ * что игрок не поставил бы, в базу не попадёт. Ваш кабинет — один, и это кабинет врача; работает каждое помещение, и
+ * больница открыта.
+ */
+function checkSites(db: ContentDb, errors: string[]) {
+  for (const p of Object.values(db.sites ?? {})) {
+    const bad = p.rooms.flatMap((r, i) => (!db.rooms[r.type] ? [`${p.id}: помещение ${i} — ${r.type} не найдено`] : !db.rooms[r.type].sizes.some(z => z.id === r.size) ? [`${p.id}: у ${r.type} нет образца ${r.size}`] : []));
+    if (bad.length) { errors.push(...bad); continue; }
+    const mine = p.rooms.filter(r => r.mine);
+    if (mine.length > 1 || mine.some(r => r.type !== 'room.office')) errors.push(`${p.id}: ваш кабинет — один, и это кабинет врача`);
+    const built = siteOfPlan(db, p);
+    if (!built.ok) {
+      errors.push(`${p.id}: помещение ${built.room} (${p.rooms[built.room].type}) не ставится: ${built.error.kind}`);
+      continue;
+    }
+    const plan = planOfSite(db, built.site);
+    const staffed = staffingOf(db, plan, built.staff);
+    for (const r of plan.rooms) {
+      for (const pr of problemsOf(db, plan, r, staffed)) errors.push(`${p.id}: ${r.type} (${r.id}) не работает: ${pr.kind}${pr.kind === 'noStaff' ? ` ${pr.role}` : ''}`);
+    }
+    const blocks = openBlocks(db, plan, workingRooms(db, plan, staffed), staffed);
+    if (blocks.length) errors.push(`${p.id}: больница закрыта: ${blocks.map(b => b.kind).join(', ')}`);
   }
 }
 
