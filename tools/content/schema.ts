@@ -896,6 +896,8 @@ export const inflowSchema = z.strictObject({
   reputation: z.number().int().min(0).max(99),
   /** по записи к специалисту (spec 2026-10-specialists): человек в час к одному, в среднем за час приёма */
   booked: z.number().min(0).max(20).optional(),
+  /** сидя или стоя — по своему залу: зал у кабинета — не дальше стольких метров от двери кабинета своего врача */
+  hall: z.number().int().min(1).max(100).optional(),
   targets: z.array(z.strictObject({ name: z.string().min(1), offices: z.number().int().min(0), bays: z.number().int().min(0), day: range, ambulance: range })).min(1),
 });
 

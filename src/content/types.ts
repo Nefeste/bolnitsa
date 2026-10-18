@@ -1320,6 +1320,8 @@ export interface Inflow {
   reputation: number;
   /** по записи (spec 2026-10-specialists): человек в час к одному специалисту — в среднем за час приёма; нет — к ним не записываются */
   booked?: number;
+  /** сидя или стоя — по своему залу: зал у кабинета своего врача — не дальше стольких метров от двери; нет — по всей больнице */
+  hall?: number;
   /** ориентиры геймдизайна §5: больница с этими кабинетами и местами — сколько в сутки (проверяет сборка) */
   targets: { name: string; offices: number; bays: number; day: [number, number]; ambulance: [number, number] }[];
 }

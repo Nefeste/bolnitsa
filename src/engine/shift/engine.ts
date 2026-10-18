@@ -15,7 +15,7 @@ import { type CampaignProgress, campaignEvening, chapterOf, nextChapterOf, start
 import { build, emptyPlot, type HospitalState, type PlacedRoom, type Plan, planOf, presetHospital, sizeOf, UNDO_DEPTH, widenPlot } from '../hospital/build';
 import { bedsideIn, DOCTOR, doctorRoom, examWhere, NONE_BROKEN, openBlocks, type Problem, problemsOf, slotKey, type Staffing, workingRooms } from '../hospital/requirements';
 import { applicantsOf, doctorOf, grow, memberAt, presetStaff, PROFILE_PRIOR, readingOf, type StaffMember, speedOf, staffingOf } from '../hospital/staff';
-import { WALK_SPEED, walkSeconds } from '../hospital/walk';
+import { metersBetween, WALK_SPEED, walkSeconds } from '../hospital/walk';
 import { log2 } from '../core/math';
 import { P_ONE, RNG_VERSION, Rng } from '../core/rng';
 import { examHarmOutcome, observe, type Outcome, rscOutcome } from '../med/course';
@@ -2891,18 +2891,35 @@ function arrive(db: ContentDb, s: ShiftState, p: ShiftPatient, notices: Notice[]
   const sure = nurse ? triageOf(db, p, vitalsOf(db, s, p)) : p.triage;
   const [lo, hi] = sure === 'red' ? [0, 0] : PATIENCE[sure];
   p.patience = Math.round(branch(s, `patience:${p.id}`).range(lo, hi) * MIN * patienceOf(s.meta.difficulty));
-  // своя больница: пришёл в полную зону ожидания — стоит, и ждать готов вдвое меньше
-  if (s.hospital && p.patience > 0 && s.queue.length >= ctx.seats) p.patience = Math.round(p.patience / 2);
-  s.summary.arrived++;
-  if (p.kind === 'return') s.summary.returnsToday++;
   // поток для ПК (spec 2026-10-walk): к какому врачу записан, где ждёт и когда туда дойдёт
   if (s.flow) seatPc(db, s, p, ctx, nurse);
+  // своя больница: пришёл в полную зону ожидания — стоит, и ждать готов вдвое меньше; в потоке для ПК — по своему залу
+  if (s.hospital && p.patience > 0 && (s.flow ? standsPc(db, s, p, ctx) : s.queue.length >= ctx.seats)) p.patience = Math.round(p.patience / 2);
+  s.summary.arrived++;
+  if (p.kind === 'return') s.summary.returnsToday++;
   enqueue(s, p, s.t, p.seatAt ?? s.t);
   notices.push({ kind: 'arrived', id: p.id, triage: p.triaged === false ? 'green' : p.triage });
   if (nurse) schedule(s, p.triAt !== undefined ? p.triAt + TRIAGE : s.t + REGISTRATION + TRIAGE, { kind: 'nurse', id: p.id });
   // поток для ПК (spec 2026-10-walk): оформят и измерят — тогда его позовёт нанятый врач
   if (s.flow && readyAt(p) > s.t) schedule(s, readyAt(p), { kind: 'ready', id: p.id });
   staffDesks(db, s);
+}
+
+/**
+ * Поток для ПК: сидя или стоя — по своему залу (решение владельца 18.10.2026, spec 2026-10-real-hospital): сидит, когда зал
+ * у кабинета его врача — не дальше `inflow.hall` м от двери — и в нём есть место; нет такого зала или он полон — стоит в
+ * коридоре. Числа нет — как прежде: по местам всей больницы.
+ */
+function standsPc(db: ContentDb, s: ShiftState, p: ShiftPatient, ctx: HospitalCtx): boolean {
+  const near = db.inflow?.hall;
+  if (near === undefined) return s.queue.length >= ctx.seats;
+  const room = p.hall !== undefined ? ctx.plan.rooms.find(r => r.id === p.hall) : undefined;
+  if (!room) return true;
+  const office = (p.doc !== undefined ? s.staff?.find(m => m.id === p.doc)?.room : undefined) ?? doctorRoom(ctx.plan);
+  if (office !== undefined && (metersBetween(ctx.plan, room.id, office) ?? Number.POSITIVE_INFINITY) > near) return true;
+  let there = 0;
+  for (const id of s.queue) if (s.patients[id]?.hall === room.id) there++;
+  return there >= room.seats.length;
 }
 
 /**
