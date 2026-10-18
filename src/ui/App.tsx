@@ -525,7 +525,8 @@ function BottomCard({ hud, actions, names }: P) {
             </div>
           ))}
         </dl>
-        {info.kind === 'patient' && !info.gone ? <TakeCase info={info} said={hud.doctor?.said} actions={actions} /> : null}
+        {/* ушедший — только карта, сутки (spec docs/specs/2026-10-discharged-card.md) */}
+        {info.kind === 'patient' ? <TakeCase info={info} said={hud.doctor?.said} actions={actions} /> : null}
         {info.kind === 'patient' ? <PathSection hud={hud} /> : null}
       </div>
     );

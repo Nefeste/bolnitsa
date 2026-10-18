@@ -30,6 +30,7 @@ import { type PersonInfo, Population, YOU } from '../render/population';
 import { Stage } from '../render/stage';
 import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
+import type { SeenList } from '../sim/doctor';
 import { H, KINDS } from '../sim/pack';
 import { type Slice, SimClient } from '../sim/client';
 import type { PathView, World } from '../sim/protocol';
@@ -194,6 +195,8 @@ export class Game {
   private watching: string | null = null;
   private path: PathView | undefined;
   private left: { id: string; t: number }[] = [];
+  /** «Приняты» (spec docs/specs/2026-10-discharged-card.md): приняты и ушли за сутки — как прислал поток расчёта */
+  private seen: SeenList = { rows: [], total: 0 };
   private problems: ({ kind: Problem['kind'] | 'broken'; text: string } | undefined)[] = [];
   private broken = new Set<string>();
   /** первая зона ожидания (общая очередь к врачам) и кабинет человека штата — номера в плане */
@@ -460,6 +463,7 @@ export class Game {
     // сломанные аппараты (в 08:00, при загрузке) — причины «не работает» заново, сцена та же
     if (s.broken) this.texts();
     if (s.path && s.path.id === this.watching) this.path = s.path;
+    if (s.seen) this.seen = s.seen;
     this.pop.sync(s.buf, s.names);
     for (const n of s.notices) {
       if (n.kind === 'site' && n.cmd === 'office') this.doctor.onOffice(n);
@@ -701,8 +705,8 @@ export class Game {
     exam: (id: Id) => ({ name: named(this.db.exams[id]?.name, id), kind: this.db.exams[id]?.kind ?? 'lab' }),
   };
 
-  /** 10 раз в секунду: значки и цвет пола помещений, вкладка «Пациенты», «Ушли», путь выбранного. */
-  private flowHud(): Pick<Hud, 'patients' | 'patientsAll' | 'gone' | 'path'> {
+  /** 10 раз в секунду: значки и цвет пола помещений, вкладка «Пациенты», «Приняты», «Ушли», путь выбранного. */
+  private flowHud(): Pick<Hud, 'patients' | 'patientsAll' | 'gone' | 'seenRows' | 'seenAll' | 'path'> {
     const { db, plan, t } = this;
     const hud = this.store.get();
     const people = [...this.pop.patients()];
@@ -734,6 +738,11 @@ export class Game {
       const text = last && last.limit >= 0 ? T.flow.goneRow(f, clock(last.limit), dur(last.limit - last.since)) : T.flow.goneAt(f, clock(x.t));
       return { key: `id:${x.id}`, id: x.id, title: r ? T.card.patient(r.sex, r.age, r.name) : x.id, text, triage: last?.triage ?? 'green' };
     });
+    // приняты и ушли (spec docs/specs/2026-10-discharged-card.md): куда и когда, диагноз, кто вёл; карта — у каждого
+    const seenRows: PatientRow[] = this.seen.rows.map(x => ({
+      key: `id:${x.id}`, id: x.id, title: T.card.patient(x.sex, x.age, x.name), triage: x.triage,
+      text: T.flow.seenRow(T.flow.seenWhere[x.setting] ?? T.flow.seenDone, clock(x.at), x.diagnosis, x.by ?? T.flow.seenYou),
+    }));
     // путь выбранного пациента: поток расчёта кладёт его в срез, когда он изменился
     const sel = this.selected;
     const id = sel?.startsWith('id:') ? sel.slice(3) : sel?.startsWith('p:') ? this.pop.idOf(sel) : undefined;
@@ -744,7 +753,7 @@ export class Game {
     }
     let path: Hud['path'];
     if (id && this.path?.id === id) path = this.path.journey ? pathCard(this.path.journey, this.pop.rows.get(id)?.sex === 'f', t, this.pathNames) : { none: true };
-    return { patients, patientsAll, gone, path };
+    return { patients, patientsAll, gone, seenRows, seenAll: this.seen.total, path };
   }
 
   /** Панели — заново сейчас, а не через 100 мс (режим врача: ответ потока, открыть и закрыть карту). */

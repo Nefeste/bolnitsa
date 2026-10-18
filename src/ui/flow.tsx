@@ -1,5 +1,6 @@
-// Панели части 3 «Люди и поток» (spec docs/specs/2026-10-flow-ui.md): вкладка «Пациенты» с фильтрами и «Ушли», «Путь
-// пациента» в карточке, меню слоёв карты. Тонкие, как остальные панели: читают хранилище и просят игру.
+// Панели части 3 «Люди и поток» (spec docs/specs/2026-10-flow-ui.md): вкладка «Пациенты» с фильтрами, «Приняты» (spec
+// docs/specs/2026-10-discharged-card.md) и «Ушли», «Путь пациента» в карточке, меню слоёв карты. Тонкие, как остальные
+// панели: читают хранилище и просят игру.
 import type { ReactNode } from 'react';
 import { LONG_WAIT, type Mood, type PatientFilter, type PatientRow, WAIT_BAD, WAIT_OK, type Where } from '../app/flow';
 import type { Triage } from '../engine/shift/types';
@@ -55,7 +56,10 @@ function Row({ p, actions, gone }: { p: PatientRow; actions: Actions; gone?: boo
   );
 }
 
-/** Вкладка «Пациенты»: кто в больнице — фильтры по срочности, месту и ожиданию; «Ушли» — ушедшие, не дождавшись. */
+/**
+ * Вкладка «Пациенты»: кто в больнице — фильтры по срочности, месту и ожиданию; «Приняты» — приняты и ушли за сутки, с
+ * картой у каждого; «Ушли» — ушедшие, не дождавшись.
+ */
 export function PatientsTab({ hud, actions }: P) {
   const f = hud.patientFilter;
   const set = (patch: Partial<PatientFilter>) => actions.filterPatients(patch);
@@ -65,14 +69,18 @@ export function PatientsTab({ hud, actions }: P) {
     <div className="patients" id="patients">
       <div className="pfilters">
         <span className="group">
-          <Seg id="pf-present" on={!f.gone} onClick={() => set({ gone: false })}>
+          <Seg id="pf-present" on={f.list === 'present'} onClick={() => set({ list: 'present' })}>
             {T.flow.present}
           </Seg>
-          <Seg id="pf-gone" on={f.gone} onClick={() => set({ gone: true })} title={T.flow.goneHint}>
+          <Seg id="pf-seen" on={f.list === 'seen'} onClick={() => set({ list: 'seen' })} title={T.flow.seenHint}>
+            {T.flow.seen} ({hud.seenAll})
+          </Seg>
+          <Seg id="pf-gone" on={f.list === 'gone'} onClick={() => set({ list: 'gone' })} title={T.flow.goneHint}>
             {T.flow.gone} ({hud.gone.length})
           </Seg>
         </span>
-        {f.gone ? null : (
+        {f.list === 'seen' && hud.seenAll > hud.seenRows.length ? <div className="muted small">{T.flow.seenLast(hud.seenRows.length, hud.seenAll)}</div> : null}
+        {f.list !== 'present' ? null : (
           <>
             <span className="group">
               {triages.map(t => (
@@ -95,7 +103,17 @@ export function PatientsTab({ hud, actions }: P) {
           </>
         )}
       </div>
-      {f.gone ? (
+      {f.list === 'seen' ? (
+        hud.seenRows.length ? (
+          <ul id="seen-list">
+            {hud.seenRows.map(p => (
+              <Row key={p.key} p={p} actions={actions} gone />
+            ))}
+          </ul>
+        ) : (
+          <p>{T.flow.seenNobody}</p>
+        )
+      ) : f.list === 'gone' ? (
         hud.gone.length ? (
           <ul>
             {hud.gone.map(p => (

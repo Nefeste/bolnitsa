@@ -335,13 +335,18 @@ function Ask({ a, colleagues, actions }: { a: AskRow; colleagues: { id: string; 
   );
 }
 
-/** «Взять случай» в карточке пациента (spec, «"Взять случай"»). */
+/**
+ * «Взять случай» в карточке пациента (spec, «"Взять случай"»); ушедший — только «Открыть карту»: она хранится сутки (spec
+ * docs/specs/2026-10-discharged-card.md).
+ */
 export function TakeCase({ info, said, actions }: { info: Extract<PersonInfo, { kind: 'patient' }>; said?: { ok: boolean; text: string }; actions: Actions }) {
   return (
     <div className="row">
-      <button type="button" id="card-take" className="on" title={T.doctor.takeHint} onClick={() => actions.doctor({ kind: 'take', id: info.id })}>
-        {T.doctor.take}
-      </button>
+      {info.gone ? null : (
+        <button type="button" id="card-take" className="on" title={T.doctor.takeHint} onClick={() => actions.doctor({ kind: 'take', id: info.id })}>
+          {T.doctor.take}
+        </button>
+      )}
       {/* карта больного — посмотреть, не забирая (spec docs/specs/2026-10-two-ways.md, F1) */}
       <button type="button" id="card-view" title={T.doctor.viewHint} onClick={() => actions.doctor({ kind: 'open', id: info.id })}>
         {T.doctor.openCard}

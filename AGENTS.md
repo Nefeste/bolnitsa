@@ -90,8 +90,9 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # undo; then the start screen's three cards and the polyclinic; then specialists: hire a
                                    # gastroenterologist in the polyclinic, «по записи к …»; then the owner's play of 18.10:
                                    # «Открыть карту» of anyone, «Следить», «Позвать» — the card when they come in; then
-                                   # saves: save, «Продолжить», load from the menu, delete, a broken file);
-                                   # screenshots in tools/app/out/; `-- --only 1|2|3|4|5|6|7|8|9|10` for one part
+                                   # saves: save, «Продолжить», load from the menu, delete, a broken file; then the card of the
+                                   # departed: «Приняты», the decision in a discharged patient's card, the departed's person card);
+                                   # screenshots in tools/app/out/; `-- --only 1|2|3|4|5|6|7|8|9|10|11` for one part
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
 npm run dist:win                   # build + Windows x64 zip → release/ (from Linux, no wine) — the only release file for now
@@ -131,7 +132,8 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   `docs/specs/2026-10-real-hospital.md`) and `shift/site.ts` (the `site` command: deferred removal, undo, hiring) —
   `docs/specs/2026-10-build.md`. The whole 24-hour day of the PC flow is ours as well: `shift/day.ts` (outpatient hours,
   arrivals by hour of day), the 08:00 meeting and the morning round in `engine.ts`, shapes in `content/hospital/day.yaml`
-  — `docs/specs/2026-10-day.md`.
+  — `docs/specs/2026-10-day.md`. Who left the state (`evict`) keeps their card in `s.past` for a day, at most 600, like
+  their path — read-only, for «Открыть карту» and «Приняты» (`docs/specs/2026-10-discharged-card.md`).
   `shift/journey.ts` is ours: the patient's path with the reason of every wait (PC flow only; one-line hooks in
   `engine.ts`) — `docs/specs/2026-10-flow-ui.md`.
   Money of the PC flow is ours: `shift/money.ts` (cash now, wages and upkeep by the hour, building from cash, the

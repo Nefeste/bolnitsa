@@ -9,7 +9,7 @@ import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { presetStaff } from '../../src/engine/hospital/staff';
 import { apply, newFlowShift } from '../../src/engine/shift/engine';
 import type { ShiftPatient, ShiftState } from '../../src/engine/shift/types';
-import { setLang } from '../../src/i18n';
+import { setLang, T } from '../../src/i18n';
 import { useDb } from '../../src/sim/caseView';
 import { cardView, doctorState } from '../../src/sim/doctor';
 import { FLOW } from './site-kit';
@@ -54,7 +54,7 @@ describe('карта больного нанятого врача', () => {
     p.patient.truth = saved;
   });
 
-  test('что думает врач — по уровню медицины: «из 10», словом, без уверенности; решил — диагноз, лечение и место', () => {
+  test('что думает врач — по уровню медицины: «из 10», словом, без уверенности; закрыл — чем кончилось, решение — диагноз, лечение и место', () => {
     const s = preset();
     const p = until(s, x => !!x.by && x.status === 'inRoom' && x.phase?.diagnosis !== undefined && !x.closed);
     const text = (level: 'trainee' | 'student' | 'resident' | 'doctor') => cardView(db, s, p.id, level, 1)!.lead!.text;
@@ -66,11 +66,17 @@ describe('карта больного нанятого врача', () => {
     expect(text('resident')).not.toMatch(/из 10/);
     expect(text('resident')).toContain(' — ');
     expect(text('doctor')).not.toContain(' — ');
-    // закрыл приём — «решил»: что поставил, чем лечит, где
+    // закрыл приём — чем кончилось и когда; решение блоком: что поставил, чем лечит, где (spec 2026-10-discharged-card)
     while (!p.closed) apply(db, s, { kind: 'advance', seconds: 60 });
     const done = cardView(db, s, p.id, 'student', 1)!;
-    expect(done.lead!.text.startsWith('решил: ')).toBe(true);
-    expect(done.lead!.text.split(' · ').length).toBe(3);
+    const c = p.closed!;
+    expect(p.status).toBe('done');
+    expect(done.lead!.text).toMatch(/^(отпустил домой|направил в стационар|вызвал скорую|перевёл в другую больницу) в \d\d:\d\d$/);
+    expect(done.decided).toEqual({
+      diagnosis: { id: c.diagnosis, name: db.conditions[c.diagnosis].name.ru },
+      treatments: c.plan.treatments.map(tx => ({ id: tx, name: db.treatments[tx].name.ru })),
+      setting: T.case.patient.setting[c.plan.setting],
+    });
     // разбор A–D — только у ваших случаев (решение владельца 16.10.2026)
     expect(done.decision).toBeUndefined();
     expect(done.take).toBeUndefined();
