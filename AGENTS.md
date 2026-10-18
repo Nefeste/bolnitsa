@@ -86,7 +86,8 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # by mouse in the empty building; people and flow at 13:00 — icons, «Пациенты», the
                                    # patient's path, the queues overlay; then the doctor mode: a consult, a whole case, «Take
                                    # the case», «My office»; then money: building from cash, «Until morning» to the 08:00
-                                   # meeting, the «Обход» list); screenshots in tools/app/out/; `-- --only 1|2|3|4|5` for one part
+                                   # meeting, the «Обход» list; then ready rooms: four clicks open the empty building, R, one
+                                   # undo); screenshots in tools/app/out/; `-- --only 1|2|3|4|5|6` for one part
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
 npm run dist:win                   # build + Windows x64 zip → release/ (from Linux, no wine) — the only release file for now
@@ -118,7 +119,8 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
 
 - `src/engine/` — the engine copied from Anamnez (pure TypeScript; see «Hard rules»); `shift/slice.ts` is ours: who is
   where and what they are doing, for rendering. Building by mouse is ours too: `hospital/site.ts` (the lot, rooms as
-  rectangles, items, doors, checks, the plan for the engine), `hospital/site-preset.ts` (the preset as a lot) and
+  rectangles, items, doors, checks, the plan for the engine; a ready room — a catalog sample whole in one command,
+  `docs/specs/2026-10-ready-rooms.md`), `hospital/site-preset.ts` (the preset as a lot) and
   `shift/site.ts` (the `site` command: deferred removal, undo, hiring) — `docs/specs/2026-10-build.md`. The whole
   24-hour day of the PC flow is ours as well: `shift/day.ts` (outpatient hours, arrivals by hour of day), the 08:00
   meeting and the morning round in `engine.ts`, shapes in `content/hospital/day.yaml` — `docs/specs/2026-10-day.md`.

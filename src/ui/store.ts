@@ -2,7 +2,7 @@
 // читают через `useSyncExternalStore`. Снимок неизменяемый: каждое `set` — новый объект.
 import { useSyncExternalStore } from 'react';
 import type { PathLine, PatientFilter, PatientRow } from '../app/flow';
-import type { Id, ObjectKind } from '../content/types';
+import type { Id, ObjectKind, RoomSizeId } from '../content/types';
 import type { Lang } from '../i18n';
 import type { PersonInfo } from '../render/population';
 import type { Quality } from '../render/view';
@@ -15,13 +15,17 @@ import type { HintKey } from '../app/hints';
 export type Speed = 0 | 1 | 3 | 12;
 export type Tab = 'patients' | 'staff' | 'asks' | 'journal' | 'reports' | 'goals';
 
-/** Инструменты стройки (spec docs/specs/2026-10-build.md, «Экран и управление»). */
-export type Tool = 'room' | 'item' | 'door' | 'door2' | 'demolish';
+/** Инструменты стройки (spec docs/specs/2026-10-build.md, «Экран и управление»; готовое — docs/specs/2026-10-ready-rooms.md). */
+export type Tool = 'ready' | 'room' | 'item' | 'door' | 'door2' | 'demolish';
 
 export interface BuildHud {
   on: boolean;
   tool?: Tool;
   roomType?: Id;
+  /** готовое помещение: тип и образец */
+  ready?: { type: Id; size: RoomSizeId };
+  /** «С персоналом»: готовое — с людьми на всех должностях */
+  withStaff: boolean;
   item?: { kind: ObjectKind; eq?: Id };
   /** переставляют поставленный предмет */
   moving: boolean;
@@ -56,6 +60,15 @@ export interface RoomTypeRow {
   id: Id;
   name: string;
   min: string;
+  price: string;
+}
+
+/** Тип в каталоге готовых помещений: образцы S/M/L — размер и цена готового целиком. */
+export interface ReadyTypeRow {
+  id: Id;
+  name: string;
+  sizes: { id: RoomSizeId; text: string }[];
+  /** у одного образца — его размер и цена; у нескольких — «от» самой низкой цены */
   price: string;
 }
 
@@ -96,6 +109,7 @@ export interface Hud {
   debug: boolean;
   build: BuildHud;
   roomTypes: RoomTypeRow[];
+  readyTypes: ReadyTypeRow[];
   /** больница ПК закрыта — почему (пациенты не приходят) */
   closed?: string;
   /** выбор начала: пустое здание или готовая больница */
@@ -140,8 +154,9 @@ export const initial: Hud = {
   layers: { open: false, queues: false },
   staffList: [],
   debug: false,
-  build: { on: false, moving: false, spent: 0, undo: 0 },
+  build: { on: false, withStaff: true, moving: false, spent: 0, undo: 0 },
   roomTypes: [],
+  readyTypes: [],
   fps: 0,
   cpuMs: 0,
   gpuMs: null,
@@ -185,6 +200,9 @@ export interface Actions {
   toggleBuild(): void;
   setTool(t: Tool | undefined): void;
   pickRoomType(id: Id): void;
+  /** готовое помещение (spec docs/specs/2026-10-ready-rooms.md): тип и образец; без образца — первый */
+  pickReady(id: Id, size?: RoomSizeId): void;
+  toggleReadyStaff(): void;
   pickItem(kind: ObjectKind, eq?: Id): void;
   undo(): void;
   done(): void;

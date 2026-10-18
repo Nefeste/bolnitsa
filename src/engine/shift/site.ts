@@ -1,6 +1,6 @@
 // Стройка ПК во время смены (spec docs/specs/2026-10-build.md, «Стройка в любой момент», «Снос и отмена») — своё.
-// Команда движка `{ kind: 'site', cmd }`: помещение, предмет, дверь, «Обставить», снос, найм, отмена, «Готово» — пока
-// идут часы. Действие — новая больница (`s.hospital` — новый объект): план, требования и то, что работает, движок
+// Команда движка `{ kind: 'site', cmd }`: помещение, предмет, дверь, «Обставить», готовое помещение
+// (spec docs/specs/2026-10-ready-rooms.md), снос, найм, отмена, «Готово» — пока идут часы. Действие — новая больница (`s.hospital` — новый объект): план, требования и то, что работает, движок
 // считает заново, свободные нанятые врачи зовут ждущих. Занятое (на койке лежат, аппаратом обследуют, в помещении
 // кто-то есть) убирается, когда освободится: проверка — событием очереди `siteFree`, поэтому итог не зависит от того,
 // каким шагом идут часы. Койка лежащего — номер в помещении; после стройки номер переносится на тот же предмет. С кассой
@@ -8,12 +8,12 @@
 import { Rng } from '../core/rng';
 import { DOCTOR, standInOf } from '../hospital/requirements';
 import {
-  addItem, addRoom, bedOrder, demolish, type Done, FREE_CHECK, furnish, hospitalOf, moveItem, removeDoor, removedBetween, removeItem, removeRoom, setDoor,
-  setOffice, type Site, type SiteCommand, type SiteError, type SiteRoom, SITE_UNDO, type Works,
+  addItem, addReady, addRoom, bedOrder, demolish, type Done, FREE_CHECK, furnish, hospitalOf, moveItem, removeDoor, removedBetween, removeItem, removeRoom,
+  setDoor, setOffice, type Site, type SiteCommand, type SiteError, type SiteRoom, SITE_UNDO, type Works,
 } from '../hospital/site';
 import { salaryOf, type StaffMember } from '../hospital/staff';
 import { payWorks, shortOf } from './money';
-import type { ContentDb } from '../../content/types';
+import type { ContentDb, Id } from '../../content/types';
 import type { Notice, ShiftEvent, ShiftPatient, ShiftState } from './types';
 
 const no = (cmd: SiteCommand['kind'], error: SiteError): Notice[] => [{ kind: 'site', cmd, ok: false, error }];
@@ -191,6 +191,9 @@ export function siteCommand(db: ContentDb, s: ShiftState, cmd: SiteCommand): Not
     case 'furnish':
       r = furnish(db, site, cmd.room);
       break;
+    case 'ready':
+      r = addReady(db, site, cmd.type, cmd.size, cmd.x, cmd.y, cmd.rot);
+      break;
     case 'demolish':
       later = busy.rooms.has(cmd.room);
       r = demolish(db, site, cmd.room, later);
@@ -201,10 +204,18 @@ export function siteCommand(db: ContentDb, s: ShiftState, cmd: SiteCommand): Not
   const need = shortOf(db, s, r.cost);
   if (need > 0) return no(cmd.kind, { kind: 'money', need });
   remember(s, works, site, r.room ?? ('room' in cmd ? cmd.room : undefined));
+  // готовое «С персоналом»: люди на все должности — в том же шаге отмены
+  let hired: number | undefined;
+  if (cmd.kind === 'ready' && cmd.staff && r.room) {
+    hired = 0;
+    for (const role of db.rooms[cmd.type].staff) if (staffPost(db, s, r.site, r.room, role)) hired++;
+  }
   commit(db, s, site, r.site);
   works.spent += r.cost;
   payWorks(s, r.cost);
-  return [{ kind: 'site', cmd: cmd.kind, ok: true, cost: r.cost, ...(later ? { later: true as const } : {}), ...(r.room ? { room: r.room } : {}) }];
+  return [
+    { kind: 'site', cmd: cmd.kind, ok: true, cost: r.cost, ...(later ? { later: true as const } : {}), ...(r.room ? { room: r.room } : {}), ...(hired !== undefined ? { hired } : {}) },
+  ];
 }
 
 /**
@@ -244,22 +255,36 @@ function hire(db: ContentDb, s: ShiftState, works: Works, site: Site, cmd: Extra
   if (cmd.role === DOCTOR && room.id === site.mine) return no('hire', { kind: 'notHere' });
   const role = cmd.role === DOCTOR ? standInOf(db, DOCTOR) : cmd.role;
   if (!role || !db.roles[role]?.hire) return no('hire', { kind: 'unknown' });
-  const staff = s.staff ?? [];
   const post = (m: StaffMember) => db.roles[m.role]?.stands ?? m.role;
-  if (staff.some(m => m.room === room.id && post(m) === cmd.role)) return no('hire', { kind: 'nothing' });
+  if ((s.staff ?? []).some(m => m.room === room.id && post(m) === cmd.role)) return no('hire', { kind: 'nothing' });
   remember(s, works, site, room.id);
+  staffPost(db, s, site, room.id, cmd.role);
+  nudge(s);
+  return [{ kind: 'site', cmd: 'hire', ok: true, cost: 0, room: room.id }];
+}
+
+/**
+ * Человек на должность `post` помещения `roomId` — без проверок и без записи отмены (их делает команда): врачу — терапевт.
+ * Сначала тот, кто в резерве; нет — новый: навык 3, без черты, зарплата каталога; пол и облик — из ветви зерна
+ * `hire:<номер>`. Должность занята, ваш кабинет или нанять некого — никого, `false`.
+ */
+function staffPost(db: ContentDb, s: ShiftState, site: Site, roomId: string, post: Id): boolean {
+  if (post === DOCTOR && roomId === site.mine) return false;
+  const role = post === DOCTOR ? standInOf(db, DOCTOR) : post;
+  if (!role || !db.roles[role]?.hire) return false;
+  const staff = s.staff ?? [];
+  if (staff.some(m => m.room === roomId && (db.roles[m.role]?.stands ?? m.role) === post)) return false;
   const reserve = staff.find(m => m.room === undefined && m.role === role);
-  if (reserve) s.staff = staff.map(m => (m === reserve ? { ...m, room: room.id } : m));
+  if (reserve) s.staff = staff.map(m => (m === reserve ? { ...m, room: roomId } : m));
   else {
     const n = s.nextStaff ?? 1;
     const id = `s${n}`;
     const r = Rng.seeded(s.meta.seed).fork(`hire:${id}`);
     const sex: 'm' | 'f' = r.chance(5000) ? 'f' : 'm';
-    s.staff = [...staff, { id, role, sex, seed: r.u32(), skill: 3, salary: salaryOf(db, role, 3), room: room.id, days: 0 }];
+    s.staff = [...staff, { id, role, sex, seed: r.u32(), skill: 3, salary: salaryOf(db, role, 3), room: roomId, days: 0 }];
     s.nextStaff = n + 1;
   }
-  nudge(s);
-  return [{ kind: 'site', cmd: 'hire', ok: true, cost: 0, room: room.id }];
+  return true;
 }
 
 /**

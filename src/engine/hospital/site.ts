@@ -509,6 +509,8 @@ export type SiteError =
   | { kind: 'nothing' }
   | { kind: 'inUse' }
   | { kind: 'busy' }
+  /** готовое помещение (spec docs/specs/2026-10-ready-rooms.md): дверь образца — не в коридор от главного входа */
+  | { kind: 'doorTo' }
   /** касса ПК (spec docs/specs/2026-10-economy.md): действие увело бы кассу ниже предела — не хватает `need` ₽ */
   | { kind: 'money'; need: number };
 
@@ -979,6 +981,108 @@ export function furnish(db: ContentDb, site: Site, roomId: string): Done {
   return { ok: true, site: { ...withRoom(site, { ...room, items }), nextItem: n, editing: roomId }, cost: f.cost, room: roomId };
 }
 
+// --- готовое помещение (spec docs/specs/2026-10-ready-rooms.md) -------------------------------------------------------
+
+/** Готовое помещение до постройки: прямоугольник образца, клетки двери, предметы без номеров. */
+export interface ReadyDraft {
+  rect: Rect;
+  door: Cell[];
+  items: ItemDraft[];
+}
+
+export type ReadyCheck = { ok: true; cost: number; draft: ReadyDraft } | { ok: false; error: SiteError; draft?: ReadyDraft };
+
+/**
+ * Образец `size` типа `type` целиком с углом в (x, y) и поворотом `rot` — без проверок: размер образца, дверь там, где у
+ * него (на его «нижней» стене; где лежат — двойная, иначе как у образца, не шире двух клеток — посередине его проёма;
+ * вторая клетка — следующая вдоль стены), все предметы и аппараты на своих местах (длинный без второй клетки — короткий,
+ * как в готовой больнице).
+ * Нет такого образца — нет.
+ */
+export function readyDraft(db: ContentDb, site: Site, type: Id, size: RoomSizeId, x: number, y: number, rot: Rot): ReadyDraft | undefined {
+  const z = db.rooms[type]?.sizes.find(s => s.id === size);
+  const rules = rulesOf(db, type);
+  if (!z || !rules) return undefined;
+  const [w, h] = dimsOf(z, rot);
+  const rect = { x, y, w, h };
+  const width = rules.gurney ? 2 : Math.min(2, z.door.width);
+  // вторая клетка двойной — правее, у угла — левее; у образца шире двери — посередине его проёма
+  const from = width > z.door.width ? (z.door.x + 1 > z.w - 2 ? z.door.x - 1 : z.door.x) : z.door.x + Math.floor((z.door.width - width) / 2);
+  const door = Array.from({ length: width }, (_, k): Cell => {
+    const [dx, dy] = turnOf(z, rot, from + k, z.h - 1);
+    return [x + dx, y + dy];
+  }).sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+  const t = templateItems(db, site, { id: '', type, ...rect, door, items: [] }, { size, rot, at: [x, y], short: true });
+  return { rect, door, items: t?.items ?? [] };
+}
+
+/**
+ * Можно ли поставить готовое помещение, и цена — как у собранного руками: помещение по площади, дверь, предметы. Проверки —
+ * те же, что у протянутого помещения, и одна своя: дверь выходит в коридор, до которого дойти от главного входа
+ * (`doorTo` — на стене корпуса, в общей стене, в отрезанном коридоре). Не вышло — с образцом: призрак рисует его красным.
+ */
+export function checkReady(db: ContentDb, site: Site, type: Id, size: RoomSizeId, x: number, y: number, rot: Rot): ReadyCheck {
+  const draft = readyDraft(db, site, type, size, x, y, rot);
+  if (!draft) return fail({ kind: 'unknown' });
+  const c = checkRoom(db, site, type, draft.rect);
+  if (!c.ok) return { ok: false, error: c.error, draft };
+  const after = buildMap(site, [...site.rooms, { id: '', type, ...draft.rect, door: draft.door, items: [] }]);
+  const [ox, oy] = outOfSide(sideOf(draft.rect, draft.door[0][0], draft.door[0][1]));
+  for (const [x0, y0] of draft.door) {
+    // клетка перед дверью — коридор, до которого дойти от главного входа; стена двери — только этого помещения
+    const fx = x0 + ox;
+    const fy = y0 + oy;
+    const j = fy * after.w + fx;
+    const front = fx >= 0 && fy >= 0 && fx < after.w && fy < after.h;
+    if (after.walls[y0 * after.w + x0] !== 1 || !front || after.cells[j] !== CELL.corridor || !after.reach[j]) return { ok: false, error: { kind: 'doorTo' }, draft };
+  }
+  const items = draft.items.reduce((n, i) => n + priceOf(db, i.kind, i.eq), 0);
+  return { ok: true, cost: c.cost + (DOOR_PRICE[draft.door.length] ?? 0) + items, draft };
+}
+
+/** Пустой участок — для цены готового в каталоге: образец от участка не зависит. */
+const BLANK = emptySite();
+
+/** Цена готового помещения в каталоге: от места и поворота не зависит. Нет такого образца — 0. */
+export function readyCost(db: ContentDb, type: Id, size: RoomSizeId): number {
+  const d = readyDraft(db, BLANK, type, size, 0, 0, 0);
+  if (!d) return 0;
+  return roomPrice(db, type, d.rect.w, d.rect.h) + (DOOR_PRICE[d.door.length] ?? 0) + d.items.reduce((n, i) => n + priceOf(db, i.kind, i.eq), 0);
+}
+
+/** Угол готового помещения, середина которого — в клетке `c` (курсор призрака). Нет такого образца — нет. */
+export function readyCorner(db: ContentDb, type: Id, size: RoomSizeId, rot: Rot, c: Cell): Cell | undefined {
+  const z = db.rooms[type]?.sizes.find(s => s.id === size);
+  if (!z) return undefined;
+  const [w, h] = dimsOf(z, rot);
+  return [c[0] - Math.floor((w - 1) / 2), c[1] - Math.floor((h - 1) / 2)];
+}
+
+/**
+ * Поворот призрака с серединой в `c`, пока игрок не нажал R (spec docs/specs/2026-10-ready-rooms.md, «Что делает
+ * инструмент»): прежний `rot`, если так можно поставить, иначе первый следующий по R, с которым можно; нигде — прежний.
+ */
+export function readyTurn(db: ContentDb, site: Site, type: Id, size: RoomSizeId, c: Cell, rot: Rot): Rot {
+  for (let k = 0; k < 4; k++) {
+    const r = ((rot + k) % 4) as Rot;
+    const at = readyCorner(db, type, size, r, c);
+    if (at && checkReady(db, site, type, size, at[0], at[1], r).ok) return r;
+  }
+  return rot;
+}
+
+/** Поставить готовое помещение: стены, дверь и обстановка разом. Его не перестраивают — то, что перестраивали, открыто. */
+export function addReady(db: ContentDb, site: Site, type: Id, size: RoomSizeId, x: number, y: number, rot: Rot): Done {
+  const c = checkReady(db, site, type, size, x, y, rot);
+  if (!c.ok) return fail(c.error);
+  const id = `r${site.next}`;
+  let n = site.nextItem;
+  const items = c.draft.items.map(d => ({ id: n++, ...d }));
+  const next: Site = { ...site, rooms: [...site.rooms, { id, type, ...c.draft.rect, door: c.draft.door, items }], next: site.next + 1, nextItem: n };
+  delete next.editing;
+  return { ok: true, site: next, cost: c.cost, room: id };
+}
+
 /**
  * Снести помещение: половина цены всего назад. `later` — занятое: снесут, когда освободится (до тех пор закрыто). Дверь,
  * которая была в стене корпуса (готовая больница), остаётся проходом в коридор.
@@ -1275,6 +1379,8 @@ export type SiteCommand =
   | { kind: 'door'; room: string; cells: Cell[] }
   | { kind: 'undoor'; room: string }
   | { kind: 'furnish'; room: string }
+  /** готовое помещение (spec docs/specs/2026-10-ready-rooms.md): образец целиком; `staff` — и люди на все должности */
+  | { kind: 'ready'; type: Id; size: RoomSizeId; x: number; y: number; rot: Rot; staff?: boolean }
   | { kind: 'demolish'; room: string }
   /** на должность помещения (`role` — должность образца: в кабинет врача встаёт терапевт) */
   | { kind: 'hire'; room: string; role: Id }
@@ -1295,4 +1401,6 @@ export interface SiteResult {
   /** занято — сделают, когда освободится */
   later?: true;
   room?: string;
+  /** готовое помещение «С персоналом»: сколько встало на должности */
+  hired?: number;
 }

@@ -188,7 +188,38 @@ function LeftTools({ hud, actions }: P) {
     ['demolish', '✖', T.build.demolish],
   ];
   let body: ReactNode = null;
-  if (b.tool === 'room')
+  // готовые помещения (spec docs/specs/2026-10-ready-rooms.md): тип, образцы S/M/L, «С персоналом»
+  if (b.tool === 'ready')
+    body = (
+      <>
+        <ul className="list" id="ready-types">
+          {hud.readyTypes.map(t => {
+            const on = b.ready?.type === t.id;
+            return (
+              <li key={t.id}>
+                <button type="button" id={`ready-${t.id.slice(5)}`} className={on ? 'on' : undefined} onClick={() => actions.pickReady(t.id)}>
+                  <span>{t.name}</span>
+                  <small>{on ? (t.sizes.find(z => z.id === b.ready?.size)?.text ?? t.price) : t.price}</small>
+                </button>
+                {on && t.sizes.length > 1 ? (
+                  <div className="sizes">
+                    {t.sizes.map(z => (
+                      <button key={z.id} type="button" id={`size-${z.id}`} className={`small${b.ready?.size === z.id ? ' on' : ''}`} onClick={() => actions.pickReady(t.id, z.id)} title={z.text}>
+                        {z.id}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+        <label className="check" title={T.build.withStaffHint}>
+          <input type="checkbox" id="ready-staff" checked={b.withStaff} onChange={actions.toggleReadyStaff} /> {T.build.withStaff}
+        </label>
+      </>
+    );
+  else if (b.tool === 'room')
     body = (
       <ul className="list" id="room-types">
         {hud.roomTypes.map(t => (
@@ -234,6 +265,9 @@ function LeftTools({ hud, actions }: P) {
           ✕
         </button>
       </div>
+      <button type="button" id="tool-ready" className={`wide${b.tool === 'ready' ? ' on' : ''}`} onClick={() => actions.setTool(b.tool === 'ready' ? undefined : 'ready')} title={T.build.readyHint}>
+        ▣ {T.build.ready}
+      </button>
       <div className="tools">
         {tools.map(([t, icon, name]) => (
           <button key={t} type="button" id={`tool-${t}`} className={b.tool === t ? 'on' : undefined} onClick={() => actions.setTool(b.tool === t ? undefined : t)}>

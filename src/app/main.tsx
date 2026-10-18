@@ -41,6 +41,8 @@ const actions: Actions = {
   toggleBuild: later('toggleBuild'),
   setTool: later('setTool'),
   pickRoomType: later('pickRoomType'),
+  pickReady: later('pickReady'),
+  toggleReadyStaff: later('toggleReadyStaff'),
   pickItem: later('pickItem'),
   undo: later('undo'),
   done: later('done'),

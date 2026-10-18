@@ -1,13 +1,15 @@
 // Стройка в окне (spec docs/specs/2026-10-build.md, «Экран и управление»): инструменты, призраки и команды движку.
 // Проверки — те же чистые функции движка (src/engine/hospital/site.ts) над той больницей, что прислал поток расчёта:
 // призрак говорит то же, что скажет движок. Команда уходит в поток (`site`), ответ — извещением и новой больницей.
-import type { Cell, ContentDb, Id, ObjectKind, Rot } from '../content/types';
+import type { Cell, ContentDb, Id, ObjectKind, RoomSizeId, Rot } from '../content/types';
+import { DOCTOR, standInOf } from '../engine/hospital/requirements';
 import {
-  autoRot, cellsOf, checkDoor, checkItem, checkRoom, demolishRefund, DOOR_PRICE, FACE, isInterior, priceOf, refundOf, rulesOf, sideOf, type Site,
-  type SiteCommand, type SiteError, type SiteResult, targetAt,
+  autoRot, cellsOf, checkDoor, checkItem, checkReady, checkRoom, demolishRefund, DOOR_PRICE, FACE, isInterior, priceOf, type ReadyDraft, readyCorner, readyTurn,
+  refundOf, rulesOf, sideOf, type Site, type SiteCommand, type SiteError, type SiteResult, targetAt,
 } from '../engine/hospital/site';
+import { salaryOf } from '../engine/hospital/staff';
 import { money, named, T } from '../i18n';
-import { GHOST_BAD, GHOST_OK } from '../render/ghost';
+import { GHOST_BAD, GHOST_DOOR, GHOST_OK } from '../render/ghost';
 import { type Thing, yawOf } from '../render/layout';
 import type { WallMode } from '../render/world';
 import type { BuildHud, Tool } from '../ui/store';
@@ -21,6 +23,8 @@ export function objectName(db: ContentDb, kind: ObjectKind, roomType: Id | '', e
 
 /** Строка призрака начинается с заглавной: «Растение — 300 ₽». */
 const upper = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+/** Должность посреди строки — со строчной: «· терапевт — 5 000 ₽ в сутки». */
+const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
 
 /** Почему нельзя — словами. */
 export function whyText(db: ContentDb, site: Site | undefined, e: SiteError): string {
@@ -72,6 +76,8 @@ export function whyText(db: ContentDb, site: Site | undefined, e: SiteError): st
     // касса (spec docs/specs/2026-10-economy.md): трата увела бы кассу ниже предела минуса
     case 'money':
       return T.money.short(money(e.need));
+    case 'doorTo':
+      return T.site.doorTo;
     default:
       return T.site.unknown;
   }
@@ -84,6 +90,10 @@ export class Builder {
   on = false;
   tool?: Tool;
   roomType?: Id;
+  /** готовое помещение (spec docs/specs/2026-10-ready-rooms.md): тип и образец */
+  ready?: { type: Id; size: RoomSizeId };
+  /** «С персоналом»: готовое — с людьми на всех должностях */
+  withStaff = true;
   item?: { kind: ObjectKind; eq?: Id };
   /** переставляют: помещение и номер предмета */
   moving?: { room: string; id: number };
@@ -115,7 +125,8 @@ export class Builder {
   /** Для панелей. */
   hud(): BuildHud {
     return {
-      on: this.on, ...(this.tool ? { tool: this.tool } : {}), ...(this.roomType ? { roomType: this.roomType } : {}), ...(this.item ? { item: this.item } : {}),
+      on: this.on, ...(this.tool ? { tool: this.tool } : {}), ...(this.roomType ? { roomType: this.roomType } : {}), ...(this.ready ? { ready: this.ready } : {}),
+      withStaff: this.withStaff, ...(this.item ? { item: this.item } : {}),
       moving: !!this.moving, ...(this.ghost ? { ghost: this.ghost } : {}), ...(this.result ? { result: this.result } : {}),
       spent: this.g.works.spent, undo: this.g.works.undo,
     };
@@ -150,6 +161,22 @@ export class Builder {
     this.reset();
     this.tool = t;
     if (t !== 'room') this.roomType = undefined;
+    if (t !== 'ready') this.ready = undefined;
+    this.update();
+  }
+
+  /** Готовое помещение: тип и образец; без образца — первый по каталогу. Поворот снова выбирает призрак. */
+  pickReady(id: Id, size?: RoomSizeId) {
+    const sizes = this.db.rooms[id]?.sizes ?? [];
+    const z = sizes.find(x => x.id === size) ?? sizes[0];
+    if (!z) return;
+    this.setTool('ready');
+    this.ready = { type: id, size: z.id };
+    this.update();
+  }
+
+  toggleStaff() {
+    this.withStaff = !this.withStaff;
     this.update();
   }
 
@@ -172,6 +199,9 @@ export class Builder {
     else if (this.moving || this.item) {
       this.moving = undefined;
       this.item = undefined;
+      this.turned = false;
+    } else if (this.ready) {
+      this.ready = undefined;
       this.turned = false;
     } else if (this.tool) {
       this.tool = undefined;
@@ -199,6 +229,15 @@ export class Builder {
     const site = this.site!;
     const [x, y] = cell;
     switch (this.tool) {
+      case 'ready': {
+        const g = this.readyAt(cell);
+        // денег не хватает — движок ответит «не хватает N ₽», как у всей стройки
+        if (this.ready && g?.ok && g.draft) {
+          const { rect } = g.draft;
+          this.g.command({ kind: 'ready', type: this.ready.type, size: this.ready.size, x: rect.x, y: rect.y, rot: g.rot, ...(this.withStaff ? { staff: true } : {}) });
+        }
+        break;
+      }
       case 'room':
         if (this.roomType) this.drag = cell;
         break;
@@ -266,9 +305,10 @@ export class Builder {
     else if (n.cmd === 'undo') this.result = { ok: true, text: T.build.undone };
     else if (n.cmd === 'hire') this.result = { ok: true, text: T.build.hired };
     else if ((n.cost ?? 0) < 0) this.result = { ok: true, text: T.build.backOk(money(-(n.cost ?? 0))) };
+    else if (n.hired !== undefined) this.result = { ok: true, text: T.build.spentHired(money(n.cost ?? 0), n.hired) };
     else this.result = { ok: true, text: T.build.spentOk(money(n.cost ?? 0)) };
-    // новое помещение — сразу выбрано: «Обставить», дверь, люди
-    if (n.ok && n.cmd === 'room' && n.room) this.g.selectRoomId(n.room);
+    // новое помещение — сразу выбрано: протянутому — «Обставить», дверь, люди; готовому — работает ли и почему нет
+    if (n.ok && (n.cmd === 'room' || n.cmd === 'ready') && n.room) this.g.selectRoomId(n.room);
   }
 
   /** Больница новая — призрак проверяется заново. */
@@ -278,6 +318,39 @@ export class Builder {
       this.item = undefined;
     }
     this.update();
+  }
+
+  /**
+   * Готовое помещение с серединой в клетке `cell` (spec docs/specs/2026-10-ready-rooms.md): поворот — свой после R, иначе
+   * тот, с которым можно поставить (`readyTurn`); образец, можно ли и цена — те же функции, что у движка.
+   */
+  private readyAt(cell: Cell): { rot: Rot; ok: boolean; why?: SiteError; cost: number; draft?: ReadyDraft } | undefined {
+    const site = this.site;
+    if (!site || !this.ready) return undefined;
+    const { type, size } = this.ready;
+    const rot = this.turned ? this.rot : readyTurn(this.db, site, type, size, cell, this.rot);
+    if (!this.turned) this.rot = rot;
+    const at = readyCorner(this.db, type, size, rot, cell);
+    if (!at) return undefined;
+    const c = checkReady(this.db, site, type, size, at[0], at[1], rot);
+    return c.ok ? { rot, ok: true, cost: c.cost, draft: c.draft } : { rot, ok: false, why: c.error, cost: 0, ...(c.draft ? { draft: c.draft } : {}) };
+  }
+
+  /** «С персоналом»: кто встанет на должности готового `type` и сколько им в сутки — резерв раньше новых, как в движке. */
+  private staffText(type: Id): string {
+    const db = this.db;
+    if (!this.withStaff) return '';
+    const free = this.g.staff.filter(m => m.room === undefined);
+    const who: string[] = [];
+    let salary = 0;
+    for (const post of db.rooms[type]?.staff ?? []) {
+      const role = post === DOCTOR ? standInOf(db, DOCTOR) : post;
+      if (!role || !db.roles[role]?.hire) continue;
+      const i = free.findIndex(m => m.role === role);
+      salary += i >= 0 ? free.splice(i, 1)[0].salary : salaryOf(db, role, 3);
+      who.push(lower(named(db.roles[role]?.name, role)));
+    }
+    return who.length ? T.build.ghostStaff(who.join(', '), money(salary)) : '';
   }
 
   /** Куда и как ставится предмет под курсором: помещение, поворот, клетки, можно ли. */
@@ -334,6 +407,38 @@ export class Builder {
     const db = this.db;
     const hover = this.hover;
     switch (this.tool) {
+      case 'ready': {
+        if (!this.ready) {
+          this.ghost = { ok: true, text: T.build.hintReady };
+          break;
+        }
+        const { type, size } = this.ready;
+        const name = `${named(db.rooms[type]?.name, type)} ${size}`;
+        const g = hover ? this.readyAt(hover) : undefined;
+        if (!g?.draft) {
+          this.ghost = { ok: true, text: T.build.hintReady };
+          break;
+        }
+        const d = g.draft;
+        const need = g.ok ? this.short(g.cost) : 0;
+        const ok = g.ok && need === 0;
+        gh.room(d.rect, ok, d.door);
+        gh.door(d.door, FACE[g.rot], ok, GHOST_DOOR);
+        gh.furniture(
+          `${type}|${size}|${g.rot}`,
+          d.items.map((it): Thing => {
+            const [fx, fy] = FACE[it.rot];
+            return { kind: it.kind, room: -1, type, cell: [it.x, it.y], cells: cellsOf(it, type), face: [fx, fy], yaw: yawOf(fx, fy), ...(it.eq ? { equipment: it.eq } : {}) };
+          }),
+          [d.rect.x, d.rect.y],
+          ok,
+        );
+        const what = T.build.ghostReady(named(db.rooms[type]?.name, type), size, d.rect.w, d.rect.h, money(g.ok ? g.cost : 0));
+        const staff = this.staffText(type);
+        this.ghost = need > 0 ? { ok: false, text: T.build.ghostBad(what, T.money.short(money(need))) }
+          : g.ok ? { ok: true, text: staff ? `${what} · ${staff}` : what } : { ok: false, text: T.build.ghostBad(name, whyText(db, site, g.why ?? { kind: 'unknown' })) };
+        break;
+      }
       case 'room': {
         if (!this.roomType) {
           this.ghost = { ok: true, text: T.build.hintNoRoom };

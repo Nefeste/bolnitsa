@@ -8,16 +8,18 @@
 // пациенты ходят, значки «ждёт долго» и «недоволен», значки помещений; вкладка «Пациенты» (Tab) — фильтр, клик — камера
 // летит к человеку, в карточке — путь с причиной ожидания; «Ушли» — путь ушедшего и почему; слой «Очереди и загрузка» (L);
 // ушедший, не дождавшись, идёт к выходу со значком. Часть 4 — режим врача: tools/app/e2e-doctor.mjs. Часть 5 — касса,
-// планёрка, обход: tools/app/e2e-economy.mjs. Ошибок в консоли и запросов наружу нет.
+// планёрка, обход: tools/app/e2e-economy.mjs. Часть 6 — готовые помещения: tools/app/e2e-ready.mjs. Ошибок в консоли и
+// запросов наружу нет.
 // Снимки — tools/app/out/e2e.png, e2e-build-*.png и e2e-flow-*.png; `--shots high` — снимки частей 2 и 3 в этом качестве
 // (на время снимка).
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|3|4|5] [--shots low|medium|high] [--port 8093]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|3|4|5|6] [--shots low|medium|high] [--port 8093]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { doctorPart } from './e2e-doctor.mjs';
 import { economyPart } from './e2e-economy.mjs';
 import { findChromium } from './e2e-lib.mjs';
+import { readyPart } from './e2e-ready.mjs';
 import { serve } from './serve.mjs';
 
 const arg = (k, d) => {
@@ -86,6 +88,8 @@ try {
   if (run(4)) await doctorPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   // часть 5 — касса, планёрка, обход (spec docs/specs/2026-10-economy.md): tools/app/e2e-economy.mjs
   if (run(5)) await economyPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  // часть 6 — готовые помещения (spec docs/specs/2026-10-ready-rooms.md): tools/app/e2e-ready.mjs
+  if (run(6)) await readyPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);
