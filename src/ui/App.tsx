@@ -33,7 +33,6 @@ const Btn = ({ on, onClick, children, title, disabled, id }: { on?: boolean; onC
 
 function TopBar({ hud, actions }: P) {
   const speeds: Speed[] = [1, 3, 12];
-  const last = hud.notices[0];
   return (
     <div className="top panel" id="top">
       <span className="clock" id="clock">
@@ -58,7 +57,17 @@ function TopBar({ hud, actions }: P) {
       </span>
 
       {hud.lag > 2 ? <span className="stat warn">{T.top.lag(Math.round(hud.lag))}</span> : null}
-      <span className="notice" title={hud.notices.map(n => `${clock(n.t)} ${n.text}`).join('\n')}>{last ? `🔔 ${clock(last.t)} ${last.text}` : '🔔'}</span>
+    </div>
+  );
+}
+
+/** Последнее извещение — под часами, целиком (в верхней полосе оно ужималось до многоточия); вся лента — в «Журнале». */
+function Notice({ hud }: P) {
+  const last = hud.notices[0];
+  if (!last) return null;
+  return (
+    <div className="notice panel" id="notice" title={hud.notices.map(n => `${clock(n.t)} ${n.text}`).join('\n')}>
+      🔔 {clock(last.t)} {last.text}
     </div>
   );
 }
@@ -547,7 +556,7 @@ export function App({ store, actions, names }: { store: Store; actions: Actions;
   return (
     <>
       <TopBar {...p} />
-      {/* под часами посередине: «закрыта» — что не так, подсказка первых минут — что сделать (spec 2026-10-aaa-polish) */}
+      {/* под часами посередине: «закрыта» — что не так, подсказка первых минут — что сделать, последнее извещение (spec 2026-10-aaa-polish) */}
       <div className="topcenter" id="topcenter">
         {hud.closed ? (
           <div className="banner panel" id="closed" title={T.top.closedHint}>
@@ -555,6 +564,7 @@ export function App({ store, actions, names }: { store: Store; actions: Actions;
           </div>
         ) : null}
         <HintStrip {...p} />
+        <Notice {...p} />
       </div>
       <ViewBar {...p} />
       <LeftTools {...p} />
