@@ -143,8 +143,10 @@ export const en: Strings = {
     intro: 'You are the head physician who stayed a doctor: build the hospital, hire people, keep the flow and the cash — and take the hardest case of the day yourself. The medicine is real, from clinical guidelines.',
     empty: 'Empty building',
     emptyHint: 'A 60 × 40 lot, a 48 × 28 building, two entrances — build from scratch. The clock is paused: Space starts it.',
-    preset: 'Ready hospital',
-    presetHint: 'The city hospital: 28 rooms and staff. You can rebuild it too.',
+    poly: 'Polyclinic',
+    polyHint: 'Laid out by the design codes: 13 rooms, waiting halls by the offices, the first office is yours. The free floor is yours to build on.',
+    preset: 'City hospital',
+    presetHint: '28 rooms with wards and an operating room, and staff. You can rebuild it too.',
     version: (v: string) => `prototype · version ${v}`,
   },
   hints: {

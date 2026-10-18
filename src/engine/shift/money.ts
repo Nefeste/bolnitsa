@@ -13,10 +13,10 @@ import { DAY, type ShiftState, SHIFT_START } from './types';
 type Economy = NonNullable<ShiftState['economy']>;
 
 /**
- * С чего начинается касса (spec «Начало»): пустое здание — бюджет песочницы «обычный» «Анамнеза»; готовая больница уже
- * построена — его доля, как у готовой амбулатории песочницы.
+ * С чего начинается касса (spec «Начало»): пустое здание — бюджет песочницы «обычный» «Анамнеза»; готовая больница —
+ * городская или поликлиника (spec 2026-10-real-hospital) — уже построена: его доля, как у готовой амбулатории песочницы.
  */
-export function startCash(db: ContentDb, start: 'empty' | 'preset'): number {
+export function startCash(db: ContentDb, start: 'empty' | 'preset' | 'poly'): number {
   const sb = db.economy.sandbox;
   return start === 'empty' ? sb.budgets.normal : Math.floor((sb.budgets.normal * sb.clinicShare) / 100);
 }

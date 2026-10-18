@@ -1,4 +1,4 @@
-// из anamnez: src/content/types.ts @ 96503ac, изменено: ContentDb.consults — «Просят посмотреть» (spec 2026-10-consults); ContentDb.day — сутки целиком (spec 2026-10-day); ContentDb.inflow и ContentDb.money, Consults.long — поток от больницы, касса ПК, долгий случай (spec 2026-10-economy)
+// из anamnez: src/content/types.ts @ 96503ac, изменено: ContentDb.consults — «Просят посмотреть» (spec 2026-10-consults); ContentDb.day — сутки целиком (spec 2026-10-day); ContentDb.inflow и ContentDb.money, Consults.long — поток от больницы, касса ПК, долгий случай (spec 2026-10-economy); ContentDb.sites и SitePlan — готовые больницы из готовых помещений (spec 2026-10-real-hospital)
 // Типы собранной медицинской базы (`docs/04-data-model.md` §1).
 //
 // Исходник — YAML в content/, собирает tools/content/build.ts. Здесь — то, что получает
@@ -874,6 +874,16 @@ export interface Preset {
   staff: { role: Id; room: number; later?: true }[];
 }
 
+/**
+ * Готовая больница из готовых помещений (content/hospital/sites, spec 2026-10-real-hospital): помещения в пустом здании игры
+ * в порядке постройки — тип, образец, левый верхний угол, поворот; `mine` — ваш кабинет. Люди — на всех должностях, кроме
+ * вашей.
+ */
+export interface SitePlan {
+  id: Id;
+  rooms: { type: Id; size: RoomSizeId; x: number; y: number; rot: Rot; mine?: true }[];
+}
+
 /** Баланс своей больницы (content/hospital/economy.yaml); числа — игровые. */
 export interface Economy {
   /** клетка коридора: постройка и содержание в день, ₽ */
@@ -1349,6 +1359,8 @@ export interface ContentDb {
   equipment: Record<Id, Equipment>;
   roles: Record<Id, StaffRole>;
   presets: Record<Id, Preset>;
+  /** готовые больницы из готовых помещений (spec 2026-10-real-hospital); нет (база тестов) — их нет */
+  sites?: Record<Id, SitePlan>;
   economy: Economy;
   /** «Просят посмотреть» (spec 2026-10-consults): пороги нанятого врача в потоке для ПК; нет — не просят (база тестов) */
   consults?: Consults;

@@ -87,7 +87,8 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # patient's path, the queues overlay; then the doctor mode: a consult, a whole case, «Take
                                    # the case», «My office»; then money: building from cash, «Until morning» to the 08:00
                                    # meeting, the «Обход» list; then ready rooms: four clicks open the empty building, R, one
-                                   # undo); screenshots in tools/app/out/; `-- --only 1|2|3|4|5|6` for one part
+                                   # undo; then the start screen's three cards and the polyclinic); screenshots in
+                                   # tools/app/out/; `-- --only 1|2|3|4|5|6|7` for one part
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
 npm run dist:win                   # build + Windows x64 zip → release/ (from Linux, no wine) — the only release file for now
@@ -98,6 +99,7 @@ npm run bench -- --mode flow --day             # the whole day to 10:00 of day 2
 npm run bench -- --mode flow --quick --flat    # flat arrivals by hour: the same patients as before the 24-hour day, to compare
 bun tools/bench/consults.ts                    # «Просят посмотреть»: share of hired doctors' cases that ask you (--probe: why these thresholds)
 bun tools/sim/economy.ts --seeds 1,2,3         # economy simulator: scripted hospitals for 7 days, cash, flow, reputation and the criteria
+bun tools/sim/halls.ts --flow 14               # the polyclinic under load: waiting halls by the offices vs at the entrance
 bun --cpu-prof --cpu-prof-dir=tools/bench/out/prof tools/bench/bench.ts --mode flow --only 200 --quick --until 11
 bun tools/bench/profile.ts tools/bench/out/prof/<file>.cpuprofile 30 --under catchUp
 bun tools/test/make-review-fixture.ts          # only with the ORIGINAL engine: fingerprints of the eager review
@@ -120,10 +122,12 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
 - `src/engine/` — the engine copied from Anamnez (pure TypeScript; see «Hard rules»); `shift/slice.ts` is ours: who is
   where and what they are doing, for rendering. Building by mouse is ours too: `hospital/site.ts` (the lot, rooms as
   rectangles, items, doors, checks, the plan for the engine; a ready room — a catalog sample whole in one command,
-  `docs/specs/2026-10-ready-rooms.md`), `hospital/site-preset.ts` (the preset as a lot) and
-  `shift/site.ts` (the `site` command: deferred removal, undo, hiring) — `docs/specs/2026-10-build.md`. The whole
-  24-hour day of the PC flow is ours as well: `shift/day.ts` (outpatient hours, arrivals by hour of day), the 08:00
-  meeting and the morning round in `engine.ts`, shapes in `content/hospital/day.yaml` — `docs/specs/2026-10-day.md`.
+  `docs/specs/2026-10-ready-rooms.md`), `hospital/site-preset.ts` (the preset as a lot), `hospital/site-plan.ts` (a
+  hospital of ready rooms from a `content/hospital/sites/` record — the polyclinic,
+  `docs/specs/2026-10-real-hospital.md`) and `shift/site.ts` (the `site` command: deferred removal, undo, hiring) —
+  `docs/specs/2026-10-build.md`. The whole 24-hour day of the PC flow is ours as well: `shift/day.ts` (outpatient hours,
+  arrivals by hour of day), the 08:00 meeting and the morning round in `engine.ts`, shapes in `content/hospital/day.yaml`
+  — `docs/specs/2026-10-day.md`.
   `shift/journey.ts` is ours: the patient's path with the reason of every wait (PC flow only; one-line hooks in
   `engine.ts`) — `docs/specs/2026-10-flow-ui.md`.
   Money of the PC flow is ours: `shift/money.ts` (cash now, wages and upkeep by the hour, building from cash, the

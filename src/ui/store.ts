@@ -210,8 +210,8 @@ export interface Actions {
   demolish(room: string): void;
   hire(room: string, role: Id): void;
   dismiss(id: string): void;
-  /** начало игры: пустое здание или готовая больница */
-  startGame(kind: 'empty' | 'preset'): void;
+  /** начало игры: пустое здание, готовая больница или поликлиника */
+  startGame(kind: 'empty' | 'preset' | 'poly'): void;
   /** часть 3 (spec docs/specs/2026-10-flow-ui.md): фильтры «Пациентов», камера к человеку и выбор, слои карты */
   filterPatients(patch: Partial<PatientFilter>): void;
   focus(key: string): void;

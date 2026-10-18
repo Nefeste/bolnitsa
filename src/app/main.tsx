@@ -80,7 +80,7 @@ async function startOf(): Promise<Start> {
   const has = (k: string) => q.get(k) === '1' || args.includes(`--${k}`);
   const val = q.get('hospital') ?? (args.includes('--hospital') ? args[args.indexOf('--hospital') + 1] : null);
   if (has('bench') || has('shot')) return 'preset';
-  if (val === 'empty' || val === 'preset') return val;
+  if (val === 'empty' || val === 'preset' || val === 'poly') return val;
   store.set({ choose: true });
   return new Promise<Start>(resolve => {
     chosen = resolve;
