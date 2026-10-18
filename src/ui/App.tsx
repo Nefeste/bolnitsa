@@ -502,6 +502,12 @@ function BottomCard({ hud, actions, names }: P) {
         <div className="cardhead">
           <b id="card-title">{title}</b>
           {info.kind === 'patient' ? <span className={`badge t-${info.triage}`} title={T.triage[info.triage]} /> : null}
+          {/* «Следить» (spec docs/specs/2026-10-owner-play-2.md): камера идёт за ним; ушедший — только путь */}
+          {info.kind === 'patient' && info.gone ? null : (
+            <button type="button" id="card-follow" className={hud.following ? 'small on' : 'small'} title={T.card.followHint} onClick={actions.follow}>
+              {T.card.follow}
+            </button>
+          )}
           <button type="button" className="close" onClick={() => actions.select(undefined)} title="Esc">
             ✕
           </button>

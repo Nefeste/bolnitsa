@@ -272,12 +272,15 @@ describe('сутки целиком: детерминизм', () => {
     // ход часов через 08:00 — время через `until`
     apply(db, twin, { kind: 'advance', seconds: 100 });
     expect([twin.day, twin.journal]).toEqual([2, [{ kind: 'advance', seconds: 70 }]]);
-    // забрать больного у нанятого врача: дорога к нему — минута и больше, планёрка — посреди неё (время — не через `until`)
+    // забрать больного у нанятого врача: дорога к вам — часами игры (spec 2026-10-owner-play-2), команда времени не
+    // проживает; планёрка — посреди хода часов, и журнал новых суток — с её времени
     const p = Object.values(s.patients).find(x => x.status === 'inRoom' && x.by !== undefined && x.closed === undefined);
     expect(p).toBeDefined();
+    const t0 = s.t;
     apply(db, s, { kind: 'takeOver', id: p!.id });
+    expect([s.day, s.t]).toEqual([1, t0]);
+    apply(db, s, { kind: 'advance', seconds: 100 });
     expect(s.day).toBe(2);
-    expect(s.t).toBeGreaterThan(32 * H);
     expect(s.journal).toEqual([{ kind: 'advance', seconds: s.t - 32 * H }]);
   }, 180_000);
 });

@@ -178,6 +178,8 @@ export class Game {
   day = 0;
   lastSlice: Slice | null = null;
   selected: string | undefined;
+  /** «Следить» (spec docs/specs/2026-10-owner-play-2.md): за кем идёт камера — ключ человека на карте */
+  private following: string | undefined;
   readonly load: LoadTimes = { content: 0, furniture: 0, people: 0, scene: 0, total: 0 };
   firstFrameMs = 0;
   private last = 0;
@@ -454,7 +456,7 @@ export class Game {
    */
   private ffStop(notices: Notice[]): boolean {
     if (this.t >= this.ffUntil) return true;
-    return notices.some(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'consult' || n.kind === 'morning' || n.kind === 'worse');
+    return notices.some(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'consult' || n.kind === 'morning' || n.kind === 'worse' || n.kind === 'reached');
   }
 
   // ---------------------------------------------------------------- кадр
@@ -485,6 +487,12 @@ export class Game {
     this.crowd.rate = this.crowd.speed * GAME_PER_REAL;
     this.crowd.t = this.t;
     this.crowd.update(this.speed === 0 && !this.ff ? 0 : dt);
+    // «Следить» (spec 2026-10-owner-play-2): камера — за человеком; ушёл с карты — остаётся, где он был
+    if (this.following !== undefined) {
+      const w = this.crowd.walkers.get(this.following);
+      if (w) this.stage.cam.track(w.x, w.z, dt);
+      else this.unfollow();
+    }
     const b = performance.now();
     this.pickUnder();
     this.stage.frame(dt, (this.t % 86400) / 3600, this.crowd, this.pop.paint, k => this.pop.triageOf(k), this.ringKey(), this.pickOf());
@@ -538,6 +546,7 @@ export class Game {
       gpuMs: gs.length ? gs.reduce((x, y) => x + y, 0) / gs.length : null,
       people: this.crowd.walkers.size,
       selected: this.selected && sel ? { key: this.selected, info: sel } : undefined,
+      following: this.following !== undefined && this.following === this.ringKey(),
       doctor: { ...this.doctor.hud },
       economy: this.money.view(),
     });
@@ -650,7 +659,7 @@ export class Game {
    */
   private pickUnder() {
     const m = this.mouse;
-    const modal = this.doctor.open || this.money.open;
+    const modal = this.doctor.holding || this.money.open;
     if (!m.inside || m.drag || modal || this.builder.drag) this.under = { room: -1 };
     else {
       const key = this.builder.on ? undefined : this.stage.pickPerson(m.x, m.y, this.crowd);
@@ -729,13 +738,16 @@ export class Game {
 
   readonly actions: Actions = {
     setSpeed: s => {
-      // карта пациента открыта — мир стоит (spec 2026-10-doctor-mode, «Время в карте»); планёрка — «Продолжить» (spec 2026-10-economy)
-      if (this.doctor.open || this.money.open) return;
+      // ваш пациент перед вами, его карта открыта — часы стоят (spec 2026-10-owner-play-2); чужая карта — нет; планёрка —
+      // «Продолжить» (spec 2026-10-economy)
+      if (this.doctor.holding || this.money.open) return;
+      this.doctor.manualSpeed();
       this.setSpeed(s);
       this.hud();
     },
     untilMorning: () => {
-      if (this.doctor.open || this.money.open) return;
+      if (this.doctor.holding || this.money.open) return;
+      this.doctor.manualSpeed();
       // до планёрки в 08:00 (геймдизайн §2, «До утра»; spec 2026-10-economy) — как можно быстрее, до первого события автопаузы
       const day = Math.floor(this.t / 86400) * 86400;
       this.ffUntil = this.t % 86400 < 8 * 3600 ? day + 8 * 3600 : day + 86400 + 8 * 3600;
@@ -754,9 +766,14 @@ export class Game {
       this.stage.cam.projection = p;
       this.store.set({ projection: p });
     },
-    overview: () => this.stage.cam.overview(),
+    overview: () => {
+      this.following = undefined;
+      this.stage.cam.overview();
+    },
     rotate: k => this.stage.cam.rotate(k),
     select: key => {
+      // выбрали другого — камера его отпускает (spec 2026-10-owner-play-2)
+      if (key !== this.selected) this.following = undefined;
       this.selected = key;
       this.roomSel = undefined;
       this.hud();
@@ -829,6 +846,15 @@ export class Game {
     // «Найти» из панели врача (spec docs/specs/2026-10-owner-play.md): в больнице — к нему; идёт к выходу — к нему; ушёл —
     // карточка с путём
     find: id => this.actions.focus(this.pop.keyOf(id) ?? this.pop.walkerKey(id) ?? `id:${id}`),
+    // «Следить» (spec docs/specs/2026-10-owner-play-2.md): камера держит выбранного в середине кадра; ещё раз — отпустить
+    follow: () => {
+      const key = this.ringKey();
+      this.following = !key || this.following === key ? undefined : key;
+      // издалека не разглядеть — ближе, плавно
+      const half = this.stage.cam.half;
+      if (this.following && half > 14) this.stage.cam.zoom(12 / half);
+      this.hud();
+    },
     toggleLayers: () => {
       const l = this.store.get().layers;
       this.store.set({ layers: { ...l, open: !l.open } });
@@ -932,7 +958,15 @@ export class Game {
     if (this.doctor.close()) return;
     if (this.money.open) return this.money.dispatch({ kind: 'close' });
     if (this.builder.cancel()) this.hud();
+    else if (this.following) this.unfollow();
     else this.actions.select(undefined);
+  }
+
+  /** Отпустить камеру (spec 2026-10-owner-play-2): сдвиг мышью или клавишами, Esc, общий план. */
+  private unfollow() {
+    if (this.following === undefined) return;
+    this.following = undefined;
+    this.hud();
   }
 
   // ---------------------------------------------------------------- ввод
@@ -981,6 +1015,7 @@ export class Game {
       if (!this.mouse.drag) return;
       const dx = e.clientX - this.mouse.drag.x;
       const dy = e.clientY - this.mouse.drag.y;
+      if (dx || dy) this.unfollow();
       this.stage.cam.pan(dx, dy, el.clientHeight);
       this.mouse.drag = { x: e.clientX, y: e.clientY, moved: this.mouse.drag.moved + Math.abs(dx) + Math.abs(dy), button: this.mouse.drag.button };
     });
@@ -1006,8 +1041,8 @@ export class Game {
     window.addEventListener('keydown', e => {
       if ((e.target as HTMLElement | null)?.tagName === 'INPUT') return;
       const k = e.code;
-      // карта пациента открыта: клавиши игры молчат, Esc — закрыть карту (spec 2026-10-doctor-mode)
-      if (this.doctor.open && k !== 'Escape') return;
+      // ваш пациент перед вами: клавиши игры молчат, Esc — закрыть карту (spec 2026-10-doctor-mode); чужая карта — нет
+      if (this.doctor.holding && k !== 'Escape') return;
       if (k === 'Space') {
         e.preventDefault();
         this.actions.setSpeed(this.speed === 0 && !this.ff ? 1 : 0);
@@ -1059,7 +1094,10 @@ export class Game {
       if (this.mouse.y < m) dy = v;
       else if (this.mouse.y > h - m) dy = -v;
     }
-    if (dx || dy) this.stage.cam.pan(dx, dy, h);
+    if (dx || dy) {
+      this.unfollow();
+      this.stage.cam.pan(dx, dy, h);
+    }
   }
 
   /** Названия из базы — для панелей. */

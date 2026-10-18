@@ -27,6 +27,15 @@ function Row({ r, children, hint, find }: { r: PatientRow; children?: ReactNode;
   );
 }
 
+/** «Открыть карту» (spec docs/specs/2026-10-owner-play-2.md): у любого пациента; чужая — для чтения, часы идут. */
+function OpenCard({ id, open, prefix = 'open', on }: { id: string; open: (id: string) => void; prefix?: string; on?: boolean }) {
+  return (
+    <button type="button" className={on ? 'small on' : 'small'} id={`${prefix}-${id}`} onClick={() => open(id)}>
+      {T.doctor.openCard}
+    </button>
+  );
+}
+
 /** «Найти» (spec docs/specs/2026-10-owner-play.md): камера к пациенту и его карточка на карте. */
 function Find({ id, find, prefix = 'find' }: { id: string; find: (id: string) => void; prefix?: string }) {
   return (
@@ -78,9 +87,14 @@ export function Dock({ hud, actions }: { hud: Hud; actions: Actions }) {
       <div className="dlists">
         {st.current ? (
           <>
-            <div className="label">{t.lists.office}</div>
+            {/* позвали — идёт к вам; на обследовании в другом кабинете — когда вернётся (spec 2026-10-owner-play-2) */}
+            <div className="label">{st.current.coming !== undefined ? t.lists.coming : t.lists.office}</div>
             <ul>
-              <Row r={st.current} find={find}>
+              <Row
+                r={st.current}
+                find={find}
+                hint={st.current.coming !== undefined ? t.comingAt(clock(st.current.coming)) : st.current.back !== undefined ? t.backAt(clock(st.current.back)) : undefined}
+              >
                 <button type="button" id="dock-open" className="small on" onClick={() => open(st.current!.id)}>
                   {t.openCard}
                 </button>
@@ -93,6 +107,7 @@ export function Dock({ hud, actions }: { hud: Hud; actions: Actions }) {
         <ul>
           {st.yours.map(r => (
             <Row key={r.id} r={r} hint={r.why ? t.why[r.why] : undefined} find={find}>
+              <OpenCard id={r.id} open={open} />
               <button type="button" className="small" disabled={!free || !st.office} onClick={() => take(r.id)}>
                 {t.call}
               </button>
@@ -105,6 +120,7 @@ export function Dock({ hud, actions }: { hud: Hud; actions: Actions }) {
             <ul>
               {st.others.map(r => (
                 <Row key={r.id} r={r} find={find}>
+                  <OpenCard id={r.id} open={open} />
                   <button type="button" className="small" disabled={!free || !st.office} onClick={() => take(r.id)}>
                     {t.call}
                   </button>
@@ -291,7 +307,7 @@ function Ask({ a, colleagues, actions }: { a: AskRow; colleagues: { id: string; 
         </button>
         {/* посмотреть, не забирая (spec docs/specs/2026-10-two-ways.md, F1) */}
         <button type="button" id={`ask-view-${a.id}`} title={T.doctor.viewHint} onClick={() => actions.doctor({ kind: 'open', id: a.id })}>
-          {T.doctor.view}
+          {T.doctor.openCard}
         </button>
         <Find id={a.id} find={actions.find} prefix="ask-find" />
         <button type="button" id={`ask-self-${a.id}`} onClick={() => actions.doctor({ kind: 'consult', id: a.id, answer: 'self' })}>
@@ -328,7 +344,7 @@ export function TakeCase({ info, said, actions }: { info: Extract<PersonInfo, { 
       </button>
       {/* карта больного — посмотреть, не забирая (spec docs/specs/2026-10-two-ways.md, F1) */}
       <button type="button" id="card-view" title={T.doctor.viewHint} onClick={() => actions.doctor({ kind: 'open', id: info.id })}>
-        {T.doctor.view}
+        {T.doctor.openCard}
       </button>
       {said ? <span className={`small ${said.ok ? 'ok' : 'bad'}`} id="card-said">{said.text}</span> : null}
     </div>

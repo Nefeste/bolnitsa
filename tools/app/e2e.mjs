@@ -10,16 +10,18 @@
 // ушедший, не дождавшись, идёт к выходу со значком. Часть 4 — режим врача: tools/app/e2e-doctor.mjs. Часть 5 — касса,
 // планёрка, обход: tools/app/e2e-economy.mjs. Часть 6 — готовые помещения: tools/app/e2e-ready.mjs. Часть 7 — поликлиника
 // по нормам проектирования, начало с экрана выбора: tools/app/e2e-poly.mjs. Часть 8 — специалисты: найм с должностью и
-// запись к ним, tools/app/e2e-specialists.mjs. Ошибок в консоли и запросов наружу нет.
+// запись к ним, tools/app/e2e-specialists.mjs. Часть 9 — игра владельца 18.10: «Открыть карту» у любого, «Ход приёма»,
+// «Следить», «Позвать» — карта, когда вошёл, tools/app/e2e-owner2.mjs. Ошибок в консоли и запросов наружу нет.
 // Снимки — tools/app/out/e2e.png, e2e-build-*.png и e2e-flow-*.png; `--shots high` — снимки частей 2 и 3 в этом качестве
 // (на время снимка).
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|3|4|5|6|7|8] [--shots low|medium|high] [--port 8093]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|3|4|5|6|7|8|9] [--shots low|medium|high] [--port 8093]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { doctorPart } from './e2e-doctor.mjs';
 import { economyPart } from './e2e-economy.mjs';
 import { findChromium } from './e2e-lib.mjs';
+import { ownerTwoPart } from './e2e-owner2.mjs';
 import { polyPart } from './e2e-poly.mjs';
 import { readyPart } from './e2e-ready.mjs';
 import { specialistsPart } from './e2e-specialists.mjs';
@@ -97,6 +99,8 @@ try {
   if (run(7)) await polyPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   // часть 8 — специалисты: найм с должностью и своя запись (spec docs/specs/2026-10-specialists.md)
   if (run(8)) await specialistsPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  // часть 9 — игра владельца 18.10: пауза для решений, карта у любого, камера за человеком (spec 2026-10-owner-play-2)
+  if (run(9)) await ownerTwoPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);

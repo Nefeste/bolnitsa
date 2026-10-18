@@ -1,9 +1,11 @@
 // Сценарий в браузере, часть 4 — режим врача (spec docs/specs/2026-10-doctor-mode.md, «Тесты»): готовая больница, зерно 11
 // и поток числами — 6 в час, скорая 1 в час (`flow=6,1`, как до потока от больницы части 5б), — нанятый терапевт просит
-// посмотреть больного к 09:08. Просьба — автопауза и вкладка; «Посмотреть» — карта пациента:
-// вопрос, осмотр, анализ с ожиданием результата, уровень «Врач» убирает «Похоже на», гипотеза, диагноз, лечение,
-// «Завершить приём» — разбор с оценками. Затем «Взять случай» у больного нанятого врача с карты, «Мой кабинет» —
-// переезд и обратно, «Не принимаю», «Свои больные». Снимки карты — `e2e-doctor-*.jpg` (JPEG: для документов).
+// посмотреть больного к 09:08. Просьба — автопауза и вкладка; «Посмотреть» — он идёт к вам, часы идут, карты нет; вошёл —
+// карта пациента и пауза (spec docs/specs/2026-10-owner-play-2.md): вопрос, осмотр, анализ — «Ждать»: карта закрыта,
+// часы идут, результат — карта и пауза; уровень «Врач» убирает «Похоже на», гипотеза, диагноз, лечение, «Завершить
+// приём» — разбор с оценками. Затем «Открыть карту» больного нанятого врача — для чтения, часы идут; «Взять случай» с
+// карты, «Мой кабинет» — переезд и обратно, «Не принимаю», «Свои больные». Снимки карты — `e2e-doctor-*.jpg` (JPEG: для
+// документов).
 import { join } from 'node:path';
 
 /** @param {{ page: import('playwright-core').Page, port: number, out: string, ok: (m: string) => void, fail: (m: string) => void, q: string, shots: string }} x */
@@ -60,14 +62,23 @@ export async function doctorPart({ page, port, out, ok, fail, q, shots }) {
   else fail(`«Найти»: ${JSON.stringify(found)}, в просьбе — «${ask.who}»`);
   await page.click('#card .close').catch(() => {});
 
-  // «Посмотреть» — карта пациента; мир стоит
+  // «Посмотреть» — он идёт к вам: карты нет, автопауза снята, часы идут (spec docs/specs/2026-10-owner-play-2.md)
+  const tl = (await hud()).t;
   await page.click(`#ask-look-${ask.id}`);
-  await page.waitForSelector('#dcard', { timeout: 20000 });
+  await until(id => window.__game.store.get().doctor?.state?.current?.id === id, ask.id);
+  const walking = await page.evaluate(() => ({
+    card: !!document.getElementById('dcard'), speed: window.__game.speed, coming: window.__game.store.get().doctor?.state?.current?.coming,
+    label: document.querySelector('#dock .dlists .label')?.textContent ?? '',
+  }));
+  if (!walking.card && walking.speed > 0 && walking.coming !== undefined && walking.label === 'Идёт к вам') ok(`«Посмотреть»: карты нет, часы идут ×${walking.speed}; в окне врача — «${walking.label}»`);
+  else fail(`«Посмотреть», пока идёт: ${JSON.stringify(walking)}`);
+  // вошёл — карта и пауза
+  await page.waitForSelector('#dcard', { timeout: 60000 });
   const c0 = await card();
   const title = await page.textContent('#dcard-title');
-  if (c0?.id === ask.id && c0.active) ok(`«Посмотреть» — карта: «${title}», больной у вас в кабинете`);
-  else fail(`карта: ${JSON.stringify({ id: c0?.id, active: c0?.active })}`);
   const t0 = (await hud()).t;
+  if (c0?.id === ask.id && c0.active && (await hud()).speed === 0 && t0 > tl) ok(`вошёл к вам — карта «${title}» и пауза (дорога ${Math.round((t0 - tl) / 60)} мин)`);
+  else fail(`карта: ${JSON.stringify({ id: c0?.id, active: c0?.active, speed: (await hud()).speed })}`);
   await page.keyboard.press('Digit3');
   await page.waitForTimeout(600);
   if ((await hud()).speed === 0 && (await hud()).t === t0) ok('карта открыта — часы стоят, скорость не меняется');
@@ -111,14 +122,20 @@ export async function doctorPart({ page, port, out, ok, fail, q, shots }) {
   else fail(`бланк: нет «Ждём» (${pend})`);
   const tw = (await hud()).t;
   for (let i = 0; i < 6 && (await page.$('#dcard-wait')); i++) {
-    const v = (await card()).version;
     await page.click('#dcard-wait');
-    await fresher(v);
+    // «Ждать» (spec 2026-10-owner-play-2): карта закрывается, часы идут; вернулся или готово — карта и пауза
+    await until(() => !document.getElementById('dcard'));
+    if (i === 0) {
+      const w = await hud();
+      if (w.speed > 0) ok(`«Ждать»: карта закрыта, часы идут ×${w.speed}`);
+      else fail(`«Ждать»: скорость ${w.speed}`);
+    }
+    await page.waitForSelector('#dcard', { timeout: 120000 });
     await page.waitForTimeout(150);
   }
   const lab = await card();
   const labDone = lab.groups.some(g => g.exam === labId);
-  if (labDone && lab.pending.length === 0) ok(`«Подождать»: результат пришёл к ${lab.clock} (часы +${Math.round(((await hud()).t - tw) / 60)} мин)`);
+  if (labDone && lab.pending.length === 0 && (await hud()).speed === 0) ok(`результат пришёл к ${lab.clock} — карта и пауза (часы +${Math.round(((await hud()).t - tw) / 60)} мин)`);
   else fail(`результат анализа: ${JSON.stringify({ labDone, pending: lab.pending })}`);
   await page.click('#tab-known');
   await page.waitForTimeout(200);
@@ -200,21 +217,30 @@ export async function doctorPart({ page, port, out, ok, fail, q, shots }) {
   const picked = await page.evaluate(() => window.__game.selected);
   if (picked !== target.key) await page.evaluate(k => window.__game.actions.select(k), target.key);
   await page.waitForSelector('#card-take', { timeout: 10000 });
-  // «Карта» — посмотреть, не забирая (spec docs/specs/2026-10-two-ways.md, F1): для чтения, кто ведёт и что думает, часы стоят
+  // «Открыть карту» — посмотреть, не забирая (spec docs/specs/2026-10-two-ways.md, F1; 2026-10-owner-play-2): для чтения, кто
+  // ведёт и что думает, «Ход приёма»; часы не держит — скорость меняется
   const tv = (await hud()).t;
   await page.click('#card-view');
   const viewed = await page.waitForSelector('#dcard-lead', { timeout: 20000 }).then(() => true, () => false);
   const vc = await card();
   const lead = viewed ? await page.textContent('#dcard-lead') : '';
-  if (viewed && vc && !vc.active && /навык \d/.test(lead) && /думает|ищет/.test(lead) && (await page.$('#dcard-take')) && (await hud()).t === tv)
-    ok(`«Карта» больного нанятого врача — для чтения: «${lead}», результатов ${vc.groups.length}, часы стоят`);
-  else fail(`«Карта»: ${JSON.stringify({ viewed, active: vc?.active, lead, t: [(await hud()).t, tv] })}`);
+  const course = await page.$$eval('#dcard-course .pair', els => els.length).catch(() => 0);
   if (viewed) ok(`снимок: ${join(out, 'e2e-doctor-3-view.jpg')} (${await shot('e2e-doctor-3-view.jpg')} КБ)`);
+  await page.keyboard.press('Digit3');
+  const runs = await until(t => window.__game.t > t && window.__game.speed === 12, tv, 20000).then(() => true, () => false);
+  if (viewed && vc && !vc.active && /навык \d/.test(lead) && /думает|ищет/.test(lead) && (await page.$('#dcard-take')) && (await page.$('.dcard.read')) && runs)
+    ok(`«Открыть карту» больного нанятого врача — для чтения: «${lead}», в «Ходе приёма» ${course}, часы идут`);
+  else fail(`«Открыть карту»: ${JSON.stringify({ viewed, active: vc?.active, lead, course, runs })}`);
+  await page.evaluate(() => window.__game.actions.setSpeed(0));
   await page.keyboard.press('Escape');
   await until(() => !document.getElementById('dcard'));
+  const still = await page.$('#card-take');
+  if (!still) await page.evaluate(k => window.__game.actions.select(k), target.key);
   await page.waitForSelector('#card-take', { timeout: 10000 });
   await page.click('#card-take');
-  const took = await page.waitForSelector('#dcard', { timeout: 20000 }).then(() => true, () => false);
+  // идёт к вам — часы на паузе (вы их остановили сами): пустить
+  await page.keyboard.press('Digit3');
+  const took = await page.waitForSelector('#dcard:not(.read)', { timeout: 60000 }).then(() => true, () => false);
   const tc = await card();
   if (took && tc?.active) ok(`«Взять случай» с карты: «${await page.textContent('#dcard-title')}» — у вас в кабинете, ${tc.groups.length} результатов врача`);
   else fail(`«Взять случай»: карта ${took}, ${JSON.stringify((await hud()).d.said)}`);

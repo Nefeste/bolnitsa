@@ -188,6 +188,8 @@ describe('вид карты', () => {
     const s = preset();
     const ask = untilAsk(s);
     apply(db, s, { kind: 'consult', id: ask.id, answer: 'look' });
+    // идёт к вам (spec 2026-10-owner-play-2): приём — когда войдёт
+    while (s.meet !== undefined) apply(db, s, { kind: 'advance', seconds: 15 });
     apply(db, s, { kind: 'hypothesis', id: 'cond.concussion' });
     const v = (level: 'trainee' | 'student' | 'resident' | 'doctor') => cardView(db, s, ask.id, level, 1)!;
     const student = v('student');
@@ -232,8 +234,10 @@ function talk(sim: ReturnType<typeof createSim>, seen: Seen, msg: ToSim): Extrac
 }
 
 /**
- * Приём целиком через поток расчёта: до просьбы кадрами по `step` игровых секунд; «Посмотреть»; вопрос, осмотр, анализ,
- * «Подождать», гипотеза, диагноз, лечение, «Завершить приём». Отдаёт срезы карты и сохранение.
+ * Приём целиком через поток расчёта: до просьбы кадрами по `step` игровых секунд; «Посмотреть»; вошёл — карта; вопрос,
+ * осмотр, анализ, «Подождать» — часами игры, до «готово» или «вернулся» (spec 2026-10-owner-play-2); гипотеза, диагноз,
+ * лечение, «Завершить приём». После «Посмотреть» кадры — по 5 секунд при любом `step`: окно отвечает на извещение в
+ * следующем кадре, и при одном шаге часов приём идёт в те же секунды. Отдаёт срезы карты и сохранение.
  */
 async function wholeCase(step: number) {
   const sim = createSim(db);
@@ -249,9 +253,20 @@ async function wholeCase(step: number) {
   expect(ask).toBeDefined();
   expect(seen.doctor?.asks.map(a => a.id)).toEqual([ask!.id]);
   talk(sim, seen, { kind: 'doctor', act: { kind: 'take', id: ask!.id } });
-  expect(seen.card?.id).toBe(ask!.id);
-  expect(seen.card?.active).toBe(true);
   const id = ask!.id;
+  // идёт к вам: карты нет, часы идут; вошёл — окно открывает его карту
+  expect(seen.card ?? null).toBeNull();
+  const until = (kinds: Notice['kind'][]) => {
+    for (let i = 0; i < (4 * 3600) / 5; i++) {
+      const r = talk(sim, seen, { kind: 'tick', seconds: 5, budgetMs: 1000 });
+      if (r.notices.some(n => kinds.includes(n.kind) && 'id' in n && n.id === id)) return;
+    }
+    throw new Error(`нет извещения: ${kinds.join(', ')}`);
+  };
+  until(['reached']);
+  talk(sim, seen, { kind: 'doctor', act: { kind: 'view', open: id, lang: 'ru', level: 'student' } });
+  expect(seen.card?.id).toBe(id);
+  expect(seen.card?.active).toBe(true);
   const act = (cmd: Command) => talk(sim, seen, { kind: 'doctor', act: { kind: 'case', id, cmd } });
   const groups = examsByAction(seen.card!.portrait);
   const v = () => seen.card!;
@@ -264,8 +279,11 @@ async function wholeCase(step: number) {
   act({ kind: 'exam', exam: lab });
   expect(v().pending.map(x => x.exam)).toContain(lab);
   for (let k = 0; k < 4 && (v().pending.length > 0 || v().away); k++) {
+    const t = (sim.handle({ kind: 'save' }) as { state: ShiftState }).state.t;
     act({ kind: 'waitResults' });
-    for (let i = 0; i < 20; i++) talk(sim, seen, { kind: 'tick', seconds: 0, budgetMs: 1000 });
+    // «Ждать» времени не проживает: ждут часами игры
+    expect((sim.handle({ kind: 'save' }) as { state: ShiftState }).state.t).toBe(t);
+    until(['resultsReady', 'reached']);
   }
   expect(v().pending).toEqual([]);
   expect(v().groups.some(g => g.exam === lab)).toBe(true);
@@ -308,7 +326,7 @@ describe('приём через поток расчёта', () => {
     const s = preset();
     for (const cmd of a.state.journal) apply(db, s, cmd);
     expect(hash(s)).toBe(hash(a.state));
-  });
+  }, 60_000);
 
   test('ответы без карты: «Пусть решает сам» и «Направить к …» — просьба уходит из списка', () => {
     for (const answer of ['self', 'refer'] as const) {
@@ -339,6 +357,9 @@ describe('приём через поток расчёта', () => {
     let id: string | undefined;
     for (let i = 0; i < 1800 && !id; i++) id = talk(sim, seen, { kind: 'tick', seconds: 4, budgetMs: 1000 }).notices.find(n => n.kind === 'consult')?.id;
     talk(sim, seen, { kind: 'doctor', act: { kind: 'take', id: id! } });
+    // идёт к вам — его карту можно открыть и прочитать (spec 2026-10-owner-play-2)
+    talk(sim, seen, { kind: 'doctor', act: { kind: 'view', open: id!, lang: 'en', level: 'student' } });
+    expect(seen.card!.where).toBe('coming');
     expect(seen.card!.title).toMatch(/years, [MF]$/);
     expect(seen.doctor!.asks).toEqual([]);
     setLang('ru');

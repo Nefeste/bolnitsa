@@ -413,7 +413,7 @@ export const doctorEn: DoctorStrings = {
     take: 'Take the case',
     takeHint: 'The case becomes yours with everything already found out',
     view: 'Chart',
-    viewHint: 'What their doctor knows: questions and answers, results, what they think and decided — the case stays with the doctor',
+    viewHint: 'What is known: questions and answers, the examination, what was ordered and the results, what their doctor thinks; the clock keeps going',
     lead: {
       seeking: 'looking for the diagnosis',
       thinks: (dx: string, conf?: string) => (conf ? `thinks: ${dx} — ${conf}` : `thinks: ${dx}`),
@@ -427,6 +427,7 @@ export const doctorEn: DoctorStrings = {
     queued: (name: string) => `${name} is in your queue: you are with another patient`,
     lists: {
       office: 'In your office',
+      coming: 'On the way to you',
       yours: 'Waiting for you',
       others: 'Waiting for a doctor',
       away: 'Waiting for results',
@@ -438,6 +439,8 @@ export const doctorEn: DoctorStrings = {
     more: (n: number) => `and ${patients(n)} more`,
     why: { taken: 'taken from a doctor', own: 'your group', back: 'with results', yours: 'yours' } as Record<string, string>,
     ready: (at: string) => `by ${at}`,
+    comingAt: (at: string) => `in at ${at}`,
+    backAt: (at: string) => `at a test, back at ${at}`,
     review: 'Review',
     level: 'Medicine',
     levels: { trainee: 'Intern', student: 'Student', resident: 'Resident', doctor: 'Doctor' } as Record<string, string>,
@@ -454,6 +457,7 @@ export const doctorEn: DoctorStrings = {
       notHere: 'This patient cannot be taken now: lying in a ward, in surgery or the visit is closed',
       unsorted: 'An ambulance patient is first triaged by the emergency nurse',
       notInOffice: 'This patient is no longer in your office',
+      coming: 'The patient is still on the way — the visit starts when they come in',
       dayClosed: 'The day is closed',
     } as Record<string, string>,
     asks: {
@@ -487,6 +491,11 @@ export const doctorEn: DoctorStrings = {
     card: {
       close: 'Close',
       closeHint: 'Close the card — the clock goes on at the previous speed',
+      closeReadHint: 'Close the card',
+      coming: (at: string) => `On the way to you — in at ${at}. The visit starts when they come in`,
+      course: 'Course of the visit',
+      courseEmpty: 'Nothing asked or ordered yet',
+      ordered: (name: string, at: string) => `ordered: ${name} — ready by ${at}`,
       talk: 'History',
       exam: 'Examination and results',
       decide: 'Hypotheses and decision',
@@ -516,6 +525,7 @@ export const doctorEn: DoctorStrings = {
       consult: (role: string) => `${role} asks you to look at a patient`,
       results: (name: string) => `${name}: results ready — waiting for you`,
       taken: (name: string) => `The case is yours: ${name}`,
+      coming: (name: string) => `${name} is on the way to you — the card opens when they come in`,
     },
   },
 };

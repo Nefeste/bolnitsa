@@ -14,7 +14,7 @@ import { complaintText } from '../engine/med/text';
 import { type Block, doctorRoom, examWhere, type Problem } from '../engine/hospital/requirements';
 import {
   atDoctor, bedsideEquipment, bedsideOf, boxBeds, brokenOf, colleaguesOf, forPlayer, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, type HospitalCtx,
-  hospitalCtx, icuBeds, moreUrgent, observationsOf, operationOf, type OrBlock, orBlock, reviewedCase, reviewFor, ricuBeds, targetPlace, wardBeds,
+  hospitalCtx, icuBeds, isOut, moreUrgent, observationsOf, operationOf, type OrBlock, orBlock, reviewedCase, reviewFor, ricuBeds, targetPlace, wardBeds,
 } from '../engine/shift/engine';
 import { inBox, inIcu, inRicu, orQueueOf, stayEquipment } from '../engine/shift/engine';
 import { minutesTo, targetStart, targetsFor } from '../engine/shift/targets';
@@ -32,7 +32,7 @@ export const LEVELS: readonly Difficulty[] = ['trainee', 'student', 'resident', 
 export const DEFAULT_LEVEL: Difficulty = 'student';
 
 /** Почему поток не сделал «Взять» или действие в карте (spec «Как случай становится вашим»). */
-export type Refusal = 'busy' | 'noOffice' | 'gone' | 'notHere' | 'unsorted' | 'notInOffice' | 'dayClosed';
+export type Refusal = 'busy' | 'noOffice' | 'gone' | 'notHere' | 'unsorted' | 'notInOffice' | 'dayClosed' | 'coming';
 
 /** Больной в окне врача — словами, без правды. */
 export interface PatientRow {
@@ -48,6 +48,10 @@ export interface PatientRow {
   why?: 'taken' | 'own' | 'back' | 'yours';
   /** ждёт результатов: к какому часу всё будет готово (игровые секунды) */
   ready?: number;
+  /** ваш, идёт к вам (spec 2026-10-owner-play-2): когда встретитесь, игровые секунды */
+  coming?: number;
+  /** ваш, на обследовании в другом кабинете: когда вернётся, игровые секунды */
+  back?: number;
 }
 
 /** Ваш лежащий — для обхода (spec docs/specs/2026-10-economy.md, «Обход»; как карточка обхода «Анамнеза», `RoundCard`). */
@@ -150,8 +154,10 @@ export interface CardView extends VisitView {
   id: string;
   /** у вас в кабинете и не закрыт — действия карты работают */
   active: boolean;
-  /** не у вас — где: ждёт вас, на обследованиях, закрыт, лежит, ушёл, у другого врача */
-  where?: 'waiting' | 'away' | 'done' | 'admitted' | 'gone' | 'other';
+  /** не у вас — где: идёт к вам, ждёт вас, на обследованиях, закрыт, лежит, ушёл, у другого врача */
+  where?: 'coming' | 'waiting' | 'away' | 'done' | 'admitted' | 'gone' | 'other';
+  /** идёт к вам (spec 2026-10-owner-play-2): когда встретитесь, игровые секунды */
+  coming?: number;
   /** ждёт вас и вы свободны — можно позвать */
   callable?: boolean;
   /** лежащий — блок обхода: как идёт, динамика, смена лечения (spec 2026-10-economy, «Обход»; чужой — 2026-10-two-ways) */
@@ -175,6 +181,11 @@ export function officeOf(db: ContentDb, s: ShiftState): string | undefined {
 const female = (p: ShiftPatient) => p.patient.sex === 'f';
 const minuteOfDay = (t: number) => Math.floor((t % DAY) / 60);
 const closedDay = (p: ShiftPatient) => Math.floor(p.closed!.at / DAY) + 1;
+
+/** Поток для ПК (spec 2026-10-owner-play-2): ваш пациент ещё идёт к вам — когда встретитесь; встретились — undefined. */
+export function comingAt(s: ShiftState): number | undefined {
+  return s.meet !== undefined && s.meet > s.t ? s.meet : undefined;
+}
 
 /** Ваш больной: у вас, ждёт вас, на ваших обследованиях, ваш закрытый или лежащий. */
 export function yoursOf(db: ContentDb, s: ShiftState, p: ShiftPatient): ShiftPatient['status'] | undefined {
@@ -212,7 +223,8 @@ export function doctorState(db: ContentDb, s: ShiftState): DoctorState {
   const order = new Map(s.queue.map((id, i) => [id, i]));
   for (const p of Object.values(s.patients)) {
     if (p.id === s.current) {
-      current = rowOf(db, p);
+      // идёт к вам или на обследовании в другом кабинете (spec 2026-10-owner-play-2): когда будет
+      current = { ...rowOf(db, p), ...(comingAt(s) !== undefined ? { coming: s.meet } : {}), ...(isOut(s, p) ? { back: p.out!.back } : {}) };
       continue;
     }
     if (p.closed) {
@@ -554,6 +566,8 @@ export function cardView(db: ContentDb, s: ShiftState, id: string, level: Diffic
   const p = s.patients[id];
   if (!p) return null;
   const mine = p.id === s.current;
+  // ваш, но ещё идёт к вам (spec 2026-10-owner-play-2): карта — для чтения, приём — когда войдёт
+  const coming = mine ? comingAt(s) : undefined;
   const now = mine && s.until !== undefined ? s.until : s.t;
   const seen = mine && s.until !== undefined ? seenAt(p, s.until) : p;
   const watching = p.by !== undefined && !p.closed;
@@ -606,7 +620,7 @@ export function cardView(db: ContentDb, s: ShiftState, id: string, level: Diffic
     ...(wardBeds(db, s).length > 0 || hospitalCtx(db, s).plan.rooms.some(r => db.rooms[r.type]?.icu || db.rooms[r.type]?.box) ? { settings: settingOptions(db, s, p) } : {}),
   });
   const yours = yoursOf(db, s, p);
-  const where: CardView['where'] = mine && !p.closed ? undefined
+  const where: CardView['where'] = mine && !p.closed ? (coming !== undefined ? 'coming' : undefined)
     : yours === 'waiting' ? 'waiting' : yours === 'away' ? 'away' : p.status === 'admitted' ? 'admitted' : p.closed ? 'done'
       : p.status === 'left' || p.status === 'unseen' ? 'gone' : 'other';
   // лежащий — блок обхода (spec 2026-10-economy); у нанятого врача — тоже: главврач меняет лечение (spec 2026-10-two-ways, F2)
@@ -615,18 +629,23 @@ export function cardView(db: ContentDb, s: ShiftState, id: string, level: Diffic
   const lead = leadOf(db, s, p, level);
   const take = !mine && !p.closed && yours === undefined && takeCommand(db, s, id).cmd !== undefined;
   return {
-    ...view, id, active: mine && !p.closed, ...(where ? { where } : {}), ...(where === 'waiting' && !s.current ? { callable: true } : {}), ...(round ? { round } : {}),
+    ...view, id, active: mine && !p.closed && coming === undefined, ...(where ? { where } : {}), ...(coming !== undefined ? { coming } : {}), ...(where === 'waiting' && !s.current ? { callable: true } : {}), ...(round ? { round } : {}),
     ...(lead ? { lead } : {}), ...(take ? { take: true as const } : {}),
   };
 }
 
-/** Подпись того, от чего зависит вид карты: изменилась — карту пересчитать. */
+/**
+ * Подпись того, от чего зависит вид карты: изменилась — карту пересчитать. Ваш приём — и по минутам (часы в шапке); карта
+ * для чтения — только по событиям (spec 2026-10-owner-play-2: часы идут, вид стоит ~10 мс): ответ или результат нанятого
+ * врача пришёл — его время настало.
+ */
 function cardKey(s: ShiftState, id: string): string {
   const p = s.patients[id];
   if (!p) return 'gone';
+  const live = s.current === id && comingAt(s) === undefined && !p.closed;
   return [
-    p.step, p.results.length, p.pending.length, p.status, p.closed ? `${p.closed.at}:${p.closed.outcome.kind}` : '', s.current ?? '', s.until ?? '', p.out?.back ?? '',
-    JSON.stringify(p.draft), Math.floor(s.t / 60), s.day, s.dayOpen, p.by ?? '', (s.consults ?? []).length,
+    p.step, p.results.length, p.pending.length, p.status, p.closed ? `${p.closed.at}:${p.closed.outcome.kind}` : '', s.current ?? '', s.until ?? '', p.out?.back ?? '', s.meet ?? '',
+    JSON.stringify(p.draft), live ? Math.floor(s.t / 60) : p.results.filter(r => r.at <= s.t).length, s.day, s.dayOpen, p.by ?? '', (s.consults ?? []).length,
     // что думает нанятый врач (spec 2026-10-two-ways, F1)
     p.phase?.diagnosis ?? '', p.phase?.confidence ?? '',
     // обход (spec 2026-10-economy): сменили лечение, операция пошла

@@ -270,6 +270,19 @@ export class IsoCamera {
     this.anchor = null;
   }
 
+  /**
+   * «Следить» (spec docs/specs/2026-10-owner-play-2.md): точка взгляда плавно идёт за человеком в (x, z); масштаб колесом
+   * — к нему, а не к курсору.
+   */
+  track(x: number, z: number, dt: number) {
+    this.fly = null;
+    this.anchor = null;
+    const k = Math.min(1, dt * 6);
+    this.target.x += (x - this.target.x) * k;
+    this.target.z += (z - this.target.z) * k;
+    this.clampTarget();
+  }
+
   /** Летит ли камера сейчас. */
   get flying(): boolean {
     return this.fly !== null;

@@ -8,7 +8,7 @@ import { apply, catchUp, newFlowShift, prepareFinish } from '../engine/shift/eng
 import { sliceOf } from '../engine/shift/slice';
 import type { Command, Notice, ShiftState } from '../engine/shift/types';
 import { patientName } from './caseView';
-import { DoctorDesk, officeOf, takeCommand } from './doctor';
+import { comingAt, DoctorDesk, officeOf, takeCommand } from './doctor';
 import { Handles, packSlice } from './pack';
 import type { DoctorOut, FromSim, PathView, ToSim, World } from './protocol';
 
@@ -120,11 +120,15 @@ export function createSim(db: ContentDb): SimHost {
               const t = takeCommand(db, s, act.id);
               if (t.refused) return slice(before, { act: 'take', id: act.id, why: t.refused });
               const notices = t.cmd ? [...before, ...apply(db, s, t.cmd)] : before;
-              if (!t.cmd || s.current === act.id) desk.focus = act.id;
+              // позвали — карта не открывается, пока он идёт к вам (spec 2026-10-owner-play-2): окно откроет её на «вошёл к вам»
+              if (!t.cmd || (s.current === act.id && comingAt(s) === undefined)) desk.focus = act.id;
+              // идёт к вам: открытая карта закрывается — часы идут
+              else if (s.current === act.id) desk.focus = null;
               return slice(notices);
             }
             // действие в карте — только с тем, кто у вас в кабинете: окно и поток могли разойтись на кадр
             if (s.current !== act.id) return slice(before, { act: 'case', id: act.id, why: 'notInOffice' });
+            if (comingAt(s) !== undefined) return slice(before, { act: 'case', id: act.id, why: 'coming' });
             return slice([...before, ...apply(db, s, act.cmd)]);
           }
           case 'tick': {

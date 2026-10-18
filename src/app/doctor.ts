@@ -1,7 +1,9 @@
 // Режим врача в окне (spec docs/specs/2026-10-doctor-mode.md, «Окно»): что пришло из потока — состояние врача и вид карты;
-// открыть и закрыть карту (мир стоит, пока она открыта; закрыли — прежняя скорость); действия карты и окна врача —
-// командами в поток; автопауза на просьбу и результаты; фигура врача на карте. Правды о больном окно не видит: вид карты
-// строит поток расчёта, отсюда — только знание о медицине из базы (caseView.ts: списки обследований и «Что это?»).
+// открыть и закрыть карту; часы стоят, только когда нужно ваше решение (spec docs/specs/2026-10-owner-play-2.md): ваш
+// пациент перед вами и открыта его карта — вошёл, вернулся, готов результат; чужая карта часы не останавливает. Действия
+// карты и окна врача — командами в поток; автопауза на просьбу и результаты; фигура врача на карте. Правды о больном
+// окно не видит: вид карты строит поток расчёта, отсюда — только знание о медицине из базы (caseView.ts: списки
+// обследований и «Что это?»).
 import type { BodySystem } from '../content/types';
 import type { SiteResult } from '../engine/hospital/site';
 import { type Command, type Difficulty, type Notice } from '../engine/shift/types';
@@ -23,8 +25,12 @@ function levelOfUrl(): Difficulty {
 
 export class Doctor {
   hud: DoctorHud = { ...initialDoctor, level: levelOfUrl() };
-  /** скорость до того, как открыли карту: закрыли — она же */
+  /** скорость до того, как своя карта остановила часы: закрыли — она же; null — часы не держит */
   private before: Speed | null = null;
+  /** чья карта держит часы */
+  private heldId: string | undefined;
+  /** скорость до автопаузы на просьбу или результаты: ответили или позвали — она же; поменяли скорость сами — забыта */
+  private stopped: Speed | null = null;
   /** собирать «За это время»: идёт действие карты */
   private collecting = false;
   /** где стоит фигура врача — номер помещения плана; -1 — фигуры нет */
@@ -34,9 +40,14 @@ export class Doctor {
 
   constructor(private g: Game) {}
 
-  /** Открыта ли карта пациента: мир стоит, скорость не меняется. */
+  /** Открыта ли карта пациента. */
   get open(): boolean {
     return this.hud.card !== undefined;
+  }
+
+  /** Держит ли часы своя карта: пациент перед вами — скорость не меняется, пока карта открыта. */
+  get holding(): boolean {
+    return this.before !== null;
   }
 
   /** Смена началась: окну — база для знания о медицине (списки обследований, их цена, «Что это?»); потоку — язык, уровень. */
@@ -59,55 +70,107 @@ export class Doctor {
 
   onSlice(s: Slice) {
     if (s.doctor) {
-      this.hud.state = s.doctor;
+      const st = s.doctor;
+      this.hud.state = st;
       // кого позвать после разбора — только свободному: тот же объект, пока список тот же
-      const next = s.doctor.current ? undefined : (s.doctor.yours[0] ?? s.doctor.others[0]);
+      const next = st.current ? undefined : (st.yours[0] ?? st.others[0]);
       if (next?.id !== this.hud.next?.id || next?.who !== this.hud.next?.who) this.hud.next = next ? { id: next.id, who: next.who } : undefined;
       this.placeFigure();
-      const queued = this.taking ? s.doctor.yours.find(r => r.id === this.taking) : undefined;
-      if (queued && !s.doctor.current) this.taking = undefined;
-      else if (queued) {
-        this.say(true, T.doctor.queued(queued.who));
+      if (this.taking && st.current?.id === this.taking) {
+        // позвали или взяли — идёт к вам: часы идут, автопаузу игры — снять (spec 2026-10-owner-play-2)
+        this.say(true, st.current.coming !== undefined ? T.doctor.notices.coming(st.current.who) : T.doctor.notices.taken(st.current.who));
+        if (st.current.coming !== undefined) this.unstop();
         this.taking = undefined;
+      } else if (this.taking) {
+        const queued = st.yours.find(r => r.id === this.taking);
+        if (queued && st.current) {
+          this.say(true, T.doctor.queued(queued.who));
+          this.taking = undefined;
+        }
       }
     }
     if (s.card !== undefined) {
-      const was = this.open;
       if (s.card) this.hud.card = s.card;
       else delete this.hud.card;
-      if (s.card && !was) this.pause();
-      if (!s.card && was) this.resume();
+      this.settle();
     }
     if (s.refused) {
       this.say(false, T.doctor.refused[s.refused.why] ?? s.refused.why);
       this.taking = undefined;
     }
-    if (this.taking && this.hud.card?.id === this.taking) {
-      this.say(true, T.doctor.notices.taken(this.hud.card.title));
-      this.taking = undefined;
-    }
     for (const n of s.notices) this.notice(n);
   }
 
-  /** Извещение движка: автопауза на просьбу и результаты ваших; «За это время», пока идёт действие карты. */
+  /**
+   * Часы и своя карта (spec 2026-10-owner-play-2): ваш пациент перед вами и приём идёт — стоят; открыли чужую — идут; своя
+   * перестала быть приёмом — разбор читают до «Закрыть», а отпустили или вышли к срочному — карта закрывается.
+   */
+  private settle() {
+    const c = this.hud.card;
+    if (c?.active) {
+      if (!this.holding) this.hold(c.id);
+      return;
+    }
+    if (!this.holding) return;
+    if (c && c.id === this.heldId) {
+      if (c.decision) return;
+      delete this.hud.card;
+      this.view(null);
+    }
+    this.release();
+  }
+
+  /**
+   * Извещение движка: ваш пациент вошёл — его карта и пауза; автопауза на просьбу и результаты ваших; «За это время», пока
+   * идёт действие карты.
+   */
   private notice(n: Notice) {
-    if (this.open && this.collecting) {
+    if (this.holding && this.collecting) {
       const line = this.meanwhileText(n);
       if (line) this.hud.meanwhile = [...this.hud.meanwhile, line];
     }
     // «стало хуже» (spec docs/specs/2026-10-economy.md, «Обход»): строки обхода отмечены до следующей планёрки
     if (n.kind === 'morning') this.hud.worse = [];
     if (n.kind === 'worse') this.hud.worse = [...(this.hud.worse ?? []), n.id];
-    if (!this.hud.autopause || this.open) return;
+    // вошёл к вам, вернулся с обследования (spec 2026-10-owner-play-2): решать — вам; карта и пауза всегда — вы его звали
+    if (n.kind === 'reached') return this.own(n.id);
+    if (!this.hud.autopause || this.holding) return;
     if (n.kind === 'consult') {
-      this.g.setSpeed(0);
+      this.stop();
       this.g.store.set({ tab: 'asks' });
-    } else if (n.kind === 'resultsReady') this.g.setSpeed(0);
-    else if (n.kind === 'worse') {
+    } else if (n.kind === 'resultsReady') {
+      // у вас в кабинете — его карта и пауза; ушёл на снимок — карта, когда вернётся; отпущенный ждать — пауза и строка
+      const cur = this.hud.state?.current;
+      if (cur?.id !== n.id) this.stop();
+      else if (cur.coming === undefined && (cur.back === undefined || cur.back <= this.g.t)) this.own(n.id);
+    } else if (n.kind === 'worse') {
       // автопауза и окно врача раскрыто: обход — в нём
-      this.g.setSpeed(0);
+      this.stop();
       this.hud.folded = false;
     }
+  }
+
+  /** Карта вашего пациента: часы встанут, когда она придёт (`settle`). */
+  private own(id: string) {
+    if (this.hud.card?.id === id && this.hud.card.active) return;
+    this.view(id);
+  }
+
+  /** Автопауза игры: скорость запомнить — снимется, когда ответите или позовёте. */
+  private stop() {
+    if (this.g.speed > 0) this.stopped = this.g.speed;
+    this.g.setSpeed(0);
+  }
+
+  /** Снять автопаузу игры: часы — с прежней скоростью, если вы их с тех пор не трогали. */
+  private unstop() {
+    if (this.stopped !== null && this.g.speed === 0 && !this.g.ff) this.g.setSpeed(this.stopped);
+    this.stopped = null;
+  }
+
+  /** Скорость поменяли сами: автопаузу игры больше не снимать. */
+  manualSpeed() {
+    this.stopped = null;
   }
 
   private meanwhileText(n: Notice): string | undefined {
@@ -160,27 +223,30 @@ export class Doctor {
     this.hud.said = { ok, text };
   }
 
-  // ---------------------------------------------------------------- карта: мир стоит
+  // ---------------------------------------------------------------- своя карта: часы стоят
 
-  private pause() {
-    this.before = this.g.speed;
+  private hold(id: string) {
+    this.before = this.g.ff ? 1 : this.g.speed;
+    this.heldId = id;
     this.g.ff = false;
     this.g.speed = 0;
     this.hud.meanwhile = [];
   }
 
-  private resume() {
-    const back = this.before ?? 0;
+  private release() {
+    if (this.before === null) return;
+    const back = this.before;
     this.before = null;
+    this.heldId = undefined;
     this.collecting = false;
     this.g.speed = back;
   }
 
-  /** Закрыть карту (Esc, «Закрыть»): поток больше не шлёт её вид. */
+  /** Закрыть карту (Esc, «Закрыть»): поток больше не шлёт её вид; держала часы — идут с прежней скоростью. */
   close(): boolean {
     if (!this.open) return false;
     delete this.hud.card;
-    this.resume();
+    this.release();
     this.view(null);
     this.g.refresh();
     return true;
@@ -208,11 +274,20 @@ export class Doctor {
         if (!id) break;
         this.hud.meanwhile = [];
         this.collecting = true;
-        for (const cmd of a.kind === 'act' ? [a.cmd] : a.cmds) client.doctor({ kind: 'case', id, cmd });
+        const cmds = a.kind === 'act' ? [a.cmd] : a.cmds;
+        for (const cmd of cmds) client.doctor({ kind: 'case', id, cmd });
+        // «Ждать» (spec 2026-10-owner-play-2): решать пока нечего — карта закрывается, часы идут; вернётся или будет готово
+        // — карта и пауза
+        if (cmds.some(c => c.kind === 'waitResults')) {
+          this.close();
+          return;
+        }
         break;
       }
       case 'consult':
         client.command({ kind: 'consult', id: a.id, answer: a.answer, ...(a.to ? { to: a.to } : {}) });
+        // ответили на просьбу — автопаузу игры снять
+        this.unstop();
         break;
       case 'mine':
         client.command({ kind: 'mine', systems: a.systems as BodySystem[] });
@@ -244,7 +319,10 @@ export class Doctor {
         break;
       case 'next': {
         const next = this.hud.state?.yours[0];
-        if (next) client.doctor({ kind: 'take', id: next.id });
+        if (next) {
+          this.taking = next.id;
+          client.doctor({ kind: 'take', id: next.id });
+        }
         break;
       }
     }

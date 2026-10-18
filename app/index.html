@@ -139,6 +139,9 @@
     .dot.t-red { background: var(--red); }
     .dot.t-yellow { background: var(--yellow); }
     .right .patrow { display: flex; flex-direction: column; gap: 1px; padding: 3px 7px; }
+    .patli { display: flex; align-items: stretch; gap: 4px; }
+    .patli .patrow { flex: 1 1 auto; min-width: 0; }
+    .patli .patopen { flex: 0 0 auto; align-self: center; }
     .patrow .ptitle { display: flex; align-items: center; gap: 6px; }
     .patrow .ptext { color: var(--muted); font-size: 12px; }
     .mood { display: inline-flex; }
@@ -174,6 +177,9 @@
     .prow.t-red, .ask.t-red { border-left-color: var(--red); }
     .prow.t-yellow, .ask.t-yellow { border-left-color: var(--yellow); }
     .prow .who { flex: 1; min-width: 0; }
+    /* «Найти», «Открыть карту», «Позвать» (spec docs/specs/2026-10-owner-play-2.md) — строкой ниже имени: окно узкое */
+    .prow:not(.ward) { flex-wrap: wrap; row-gap: 2px; }
+    .prow:not(.ward) .who { flex: 1 1 100%; }
     .dlevels { display: inline-flex; flex-wrap: wrap; gap: 3px; align-items: center; }
     .dlevels .label { margin: 0 4px 0 0; }
     .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin-top: 4px; }
@@ -195,6 +201,11 @@
     .dwait { background: rgba(76,175,110,.15); }
     .dwait > span { flex: 1; }
     .dcols { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1.15fr 1.1fr; gap: 10px; margin-top: 6px; }
+    /* чужая карта — для чтения (spec docs/specs/2026-10-owner-play-2.md): уже, одна лента; часы идут, план виден по бокам */
+    .dcard.read { left: max(1.5%, calc(50% - 330px)); right: max(1.5%, calc(50% - 330px)); }
+    .dcourse { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin-top: 6px; padding-right: 2px; }
+    .dcourse h3 { margin: 0 0 2px; font-size: 13px; color: var(--accent); text-transform: uppercase; letter-spacing: .05em; }
+    .pair.wait .doc { background: rgba(255,255,255,.07); color: var(--muted); }
     .dcol { display: flex; flex-direction: column; min-height: 0; background: rgba(255,255,255,.03); border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; }
     .dcol h3 { margin: 0 0 4px; font-size: 13px; color: var(--accent); text-transform: uppercase; letter-spacing: .05em; }
     .dscroll, .talk { flex: 1; min-height: 0; overflow-y: auto; }

@@ -1,12 +1,14 @@
 // Карта пациента на ПК (spec docs/specs/2026-10-doctor-mode.md, «Карта пациента»; геймдизайн §6): большое окно поверх
 // карты, шапка и три колонки — опрос · осмотр и результаты · гипотезы и решение; после «Завершить приём» — итог и разбор.
+// Чужая карта и ваш, пока он не вошёл, — для чтения (spec docs/specs/2026-10-owner-play-2.md): окно уже, одна лента «Ход
+// приёма» по времени, без кнопок действий.
 // Приём «Анамнеза» целиком (его PatientCard, Talk, Examine, Referral, Differential, DecisionScreen, OutcomeScreen —
 // логика та же, разметка своя). Вид приходит из потока расчёта готовым (правды в нём нет); отсюда — только знание о
 // медицине из базы: списки обследований, их минуты и цена, «Что это?».
 import { memo, type ReactNode, useState } from 'react';
 import type { Id } from '../../content/types';
 import type { Command, Difficulty } from '../../engine/shift/types';
-import { money, T } from '../../i18n';
+import { clock, money, T } from '../../i18n';
 import {
   conditionTerm, examInfo, examsByAction, examTerm, findingInfo, lifeHistory, type Line, type ResultGroup, type TermInfo, treatmentTerm,
 } from '../../sim/caseView';
@@ -45,19 +47,23 @@ function CardWindow({ v, level, meanwhile, next, actions }: P) {
   const act = (cmd: Command) => actions.doctor({ kind: 'act', cmd });
   const pending = (v.pending.length > 0 || !!v.away) && !v.decision && v.active;
   const stepOut = !pending && !!v.canStepOut && v.active && !v.decision;
+  // для чтения: не ваш приём сейчас — часы идут, действий нет
+  const read = !v.active && !v.decision;
   return (
-    <div className="dcard panel" id="dcard" role="dialog" aria-labelledby="dcard-title">
+    <div className={read ? 'dcard panel read' : 'dcard panel'} id="dcard" role="dialog" aria-labelledby="dcard-title">
       <div className="dhead">
         <div className="dtitle">
           <b id="dcard-title">{v.title}</b>
           {v.job ? <span className="muted"> · {v.job}</span> : null}
           <span className="mono" id="dcard-clock">
             {' '}
-            · {v.clock} · {t.spentShort(v.minutesSpent, money(v.money))}
+            {/* для чтения — без часов: часы идут, вид — по событиям */}
+            · {read ? '' : `${v.clock} · `}
+            {t.spentShort(v.minutesSpent, money(v.money))}
           </span>
         </div>
-        <Levels level={level} actions={actions} prefix="card" />
-        <button type="button" id="dcard-close" className="close" onClick={() => actions.doctor({ kind: 'close' })} title={`Esc — ${c.closeHint}`}>
+        {read ? null : <Levels level={level} actions={actions} prefix="card" />}
+        <button type="button" id="dcard-close" className="close" onClick={() => actions.doctor({ kind: 'close' })} title={`Esc — ${read ? c.closeReadHint : c.closeHint}`}>
           ✕ {c.close}
         </button>
       </div>
@@ -82,6 +88,8 @@ function CardWindow({ v, level, meanwhile, next, actions }: P) {
               <b>{v.lead.by}</b> · {v.lead.text}
               {v.where === 'admitted' ? ` · ${c.notActive.admitted}` : ''}
             </span>
+          ) : v.where === 'coming' && v.coming !== undefined ? (
+            c.coming(clock(v.coming))
           ) : (
             c.notActive[v.where ?? 'other']
           )}
@@ -97,7 +105,7 @@ function CardWindow({ v, level, meanwhile, next, actions }: P) {
           ) : null}
         </div>
       ) : null}
-      {v.hints.length > 0 && !v.decision ? (
+      {v.hints.length > 0 && !v.decision && !read ? (
         <div className="dlikely" id="dcard-likely">
           <b>{t.likelyShort}:</b> {v.hints.map(h => `${h.name} — ${h.word ?? t.outOf10(h.outOf10)}`).join(' · ')}
         </div>
@@ -134,6 +142,8 @@ function CardWindow({ v, level, meanwhile, next, actions }: P) {
       {v.round ? <Round key={v.round.current.join(',')} id={v.id} r={v.round} actions={actions} /> : null}
       {v.decision ? (
         <Review v={v} next={next} actions={actions} explain={setTerm} />
+      ) : read ? (
+        <Course v={v} explain={setTerm} />
       ) : (
         <div className="dcols">
           <TalkColumn v={v} act={act} explain={setTerm} />
@@ -142,6 +152,37 @@ function CardWindow({ v, level, meanwhile, next, actions }: P) {
         </div>
       )}
       {term ? <TermPopup term={term} close={() => setTerm(null)} /> : null}
+    </div>
+  );
+}
+
+/**
+ * «Ход приёма» (spec docs/specs/2026-10-owner-play-2.md): что спрашивал врач и что отвечал пациент, что осматривал и что
+ * нашёл, что назначил и что пришло — по времени, сверху вниз; назначенное и ещё не готовое — в конце, с часом.
+ */
+function Course({ v, explain }: { v: CardView; explain: (x: TermInfo) => void }) {
+  const c = T.doctor.card;
+  const asks = new Set(examsByAction(v.portrait).ask);
+  const done = [...v.groups].reverse();
+  return (
+    <div className="dcourse" id="dcard-course">
+      <h3>{c.course}</h3>
+      {done.length === 0 && v.pending.length === 0 ? <p className="muted">{c.courseEmpty}</p> : null}
+      {done.map(g => (
+        <div key={g.key} className={g.fresh ? 'pair fresh' : 'pair'} id={`course-${dom(g.exam)}`} data-exam={g.exam}>
+          <div className="doc">
+            <small className="mono">{g.at}</small> {asks.has(g.exam) ? (T.case.talk.questions[g.exam] ?? g.name) : g.name}
+          </div>
+          <div className="pt">
+            <Answer g={g} explain={explain} />
+          </div>
+        </div>
+      ))}
+      {v.pending.map(x => (
+        <div key={`${x.exam}:${x.at}`} className="pair wait" id={`course-wait-${dom(x.exam)}`} data-exam={x.exam}>
+          <div className="doc">{c.ordered(x.name, x.at)}</div>
+        </div>
+      ))}
     </div>
   );
 }
