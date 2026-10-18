@@ -5,7 +5,7 @@
 import { describe, expect, test } from 'bun:test';
 import { H } from '../../src/sim/pack';
 import { createSim } from '../../src/sim/host';
-import { Crowd, PACE } from '../../src/render/crowd';
+import { Crowd, idleRate, PACE } from '../../src/render/crowd';
 import { GAME_PER_REAL, WALK_SPEED_PC } from '../../src/engine/shift/walking';
 import { furnish } from '../../src/render/furniture';
 import { Paths } from '../../src/render/path';
@@ -165,4 +165,28 @@ describe('толпа по срезу потока', () => {
     }
     expect(WALK_SPEED_PC * GAME_PER_REAL).toBeCloseTo(1.6, 6);
   }, 180_000);
+});
+
+describe('темп покоя (spec docs/specs/2026-10-aaa-polish.md, «Жизнь»)', () => {
+  test('у каждого — свой темп 0,85–1,15 по ключу, и покой идёт в нём: толпа не дышит в такт', async () => {
+    const keys = Array.from({ length: 40 }, (_, i) => `p:${i * 7}`);
+    const rates = keys.map(idleRate);
+    for (const r of rates) {
+      expect(r).toBeGreaterThanOrEqual(0.85);
+      expect(r).toBeLessThanOrEqual(1.15);
+    }
+    expect(new Set(rates).size).toBeGreaterThan(10);
+    expect(idleRate('p:12')).toBe(idleRate('p:12'));
+    const { crowd, layout } = await cityScene();
+    const cell = doorInside(layout, 0);
+    const a = crowd.add('t:a', 0, standAt(layout, cell, 'wait', 0), true);
+    const b = crowd.add('t:bb', 0, standAt(layout, cell + 1, 'wait', 0), true);
+    expect(a.idle).toBe(idleRate('t:a'));
+    const t0 = [a.clipTime, b.clipTime];
+    crowd.speed = 1;
+    crowd.rate = GAME_PER_REAL;
+    crowd.update(0.5);
+    expect(a.clipTime - t0[0]).toBeCloseTo(0.5 * a.idle, 9);
+    expect(b.clipTime - t0[1]).toBeCloseTo(0.5 * b.idle, 9);
+  });
 });

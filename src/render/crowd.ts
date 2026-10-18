@@ -79,6 +79,15 @@ export interface Walker {
   yield: number;
   /** скорость в последнем кадре, м/с — для бенча и проверок */
   v: number;
+  /** темп покоя, 0,85–1,15 по ключу: стоящие и ждущие не дышат в такт (spec 2026-10-aaa-polish, «Жизнь») */
+  idle: number;
+}
+
+/** Темп покоя по ключу: ровный разброс 0,85–1,15, один и тот же у одного человека (хэш FNV-1a — перемешивает все знаки). */
+export function idleRate(key: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 0x01000193) >>> 0;
+  return 0.85 + (h % 31) / 100;
 }
 
 const ease = (k: number) => k * k * (3 - 2 * k);
@@ -143,7 +152,7 @@ export class Crowd {
     const w: Walker = {
       key, look, staff, x: from.x, y: 0, z: from.z, heading: 0, lie: 0, lat: KEEP_RIGHT, state: 'idle', pts: null, cum: null, seg: 0, due,
       at: undefined, goals: [], dwell: 0, t: 0, fx: 0, fz: 0, fy: 0, clip: IDLE, clipTime: (key.length * 0.37) % 3, loop: true, leaving: false,
-      yield: 0, v: 0,
+      yield: 0, v: 0, idle: idleRate(key),
     };
     this.walkers.set(key, w);
     if (staff) this.settle(w, spot);
@@ -288,9 +297,10 @@ export class Crowd {
 
   private step(w: Walker, dt: number, v: number) {
     const look = this.looks[w.look];
-    // перемотка: сесть, встать и постоять у стойки — во столько же раз быстрее, во сколько идёт игра
+    // перемотка: сесть, встать и постоять у стойки — во столько же раз быстрее, во сколько идёт игра; покой — в своём
+    // темпе, не в такт с соседями
     const fast = Math.max(1, this.speed);
-    w.clipTime += dt * (w.clip === WALK || w.clip === RUN ? Math.max(0.2, w.v / (w.clip === RUN ? 3.2 : 1.25)) : w.clip === SITDOWN || w.clip === STANDUP ? fast : 1);
+    w.clipTime += dt * (w.clip === WALK || w.clip === RUN ? Math.max(0.2, w.v / (w.clip === RUN ? 3.2 : 1.25)) : w.clip === SITDOWN || w.clip === STANDUP ? fast : w.idle);
     w.v = 0;
     switch (w.state) {
       case 'idle':

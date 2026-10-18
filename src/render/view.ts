@@ -56,12 +56,20 @@ export function gpuString(r: THREE.WebGLRenderer): string {
 
 // ---------------------------------------------------------------- свет и время суток
 
+/** Отражения окружения (RoomEnvironment): днём — доля, ночью — на столько меньше: окружение — комната при дневном свете. */
+const ENV_DAY = 0.3;
+const ENV_NIGHT_DROP = 0.75;
+
 export class Daylight {
   readonly sun = new THREE.DirectionalLight(0xffffff, 3);
   readonly hemi = new THREE.HemisphereLight(0xdfe9f2, 0x8a7f70, 1.2);
   private envTex: THREE.Texture | null = null;
   private envOwner: THREE.WebGLRenderer | null = null;
   hour = 12;
+  /** доля ночи 0–1 по последнему `setHour` — для окружения и проверок */
+  night = 0;
+  /** цвет фона по часу — его же берёт туман сцены (stage.ts): край земли растворяется в фоне */
+  readonly background = new THREE.Color(0x2a3236);
 
   constructor(
     private scene: THREE.Scene,
@@ -105,7 +113,7 @@ export class Daylight {
       this.envTex = null;
     }
     this.scene.environment = this.envTex;
-    this.scene.environmentIntensity = 0.3;
+    this.scene.environmentIntensity = ENV_DAY * (1 - this.night * ENV_NIGHT_DROP);
   }
 
   setShadowSize(n: number) {
@@ -129,16 +137,20 @@ export class Daylight {
     const low = 1 - Math.min(1, el / 0.6);
     // сумерки — с 18:30 до 20:00 (зима; дневная смена кончается в 20:00): к вечеру видно свет светильников
     const night = hour >= 18.5 ? Math.min(1, (hour - 18.5) / 1.5) : hour < 6.5 ? 1 - Math.max(0, hour - 6) / 0.5 : 0;
-    const warm = new THREE.Color(0xfff4e6).lerp(new THREE.Color(0xff8a3c), low);
+    this.night = night;
+    // ночью солнца нет — остаётся слабый холодный свет неба, чтобы читались силуэты вне помещений
+    const warm = new THREE.Color(0xfff4e6).lerp(new THREE.Color(0xff8a3c), low).lerp(new THREE.Color(0x8fa6c8), night);
     this.sun.color.copy(warm);
-    this.sun.intensity = (1.6 + 2.2 * (1 - low)) * (1 - night * 0.9);
-    // вечером и ночью внутри горит свет: фон теплеет и слабеет немного (свет на полу — от светильников, lamps.ts), иначе
-    // помещения проваливаются в темноту
+    this.sun.intensity = (1.6 + 2.2 * (1 - low)) * (1 - night * 0.95);
+    // вечером и ночью внутри горит свет: рассеянный свет гаснет заметно (spec 2026-10-aaa-polish, «Свет»: в 21:30 кадр
+    // был таким же светлым, как днём), а помещения держат тёплые пятна светильников на полу (lamps.ts) — не темнота
     this.hemi.color.set(0xdfe9f2).lerp(new THREE.Color(0xffd6a8), low * 0.45).lerp(new THREE.Color(0xb8b0a0), night * 0.6);
-    this.hemi.intensity = 0.75 - low * 0.12 - night * 0.12;
+    this.hemi.intensity = 0.75 - low * 0.12 - night * 0.42;
     this.hemi.groundColor.set(0x8a7f70).lerp(new THREE.Color(0x5c4a3a), night);
+    this.scene.environmentIntensity = ENV_DAY * (1 - night * ENV_NIGHT_DROP);
     // фон — тёмный: за участком ничего нет (замечание владельца: не плоская зелень до горизонта)
-    this.scene.background = new THREE.Color(0x2a3236).lerp(new THREE.Color(0x3a3430), low * 0.5).lerp(new THREE.Color(0x141a24), night);
+    this.background.set(0x2a3236).lerp(new THREE.Color(0x3a3430), low * 0.5).lerp(new THREE.Color(0x141a24), night);
+    this.scene.background = this.background;
   }
 }
 
@@ -146,11 +158,17 @@ export class Daylight {
 
 export type Projection = 'ortho' | 'persp';
 
+/** Сколько секунд масштаб доходит до цели почти целиком (каждое мгновение — доля оставшегося пути). */
+const ZOOM_RATE = 14;
+
 /** Камера сверху под углом: точка взгляда на земле, поворот на 45° + k·90°, наклон 52°. */
 export class IsoCamera {
   readonly target: THREE.Vector3;
-  /** половина высоты видимой области, м */
-  half = 22;
+  /** половина высоты видимой области, м; задана прямо — сразу, колесом — плавно к `halfTo` */
+  private _half = 22;
+  private halfTo = 22;
+  /** точка земли, которая при плавном масштабе остаётся под курсором (нет — середина кадра) */
+  private anchor: { x: number; z: number } | null = null;
   yaw = Math.PI / 4;
   private yawTo = Math.PI / 4;
   pitch = THREE.MathUtils.degToRad(52);
@@ -173,6 +191,26 @@ export class IsoCamera {
     return this.projection === 'ortho' ? this.ortho : this.persp;
   }
 
+  get half(): number {
+    return this._half;
+  }
+
+  /** Масштаб сразу, без плавности (снимки, сценарий, бенч, общий план). */
+  set half(v: number) {
+    this._half = this.halfTo = v;
+    this.anchor = null;
+  }
+
+  /** Наименьший и наибольший масштаб: крупный план человека и весь участок. */
+  get halfRange(): [number, number] {
+    return [3, Math.max(this.w, this.h) * 0.75];
+  }
+
+  /** Расстояние от камеры до точки взгляда (перспектива; орто стоит на 200 м). */
+  get distance(): number {
+    return this.projection === 'ortho' ? 200 : this._half / Math.tan(THREE.MathUtils.degToRad(this.persp.fov / 2));
+  }
+
   rotate(steps: number) {
     this.yawTo += (steps * Math.PI) / 2;
   }
@@ -189,18 +227,35 @@ export class IsoCamera {
   /** Сдвиг точки взгляда на dx, dy точек экрана (высота экрана — hPx). */
   pan(dxPx: number, dyPx: number, hPx: number) {
     this.fly = null;
-    const k = (2 * this.half) / hPx;
+    const k = (2 * this._half) / hPx;
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     this.target.addScaledVector(right, -dxPx * k);
     this.target.addScaledVector(fwd, (dyPx * k) / Math.sin(this.pitch));
+    this.clampTarget();
+  }
+
+  private clampTarget() {
     this.target.x = THREE.MathUtils.clamp(this.target.x, -5, this.w + 5);
     this.target.z = THREE.MathUtils.clamp(this.target.z, -5, this.h + 5);
   }
 
-  zoom(k: number) {
+  /**
+   * Приблизить (k < 1) или отдалить в k раз — плавно, за несколько кадров; `anchor` — точка земли под курсором: она
+   * остаётся на своём месте экрана, как в картах, — к ней и приближаются. Без неё — к середине кадра.
+   */
+  zoom(k: number, anchor?: { x: number; z: number } | null) {
     this.fly = null;
-    this.half = THREE.MathUtils.clamp(this.half * k, 3, Math.max(this.w, this.h) * 0.75);
+    const [lo, hi] = this.halfRange;
+    this.halfTo = THREE.MathUtils.clamp(this.halfTo * k, lo, hi);
+    this.anchor = anchor ?? null;
+  }
+
+  /** Точка земли (y = 0) под точкой экрана в долях −1…1; камера смотрит вниз, луч всегда встречает землю. */
+  groundAt(ndcX: number, ndcY: number, out = new THREE.Vector3()): THREE.Vector3 | undefined {
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2(ndcX, ndcY), this.camera);
+    return ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), out) ?? undefined;
   }
 
   overview() {
@@ -211,12 +266,18 @@ export class IsoCamera {
 
   /** Плавно к точке (x, z) участка; ближе `half`, если камера дальше. */
   flyTo(x: number, z: number, half = 9) {
-    this.fly = { x, z, half: Math.min(this.half, half) };
+    this.fly = { x, z, half: Math.min(this._half, half) };
+    this.anchor = null;
   }
 
   /** Летит ли камера сейчас. */
   get flying(): boolean {
     return this.fly !== null;
+  }
+
+  /** Меняется ли масштаб сейчас (колесо). */
+  get zooming(): boolean {
+    return Math.abs(this.halfTo - this._half) > 1e-4;
   }
 
   update(dt: number) {
@@ -232,6 +293,19 @@ export class IsoCamera {
         this.half = this.fly.half;
         this.fly = null;
       }
+    } else if (this.zooming) {
+      // плавный масштаб колесом; точка под курсором стоит на месте: камера — подобие с центром в ней, поэтому точка
+      // взгляда сдвигается к ней на ту же долю, на какую меняется масштаб (по земле и по экрану — одна геометрия)
+      const h0 = this._half;
+      this._half += (this.halfTo - this._half) * Math.min(1, dt * ZOOM_RATE);
+      if (Math.abs(this.halfTo - this._half) < 0.005) this._half = this.halfTo;
+      if (this.anchor) {
+        const s = this._half / h0;
+        this.target.x += (this.anchor.x - this.target.x) * (1 - s);
+        this.target.z += (this.anchor.z - this.target.z) * (1 - s);
+        this.clampTarget();
+      }
+      if (!this.zooming) this.anchor = null;
     }
     const d = this.yawTo - this.yaw;
     this.yaw += Math.abs(d) < 1e-3 ? d : d * Math.min(1, dt * 10);
