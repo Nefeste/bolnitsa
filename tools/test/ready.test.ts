@@ -7,8 +7,8 @@ import { db } from '../../src/content';
 import type { Id, RoomSizeId, Rot } from '../../src/content/types';
 import { openBlocks } from '../../src/engine/hospital/requirements';
 import {
-  addReady, addRoom, cellsOf, checkReady, dimsOf, DOOR_PRICE, emptySite, furnishOf, hospitalOf, planOfSite, priceOf, readyCorner, readyDraft, readyTurn,
-  roomPrice, rulesOf, setDoor, type SiteError, sideOf,
+  addReady, addRoom, cellsOf, checkReady, dimsOf, DOOR_PRICE, emptySite, furnishOf, hospitalOf, planOfSite, priceOf, readyCorner, readyCost, readyDraft,
+  readyTurn, roomPrice, rulesOf, setDoor, type SiteError, sideOf,
 } from '../../src/engine/hospital/site';
 import { apply, hospitalCtx, newFlowShift } from '../../src/engine/shift/engine';
 import { cashNow, startCash } from '../../src/engine/shift/money';
@@ -44,8 +44,9 @@ describe('готовое помещение — образец целиком', 
         expect(items.length).toBe(z.objects.length + z.slots.length);
         const cells = items.flatMap(i => cellsOf(i, type).map(([x, y]) => `${x},${y}`));
         expect(new Set(cells).size).toBe(cells.length);
-        // цена — помещение по площади, дверь, предметы
+        // цена — помещение по площади, дверь, предметы; в каталоге — та же, где и как ни поставь
         expect(c.cost).toBe(roomPrice(db, type, rect.w, rect.h) + DOOR_PRICE[door.length] + items.reduce((n, i) => n + priceOf(db, i.kind, i.eq), 0));
+        expect(readyCost(db, type, size)).toBe(c.cost);
         const r = addReady(db, emptySite(), type, size, 20, 10, rot);
         if (!r.ok) throw new Error(at);
         expect(r.site.editing).toBeUndefined();

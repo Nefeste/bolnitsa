@@ -8,7 +8,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { Cell, ContentDb, Id, Season } from '../content/types';
 import { type HospitalState, type Plan, planOf } from '../engine/hospital/build';
 import { DOCTOR, doctorRoom, openBlocks, type Problem, problemsOf, standInOf, type Staffing, workingRooms } from '../engine/hospital/requirements';
-import { demolishRefund, emptySite, furnishOf, hospitalOf, priceOf, rulesOf, type SiteCommand, type SiteResult } from '../engine/hospital/site';
+import { demolishRefund, emptySite, furnishOf, hospitalOf, priceOf, readyCost, rulesOf, type SiteCommand, type SiteResult } from '../engine/hospital/site';
 import { siteOfPreset } from '../engine/hospital/site-preset';
 import { presetStaff, salaryOf, type StaffMember, staffingOf } from '../engine/hospital/staff';
 import type { Notice } from '../engine/shift/types';
@@ -313,6 +313,15 @@ export class Game {
         .map(t => {
           const r = rulesOf(db, t.id)!;
           return { id: t.id, name: named(t.name, t.id), min: T.build.from(r.smallest.w, r.smallest.h), price: T.build.perM2(money(r.smallest.cost / (r.smallest.w * r.smallest.h))) };
+        })
+        .sort((a, b) => a.name.localeCompare(b.name, document.documentElement.lang || undefined)),
+      // готовые помещения (spec docs/specs/2026-10-ready-rooms.md): образцы и цена готового целиком
+      readyTypes: Object.values(db.rooms)
+        .filter(t => t.sizes.length > 0)
+        .map(t => {
+          const sizes = t.sizes.map(z => ({ id: z.id, text: T.build.readySize(z.id, z.w, z.h, money(readyCost(db, t.id, z.id))) }));
+          const low = Math.min(...t.sizes.map(z => readyCost(db, t.id, z.id)));
+          return { id: t.id, name: named(t.name, t.id), sizes, price: sizes.length === 1 ? sizes[0].text : T.build.readyFrom(money(low)) };
         })
         .sort((a, b) => a.name.localeCompare(b.name, document.documentElement.lang || undefined)),
     });
@@ -678,7 +687,7 @@ export class Game {
     const b = this.builder;
     const key = hintOf(
       {
-        ...(block ? { block } : {}), buildOn: b.on, drawing: b.tool === 'room' && !!b.roomType, paused: this.speed === 0 && !this.ff,
+        ...(block ? { block } : {}), buildOn: b.on, drawing: (b.tool === 'room' && !!b.roomType) || (b.tool === 'ready' && !!b.ready), paused: this.speed === 0 && !this.ff,
         arrived: this.lastSlice?.buf[H.arrived] ?? 0, asks: this.doctor.hud.state?.asks.length ?? 0, looked: this.looked,
       },
       this.seenHints,
@@ -759,6 +768,14 @@ export class Game {
     },
     pickRoomType: id => {
       this.builder.pickRoomType(id);
+      this.hud();
+    },
+    pickReady: (id, size) => {
+      this.builder.pickReady(id, size);
+      this.hud();
+    },
+    toggleReadyStaff: () => {
+      this.builder.toggleStaff();
       this.hud();
     },
     pickItem: (kind, eq) => {

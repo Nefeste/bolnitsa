@@ -994,8 +994,9 @@ export type ReadyCheck = { ok: true; cost: number; draft: ReadyDraft } | { ok: f
 
 /**
  * Образец `size` типа `type` целиком с углом в (x, y) и поворотом `rot` — без проверок: размер образца, дверь там, где у
- * него (на его «нижней» стене; где лежат — двойная, иначе как у образца, не шире двух клеток; вторая клетка — следующая
- * вдоль стены), все предметы и аппараты на своих местах (длинный без второй клетки — короткий, как в готовой больнице).
+ * него (на его «нижней» стене; где лежат — двойная, иначе как у образца, не шире двух клеток — посередине его проёма;
+ * вторая клетка — следующая вдоль стены), все предметы и аппараты на своих местах (длинный без второй клетки — короткий,
+ * как в готовой больнице).
  * Нет такого образца — нет.
  */
 export function readyDraft(db: ContentDb, site: Site, type: Id, size: RoomSizeId, x: number, y: number, rot: Rot): ReadyDraft | undefined {
@@ -1005,8 +1006,8 @@ export function readyDraft(db: ContentDb, site: Site, type: Id, size: RoomSizeId
   const [w, h] = dimsOf(z, rot);
   const rect = { x, y, w, h };
   const width = rules.gurney ? 2 : Math.min(2, z.door.width);
-  // вторая клетка двойной — правее, у угла — левее
-  const from = width > z.door.width && z.door.x + 1 > z.w - 2 ? z.door.x - 1 : z.door.x;
+  // вторая клетка двойной — правее, у угла — левее; у образца шире двери — посередине его проёма
+  const from = width > z.door.width ? (z.door.x + 1 > z.w - 2 ? z.door.x - 1 : z.door.x) : z.door.x + Math.floor((z.door.width - width) / 2);
   const door = Array.from({ length: width }, (_, k): Cell => {
     const [dx, dy] = turnOf(z, rot, from + k, z.h - 1);
     return [x + dx, y + dy];
@@ -1034,6 +1035,16 @@ export function checkReady(db: ContentDb, site: Site, type: Id, size: RoomSizeId
   }
   const items = draft.items.reduce((n, i) => n + priceOf(db, i.kind, i.eq), 0);
   return { ok: true, cost: c.cost + (DOOR_PRICE[draft.door.length] ?? 0) + items, draft };
+}
+
+/** Пустой участок — для цены готового в каталоге: образец от участка не зависит. */
+const BLANK = emptySite();
+
+/** Цена готового помещения в каталоге: от места и поворота не зависит. Нет такого образца — 0. */
+export function readyCost(db: ContentDb, type: Id, size: RoomSizeId): number {
+  const d = readyDraft(db, BLANK, type, size, 0, 0, 0);
+  if (!d) return 0;
+  return roomPrice(db, type, d.rect.w, d.rect.h) + (DOOR_PRICE[d.door.length] ?? 0) + d.items.reduce((n, i) => n + priceOf(db, i.kind, i.eq), 0);
 }
 
 /** Угол готового помещения, середина которого — в клетке `c` (курсор призрака). Нет такого образца — нет. */
