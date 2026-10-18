@@ -1028,10 +1028,13 @@ export function checkReady(db: ContentDb, site: Site, type: Id, size: RoomSizeId
   if (!c.ok) return { ok: false, error: c.error, draft };
   const after = buildMap(site, [...site.rooms, { id: '', type, ...draft.rect, door: draft.door, items: [] }]);
   const [ox, oy] = outOfSide(sideOf(draft.rect, draft.door[0][0], draft.door[0][1]));
-  for (const [dx, dy] of draft.door) {
-    const j = (dy + oy) * after.w + (dx + ox);
-    const front = dx + ox >= 0 && dy + oy >= 0 && dx + ox < after.w && dy + oy < after.h;
-    if (after.walls[dy * after.w + dx] !== 1 || !front || after.cells[j] !== CELL.corridor || !after.reach[j]) return { ok: false, error: { kind: 'doorTo' }, draft };
+  for (const [x0, y0] of draft.door) {
+    // клетка перед дверью — коридор, до которого дойти от главного входа; стена двери — только этого помещения
+    const fx = x0 + ox;
+    const fy = y0 + oy;
+    const j = fy * after.w + fx;
+    const front = fx >= 0 && fy >= 0 && fx < after.w && fy < after.h;
+    if (after.walls[y0 * after.w + x0] !== 1 || !front || after.cells[j] !== CELL.corridor || !after.reach[j]) return { ok: false, error: { kind: 'doorTo' }, draft };
   }
   const items = draft.items.reduce((n, i) => n + priceOf(db, i.kind, i.eq), 0);
   return { ok: true, cost: c.cost + (DOOR_PRICE[draft.door.length] ?? 0) + items, draft };
