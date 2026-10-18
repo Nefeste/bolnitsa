@@ -1,7 +1,7 @@
 // Панели игры (spec docs/specs/2026-10-shell-3d.md, «Панели»; геймдизайн §12): сверху — день и часы, скорость, касса,
 // репутация, стройка, извещения; слева — стройка (spec docs/specs/2026-10-build.md) и слои; справа — вкладки; снизу —
 // карточка выбранного. Панели тонкие: читают хранилище (store.ts) и просят игру (Actions); 3D-кадр живёт вне React.
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { clock, type Lang, money, T } from '../i18n';
 import type { PersonInfo } from '../render/population';
 import type { Quality } from '../render/view';
@@ -17,6 +17,8 @@ export interface Names {
   room(id: string | undefined): string;
   role(id: string | undefined): string;
   finding(id: string | undefined): string;
+  /** к кому — должность в дательном падеже («гастроэнтерологу»); по-английски — название */
+  dat(id: string | undefined): string;
 }
 
 interface P {
@@ -347,10 +349,12 @@ function SiteCard({ r, actions, hud }: { r: RoomCard; actions: Actions; hud: Hud
                     ) : p.who ? (
                       <>
                         <span>{p.who}</span>
-                        <button type="button" className="small" onClick={() => actions.dismiss(p.staffId!)}>
+                        <button type="button" className="small" id={`dismiss-${p.role.slice(5)}`} onClick={() => actions.dismiss(p.staffId!)}>
                           {T.card.dismiss}
                         </button>
                       </>
+                    ) : p.options ? (
+                      <HirePick room={r.id} role={p.role} options={p.options} actions={actions} />
                     ) : (
                       <button type="button" className="small" id={`hire-${p.role.slice(5)}`} onClick={() => actions.hire(r.id, p.role)}>
                         {T.card.hire(p.name, p.salary)}
@@ -428,6 +432,29 @@ function RightTabs({ hud, actions }: P) {
   );
 }
 
+/**
+ * На место врача — терапевт или специалист (spec docs/specs/2026-10-specialists.md): список должностей с зарплатой и
+ * «Нанять» одной строкой — карточка не растёт; подсказка выбранной должности — при наведении.
+ */
+function HirePick({ room, role, options, actions }: { room: string; role: string; options: { role: string; name: string; salary: string; hint: string }[]; actions: Actions }) {
+  const [as, setAs] = useState(options[0].role);
+  const o = options.find(x => x.role === as) ?? options[0];
+  return (
+    <span className="hires">
+      <select id={`hire-${role.slice(5)}-as`} value={o.role} title={o.hint} onChange={ev => setAs(ev.target.value)}>
+        {options.map(x => (
+          <option key={x.role} value={x.role}>
+            {T.card.hireOption(x.name, x.salary)}
+          </option>
+        ))}
+      </select>
+      <button type="button" className="small" id={`hire-${role.slice(5)}`} title={o.hint} onClick={() => actions.hire(room, role, o.role)}>
+        {T.card.hireAs}
+      </button>
+    </span>
+  );
+}
+
 /** Что делает пациент — для карточки: идёт — куда и к какому часу дойдёт. */
 function doingLine(info: Extract<PersonInfo, { kind: 'patient' }>): string {
   const what = info.door ? (info.walking ? T.card.toDoor : T.card.atDoor) : info.walking ? T.going[info.doing] : T.doing[info.doing];
@@ -437,7 +464,9 @@ function doingLine(info: Extract<PersonInfo, { kind: 'patient' }>): string {
 function personLines(info: PersonInfo, names: Names): [string, string][] {
   if (info.kind === 'staff') return [[T.card.staff, names.role(info.role)], [T.card.where, names.room(info.room)]];
   // ушёл — на карте его нет: кто и как пришёл, остальное — в пути (spec 2026-10-flow-ui)
-  if (info.gone) return [[T.card.complaint, names.finding(info.complaint)], [T.card.visit, T.visit[info.visit as keyof typeof T.visit] ?? info.visit]];
+  // записан к специалисту (spec docs/specs/2026-10-specialists.md): «по записи к гастроэнтерологу»
+  const visit = info.to ? T.card.booked(names.dat(info.to)) : (T.visit[info.visit as keyof typeof T.visit] ?? info.visit);
+  if (info.gone) return [[T.card.complaint, names.finding(info.complaint)], [T.card.visit, visit]];
   return [
     [T.card.complaint, names.finding(info.complaint)],
     // ещё идёт (spec docs/specs/2026-10-owner-play.md): куда, а не «у врача», и к какому часу дойдёт (spec 2026-10-walk);
@@ -446,7 +475,7 @@ function personLines(info: PersonInfo, names: Names): [string, string][] {
     [T.card.doing, doingLine(info)],
     [T.card.triage, T.triage[info.triage]],
     [T.card.by, info.by ? names.role(info.by) : T.card.byNobody],
-    [T.card.visit, T.visit[info.visit as keyof typeof T.visit] ?? info.visit],
+    [T.card.visit, visit],
   ];
 }
 

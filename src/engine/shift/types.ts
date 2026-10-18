@@ -249,9 +249,10 @@ export type ShiftEvent =
   | { kind: 'arrest'; id: string }
   /**
    * поток для ПК (spec 2026-10-engine-speed, ч. 2): приходит следующий — пришёл сам (`walk`), привезла скорая (`amb`)
-   * или вернулся (`ret`, `of` — прежний приём); пациент генерируется сейчас
+   * или вернулся (`ret`, `of` — прежний приём); пациент генерируется сейчас. По записи к специалисту (`book`, spec
+   * 2026-10-specialists): у каждого специалиста свой поток, `to` — его номер
    */
-  | { kind: 'flow'; stream: 'walk' | 'amb' | 'ret'; n: number; of?: string }
+  | { kind: 'flow'; stream: 'walk' | 'amb' | 'ret' | 'book'; n: number; of?: string; to?: string }
   | { kind: 'shiftEnd' }
   /** стройка ПК (spec 2026-10-build): убрать освободившееся — предметы и помещения, ждущие сноса */
   | { kind: 'siteFree' }

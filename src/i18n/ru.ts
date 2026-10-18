@@ -195,6 +195,10 @@ export const ru = {
   },
   card: {
     patient: (sex: 'm' | 'f', age: number, name?: string) => `${name ?? (sex === 'f' ? 'Пациентка' : 'Пациент')}, ${age} ${years(age)}`,
+    /** записан к специалисту (spec docs/specs/2026-10-specialists.md) */
+    booked: (dat: string) => `по записи к ${dat}`,
+    /** к кому: должность в дательном падеже из базы; нет — название с маленькой буквы */
+    dat: (dat: string, name: string) => dat || name.toLowerCase(),
     complaint: 'Жалоба',
     where: 'Где',
     doing: 'Что делает',
@@ -221,6 +225,9 @@ export const ru = {
     vacant: 'никого',
     you: 'вы — ваш кабинет',
     hire: (name: string, salary: string) => `Нанять: ${name} — ${salary} в сутки`,
+    /** на место врача — терапевт или специалист (spec docs/specs/2026-10-specialists.md) */
+    hireAs: 'Нанять',
+    hireOption: (name: string, salary: string) => `${name} — ${salary} в сутки`,
     dismiss: 'Уволить',
     demolish: (back: string) => `Снести — вернётся ${back}`,
     furnish: (cost: string) => `Обставить — ${cost}`,
@@ -306,7 +313,8 @@ export const ru = {
     noPath: 'Путь записывается с этой версии — у пришедших раньше его нет.',
     now: 'сейчас',
     inside: (f: boolean, total: string, waited: string, pct: number) => `в больнице ${total}, из них ${f ? 'ждала' : 'ждал'} ${waited} (${pct} %)`,
-    arrived: (f: boolean, kind: string): string => (kind === 'ambulance' ? 'привезла скорая' : kind === 'return' ? (f ? 'вернулась' : 'вернулся') : f ? 'пришла сама' : 'пришёл сам'),
+    arrived: (f: boolean, kind: string): string =>
+      kind === 'ambulance' ? 'привезла скорая' : kind === 'return' ? (f ? 'вернулась' : 'вернулся') : kind === 'appointment' ? (f ? 'пришла по записи' : 'пришёл по записи') : f ? 'пришла сама' : 'пришёл сам',
     queue: (d: string) => `ожидание врача — ${d}`,
     busy: (docs: number, asks: number, ahead: number) =>
       `все нанятые врачи заняты (${docs}${asks > 0 ? `, ${asks} из них ждут вашего ответа` : ''})${ahead > 0 ? `, впереди ${ahead}` : ''}`,

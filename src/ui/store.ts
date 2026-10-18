@@ -49,7 +49,11 @@ export interface RoomCard {
   state?: string;
   problems?: string[];
   needs?: { name: string; have: number; need: number }[];
-  posts?: { role: Id; name: string; who?: string; staffId?: string; salary: string; you?: boolean }[];
+  /**
+   * должности: кто на месте или кого нанять; на место врача — выбор: терапевт или специалист (`options`, spec
+   * docs/specs/2026-10-specialists.md)
+   */
+  posts?: { role: Id; name: string; who?: string; staffId?: string; salary: string; you?: boolean; options?: { role: Id; name: string; salary: string; hint: string }[] }[];
   furnish?: { ok: boolean; text: string };
   demolish?: string;
   catalog?: { kind: ObjectKind; eq?: Id; name: string; price: string }[];
@@ -208,7 +212,8 @@ export interface Actions {
   done(): void;
   furnish(room: string): void;
   demolish(room: string): void;
-  hire(room: string, role: Id): void;
+  /** `as` — кого на место врача: терапевта или специалиста (spec docs/specs/2026-10-specialists.md) */
+  hire(room: string, role: Id, as?: Id): void;
   dismiss(id: string): void;
   /** начало игры: пустое здание, готовая больница или поликлиника */
   startGame(kind: 'empty' | 'preset' | 'poly'): void;

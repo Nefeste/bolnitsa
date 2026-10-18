@@ -5,16 +5,18 @@
 //   district — пустое здание: районная — три терапевта, доврачебный, ЭКГ, рентген, смотровая приёмного, две палаты, санузел;
 //   city     — готовая городская больница (как «Городская больница» в окне);
 //   poly     — поликлиника по нормам проектирования из готовых помещений (как «Поликлиника» в окне, spec
-//              2026-10-real-hospital): ваш кабинет пустует — врача никто не играет, принимают три нанятых терапевта.
+//              2026-10-real-hospital): ваш кабинет пустует — врача никто не играет, принимают три нанятых терапевта;
+//   polyspec — та же поликлиника, где два терапевта заменены гастроэнтерологом и эндокринологом (spec
+//              2026-10-specialists): у специалистов своя запись, пришедших сами берёт один терапевт.
 // Критерии: касса ни разу не ниже предела минуса (кредит не нужен); за 7 суток больница не окупается целиком — не богатеет
 // нелепо; поток за сутки — в ориентирах геймдизайна §5.
-//   bun tools/sim/economy.ts [--days 7] [--seeds 1,2,3] [--only clinic,district,city,poly] [--json]
+//   bun tools/sim/economy.ts [--days 7] [--seeds 1,2,3] [--only clinic,district,city,poly,polyspec] [--json]
 import type { ContentDb, Id } from '../../src/content/types';
 import { expensesOf, incomeOf } from '../../src/engine/economy/economy';
 import { DOOR_PRICE, emptySite, hospitalOf, priceOf, roomPrice, type Site, type SiteCommand } from '../../src/engine/hospital/site';
 import { siteOfPlan } from '../../src/engine/hospital/site-plan';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
-import { presetStaff } from '../../src/engine/hospital/staff';
+import { presetStaff, salaryOf } from '../../src/engine/hospital/staff';
 import { apply, capacityOf, newFlowShift } from '../../src/engine/shift/engine';
 import { ambulancePerHour, walkPerHour } from '../../src/engine/shift/inflow';
 import { cashNow, startCash } from '../../src/engine/shift/money';
@@ -112,10 +114,13 @@ function start(name: string, seed: number): ShiftState {
     const rec = db.presets['preset.city'];
     return newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, siteOfPreset(db, rec)), staff: presetStaff(db, rec), flow, economy: { cash: startCash(db, 'preset') } });
   }
-  if (name === 'poly') {
+  if (name === 'poly' || name === 'polyspec') {
     const p = siteOfPlan(db, db.sites!['site.polyclinic']);
     if (!p.ok) throw new Error(`поликлиника: помещение ${p.room} — ${p.error.kind}`);
-    return newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, p.site), staff: p.staff, flow, economy: { cash: startCash(db, 'poly') } });
+    // два терапевта — специалистами: в третьем и четвёртом кабинетах (r5, r6)
+    const swap: Record<string, Id> = name === 'polyspec' ? { r5: 'role.gastroenterologist', r6: 'role.endocrinologist' } : {};
+    const staff = p.staff.map(m => (m.room && swap[m.room] ? { ...m, role: swap[m.room], salary: salaryOf(db, swap[m.room], 3) } : m));
+    return newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, p.site), staff, flow, economy: { cash: startCash(db, 'poly') } });
   }
   const s = newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, emptySite()), staff: [], flow, economy: { cash: startCash(db, 'empty') } });
   build(s, name === 'clinic' ? CLINIC : DISTRICT);
@@ -159,7 +164,7 @@ function run(name: string, seed: number): Run {
 }
 
 const fmt = (n: number) => Math.round(n).toLocaleString('ru-RU');
-const scenarios = ['clinic', 'district', 'city', 'poly'].filter(x => ONLY.length === 0 || ONLY.includes(x));
+const scenarios = ['clinic', 'district', 'city', 'poly', 'polyspec'].filter(x => ONLY.length === 0 || ONLY.includes(x));
 const runs: Run[] = [];
 for (const name of scenarios) for (const seed of SEEDS) runs.push(run(name, seed));
 

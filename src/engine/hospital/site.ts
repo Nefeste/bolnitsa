@@ -1382,8 +1382,11 @@ export type SiteCommand =
   /** готовое помещение (spec docs/specs/2026-10-ready-rooms.md): образец целиком; `staff` — и люди на все должности */
   | { kind: 'ready'; type: Id; size: RoomSizeId; x: number; y: number; rot: Rot; staff?: boolean }
   | { kind: 'demolish'; room: string }
-  /** на должность помещения (`role` — должность образца: в кабинет врача встаёт терапевт) */
-  | { kind: 'hire'; room: string; role: Id }
+  /**
+   * на должность помещения (`role` — должность образца: в кабинет врача встаёт терапевт); `as` — кто именно встаёт на место
+   * врача: терапевт или специалист (spec docs/specs/2026-10-specialists.md)
+   */
+  | { kind: 'hire'; room: string; role: Id; as?: Id }
   | { kind: 'dismiss'; id: string }
   | { kind: 'undo' }
   /** стройка закончена: перестраиваемое помещение открыто */

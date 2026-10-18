@@ -4,10 +4,14 @@
 // суток — day.yaml (часть 5а). Чистые расчёты: сколько кабинетов и мест в больнице, считает движок (engine.ts, `capacityOf`).
 import type { ContentDb } from '../../content/types';
 
-/** Что в больнице принимает поток: кабинеты, где принимают пришедших сами, и места смотровой приёмного. */
+/**
+ * Что в больнице принимает поток: кабинеты, где принимают пришедших сами, места смотровой приёмного и специалисты, к которым
+ * записываются (spec docs/specs/2026-10-specialists.md): их номера — у каждого свой поток записанных.
+ */
 export interface Capacity {
   offices: number;
   bays: number;
+  booked: readonly string[];
 }
 
 /** Поток сами от репутации, %: при 0 и 100 — меньше и больше на `inflow.reputation`, между — по прямой. */
@@ -19,6 +23,11 @@ export function reputationPct(db: ContentDb, reputation: number): number {
 /** Сами: человек в час в среднем за час приёма по умолчанию — на кабинет, с репутацией. */
 export function walkPerHour(db: ContentDb, c: Capacity, reputation: number): number {
   return ((db.inflow?.walkIn ?? 0) * c.offices * reputationPct(db, reputation)) / 100;
+}
+
+/** По записи: человек в час в среднем за час приёма по умолчанию — к одному специалисту, с репутацией. */
+export function bookedPerHour(db: ContentDb, reputation: number): number {
+  return ((db.inflow?.booked ?? 0) * reputationPct(db, reputation)) / 100;
 }
 
 /** Скорая: машин в час в среднем за сутки — на место смотровой. */

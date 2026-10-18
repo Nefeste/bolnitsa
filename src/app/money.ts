@@ -127,7 +127,7 @@ export class Money {
         asked: c.asked ?? 0, taken: c.taken ?? 0, unsafe: c.unsafe ?? 0, idle: false,
       };
     });
-    // специалисты, которые за сутки никого не приняли: к ним не записывают (spec «Чего в части нет»)
+    // специалисты, которые за сутки никого не приняли: к ним никто не записался (spec docs/specs/2026-10-specialists.md)
     for (const m of staff) {
       if (!m.room || !db.roles[m.role]?.profile || summary.colleagues?.[m.id]) continue;
       doctors.push({ role: named(db.roles[m.role]?.name, m.role), skill: m.skill, seen: 0, correct: 0, asked: 0, taken: 0, unsafe: 0, idle: true });

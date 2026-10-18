@@ -191,6 +191,8 @@ export const en: Strings = {
   },
   card: {
     patient: (sex: 'm' | 'f', age: number, name?: string) => (name ? `${name}, ${age}` : `${sex === 'f' ? 'Female' : 'Male'} patient, ${age}`),
+    booked: (who: string) => `booked with ${who}`,
+    dat: (_dat: string, name: string) => `the ${name.toLowerCase()}`,
     complaint: 'Complaint',
     where: 'Where',
     doing: 'Doing',
@@ -215,6 +217,8 @@ export const en: Strings = {
     vacant: 'nobody',
     you: 'you — your office',
     hire: (name: string, salary: string) => `Hire: ${name} — ${salary} per day`,
+    hireAs: 'Hire',
+    hireOption: (name: string, salary: string) => `${name} — ${salary} per day`,
     dismiss: 'Dismiss',
     demolish: (back: string) => `Demolish — ${back} back`,
     furnish: (cost: string) => `Furnish — ${cost}`,
@@ -298,7 +302,7 @@ export const en: Strings = {
     noPath: 'Paths are recorded from this version on — patients who came earlier have none.',
     now: 'now',
     inside: (_f: boolean, total: string, waited: string, pct: number) => `in hospital ${total}, of which waiting ${waited} (${pct} %)`,
-    arrived: (_f: boolean, kind: string) => (kind === 'ambulance' ? 'brought by ambulance' : kind === 'return' ? 'came back' : 'walked in'),
+    arrived: (_f: boolean, kind: string) => (kind === 'ambulance' ? 'brought by ambulance' : kind === 'return' ? 'came back' : kind === 'appointment' ? 'came by appointment' : 'walked in'),
     queue: (d: string) => `waiting for a doctor — ${d}`,
     busy: (docs: number, asks: number, ahead: number) =>
       `all hired doctors busy (${docs}${asks > 0 ? `, ${asks} of them waiting for your answer` : ''})${ahead > 0 ? `, ${ahead} ahead` : ''}`,

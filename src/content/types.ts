@@ -1318,6 +1318,8 @@ export interface Inflow {
   ambulance: number;
   /** поток сами при репутации 0 и 100 меньше и больше на столько процентов */
   reputation: number;
+  /** по записи (spec 2026-10-specialists): человек в час к одному специалисту — в среднем за час приёма; нет — к ним не записываются */
+  booked?: number;
   /** ориентиры геймдизайна §5: больница с этими кабинетами и местами — сколько в сутки (проверяет сборка) */
   targets: { name: string; offices: number; bays: number; day: [number, number]; ambulance: [number, number] }[];
 }

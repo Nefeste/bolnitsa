@@ -245,32 +245,35 @@ function undo(db: ContentDb, s: ShiftState, works: Works, site: Site): Notice[] 
 }
 
 /**
- * Нанять на должность помещения (spec «Персонал»): врачу — терапевта (нанятый врач встаёт на место врача). Сначала —
- * тот, кто в резерве; нет — новый: навык 3, без черты, зарплата каталога; пол и облик — из ветви зерна `hire:<номер>`.
+ * Нанять на должность помещения (spec «Персонал»): врачу — терапевта или специалиста (`as`, spec
+ * docs/specs/2026-10-specialists.md): нанятый врач встаёт на место врача. Сначала — тот, кто в резерве; нет — новый: навык
+ * 3, без черты, зарплата каталога; пол и облик — из ветви зерна `hire:<номер>`.
  */
 function hire(db: ContentDb, s: ShiftState, works: Works, site: Site, cmd: Extract<SiteCommand, { kind: 'hire' }>): Notice[] {
   const room = site.rooms.find(r => r.id === cmd.room);
   if (!room || room.leaving) return no('hire', { kind: 'unknown' });
   if (!db.rooms[room.type]?.staff.includes(cmd.role)) return no('hire', { kind: 'notHere' });
   if (cmd.role === DOCTOR && room.id === site.mine) return no('hire', { kind: 'notHere' });
-  const role = cmd.role === DOCTOR ? standInOf(db, DOCTOR) : cmd.role;
+  // встаёт на это место: врачу — терапевт или специалист, кто встаёт на место врача
+  if (cmd.as !== undefined && (cmd.as !== cmd.role && db.roles[cmd.as]?.stands !== cmd.role)) return no('hire', { kind: 'notHere' });
+  const role = cmd.as ?? (cmd.role === DOCTOR ? standInOf(db, DOCTOR) : cmd.role);
   if (!role || !db.roles[role]?.hire) return no('hire', { kind: 'unknown' });
   const post = (m: StaffMember) => db.roles[m.role]?.stands ?? m.role;
   if ((s.staff ?? []).some(m => m.room === room.id && post(m) === cmd.role)) return no('hire', { kind: 'nothing' });
   remember(s, works, site, room.id);
-  staffPost(db, s, site, room.id, cmd.role);
+  staffPost(db, s, site, room.id, cmd.role, role);
   nudge(s);
   return [{ kind: 'site', cmd: 'hire', ok: true, cost: 0, room: room.id }];
 }
 
 /**
- * Человек на должность `post` помещения `roomId` — без проверок и без записи отмены (их делает команда): врачу — терапевт.
- * Сначала тот, кто в резерве; нет — новый: навык 3, без черты, зарплата каталога; пол и облик — из ветви зерна
- * `hire:<номер>`. Должность занята, ваш кабинет или нанять некого — никого, `false`.
+ * Человек на должность `post` помещения `roomId` — без проверок и без записи отмены (их делает команда): врачу — терапевт
+ * или `as` (специалист). Сначала тот, кто в резерве; нет — новый: навык 3, без черты, зарплата каталога; пол и облик — из
+ * ветви зерна `hire:<номер>`. Должность занята, ваш кабинет или нанять некого — никого, `false`.
  */
-function staffPost(db: ContentDb, s: ShiftState, site: Site, roomId: string, post: Id): boolean {
+function staffPost(db: ContentDb, s: ShiftState, site: Site, roomId: string, post: Id, as?: Id): boolean {
   if (post === DOCTOR && roomId === site.mine) return false;
-  const role = post === DOCTOR ? standInOf(db, DOCTOR) : post;
+  const role = as ?? (post === DOCTOR ? standInOf(db, DOCTOR) : post);
   if (!role || !db.roles[role]?.hire) return false;
   const staff = s.staff ?? [];
   if (staff.some(m => m.room === roomId && (db.roles[m.role]?.stands ?? m.role) === post)) return false;
