@@ -89,8 +89,9 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # meeting, the «Обход» list; then ready rooms: four clicks open the empty building, R, one
                                    # undo; then the start screen's three cards and the polyclinic; then specialists: hire a
                                    # gastroenterologist in the polyclinic, «по записи к …»; then the owner's play of 18.10:
-                                   # «Открыть карту» of anyone, «Следить», «Позвать» — the card when they come in);
-                                   # screenshots in tools/app/out/; `-- --only 1|2|3|4|5|6|7|8|9` for one part
+                                   # «Открыть карту» of anyone, «Следить», «Позвать» — the card when they come in; then
+                                   # saves: save, «Продолжить», load from the menu, delete, a broken file);
+                                   # screenshots in tools/app/out/; `-- --only 1|2|3|4|5|6|7|8|9|10` for one part
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
 npm run dist:win                   # build + Windows x64 zip → release/ (from Linux, no wine) — the only release file for now
@@ -105,6 +106,7 @@ bun tools/sim/halls.ts --flow 14               # the polyclinic under load: wait
 bun --cpu-prof --cpu-prof-dir=tools/bench/out/prof tools/bench/bench.ts --mode flow --only 200 --quick --until 11
 bun tools/bench/profile.ts tools/bench/out/prof/<file>.cpuprofile 30 --under catchUp
 bun tools/test/make-review-fixture.ts          # only with the ORIGINAL engine: fingerprints of the eager review
+bun tools/test/make-save-fixture.ts 0.7.0      # a save sample for tools/test/fixtures/saves/ — once per save schema number
 ```
 
 The browser scenario and the headless bench need Chromium: `PLAYWRIGHT_BROWSERS_PATH` (default `/opt/pw-browsers`) or
@@ -135,6 +137,12 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   Money of the PC flow is ours: `shift/money.ts` (cash now, wages and upkeep by the hour, building from cash, the
   overdraft limit, the loan), `shift/inflow.ts` (the flow from the hospital), `shift/meeting.ts` (the day's bottlenecks,
   «стало хуже»), numbers in `content/hospital/inflow.yaml` and `money.yaml` — `docs/specs/2026-10-economy.md`.
+- Saves (`docs/specs/2026-10-saves.md`): `src/engine/shift/migrate.ts` — the save schema number and the migration chain;
+  `src/sim/packing.ts` — the file (header, engine snapshot, window view; JSON + gzip), written by the worker;
+  `src/app/saves.ts` — slots (`auto-1…3` shifted each morning, `exit`, `manual-<n>`) over a disk: `electron/saves.cjs`
+  (the user's game folder, slot names only) or the page storage (OPFS) in a browser. **A changed save format** — a field
+  renamed or removed, a meaning changed — raises `SAVE_SCHEMA`, adds a migration step and a new sample in
+  `tools/test/fixtures/saves/` (charter ADR 0004); a new optional field does not.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`), Web Worker
   (`worker.ts`) and its client in the window (`client.ts`). The window never runs the engine. The doctor mode
   (`docs/specs/2026-10-doctor-mode.md`): `caseView.ts` (a copy of Anamnez's player view of a case) and `doctor.ts` build the

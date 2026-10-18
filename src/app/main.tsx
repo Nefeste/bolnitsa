@@ -5,13 +5,18 @@
 //   снимки — всегда готовая больница). В Electron — те же ключи: --bench, --hospital empty.
 //   ?flow=6,1 — поток числами (сами в час, машин скорой в час), а не от больницы (spec docs/specs/2026-10-economy.md):
 //   сценарий режима врача в браузере; авто-бенч и снимки — всегда числа сцены, та же толпа, что прежде.
+//   ?load=<ячейка> — открыть сохранение (spec docs/specs/2026-10-saves.md): так меню игры загружает и экран начала
+//   продолжает.
 import { createRoot } from 'react-dom/client';
 import { setLang, systemLang, T, type Lang } from '../i18n';
 import type { Quality } from '../render/view';
 import { App, type Names } from '../ui/App';
 import { type Actions, Store } from '../ui/store';
 import type { Flow } from '../engine/shift/types';
-import { AUTO, Game, SCENE, type Start } from './game';
+import { SaveError } from '../engine/shift/migrate';
+import type { SaveFile } from '../sim/packing';
+import { AUTO, diskOf, Game, SCENE, type Start } from './game';
+import { listSlots, readSlot } from './saves';
 
 declare const __VERSION__: string;
 
@@ -60,12 +65,19 @@ const actions: Actions = {
   money: later('money'),
   dismissHint: later('dismissHint'),
   toggleView: later('toggleView'),
+  toggleMenu: later('toggleMenu'),
+  saveGame: later('saveGame'),
+  loadGame: later('loadGame'),
+  deleteGame: later('deleteGame'),
+  newGame: later('newGame'),
   startGame: kind => {
     store.set({ choose: false });
     chosen?.(kind);
   },
 };
-let chosen: ((kind: Start) => void) | undefined;
+/** С чего начать: новая больница или сохранение (ячейка). */
+type Begin = Start | { load: string };
+let chosen: ((kind: Begin) => void) | undefined;
 const names: Names = {
   room: id => game?.names().room(id) ?? id ?? '—',
   role: id => game?.names().role(id) ?? id ?? '—',
@@ -77,17 +89,52 @@ createRoot(document.getElementById('ui')!).render(<App store={store} actions={ac
 const quality = (['low', 'medium', 'high'] as Quality[]).find(x => x === q.get('q')) ?? 'high';
 
 /** С чего начать: ключ адреса или Electron; бенч и снимки — готовая больница; иначе спросить игрока. */
-async function startOf(): Promise<Start> {
+async function startOf(): Promise<Begin> {
   const args = window.shell ? await window.shell.args() : [];
   const has = (k: string) => q.get(k) === '1' || args.includes(`--${k}`);
   const val = q.get('hospital') ?? (args.includes('--hospital') ? args[args.indexOf('--hospital') + 1] : null);
   if (has('bench') || has('shot')) return 'preset';
+  if (q.get('load')) return { load: q.get('load')! };
   if (val === 'empty' || val === 'preset' || val === 'poly') return val;
-  store.set({ choose: true });
-  return new Promise<Start>(resolve => {
+  return choose();
+}
+
+/** Экран начала: новая больница, «Продолжить» или «Загрузить» (spec docs/specs/2026-10-saves.md). */
+async function choose(problem?: string): Promise<Begin> {
+  const saves = await listSlots(diskOf()).catch(() => []);
+  store.set({ choose: true, startSaves: saves, startProblem: problem });
+  return new Promise<Begin>(resolve => {
     chosen = resolve;
   });
 }
+
+/**
+ * Что открыть: новая больница — как есть; сохранение — прочитать и пройти миграции. Не открылось — снова экран начала,
+ * со словом почему.
+ */
+async function begin(): Promise<{ start: Start; loaded?: SaveFile }> {
+  let b = await startOf();
+  for (;;) {
+    if (typeof b === 'string') return { start: b };
+    try {
+      const loaded = await readSlot(diskOf(), b.load);
+      const start = (['empty', 'preset', 'poly'] as const).find(x => x === loaded.meta.start) ?? 'preset';
+      return { start, loaded };
+    } catch (e) {
+      b = await choose(T.saves.problem[e instanceof SaveError ? e.problem : 'broken']);
+    }
+  }
+}
+
+// выход из игры (spec docs/specs/2026-10-saves.md): Electron просит сохраниться — в ячейку «при выходе»; бенч и снимки —
+// без этого; игры ещё нет (экран начала) — сразу
+window.shell?.onClosing(() => {
+  void (async () => {
+    const args = (await window.shell?.args()) ?? [];
+    const quiet = !game || ['bench', 'shot'].some(k => q.get(k) === '1' || args.includes(`--${k}`));
+    if (!quiet) await game!.save('exit');
+  })().finally(() => window.shell?.closeNow());
+});
 
 /** Поток: от больницы; авто-бенч и снимки — числа сцены (та же толпа, что прежде); `?flow=6,1` — эти числа. */
 async function flowOf(): Promise<Flow> {
@@ -98,8 +145,8 @@ async function flowOf(): Promise<Flow> {
   return Number.isFinite(walk) && walk > 0 ? { perHour: walk, ...(Number.isFinite(amb) && amb > 0 ? { ambulancePerHour: amb } : {}) } : AUTO;
 }
 
-startOf()
-  .then(async start => Game.create(document.getElementById('view')!, store, __VERSION__, quality, start, await flowOf()))
+begin()
+  .then(async ({ start, loaded }) => Game.create(document.getElementById('view')!, store, __VERSION__, quality, start, await flowOf(), loaded))
   .then(async g => {
     game = g;
     window.__game = g;

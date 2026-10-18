@@ -10,6 +10,7 @@ import type { WallMode } from '../render/world';
 import type { DoctorAction, DoctorHud } from './doctor/types';
 import type { EconomyHud, MoneyAction } from '../app/money';
 import type { HintKey } from '../app/hints';
+import type { SaveRow } from '../app/saves';
 
 /** Скорость игры (spec docs/specs/2026-10-walk.md): ×1, ×3, ×12; 0 — пауза. */
 export type Speed = 0 | 1 | 3 | 12;
@@ -133,6 +134,11 @@ export interface Hud {
   hint?: { key: HintKey; text: string };
   /** панель вида (стены, качество, камера) раскрыта; свёрнутая — одна кнопка */
   viewOpen: boolean;
+  /** меню игры (spec docs/specs/2026-10-saves.md): раскрыто ли и сохранения — новые сверху */
+  menu: { open: boolean; rows: SaveRow[] };
+  /** экран начала: сохранения — «Продолжить» и «Загрузить»; `problem` — почему не открылось то, что выбрали */
+  startSaves?: SaveRow[];
+  startProblem?: string;
 }
 
 export const initial: Hud = {
@@ -169,6 +175,7 @@ export const initial: Hud = {
   people: 0,
   version: '',
   viewOpen: false,
+  menu: { open: false, rows: [] },
 };
 
 export class Store {
@@ -217,8 +224,8 @@ export interface Actions {
   /** `as` — кого на место врача: терапевта или специалиста (spec docs/specs/2026-10-specialists.md) */
   hire(room: string, role: Id, as?: Id): void;
   dismiss(id: string): void;
-  /** начало игры: пустое здание, готовая больница или поликлиника */
-  startGame(kind: 'empty' | 'preset' | 'poly'): void;
+  /** начало игры: пустое здание, готовая больница или поликлиника; `{ load }` — сохранение (spec 2026-10-saves) */
+  startGame(kind: 'empty' | 'preset' | 'poly' | { load: string }): void;
   /** часть 3 (spec docs/specs/2026-10-flow-ui.md): фильтры «Пациентов», камера к человеку и выбор, слои карты */
   filterPatients(patch: Partial<PatientFilter>): void;
   focus(key: string): void;
@@ -235,6 +242,12 @@ export interface Actions {
   /** подсказки первых минут и панель вида (spec docs/specs/2026-10-aaa-polish.md) */
   dismissHint(): void;
   toggleView(): void;
+  /** меню игры (spec docs/specs/2026-10-saves.md): раскрыть, сохранить, загрузить ячейку, удалить, новая игра */
+  toggleMenu(): void;
+  saveGame(): void;
+  loadGame(slot: string): void;
+  deleteGame(slot: string): void;
+  newGame(): void;
 }
 
 export function useHud(store: Store): Hud {

@@ -526,6 +526,8 @@ export const doctorEn: DoctorStrings = {
       results: (name: string) => `${name}: results ready — waiting for you`,
       taken: (name: string) => `The case is yours: ${name}`,
       coming: (name: string) => `${name} is on the way to you — the card opens when they come in`,
+      reached: (name: string) => `${name} is in your office`,
+      reachedSomeone: 'Your patient is in your office',
     },
   },
 };

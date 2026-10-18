@@ -151,6 +151,9 @@ export function createSim(db: ContentDb): SimHost {
             sentPath = undefined;
             if (!s) return { kind: 'error', message: 'нет смены' };
             return slice([]);
+          case 'pack':
+            // файл сохранения сжимается асинхронно — это делает обёртка потока (worker.ts), а не разбор сообщений
+            return { kind: 'packFailed', message: 'pack: only in the worker' };
           case 'save':
             if (!s) return { kind: 'error', message: 'нет смены' };
             // сохранение — всё прожитое: недожитое время сначала доживается

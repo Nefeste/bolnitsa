@@ -11,6 +11,7 @@ import type { Lang } from '../i18n';
 import type { Difficulty } from '../engine/shift/types';
 import type { CardView, DoctorState, Refusal } from './doctor';
 import type { NameRow } from './pack';
+import type { SaveMeta } from './packing';
 
 export type ToSim =
   /** новая смена с потоком для ПК; `economy` — касса начала (spec docs/specs/2026-10-economy.md), нет — без кассы */
@@ -26,6 +27,11 @@ export type ToSim =
   | { kind: 'tick'; seconds: number; budgetMs: number }
   /** сохранить: вернуть снимок */
   | { kind: 'save' }
+  /**
+   * файл сохранения (spec docs/specs/2026-10-saves.md): снимок, шапка и вид окна — в сжатые байты, здесь, а не в окне;
+   * день, час и кассу шапки поток берёт из снимка
+   */
+  | { kind: 'pack'; meta: Omit<SaveMeta, 'day' | 't' | 'cash'>; view?: unknown }
   /**
    * путь пациента (spec docs/specs/2026-10-flow-ui.md): окно показывает путь этого пациента (номер в движке) — поток кладёт
    * его в срез (`path`), когда он изменился; null — никого
@@ -66,6 +72,9 @@ export type FromSim =
    */
   | ({ kind: 'slice'; buf: Int32Array; names: NameRow[]; notices: Notice[]; lag: number; world?: World; path?: PathView; broken?: string[] } & DoctorOut)
   | { kind: 'state'; state: ShiftState }
+  /** файл сохранения: сжатые байты (без копии) и его шапка; не вышло — `packFailed` */
+  | { kind: 'packed'; bytes: Uint8Array; meta: SaveMeta }
+  | { kind: 'packFailed'; message: string }
   | { kind: 'error'; message: string };
 
 /**
