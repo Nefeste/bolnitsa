@@ -24,7 +24,8 @@ import { genitive, type Lang, lang as currentLang, named, setLang, T } from '../
 import {
   type Arrival, type CaseTarget, type Decision, decisionOf, hhmm, makeCaseView, patientName, type SettingOption, useDb, type VisitView,
 } from './caseView';
-import { suggestedTreatments, treatmentGroupsFor } from './caseView';
+import { confidenceWord, suggestedTreatments, treatmentGroupsFor } from './caseView';
+import { lowerFirst } from '../i18n/case';
 
 /** Уровни медицины (геймдизайн §10) — от лёгкого к трудному; по умолчанию — «Студент» (spec «Сложность»). */
 export const LEVELS: readonly Difficulty[] = ['trainee', 'student', 'resident', 'doctor'];
@@ -74,6 +75,8 @@ export interface WardRow extends PatientRow {
   busy: boolean;
   /** что случилось за сутки: фибрилляцию сняли разрядом под монитором */
   event?: string;
+  /** лежащий у нанятого врача (spec docs/specs/2026-10-two-ways.md, F2): кто ведёт — должность и навык */
+  by?: string;
 }
 
 /**
@@ -133,6 +136,8 @@ export interface DoctorState {
   othersMore: number;
   away: PatientRow[];
   ward: WardRow[];
+  /** лежащие у нанятых врачей (spec docs/specs/2026-10-two-ways.md, F2) — в «Обходе» после ваших */
+  theirs: WardRow[];
   closed: ClosedRow[];
   asks: AskRow[];
   colleagues: ColleagueRow[];
@@ -149,8 +154,12 @@ export interface CardView extends VisitView {
   where?: 'waiting' | 'away' | 'done' | 'admitted' | 'gone' | 'other';
   /** ждёт вас и вы свободны — можно позвать */
   callable?: boolean;
-  /** ваш лежащий — блок обхода: как идёт, динамика, смена лечения (spec 2026-10-economy, «Обход») */
+  /** лежащий — блок обхода: как идёт, динамика, смена лечения (spec 2026-10-economy, «Обход»; чужой — 2026-10-two-ways) */
   round?: RoundView;
+  /** больной нанятого врача (spec docs/specs/2026-10-two-ways.md, F1): кто ведёт и что думает или что решил */
+  lead?: { by: string; text: string };
+  /** «Взять случай» сейчас можно */
+  take?: true;
 }
 
 /** Сколько строк общей очереди показывать. */
@@ -198,6 +207,7 @@ export function doctorState(db: ContentDb, s: ShiftState): DoctorState {
   const others: { id: string; order: number }[] = [];
   const away: PatientRow[] = [];
   const ward: WardRow[] = [];
+  const theirs: WardRow[] = [];
   const closed: ClosedRow[] = [];
   const order = new Map(s.queue.map((id, i) => [id, i]));
   for (const p of Object.values(s.patients)) {
@@ -206,7 +216,11 @@ export function doctorState(db: ContentDb, s: ShiftState): DoctorState {
       continue;
     }
     if (p.closed) {
-      if (p.closed.by) continue;
+      // лежащий у нанятого врача — в «Обходе» после ваших (spec 2026-10-two-ways, F2)
+      if (p.closed.by) {
+        if (p.status === 'admitted' && p.stay) theirs.push(wardRow(db, s, p));
+        continue;
+      }
       const c = p.closed;
       if (p.status === 'admitted' && p.stay) {
         ward.push(wardRow(db, s, p));
@@ -247,6 +261,7 @@ export function doctorState(db: ContentDb, s: ShiftState): DoctorState {
     othersMore: others.length - shown.length,
     away: away.sort((a, b) => (a.ready ?? 0) - (b.ready ?? 0) || (a.id < b.id ? -1 : 1)),
     ward: ward.sort((a, b) => (a.id < b.id ? -1 : 1)),
+    theirs: theirs.sort((a, b) => (a.by ?? '').localeCompare(b.by ?? '') || (a.id < b.id ? -1 : 1)),
     closed: closed.sort((a, b) => b.at - a.at),
     asks: asks.sort((a, b) => a.at - b.at || (a.id < b.id ? -1 : 1)),
     colleagues: colleaguesOf(db, s).map(m => ({ id: m.id, role: named(db.roles[m.role]?.name, m.role), skill: m.skill })),
@@ -308,7 +323,39 @@ export function wardRow(db: ContentDb, s: ShiftState, p: ShiftPatient): WardRow 
     ...(dxOp ? { operate: block ? { hint: orBlockText(db, block), disabled: true } : { hint: named(db.treatments[dxOp].name, dxOp) } } : {}),
     canDischarge: !op || op.done === true, canTransfer: !op || op.done === true || op.start === undefined, busy: !!op && !op.done,
     ...(stay.shock !== undefined && days === stay.shock + 1 ? { event: t.shock } : {}),
+    ...(c.by ? { by: staffName(db, s, c.by) } : {}),
   };
+}
+
+/** Нанятый врач словами: «Терапевт, навык 3»; уволен — должность неизвестна. */
+function staffName(db: ContentDb, s: ShiftState, id: string): string {
+  const m = hospitalCtx(db, s).staff.find(x => x.id === id) ?? s.staff?.find(x => x.id === id);
+  return m ? T.doctor.asks.by(named(db.roles[m.role]?.name, m.role), m.skill) : T.doctor.lead.someone;
+}
+
+/** Лечение и место словами: «амоксициллин · дома». */
+function planText(db: ContentDb, plan: { treatments: readonly Id[]; setting: Setting }): string {
+  const tx = plan.treatments.map(x => lowerFirst(named(db.treatments[x]?.name, x))).join(', ');
+  return `${tx || T.round.noTreatment} · ${T.doctor.lead.where[plan.setting] ?? plan.setting}`;
+}
+
+/**
+ * Кто ведёт больного нанятого врача и что о нём думает (spec docs/specs/2026-10-two-ways.md, F1): ищет диагноз; выбрал —
+ * диагноз и уверенность, как подсказки вашего уровня медицины; решил — диагноз, лечение и место. Только то, что знает
+ * врач: правды о больном здесь нет.
+ */
+function leadOf(db: ContentDb, s: ShiftState, p: ShiftPatient, level: Difficulty): CardView['lead'] {
+  const by = p.closed ? p.closed.by : p.by;
+  if (!by) return undefined;
+  const t = T.doctor.lead;
+  const who = staffName(db, s, by);
+  const dx = (id: Id) => lowerFirst(named(db.conditions[id]?.name, id));
+  if (p.closed) return { by: who, text: t.decided(dx(p.closed.diagnosis), planText(db, p.closed.plan)) };
+  const ph = p.phase;
+  if (!ph?.diagnosis) return { by: who, text: t.seeking };
+  const c = ph.confidence;
+  const conf = c === undefined || level === 'doctor' ? undefined : level === 'resident' ? confidenceWord(c) : T.case.patient.outOf10(Math.round(c * 10));
+  return { by: who, text: t.thinks(dx(ph.diagnosis), conf) };
 }
 
 /** Блок обхода в карте: лечение по группам — что можно у его койки, с тем, что о нём известно (`replanChoices` «Анамнеза»). */
@@ -562,9 +609,15 @@ export function cardView(db: ContentDb, s: ShiftState, id: string, level: Diffic
   const where: CardView['where'] = mine && !p.closed ? undefined
     : yours === 'waiting' ? 'waiting' : yours === 'away' ? 'away' : p.status === 'admitted' ? 'admitted' : p.closed ? 'done'
       : p.status === 'left' || p.status === 'unseen' ? 'gone' : 'other';
-  // ваш лежащий — блок обхода (spec 2026-10-economy)
-  const round = p.status === 'admitted' && p.stay && p.closed && !p.closed.by ? roundOf(db, s, p) : undefined;
-  return { ...view, id, active: mine && !p.closed, ...(where ? { where } : {}), ...(where === 'waiting' && !s.current ? { callable: true } : {}), ...(round ? { round } : {}) };
+  // лежащий — блок обхода (spec 2026-10-economy); у нанятого врача — тоже: главврач меняет лечение (spec 2026-10-two-ways, F2)
+  const round = p.status === 'admitted' && p.stay && p.closed ? roundOf(db, s, p) : undefined;
+  // больной нанятого врача (spec 2026-10-two-ways, F1): кто ведёт и что думает; можно ли взять
+  const lead = leadOf(db, s, p, level);
+  const take = !mine && !p.closed && yours === undefined && takeCommand(db, s, id).cmd !== undefined;
+  return {
+    ...view, id, active: mine && !p.closed, ...(where ? { where } : {}), ...(where === 'waiting' && !s.current ? { callable: true } : {}), ...(round ? { round } : {}),
+    ...(lead ? { lead } : {}), ...(take ? { take: true as const } : {}),
+  };
 }
 
 /** Подпись того, от чего зависит вид карты: изменилась — карту пересчитать. */
@@ -574,6 +627,8 @@ function cardKey(s: ShiftState, id: string): string {
   return [
     p.step, p.results.length, p.pending.length, p.status, p.closed ? `${p.closed.at}:${p.closed.outcome.kind}` : '', s.current ?? '', s.until ?? '', p.out?.back ?? '',
     JSON.stringify(p.draft), Math.floor(s.t / 60), s.day, s.dayOpen, p.by ?? '', (s.consults ?? []).length,
+    // что думает нанятый врач (spec 2026-10-two-ways, F1)
+    p.phase?.diagnosis ?? '', p.phase?.confidence ?? '',
     // обход (spec 2026-10-economy): сменили лечение, операция пошла
     p.stay ? `${p.stay.replans}:${p.stay.op?.start ?? ''}:${p.stay.op?.done ?? ''}` : '',
   ].join('|');

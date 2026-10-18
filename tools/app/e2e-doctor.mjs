@@ -200,6 +200,19 @@ export async function doctorPart({ page, port, out, ok, fail, q, shots }) {
   const picked = await page.evaluate(() => window.__game.selected);
   if (picked !== target.key) await page.evaluate(k => window.__game.actions.select(k), target.key);
   await page.waitForSelector('#card-take', { timeout: 10000 });
+  // «Карта» — посмотреть, не забирая (spec docs/specs/2026-10-two-ways.md, F1): для чтения, кто ведёт и что думает, часы стоят
+  const tv = (await hud()).t;
+  await page.click('#card-view');
+  const viewed = await page.waitForSelector('#dcard-lead', { timeout: 20000 }).then(() => true, () => false);
+  const vc = await card();
+  const lead = viewed ? await page.textContent('#dcard-lead') : '';
+  if (viewed && vc && !vc.active && /навык \d/.test(lead) && /думает|ищет/.test(lead) && (await page.$('#dcard-take')) && (await hud()).t === tv)
+    ok(`«Карта» больного нанятого врача — для чтения: «${lead}», результатов ${vc.groups.length}, часы стоят`);
+  else fail(`«Карта»: ${JSON.stringify({ viewed, active: vc?.active, lead, t: [(await hud()).t, tv] })}`);
+  if (viewed) ok(`снимок: ${join(out, 'e2e-doctor-3-view.jpg')} (${await shot('e2e-doctor-3-view.jpg')} КБ)`);
+  await page.keyboard.press('Escape');
+  await until(() => !document.getElementById('dcard'));
+  await page.waitForSelector('#card-take', { timeout: 10000 });
   await page.click('#card-take');
   const took = await page.waitForSelector('#dcard', { timeout: 20000 }).then(() => true, () => false);
   const tc = await card();
