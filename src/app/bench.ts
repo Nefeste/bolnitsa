@@ -2,13 +2,15 @@
 // проматывается до 10:30, люди сразу на местах, дальше часы идут на ×1. Пресеты × два плана камеры: общий план и проход
 // крупным планом (полные модели людей). Числа — как у пробы (spikes/render-3d, `runs[]`), плюс время видеокарты, время
 // потока расчёта и план камеры. В конце — четыре снимка 1920×1080 на «высоком».
+// Исправлено, как в копии «Фармзавода» (pharma: src/app/bench.ts @ b9696c0, Nefeste/pharma#53): начало прогона
+// отмечается счётом замеров видеокарты и потока, а не длиной их памяти: память обрезается, и выборка была пустой.
 import * as THREE from 'three';
 import { T } from '../i18n';
 import type { Quality } from '../render/view';
 import { PRESETS, QUALITIES } from '../render/view';
 import { H } from '../sim/pack';
 import { type Game, SCENE } from './game';
-import { summarize } from './stats';
+import { since, summarize } from './stats';
 
 export interface BenchOpts {
   secs?: number;
@@ -98,8 +100,9 @@ export async function runBench(g: Game, opts: BenchOpts) {
         const tris: number[] = [];
         const near: number[] = [];
         const far: number[] = [];
-        const gpu0 = g.stage.gpu.samples.length;
-        const rt0 = g.client.roundTrips.length;
+        // отметки — по счёту замеров, а не по длине их памяти: память обрезается
+        const gpu0 = g.stage.gpu.taken;
+        const rt0 = g.client.roundTripsTaken;
         let last = 0;
         const t0 = performance.now();
         g.onFrame = ts => {
@@ -117,7 +120,7 @@ export async function runBench(g: Game, opts: BenchOpts) {
         store.set({ status: T.debug.benchCell(q, name, T.debug.measure) });
         await sleep(secs * 1000);
         g.onFrame = null;
-        const gpu = g.stage.gpu.samples.slice(gpu0);
+        const gpu = since(g.stage.gpu.samples, g.stage.gpu.taken, gpu0);
         const cpu = sim.map((v, i) => v + (draw[i] ?? 0));
         const iv = summarize(interval);
         const avg = (a: number[]) => Math.round(a.reduce((x, y) => x + y, 0) / Math.max(1, a.length));
@@ -140,7 +143,7 @@ export async function runBench(g: Game, opts: BenchOpts) {
           drawCpuMs: summarize(draw),
           cpuMs: summarize(cpu),
           gpuMs: gpu.length ? summarize(gpu) : null,
-          workerMs: summarize(g.client.roundTrips.slice(rt0)),
+          workerMs: summarize(since(g.client.roundTrips, g.client.roundTripsTaken, rt0)),
           drawCalls: avg(calls),
           triangles: avg(tris),
           peopleNear: Math.max(0, ...near),
