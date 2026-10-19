@@ -1,6 +1,8 @@
 // Сторона потока отрисовки (spec docs/specs/2026-10-shell-3d.md, «Обмен между потоками»): Web Worker с движком, ход
 // часов кадрами, последний срез. В пути — не больше одного `tick`: пока ответ не пришёл, игровые секунды копятся, и
 // поток не захлёбывается кадрами, если не успевает.
+// Исправлено, как в копии «Фармзавода» (pharma: src/sim/client.ts @ b9696c0, Nefeste/pharma#53): счёт `roundTripsTaken`
+// — память времён обрезана, и отметка начала прогона бенча длиной массива давала пустую выборку.
 import type { Command, Notice, ShiftState } from '../engine/shift/types';
 import type { NameRow } from './pack';
 import type { SaveMeta } from './packing';
@@ -27,8 +29,10 @@ export class SimClient {
   private saves: ((s: ShiftState) => void)[] = [];
   /** файлы сохранения в пути (spec docs/specs/2026-10-saves.md): по очереди, как ответы потока */
   private packs: { ok: (r: { bytes: Uint8Array; meta: SaveMeta }) => void; fail: (e: Error) => void }[] = [];
-  /** время на поток: от отправки `tick` до ответа, мс — для бенча */
+  /** время на поток: от отправки `tick` до ответа, мс — для бенча; последние 1000–2000 */
   readonly roundTrips: number[] = [];
+  /** сколько времён пришло всего: отметка начала прогона бенча (`since` в src/app/stats.ts) */
+  roundTripsTaken = 0;
   private sentAt = 0;
   onSlice: (s: Slice) => void = () => {};
   onError: (message: string) => void = () => {};
@@ -60,6 +64,7 @@ export class SimClient {
     if (this.ticking) {
       this.ticking = false;
       this.roundTrips.push(performance.now() - this.sentAt);
+      this.roundTripsTaken++;
       if (this.roundTrips.length > 2000) this.roundTrips.splice(0, 1000);
     }
     this.onSlice({

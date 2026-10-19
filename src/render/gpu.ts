@@ -2,6 +2,8 @@
 // есть (спецификация Khronos, пример 1: beginQuery/endQuery с TIME_ELAPSED_EXT). С вертикальной синхронизацией к/с
 // упираются в 60, а время видеокарты показывает запас. Результат запроса приходит через кадр-другой — опрашивается без
 // остановки отрисовки.
+// Исправлено, как в копии «Фармзавода» (pharma: src/render/gpu.ts @ b9696c0, Nefeste/pharma#53): счёт замеров `taken` —
+// память замеров обрезана, и отметка начала прогона бенча длиной массива давала пустую выборку.
 interface TimerExt {
   TIME_ELAPSED_EXT: number;
   GPU_DISJOINT_EXT: number;
@@ -12,8 +14,10 @@ export class GpuTimer {
   private free: WebGLQuery[] = [];
   private pending: WebGLQuery[] = [];
   private active: WebGLQuery | null = null;
-  /** готовые замеры, мс; забирает бенч */
+  /** готовые замеры, мс, последние 2000; забирает бенч */
   readonly samples: number[] = [];
+  /** сколько замеров пришло всего: отметка начала прогона бенча (`since` в src/app/stats.ts) */
+  taken = 0;
 
   constructor(private gl: WebGL2RenderingContext) {
     this.ext = gl.getExtension('EXT_disjoint_timer_query_webgl2') as TimerExt | null;
@@ -48,7 +52,10 @@ export class GpuTimer {
       const ns = gl.getQueryParameter(q, gl.QUERY_RESULT) as number;
       this.pending.shift();
       this.free.push(q);
-      if (!disjoint) this.samples.push(ns / 1e6);
+      if (!disjoint) {
+        this.samples.push(ns / 1e6);
+        this.taken++;
+      }
     }
     if (this.samples.length > 2000) this.samples.splice(0, this.samples.length - 2000);
   }

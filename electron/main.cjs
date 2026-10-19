@@ -1,5 +1,6 @@
 // из spikes/render-3d: electron/main.cjs (из spikes/map-render) — изменено: страница игры и поток расчёта из dist/,
-// мост `shell` (аргументы, перезапуск без vsync), окно игры.
+// мост `shell` (аргументы, перезапуск без vsync), окно игры; исправлено, как в копии «Фармзавода» (pharma:
+// electron/main.cjs @ b9696c0, Nefeste/pharma#53): окно бенча развёрнуто с первого прогона.
 // Оболочка Electron (spec docs/specs/2026-10-shell-3d.md, «Процессы и потоки»): окно, страница из dist/ по своей схеме
 // app:// (без dev-сервера и без сети), запись итога бенча и снимков в файлы рядом с .exe/AppImage; сохранения игры — в
 // папке игры пользователя, при выходе — сохранение (spec docs/specs/2026-10-saves.md).
@@ -208,6 +209,9 @@ app.whenReady().then(async () => {
   ipcMain.on('shell:close-now', () => win.isDestroyed() || win.destroy());
   win.once('ready-to-show', () => {
     timings.readyToShowMs = Date.now() - t0;
+    // окно бенча развёрнуто с первого прогона: в «Фармзаводе» окно 1600 × 900, развёрнутое посреди бенча, сбило первый
+    // прогон владельца (19.10.2026). maximize() показывает скрытое окно без фокуса, show() даёт фокус
+    if (has('bench')) win.maximize();
     win.show();
   });
   win.webContents.on('console-message', e => {
