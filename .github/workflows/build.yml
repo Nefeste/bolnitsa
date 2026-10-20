@@ -3,7 +3,8 @@
 #
 # Собирается игра из корня репозитория (spec docs/specs/2026-10-shell-3d.md, «Сборка»): оболочка
 # Electron, 3D-вид, панели и поток расчёта над движком. Пока — только Windows x64, одним zip (решение
-# владельца 17.10.2026; Linux и одиночный .exe вернутся, когда понадобятся), из Linux, без wine.
+# владельца 17.10.2026; Linux и одиночный .exe вернутся, когда понадобятся), из Linux, без wine; рядом — архив
+# обновления с одним resources/app.asar (docs/05-process.md).
 # Пробы spikes/map-render (v0.0.1) и spikes/render-3d (v0.0.2) больше не собираются.
 # Файлы уходят в релиз на этот тег; версии 0.x — пре-релизы. Репозиторий закрыт: релиз видят
 # только участники.
@@ -63,21 +64,27 @@ jobs:
         run: node tools/app/build.mjs
       - name: Windows x64
         run: npx electron-builder --win --publish never
+      # между выпусками меняется один файл — resources/app.asar: остальной корень — архив Electron той же версии
+      - name: Обновление — один resources/app.asar
+        run: node tools/app/update-zip.mjs
       - run: ls -la release
 
       - name: Описание релиза
         run: |
+          E=$(node -p "require('electron/package.json').version")
           {
             echo "«Больница» — прототип: что в этой версии — STATUS.md и docs/07-roadmap.md на этом теге."
             echo
             echo "**Windows x64:** \`*-win-x64.zip\` — распаковать в любую папку и запустить \`Bolnitsa.exe\`."
+            echo
+            echo "**Обновление:** \`*-win-x64-update.zip\` — в нём только \`resources/app.asar\`. Распаковать в папку игры с заменой файла. Подходит к установке любого выпуска на Electron $E; у выпуска на другом Electron — ставить полный архив."
             echo
             echo "Авто-бенч: \`Bolnitsa.exe --bench\` (или кнопка «Авто-бенч» в меню отладки — клавиша слева от 1 или кнопка «Отладка») — итог bench-electron-*.json и четыре снимка рядом с программой."
             echo
             echo "Сборка не подписана: Windows может спросить «Запустить всё равно?»."
             echo "Модели — CC0 (Kenney, KayKit, Quaternius): assets/LICENSES.md."
             echo
-            echo "Собрано из коммита ${{ github.sha }}, сборка ${{ github.run_number }}."
+            echo "Electron $E. Собрано из коммита ${{ github.sha }}, сборка ${{ github.run_number }}."
           } > release.md
 
       - name: Релиз ${{ github.ref_name }}
@@ -90,3 +97,4 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             release/Bolnitsa-*-win-x64.zip
+            release/Bolnitsa-*-win-x64-update.zip

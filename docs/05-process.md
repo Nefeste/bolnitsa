@@ -24,6 +24,16 @@
   (распаковать, запустить `Bolnitsa.exe`). `Bolnitsa` — рабочее имя файлов, марку решит владелец. Пробы (`spikes/map-render` — `v0.0.1`, `spikes/render-3d` — `v0.0.2`) остаются в репозитории, но больше
   не собираются. Установщика NSIS и своей иконки у `.exe` нет: без wine они не собираются
   (`spikes/map-render/README.md`, «Сборка»).
+- С версии `0.7.3` рядом с полным zip — **архив обновления** `Bolnitsa-<версия>-win-x64-update.zip`: один
+  `resources/app.asar`, распаковать в папку игры с заменой файла (как в «Фармзаводе», Nefeste/pharma#66). Между
+  выпусками меняется только он: остальной корень — архив Electron той же версии байт в байт. Сумму asar в exe не пишем
+  (`disableAsarIntegrity` в `package.json`): проверку целостности asar в Electron включает fuse
+  `EnableEmbeddedAsarIntegrityValidation` ([ASAR Integrity](https://electronjs.org/docs/latest/tutorial/asar-integrity)),
+  у нас он выключен, и сумма лишь меняла бы exe с каждой версией. Поэтому обновление подходит к установке любого выпуска
+  на той же версии Electron — она в описании релиза; все выпуски игры, `v0.0.4`–`v0.7.1`, — на Electron 44.5.1. Сменили
+  Electron — ставить полный архив. Включим проверку целостности — exe снова будет меняться с каждой версией, и
+  обновление одним файлом потеряет смысл. Через Steam обновления и так придут разницей: SteamPipe делит файлы на куски
+  около 1 МБ и качает только изменившиеся ([Uploading to Steam](https://partner.steamgames.com/doc/sdk/uploading)).
 
 ## Сборка игры у себя
 
@@ -32,7 +42,7 @@ npm ci                 # с Electron (~100 МБ); для одних провер
 npm run build          # база + страница и поток расчёта → dist/
 npm run electron       # окно игры
 npm run dist:linux     # AppImage и tar.gz → release/ — только для проверки собранной игры в контейнере, в релиз не идёт
-npm run dist:win       # zip для Windows x64 → release/ (из Linux, без wine) — то же, что в релизе
+npm run dist:win       # оба zip для Windows x64 → release/ (из Linux, без wine) — то же, что в релизе
 ```
 
 `dist/` и `release/` в репозиторий не попадают. Модели лежат в `assets/models/` готовыми; заново их делает

@@ -95,7 +95,7 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # screenshots in tools/app/out/; `-- --only 1|2|3|4|5|6|7|8|9|10|11` for one part
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
-npm run dist:win                   # build + Windows x64 zip → release/ (from Linux, no wine) — the only release file for now
+npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
 npm run assets -- <sources dir>    # rebuild assets/models/*.glb from the CC0 packs (byte-identical; see assets/LICENSES.md)
 npm run bench -- --mode flow --quick           # engine: time per game minute at 50/100/200/300 patients (PC flow)
 npm run bench -- --mode desks --quick          # the same with Anamnez's appointment slots
@@ -165,6 +165,7 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   `tools/test/i18n.test.ts` fails on Cyrillic in strings elsewhere in `src/app`, `src/ui`, `src/render`, `src/sim`.
 - `electron/` — the main process (window, `app://`, no network) and preload; `app/index.html` — the page.
 - `assets/` — CC0 models and `LICENSES.md` (sources, licenses, SHA-256); never add a model without its line there.
-- `tools/app/` — page build, model preparation, browser scenario, headless bench; `tools/test/` — Bun tests;
+- `tools/app/` — page build, model preparation, browser scenario, headless bench, the release update archive — one
+  `resources/app.asar` (`update-zip.mjs`); `tools/test/` — Bun tests;
   `tools/content/` — database build; `tools/bench/` — engine bench.
 - `spikes/` — probes, kept as they were; code taken from them carries `// из spikes/<probe>: <path>` on its first line.
