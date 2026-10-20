@@ -1,5 +1,6 @@
 // Версия (устав, docs/04-process.md, «Версии»): номер живёт в package.json и package-lock.json — они совпадают; сборка по
-// тегу (.github/workflows/build.yml) сверяет тег с package.json и выкладывает файлы с именем продукта из него.
+// тегу (.github/workflows/build.yml) сверяет тег с package.json и выкладывает файлы с именем продукта из него: полный zip и
+// архив обновления с одним app.asar (tools/app/update-zip.mjs).
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -23,5 +24,13 @@ describe('версия', () => {
     expect(pkg.build.win.target).toEqual([{ target: 'zip', arch: ['x64'] }]);
     expect(build.includes(`release/${pkg.productName}-*-win-x64.zip`)).toBe(true);
     expect(build.includes('electron-builder --win --publish never')).toBe(true);
+  });
+
+  // между выпусками меняется один resources/app.asar, если в exe нет его суммы (docs/05-process.md, «Сборка для ПК»)
+  test('сборка по тегу: рядом с полным zip — архив обновления; exe без суммы asar', () => {
+    expect(pkg.build.disableAsarIntegrity).toBe(true);
+    expect(pkg.scripts['dist:win'].endsWith('electron-builder --win --publish never && node tools/app/update-zip.mjs')).toBe(true);
+    expect(build.includes('run: node tools/app/update-zip.mjs')).toBe(true);
+    expect(build.includes(`release/${pkg.productName}-*-win-x64-update.zip`)).toBe(true);
   });
 });
