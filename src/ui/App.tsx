@@ -8,6 +8,7 @@ import type { PersonInfo } from '../render/population';
 import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
 import { Card } from './doctor/Card';
+import { Encyclopedia, openEncyclopedia } from './Encyclopedia';
 import { Asks, Dock, OfficeRow, TakeCase } from './doctor/Dock';
 import { Meeting, Reports, signed } from './Meeting';
 import { Layers, PathSection, PatientsTab } from './flow';
@@ -437,7 +438,9 @@ function Posts({ r, actions }: { r: RoomCard; actions: Actions }) {
         const rows = posts.filter(p => p.role === role);
         return (
           <div key={role} className="post">
-            <span className="prole">{rows[0].name}</span>
+            <span className="prole" data-enc={role}>
+              {rows[0].name}
+            </span>
             {rows.map(p => {
               // смены: строка ночной смены — свои номера кнопок
               const id = `${p.role.slice(5)}${p.shift === 'night' ? '-night' : ''}`;
@@ -574,7 +577,9 @@ function BottomCard({ hud, actions, names }: P) {
     return (
       <div className="card panel" id="card">
         <div className="cardhead">
-          <b id="card-title">{title}</b>
+          <b id="card-title" data-enc={info.kind === 'staff' ? info.role : undefined}>
+            {title}
+          </b>
           {info.kind === 'patient' ? <span className={`badge t-${info.triage}`} title={T.triage[info.triage]} /> : null}
           {/* «Следить» (spec docs/specs/2026-10-owner-play-2.md): камера идёт за ним; ушедший — только путь */}
           {info.kind === 'patient' && info.gone ? null : (
@@ -607,7 +612,9 @@ function BottomCard({ hud, actions, names }: P) {
       return (
         <div className="card panel" id="card">
           <div className="cardhead">
-            <b id="card-title">{r.name}</b>
+            <b id="card-title" data-enc={r.type}>
+              {r.name}
+            </b>
             <span className="muted">{r.id}</span>
             <button type="button" className="close" onClick={() => actions.select(undefined)} title="Esc">
               ✕
@@ -619,7 +626,9 @@ function BottomCard({ hud, actions, names }: P) {
     return (
       <div className="card panel" id="card">
         <div className="cardhead">
-          <b id="card-title">{r.name}</b>
+          <b id="card-title" data-enc={r.type}>
+            {r.name}
+          </b>
           <span className="muted">{r.id}</span>
           <button type="button" className="close" onClick={() => actions.select(undefined)} title="Esc">
             ✕
@@ -774,6 +783,11 @@ function StartChooser({ hud, actions }: P) {
         <b>{T.start.preset}</b>
         <span>{T.start.presetHint}</span>
       </button>
+      {/* энциклопедия (spec docs/specs/2026-10-encyclopedia.md) — и до игры: главное меню геймдизайна §9 */}
+      <button type="button" id="start-enc" onClick={() => openEncyclopedia()} title="F1">
+        <b>{T.encyclopedia.ui.open}</b>
+        <span>{T.encyclopedia.ui.openHint}</span>
+      </button>
       {saves.length > 1 ? (
         <>
           <h2>{T.saves.loadTitle}</h2>
@@ -789,7 +803,13 @@ export function App({ store, actions, names }: { store: Store; actions: Actions;
   // язык меняется на ходу: строки читаются при отрисовке, смена языка — новый снимок хранилища
   const hud = useHud(store);
   const p = { hud, actions, names };
-  if (hud.choose) return <StartChooser {...p} />;
+  if (hud.choose)
+    return (
+      <>
+        <StartChooser {...p} />
+        <Encyclopedia />
+      </>
+    );
   return (
     <>
       <TopBar {...p} />
@@ -817,6 +837,8 @@ export function App({ store, actions, names }: { store: Store; actions: Actions;
       {/* планёрка в 08:00 (spec docs/specs/2026-10-economy.md) — когда карта пациента закрыта */}
       {hud.economy?.open && !hud.doctor?.card ? <Meeting e={hud.economy} actions={actions} /> : null}
       {hud.debug ? <DebugMenu {...p} /> : null}
+      {/* энциклопедия (spec docs/specs/2026-10-encyclopedia.md) — поверх всего, и карты пациента */}
+      <Encyclopedia />
       {!hud.ready || hud.status || hud.error ? (
         <div className="status panel" id="status">
           {hud.error ? `${T.app.error}: ${hud.error}` : hud.status || T.app.loading}

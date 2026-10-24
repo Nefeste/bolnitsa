@@ -95,8 +95,9 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # then staff shifts: at 20:00 the day shift walks out and the night shift in, the night
                                    # rows of a room card, hiring a night registrar, «Сейчас в смене»; then fatigue: a tired
                                    # doctor walks to the staff room, his card and fatigue bar, «Персонал», «врач на перерыве»
-                                   # in a waiting patient's path);
-                                   # screenshots in tools/app/out/; `-- --only 1|2|3|4|5|6|7|8|9|10|11|12|13` for one part
+                                   # in a waiting patient's path; then the encyclopedia: the start screen button, search,
+                                   # links, «Назад», F1 over a name, «Подробнее» in «Что это?»);
+                                   # screenshots in tools/app/out/; `-- --only 1|2|3|4|5|6|7|8|9|10|11|12|13|14` for one part
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -175,8 +176,11 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   overlay floor tint — `overlay.ts`.
 - `src/ui/` — panels (React) and their store; `src/ui/doctor/` — the patient card window, the doctor's panel and the
   «Просят посмотреть» tab, driven by `src/app/doctor.ts`; `src/ui/flow.tsx` — the «Пациенты» tab, the patient's path and
-  the map layers menu; `src/i18n/` — every player-facing string, Russian and English
-  (English typed as the Russian; the medical database is Russian-only for now and shows as is in English mode);
+  the map layers menu; `src/ui/Encyclopedia.tsx` — the encyclopedia window (`docs/specs/2026-10-encyclopedia.md`): its
+  articles come from `src/app/encyclopedia.ts`, a copy of Anamnez's, over the window's database (`src/app/content.ts`
+  reads it once for the game and for the start screen); F1 and Esc are caught before the game's keys; a name with
+  `data-enc` (or `data-exam`) under the cursor opens its article; `src/i18n/` — every player-facing string, Russian and
+  English (English typed as the Russian; the medical database is Russian-only for now and shows as is in English mode);
   `tools/test/i18n.test.ts` fails on Cyrillic in strings elsewhere in `src/app`, `src/ui`, `src/render`, `src/sim`.
 - `electron/` — the main process (window, `app://`, no network) and preload; `app/index.html` — the page.
 - `assets/` — CC0 models and `LICENSES.md` (sources, licenses, SHA-256); never add a model without its line there.

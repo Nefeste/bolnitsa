@@ -42,6 +42,8 @@ export interface RoomCard {
   room: number;
   name: string;
   id: string;
+  /** вид помещения — его статья в энциклопедии по F1 (spec docs/specs/2026-10-encyclopedia.md) */
+  type: Id;
   staff: string[];
   people: number;
   /** больница ПК: размер, работает ли и почему нет, нужное, должности, «Обставить», снос, каталог предметов */

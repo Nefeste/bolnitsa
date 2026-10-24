@@ -16,15 +16,18 @@
 // решение врача в карте отпущенного, карточка ушедшего, tools/app/e2e-discharged.mjs. Часть 12 — смены персонала:
 // пересменка в 20:00, ночная смена в карточке помещения, найм на ночь, tools/app/e2e-shifts.mjs. Часть 13 — усталость и
 // перерывы: врач идёт в ординаторскую, карточка, «Персонал», «врач на перерыве» в пути пациента, tools/app/e2e-fatigue.mjs.
+// Часть 14 — энциклопедия: экран начала, поиск, ссылки, «Назад», F1 над названием, «Подробнее» в «Что это?»,
+// tools/app/e2e-encyclopedia.mjs.
 // Ошибок в консоли и запросов наружу нет.
 // Снимки — tools/app/out/e2e.png, e2e-build-*.png и e2e-flow-*.png; `--shots high` — снимки частей 2 и 3 в этом качестве
 // (на время снимка).
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|3|4|5|6|7|8|9|10|11|12|13] [--shots low|medium|high] [--port 8093]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|3|4|5|6|7|8|9|10|11|12|13|14] [--shots low|medium|high] [--port 8093]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { doctorPart } from './e2e-doctor.mjs';
 import { economyPart } from './e2e-economy.mjs';
+import { encyclopediaPart } from './e2e-encyclopedia.mjs';
 import { fatiguePart } from './e2e-fatigue.mjs';
 import { findChromium } from './e2e-lib.mjs';
 import { ownerTwoPart } from './e2e-owner2.mjs';
@@ -118,6 +121,8 @@ try {
   if (run(12)) await shiftsPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   // часть 13 — усталость и перерывы (spec docs/specs/2026-10-staff-shifts.md, часть 2)
   if (run(13)) await fatiguePart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  // часть 14 — энциклопедия (spec docs/specs/2026-10-encyclopedia.md)
+  if (run(14)) await encyclopediaPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);
