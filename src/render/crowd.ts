@@ -146,8 +146,11 @@ export class Crowd {
     for (const w of this.walkers.values()) if (w.state === 'walk') this.startWalk(w, w.goals[0] ?? null);
   }
 
-  /** Новый человек: персонал — сразу на месте, пациент — входит с улицы (привезённый скорой — у входа для скорой). */
-  add(key: string, look: number, spot: Spot, staff: boolean, ambulance = false, due = NaN): Walker {
+  /**
+   * Новый человек: персонал — сразу на месте, пациент — входит с улицы (привезённый скорой — у входа для скорой).
+   * Персонал на пересменке (`enter`, spec docs/specs/2026-10-staff-shifts.md) тоже входит с улицы.
+   */
+  add(key: string, look: number, spot: Spot, staff: boolean, ambulance = false, due = NaN, enter = false): Walker {
     const from = ambulance ? this.ambulance : this.exit;
     const w: Walker = {
       key, look, staff, x: from.x, y: 0, z: from.z, heading: 0, lie: 0, lat: KEEP_RIGHT, state: 'idle', pts: null, cum: null, seg: 0, due,
@@ -155,7 +158,7 @@ export class Crowd {
       yield: 0, v: 0, idle: idleRate(key),
     };
     this.walkers.set(key, w);
-    if (staff) this.settle(w, spot);
+    if (staff && !enter) this.settle(w, spot);
     else {
       w.goals = [spot];
       this.startWalk(w, spot);
@@ -228,6 +231,17 @@ export class Crowd {
     w.goals = w.goals.filter(g => g.kind === 'act' && g.key !== w.at?.key).slice(-1);
     w.dwell = 0;
     if (w.state === 'walk') this.startWalk(w, w.goals[0] ?? null);
+  }
+
+  /**
+   * Передумал уходить (spec 2026-10-staff-shifts: ушедший со сменой снова в больнице) — к месту: идёт — поворачивает туда,
+   * стоит на месте — остаётся.
+   */
+  stay(w: Walker, spot: Spot) {
+    w.leaving = false;
+    w.due = NaN;
+    w.goals = [spot];
+    if (w.state === 'walk') this.startWalk(w, spot);
   }
 
   remove(key: string) {

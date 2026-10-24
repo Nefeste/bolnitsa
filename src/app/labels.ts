@@ -11,6 +11,8 @@ export interface LabelRow {
   name: string;
   state: string;
   ok: boolean;
+  /** не его смена (spec docs/specs/2026-10-staff-shifts.md): «закрыто до …» — не поломка */
+  rest?: boolean;
 }
 
 export class Labels {
@@ -42,7 +44,7 @@ export class Labels {
         this.root.appendChild(el);
         this.els.set(r.id, el);
       }
-      el.className = r.ok ? 'rlabel ok' : 'rlabel bad';
+      el.className = r.ok ? 'rlabel ok' : r.rest ? 'rlabel rest' : 'rlabel bad';
       el.textContent = '';
       const b = document.createElement('b');
       b.textContent = r.name;

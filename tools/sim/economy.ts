@@ -3,7 +3,9 @@
 // врача никто не играет — все случаи ведут нанятые врачи. Больницы:
 //   clinic   — пустое здание: шесть помещений прототипа (как в сценарии в браузере) и санузел, построены в 08:00 первых суток;
 //   district — пустое здание: районная — три терапевта, доврачебный, ЭКГ, рентген, смотровая приёмного, две палаты, санузел;
-//   city     — готовая городская больница (как «Городская больница» в окне);
+//              со сменами (spec 2026-10-staff-shifts) — и ночная смена там, где работают ночью, и ночной терапевт, как у
+//              готовой больницы;
+//   city     — готовая городская больница (как «Городская больница» в окне) — с ночной сменой;
 //   poly     — поликлиника по нормам проектирования из готовых помещений (как «Поликлиника» в окне, spec
 //              2026-10-real-hospital): ваш кабинет пустует — врача никто не играет, принимают три нанятых терапевта;
 //   polyspec — та же поликлиника, где два терапевта заменены гастроэнтерологом и эндокринологом (spec
@@ -17,7 +19,7 @@ import { expensesOf, incomeOf } from '../../src/engine/economy/economy';
 import { DOOR_PRICE, emptySite, hospitalOf, priceOf, roomPrice, type Site, type SiteCommand } from '../../src/engine/hospital/site';
 import { siteOfPlan } from '../../src/engine/hospital/site-plan';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
-import { presetStaff, salaryOf } from '../../src/engine/hospital/staff';
+import { nightHospital, presetStaff, salaryOf, withNightShift } from '../../src/engine/hospital/staff';
 import { apply, capacityOf, newFlowShift } from '../../src/engine/shift/engine';
 import { ambulancePerHour, walkPerHour } from '../../src/engine/shift/inflow';
 import { cashNow, startCash } from '../../src/engine/shift/money';
@@ -82,16 +84,25 @@ function site(s: ShiftState, cmd: SiteCommand): string | undefined {
   return n.room;
 }
 
-/** Построить по плану: протянуть, обставить, дверь посередине стены к коридору, люди на все должности; «Готово». */
+/**
+ * Построить по плану: протянуть, обставить, дверь посередине стены к коридору, люди на все должности; «Готово». Больница, где
+ * лежат и куда везёт скорая, — со сменами (spec 2026-10-staff-shifts), как готовая: и ночная смена в помещениях, что работают
+ * ночью, и ночной терапевт в первом кабинете.
+ */
 function build(s: ShiftState, plan: Spec[]) {
+  const night = nightHospital(db, plan.map(([type]) => ({ type })));
+  let office: string | undefined;
   for (const [type, x, y, w, h, side] of plan) {
     const id = site(s, { kind: 'room', type, x, y, w, h })!;
     site(s, { kind: 'furnish', room: id });
     const mid = x + Math.floor(w / 2);
     const wy = side === 'top' ? y : y + h - 1;
     site(s, { kind: 'door', room: id, cells: DOUBLE.has(type) ? [[mid - 1, wy], [mid, wy]] : [[mid, wy]] });
-    for (const role of db.rooms[type].staff) site(s, { kind: 'hire', room: id, role });
+    for (const role of db.rooms[type].staff) site(s, { kind: 'hire', room: id, role, shift: 'day' });
+    if (night && db.rooms[type].night) for (const role of db.rooms[type].staff) site(s, { kind: 'hire', room: id, role, shift: 'night' });
+    if (type === 'room.office') office ??= id;
   }
+  if (night && office) site(s, { kind: 'hire', room: office, role: 'role.doctor', shift: 'night' });
   apply(db, s, { kind: 'site', cmd: { kind: 'done' } });
 }
 
@@ -118,7 +129,8 @@ function start(name: string, seed: number): ShiftState {
   const flow = { perHour: 0, auto: true as const };
   if (name === 'city') {
     const rec = db.presets['preset.city'];
-    return newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, siteOfPreset(db, rec)), staff: presetStaff(db, rec), flow, economy: { cash: startCash(db, 'preset') } });
+    const st = siteOfPreset(db, rec);
+    return newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, st), staff: withNightShift(db, st.rooms, presetStaff(db, rec)), flow, economy: { cash: startCash(db, 'preset') } });
   }
   if (name === 'poly' || name === 'polyspec') {
     const p = siteOfPlan(db, db.sites!['site.polyclinic']);
@@ -126,7 +138,8 @@ function start(name: string, seed: number): ShiftState {
     // два терапевта — специалистами: в третьем и четвёртом кабинетах (r5, r6)
     const swap: Record<string, Id> = name === 'polyspec' ? { r5: 'role.gastroenterologist', r6: 'role.endocrinologist' } : {};
     const staff = p.staff.map(m => (m.room && swap[m.room] ? { ...m, role: swap[m.room], salary: salaryOf(db, swap[m.room], 3) } : m));
-    return newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, p.site), staff, flow, economy: { cash: startCash(db, 'poly') } });
+    // смены (spec 2026-10-staff-shifts): все — дневная, ночью поликлиника закрыта
+    return newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, p.site), staff: withNightShift(db, p.site.rooms, staff), flow, economy: { cash: startCash(db, 'poly') } });
   }
   const s = newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, emptySite()), staff: [], flow, economy: { cash: startCash(db, 'empty') } });
   build(s, name === 'clinic' ? CLINIC : DISTRICT);

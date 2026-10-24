@@ -2,11 +2,12 @@
 // содержание, расходники, койко-дни, ремонт, процент и репутация — код и числа «Анамнеза» (src/engine/economy/economy.ts,
 // content/hospital/economy.yaml); здесь — то, что меняет ПК: касса живая (касса на планёрке плюс касса суток), зарплаты и
 // содержание пишутся в кассу суток по часам (нанимают и строят в любой момент), стройка оплачивается сразу и не ниже
-// предела минуса, ниже предела на планёрке банк предлагает кредит (content/hospital/money.yaml). Чистые функции состояния
-// смены; в сменах «Анамнеза» движок их не зовёт.
+// предела минуса, ниже предела на планёрке банк предлагает кредит (content/hospital/money.yaml); зарплата — по сменам (spec
+// docs/specs/2026-10-staff-shifts.md). Чистые функции состояния смены; в сменах «Анамнеза» движок их не зовёт.
 import type { ContentDb } from '../../content/types';
-import { emptyLedger, expensesOf, incomeOf, type Ledger, salariesOf, upkeepOf } from '../economy/economy';
+import { emptyLedger, expensesOf, incomeOf, type Ledger, upkeepOf } from '../economy/economy';
 import type { HospitalState } from '../hospital/build';
+import { wagesOf } from '../hospital/staff';
 import { roomUpkeep, type Site } from '../hospital/site';
 import { DAY, type ShiftState, SHIFT_START } from './types';
 
@@ -82,7 +83,8 @@ export function accrue(db: ContentDb, s: ShiftState) {
   if (dt <= 0) return;
   const l = ledgerOf(e);
   const up = upkeepPerDay(db, s.hospital);
-  l.expenses.salaries += Math.round((salariesOf(s.staff ?? []) * dt) / DAY);
+  // смены (spec 2026-10-staff-shifts): зарплата — за смену, ночная дороже; без смены — за сутки, как прежде
+  l.expenses.salaries += Math.round((wagesOf(db, s.staff ?? []) * dt) / DAY);
   l.expenses.equipment += Math.round((up.equipment * dt) / DAY);
   l.expenses.rooms += Math.round((up.rooms * dt) / DAY);
 }

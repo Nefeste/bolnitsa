@@ -7,11 +7,11 @@ import { MeshoptSimplifier } from 'three/addons/libs/meshopt_simplifier.module.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { Cell, ContentDb, Id, Season } from '../content/types';
 import { type HospitalState, type Plan, planOf } from '../engine/hospital/build';
-import { DOCTOR, doctorRoom, openBlocks, type Problem, problemsOf, standInOf, standInsOf, type Staffing, workingRooms } from '../engine/hospital/requirements';
+import { type Block, DOCTOR, doctorRoom, openBlocks, type Problem, problemsOf, standInOf, standInsOf, type Staffing, workingRooms } from '../engine/hospital/requirements';
 import { demolishRefund, emptySite, furnishOf, hospitalOf, priceOf, readyCost, rulesOf, type Site, type SiteCommand, type SiteResult } from '../engine/hospital/site';
 import { siteOfPlan } from '../engine/hospital/site-plan';
 import { siteOfPreset } from '../engine/hospital/site-preset';
-import { presetStaff, salaryOf, type StaffMember, staffingOf } from '../engine/hospital/staff';
+import { dutyOf, onDuty, payOf, presetStaff, salaryOf, type Shift, shiftAt, type StaffMember, staffingOf, withNightShift } from '../engine/hospital/staff';
 import type { Notice } from '../engine/shift/types';
 import { clock, genitive, type Lang, money, named, setLang, T } from '../i18n';
 import type { Walker } from '../render/crowd';
@@ -64,17 +64,21 @@ export const AUTO: Flow = { perHour: 0, auto: true };
  */
 export type Start = 'empty' | 'preset' | 'poly';
 
-/** Больница начала и её люди: поликлиника — по записи базы, той же функцией, что команда стройки `ready`. */
+/**
+ * Больница начала и её люди: поликлиника — по записи базы, той же функцией, что команда стройки `ready`. Со сменами (spec
+ * docs/specs/2026-10-staff-shifts.md): все — дневная смена; городская работает и ночью — и с ночной сменой.
+ */
 function hospitalAt(db: ContentDb, start: Start): { site: Site; staff: StaffMember[] } {
   if (start === 'empty') return { site: emptySite(), staff: [] };
   if (start === 'poly') {
     const p = siteOfPlan(db, db.sites![SCENE.poly]);
     // сборка базы проверяет, что план строится и всё в нём работает (tools/content/load.ts, checkSites)
     if (!p.ok) throw new Error(`${SCENE.poly}: room ${p.room} — ${p.error.kind}`);
-    return { site: p.site, staff: p.staff };
+    return { site: p.site, staff: withNightShift(db, p.site.rooms, p.staff) };
   }
   const rec = db.presets[SCENE.preset];
-  return { site: siteOfPreset(db, rec), staff: presetStaff(db, rec) };
+  const site = siteOfPreset(db, rec);
+  return { site, staff: withNightShift(db, site.rooms, presetStaff(db, rec)) };
 }
 
 /**
@@ -197,7 +201,7 @@ export class Game {
   private left: { id: string; t: number }[] = [];
   /** «Приняты» (spec docs/specs/2026-10-discharged-card.md): приняты и ушли за сутки — как прислал поток расчёта */
   private seen: SeenList = { rows: [], total: 0 };
-  private problems: ({ kind: Problem['kind'] | 'broken'; text: string } | undefined)[] = [];
+  private problems: ({ kind: Problem['kind'] | 'broken' | 'offShift'; text: string } | undefined)[] = [];
   private broken = new Set<string>();
   /** первая зона ожидания (общая очередь к врачам) и кабинет человека штата — номера в плане */
   private hall = -1;
@@ -209,6 +213,10 @@ export class Game {
   /** часы смены из последнего среза */
   t = 8 * 3600;
   day = 0;
+  /** смена часов среза (spec docs/specs/2026-10-staff-shifts.md): сменилась — кто на месте и что работает, заново */
+  private shift: Shift = 'day';
+  /** кто на месте в любую смену: помещение, где в этой смене никого, а в другой есть, — «закрыто до …», а не поломка */
+  private full: Staffing = () => false;
   lastSlice: Slice | null = null;
   selected: string | undefined;
   /** «Следить» (spec docs/specs/2026-10-owner-play-2.md): за кем идёт камера — ключ человека на карте */
@@ -273,6 +281,8 @@ export class Game {
     // больница ПК (spec docs/specs/2026-10-build.md): пустое здание, готовая больница 2а в том же виде или поликлиника;
     // сохранение — его больница
     const saved = this.loaded?.state;
+    // часы сохранения — до первого среза: кто в смене, тот и на местах (spec docs/specs/2026-10-staff-shifts.md)
+    if (saved) this.t = saved.t;
     if (saved?.hospital) {
       this.staff = saved.staff ?? [];
       this.hospital = saved.hospital;
@@ -330,6 +340,7 @@ export class Game {
       this.crowd = new Crowd(layout, paths, this.people.looks);
       this.layout = layout;
       this.pop = new Population(db, layout, places, this.crowd, this.people.looks, this.staff, hospital.rooms);
+      this.pop.setTime(this.t);
       this.pop.placeStaff();
       this.stage = new Stage({ host: this.host, layout, furnished, people: this.people, quality, capacity: 600 });
       this.ghosts = new Ghosts(this.models);
@@ -349,10 +360,41 @@ export class Game {
     this.furnished = furnished;
     this.places = places;
     this.plan = plan;
-    this.staffed = staffingOf(db, plan, this.staff);
-    this.working = workingRooms(db, plan, this.staffed);
-    this.texts();
+    this.onDuty();
     this.builder.refresh();
+  }
+
+  /**
+   * Кто на месте и что работает — по смене часов (spec docs/specs/2026-10-staff-shifts.md): ночью помещение без ночной смены
+   * не работает, и подписи говорят почему. Потом — слова о больнице.
+   */
+  private onDuty() {
+    this.shift = shiftAt(this.db, this.t);
+    this.staffed = staffingOf(this.db, this.plan, dutyOf(this.db, this.staff, this.t));
+    this.full = staffingOf(this.db, this.plan, this.staff);
+    this.working = workingRooms(this.db, this.plan, this.staffed);
+    this.texts();
+  }
+
+  /**
+   * Не поломка, а не его смена (spec docs/specs/2026-10-staff-shifts.md): в помещении нет людей этой смены, а людей другой
+   * смены хватило бы — «закрыто до» начала следующей смены.
+   */
+  private offShift(p: Problem | undefined, r: Plan['rooms'][number]): string | undefined {
+    if (p?.kind !== 'noStaff' || problemsOf(this.db, this.plan, r, this.full).some(x => x.kind === 'noStaff')) return undefined;
+    return T.problem.offShift(clock(this.nextShift()));
+  }
+
+  /** Когда начнётся другая смена — час суток в секундах. */
+  private nextShift(): number {
+    const day = this.db.economy.staff.shifts?.day ?? [8, 20];
+    return (this.shift === 'day' ? day[1] : day[0]) * 3600;
+  }
+
+  /** Больницу не открыть только потому, что сейчас не та смена: людей другой смены в этом помещении хватило бы. */
+  private offShiftBlock(b: Block): boolean {
+    const { db, plan } = this;
+    return b.kind === 'down' && b.problem.kind === 'noStaff' && plan.rooms.some(r => r.type === b.room && !problemsOf(db, plan, r, this.full).some(x => x.kind === 'noStaff'));
   }
 
   /** Слова о больнице — со стройкой и с языком: подписи помещений, список штата, «закрыта», типы помещений. */
@@ -361,6 +403,8 @@ export class Game {
     // часть 3: первая причина «не работает» каждого помещения; сломанный с утра аппарат — если целого в помещении нет
     this.problems = plan.rooms.map(r => {
       const why = problemsOf(db, plan, r, this.staffed)[0];
+      const off = this.offShift(why, r);
+      if (off) return { kind: 'offShift' as const, text: off };
       if (why) return { kind: why.kind, text: this.problemText(why) };
       const slots = r.equipment.flatMap((id, slot) => (id ? [slot] : []));
       if (db.rooms[r.type]?.needsEquipment && slots.length > 0 && slots.every(slot => this.broken.has(`${r.id}:${slot}`))) return { kind: 'broken' as const, text: T.flow.room.broken };
@@ -371,12 +415,22 @@ export class Game {
     this.labels.set(
       plan.rooms.map(r => {
         const why = problemsOf(db, plan, r, this.staffed);
-        return { id: r.id, x: r.x + r.w / 2, z: r.y + r.h / 2, name: named(db.rooms[r.type]?.name, r.type), state: why.length ? T.problem.down(this.problemText(why[0])) : T.problem.works, ok: why.length === 0 };
+        const off = this.offShift(why[0], r);
+        return {
+          id: r.id, x: r.x + r.w / 2, z: r.y + r.h / 2, name: named(db.rooms[r.type]?.name, r.type), state: off ?? (why.length ? T.problem.down(this.problemText(why[0])) : T.problem.works), ok: why.length === 0,
+          ...(off ? { rest: true } : {}),
+        };
       }),
     );
     this.store.set({
-      staffList: this.staff.map(m => ({ key: `s:${m.id}`, text: `${named(db.roles[m.role]?.name, m.role)} · ${m.room ? named(db.rooms[plan.rooms.find(r => r.id === m.room)?.type ?? '']?.name, m.room) : T.card.reserve(1)}` })),
+      // смены (spec docs/specs/2026-10-staff-shifts.md): чья смена и в смене ли сейчас
+      staffList: this.staff.map(m => ({
+        key: `s:${m.id}`,
+        text: `${named(db.roles[m.role]?.name, m.role)} · ${m.room ? named(db.rooms[plan.rooms.find(r => r.id === m.room)?.type ?? '']?.name, m.room) : T.card.reserve(1)} · ${T.card.shifts[m.shift ?? 'both']}`,
+        ...(onDuty(db, m, this.t) ? { on: true } : {}),
+      })),
       closed: this.closedText(),
+      night: this.nightText(),
       roomTypes: Object.values(db.rooms)
         .map(t => {
           const r = rulesOf(db, t.id)!;
@@ -401,9 +455,26 @@ export class Game {
     if (!this.hospital.site) return undefined;
     const b = openBlocks(db, plan, this.working, this.staffed)[0];
     if (!b) return undefined;
+    // не та смена (spec docs/specs/2026-10-staff-shifts.md): регистратура или кабинет врача ночью без ночной смены — не
+    // поломка; об этом — спокойная строка (`nightText`)
+    if (this.offShiftBlock(b)) return undefined;
     const gen = genitive(db.rooms[b.room], b.room);
     if (b.kind === 'down') return T.problem.roomDown(named(db.rooms[b.room]?.name, b.room), this.problemText(b.problem));
     return T.problem.noRoom(gen);
+  }
+
+  /**
+   * Пришедших сами не примут, потому что сейчас не смена регистратуры или врача (spec docs/specs/2026-10-staff-shifts.md), а
+   * часы приёма идут: игрок продлил их в ночь — сказать спокойно, до какого часа. Вне часов приёма — молчать: так и задумано.
+   */
+  private nightText(): string | undefined {
+    const { db, plan } = this;
+    if (!this.hospital.site) return undefined;
+    const b = openBlocks(db, plan, this.working, this.staffed)[0];
+    if (!b || !this.offShiftBlock(b)) return undefined;
+    const [open, close] = this.money.hud.hours;
+    const h = Math.floor((this.t % 86400) / 3600);
+    return h >= open && h < close ? T.problem.nightClosed(clock(this.nextShift())) : undefined;
   }
 
   /** Причина «не работает» словами. */
@@ -460,10 +531,14 @@ export class Game {
     // новая больница — раньше людей: номера помещений в срезе — по её списку
     if (s.broken) this.broken = new Set(s.broken);
     if (s.world) this.applyWorld(s.world);
-    // сломанные аппараты (в 08:00, при загрузке) — причины «не работает» заново, сцена та же
-    if (s.broken) this.texts();
+    // пересменка (spec docs/specs/2026-10-staff-shifts.md): что работает — по новой смене; сломанные аппараты (в 08:00, при
+    // загрузке) — причины «не работает» заново, сцена та же
+    if (shiftAt(this.db, this.t) !== this.shift) this.onDuty();
+    else if (s.broken) this.texts();
     if (s.path && s.path.id === this.watching) this.path = s.path;
     if (s.seen) this.seen = s.seen;
+    // смены (spec docs/specs/2026-10-staff-shifts.md): кто не в смене, а доводит приёмы, — ещё на месте
+    if (s.late) this.pop.setLate(s.late);
     this.pop.sync(s.buf, s.names);
     for (const n of s.notices) {
       if (n.kind === 'site' && n.cmd === 'office') this.doctor.onOffice(n);
@@ -823,7 +898,9 @@ export class Game {
   private hintNow(): Hud['hint'] {
     const { db, plan } = this;
     if (!this.hospital.site || this.doctor.open || this.money.open) return undefined;
-    const block = openBlocks(db, plan, this.working, this.staffed)[0];
+    const first = openBlocks(db, plan, this.working, this.staffed)[0];
+    // ночью без ночной смены больница закрыта для пришедших сами — так и задумано, «Нанять» не подсказываем
+    const block = first && !this.offShiftBlock(first) ? first : undefined;
     const b = this.builder;
     const key = hintOf(
       {
@@ -937,7 +1014,7 @@ export class Game {
     },
     furnish: room => this.command({ kind: 'furnish', room }),
     demolish: room => this.command({ kind: 'demolish', room }),
-    hire: (room, role, as) => this.command({ kind: 'hire', room, role, ...(as ? { as } : {}) }),
+    hire: (room, role, as, shift) => this.command({ kind: 'hire', room, role, ...(as ? { as } : {}), ...(shift ? { shift } : {}) }),
     dismiss: id => this.command({ kind: 'dismiss', id }),
     // начало выбирают до игры (main.tsx)
     startGame: () => {},
@@ -1043,16 +1120,25 @@ export class Game {
     const mine = doctorRoom(plan) === r.id;
     // на место врача — терапевт или специалист (spec docs/specs/2026-10-specialists.md): терапевт первым
     const doctors = [...new Set([standInOf(db, DOCTOR), ...standInsOf(db, DOCTOR)].filter((x): x is Id => x !== undefined))];
-    const posts = t.staff.map(role => {
-      const m = here.find(x => post(x) === role);
+    // смены (spec docs/specs/2026-10-staff-shifts.md): место — на две смены, у каждой свой человек; кто без смены (сохранение
+    // до смен), тот на обеих — одной строкой; ночью зарплата дороже
+    const posts = t.staff.flatMap((role): NonNullable<RoomCard['posts']> => {
       const hire = role === DOCTOR ? (standInOf(db, DOCTOR) ?? role) : role;
-      return {
-        role, name: named(db.roles[hire]?.name, hire), salary: money(salaryOf(db, hire, 3)), ...(role === DOCTOR && mine ? { you: true } : {}),
-        ...(m ? { who: `${named(db.roles[m.role]?.name, m.role)} · ${m.skill}`, staffId: m.id } : {}),
-        ...(role === DOCTOR && doctors.length > 1
-          ? { options: doctors.map(x => ({ role: x, name: named(db.roles[x]?.name, x), salary: money(salaryOf(db, x, 3)), hint: named(db.roles[x]?.texts.hint) })) }
-          : {}),
-      };
+      const name = named(db.roles[hire]?.name, hire);
+      if (role === DOCTOR && mine) return [{ role, name, salary: money(salaryOf(db, hire, 3)), you: true }];
+      const all = here.filter(x => post(x) === role);
+      const both = all.find(x => x.shift === undefined);
+      return (both ? (['both'] as const) : (['day', 'night'] as const)).map(shift => {
+        const m = shift === 'both' ? both : all.find(x => x.shift === shift);
+        const pay = (x: Id) => money(payOf(db, salaryOf(db, x, 3), shift === 'both' ? undefined : shift));
+        return {
+          role, shift, name, salary: pay(hire),
+          ...(m ? { who: `${named(db.roles[m.role]?.name, m.role)} · ${m.skill}`, staffId: m.id } : {}),
+          ...(role === DOCTOR && doctors.length > 1
+            ? { options: doctors.map(x => ({ role: x, name: named(db.roles[x]?.name, x), salary: pay(x), hint: named(db.roles[x]?.texts.hint) })) }
+            : {}),
+        };
+      });
     });
     const f = furnishOf(db, site, id);
     return {

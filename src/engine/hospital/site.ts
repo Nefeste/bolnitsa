@@ -11,7 +11,7 @@ import type { Cell, ContentDb, Id, ObjectKind, RoomSize, RoomSizeId, Rot } from 
 import type { Decor, HospitalState, PlacedRoom, Plan, RoomInstance } from './build';
 import { CELL } from './grid';
 import { OFFICE, type Problem } from './requirements';
-import type { StaffMember } from './staff';
+import type { Shift, StaffMember } from './staff';
 
 // --- состояние ------------------------------------------------------------------------------------------------------
 
@@ -1384,9 +1384,10 @@ export type SiteCommand =
   | { kind: 'demolish'; room: string }
   /**
    * на должность помещения (`role` — должность образца: в кабинет врача встаёт терапевт); `as` — кто именно встаёт на место
-   * врача: терапевт или специалист (spec docs/specs/2026-10-specialists.md)
+   * врача: терапевт или специалист (spec docs/specs/2026-10-specialists.md); `shift` — на дневную или ночную смену (spec
+   * docs/specs/2026-10-staff-shifts.md), нет — на дневную
    */
-  | { kind: 'hire'; room: string; role: Id; as?: Id }
+  | { kind: 'hire'; room: string; role: Id; as?: Id; shift?: Shift }
   | { kind: 'dismiss'; id: string }
   | { kind: 'undo' }
   /** стройка закончена: перестраиваемое помещение открыто */

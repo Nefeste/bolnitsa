@@ -14,7 +14,7 @@ import {
 import { type CampaignProgress, campaignEvening, chapterOf, nextChapterOf, startChapter, tutorialDayOf } from '../campaign/campaign';
 import { build, emptyPlot, type HospitalState, type PlacedRoom, type Plan, planOf, presetHospital, sizeOf, UNDO_DEPTH, widenPlot } from '../hospital/build';
 import { bedsideIn, DOCTOR, doctorRoom, examWhere, NONE_BROKEN, openBlocks, type Problem, problemsOf, slotKey, type Staffing, workingRooms } from '../hospital/requirements';
-import { applicantsOf, doctorOf, grow, memberAt, presetStaff, PROFILE_PRIOR, readingOf, type StaffMember, speedOf, staffingOf } from '../hospital/staff';
+import { applicantsOf, doctorOf, dutyOf, grow, memberAt, onDuty, presetStaff, PROFILE_PRIOR, readingOf, type StaffMember, speedOf, staffingOf } from '../hospital/staff';
 import { metersBetween, WALK_SPEED, walkSeconds } from '../hospital/walk';
 import { log2 } from '../core/math';
 import { P_ONE, RNG_VERSION, Rng } from '../core/rng';
@@ -74,7 +74,10 @@ const dayAt = (s: ShiftState, t: number) => (s.flow ? hospitalDay(t) : Math.floo
 /** Больница смены: план, штат, кто на месте, какие помещения работают, стулья, есть ли доврачебный. */
 export interface HospitalCtx {
   plan: Plan;
-  staff: StaffMember[];
+  /** кто в смене (spec 2026-10-staff-shifts): по нему — кто на месте, кто принимает, кто читает снимок */
+  staff: readonly StaffMember[];
+  /** весь штат — найти человека по номеру: врач доводит приём и после своей смены */
+  all: readonly StaffMember[];
   staffed: Staffing;
   working: Set<string>;
   /** работающие кабинеты — виды помещений, по порядку (spec 2026-10-chapter-4, часть 53а): где можно лечить в кабинете */
@@ -84,7 +87,7 @@ export interface HospitalCtx {
 }
 
 const presets = new WeakMap<ContentDb, { hospital: HospitalState; staff: StaffMember[] }>();
-const ctxs = new WeakMap<HospitalState, WeakMap<StaffMember[], HospitalCtx>>();
+const ctxs = new WeakMap<HospitalState, WeakMap<readonly StaffMember[], HospitalCtx>>();
 
 /** Практика — готовая амбулатория каталога со своим штатом; песочница — своя больница. */
 function presetOf(db: ContentDb) {
@@ -99,11 +102,12 @@ function presetOf(db: ContentDb) {
 
 /**
  * План и штат меняются только между сменами, и каждый раз — новым объектом: за день план
- * строится один раз.
+ * строится один раз. Смены (spec 2026-10-staff-shifts): кто на месте — по смене часа `at`, одна больница на пересменку.
  */
-export function hospitalCtx(db: ContentDb, s: ShiftState): HospitalCtx {
+export function hospitalCtx(db: ContentDb, s: ShiftState, at = s.t): HospitalCtx {
   const hospital = s.hospital ?? presetOf(db).hospital;
-  const staff = s.staff ?? presetOf(db).staff;
+  const all = s.staff ?? presetOf(db).staff;
+  const staff = dutyOf(db, all, at);
   let byStaff = ctxs.get(hospital);
   if (!byStaff) {
     byStaff = new WeakMap();
@@ -116,7 +120,7 @@ export function hospitalCtx(db: ContentDb, s: ShiftState): HospitalCtx {
     const working = workingRooms(db, plan, staffed);
     const live = plan.rooms.filter(r => working.has(r.id));
     const rooms = [...new Set(live.map(r => r.type))].sort();
-    c = { plan, staff, staffed, working, rooms, seats: live.reduce((n, r) => n + r.seats.length, 0), triage: live.some(r => r.type === 'room.triage') };
+    c = { plan, staff, all, staffed, working, rooms, seats: live.reduce((n, r) => n + r.seats.length, 0), triage: live.some(r => r.type === 'room.triage') };
     byStaff.set(staff, c);
   }
   return c;
@@ -605,6 +609,8 @@ function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       const was = s.flow?.auto ? capacityOf(db, s) : undefined;
       const out = siteCommand(db, s, cmd.cmd);
       reflow(db, s, was);
+      // нанят первый со сменой (spec 2026-10-staff-shifts): пересменки этих суток — с этой минуты
+      scheduleDuty(db, s);
       return out;
     }
     // касса ПК (spec 2026-10-economy): кредит, который банк предложил на планёрке
@@ -816,6 +822,7 @@ function planFlow(db: ContentDb, s: ShiftState) {
   const admits = departmentsOf(db, s);
   schedule(s, base + SHIFT_START + DAY, { kind: 'morning' });
   schedule(s, base + roundsAt(db), { kind: 'rounds' });
+  scheduleDuty(db, s);
   const back = returnWindow(hoursOf(db, s.flow!));
   for (const ret of s.returns.filter(x => x.day === d)) {
     const as = ret.as ? db.conditions[ret.as] : undefined;
@@ -827,6 +834,41 @@ function planFlow(db: ContentDb, s: ShiftState) {
   if (emergencyBays(db, s).length > 0 || s.hospital?.site) scheduleFlow(db, s, 'amb', 0, base + SHIFT_START);
   // по записи к специалисту (spec 2026-10-specialists): у каждого свой поток — только в потоке от больницы
   if (s.flow?.auto) for (const to of capacityOf(db, s).booked) scheduleFlow(db, s, 'book', 0, base + SHIFT_START, to);
+}
+
+/**
+ * Пересмены до следующей планёрки (spec 2026-10-staff-shifts): начала дневной и ночной смен — после этой минуты и до 08:00
+ * следующих суток включительно; уже назначенные — не дважды. Только когда в штате есть люди со сменой: больница без смен
+ * (сохранения до них) живёт, как прежде. Найм со сменой зовёт это сам — сутки, начатые без смен.
+ */
+export function scheduleDuty(db: ContentDb, s: ShiftState) {
+  const day = db.economy.staff.shifts?.day;
+  if (!s.flow || !day || !s.staff?.some(m => m.shift !== undefined)) return;
+  const until = s.day * DAY + SHIFT_START;
+  const times: number[] = [];
+  for (let base = Math.floor(s.t / DAY) * DAY; base <= until; base += DAY) for (const h of day) times.push(base + h * 3600);
+  for (const t of times.sort((a, b) => a - b)) {
+    if (t > s.t && t <= until && !s.events.some(e => e.t === t && e.event.kind === 'duty')) schedule(s, t, { kind: 'duty' });
+  }
+}
+
+/**
+ * Пересменка (spec 2026-10-staff-shifts): кто пришёл, тот на месте, — больница и «кто на месте» считаются по новой смене
+ * сами (`hospitalCtx`); ушедший со сменой врач доводит начатые приёмы (`lateOf`). Ждущих в очереди врача, ушедшего со
+ * сменой, записывают к тем, кто в смене, как пришедших (`docFor`); сменить его некому — их он тоже доводит. Поток от
+ * больницы — по новой больнице; свободные зовут ждущих.
+ */
+function duty(db: ContentDb, s: ShiftState) {
+  const was = s.flow?.auto ? capacityOf(db, s, s.t - 1) : undefined;
+  const list = colleaguesOf(db, s);
+  for (const x of s.queue) {
+    const p = s.patients[x];
+    if (p.doc === undefined || p.by !== undefined || list.some(m => m.id === p.doc)) continue;
+    const m = docFor(db, s, p, list);
+    if (m) p.doc = m.id;
+  }
+  reflow(db, s, was);
+  staffDesks(db, s);
 }
 
 /**
@@ -1177,11 +1219,15 @@ const bookPrefix = (day: number, to: string) => `${day}-b${to}-`;
 
 /**
  * Записываются к другим специалистам (spec 2026-10-specialists): кто перестал принимать — его следующий записанный не придёт;
- * кто начал — его поток с этой минуты, номера продолжают сегодняшние.
+ * кто начал — его поток с этой минуты, номера продолжают сегодняшние. Поток уже идёт (планёрка в 08:00 начала его раньше
+ * пересменки, spec 2026-10-staff-shifts) — второго нет.
  */
 function rebook(db: ContentDb, s: ShiftState, was: readonly string[], now: readonly string[]) {
   s.events = s.events.filter(e => e.event.kind !== 'flow' || e.event.stream !== 'book' || now.includes(e.event.to!));
-  for (const to of now) if (!was.includes(to)) scheduleFlow(db, s, 'book', arrivedToday(s, bookPrefix(s.day, to)), s.t, to);
+  for (const to of now) {
+    if (was.includes(to) || s.events.some(e => e.event.kind === 'flow' && e.event.stream === 'book' && e.event.to === to)) continue;
+    scheduleFlow(db, s, 'book', arrivedToday(s, bookPrefix(s.day, to)), s.t, to);
+  }
 }
 
 function arrivedToday(s: ShiftState, prefix: string): number {
@@ -1197,13 +1243,13 @@ const capacities = new WeakMap<HospitalCtx, Capacity>();
 /**
  * Что в больнице принимает поток (spec 2026-10-economy, «Поток от больницы»): кабинеты нанятых врачей, которые принимают
  * пришедших сами (терапевт; специалист берёт только записанных к нему), — а нет таких, ваш кабинет, если он работает; места
- * работающих смотровых приёмного. Одно на больницу и штат.
+ * работающих смотровых приёмного. Одно на больницу и штат; смены (spec 2026-10-staff-shifts) — по смене часа `at`.
  */
-export function capacityOf(db: ContentDb, s: ShiftState): Capacity {
-  const ctx = hospitalCtx(db, s);
+export function capacityOf(db: ContentDb, s: ShiftState, at = s.t): Capacity {
+  const ctx = hospitalCtx(db, s, at);
   let c = capacities.get(ctx);
   if (!c) {
-    const list = colleaguesOf(db, s);
+    const list = colleaguesOf(db, s, at);
     const hired = list.filter(m => !db.roles[m.role]?.profile).length;
     const yours = doctorRoom(ctx.plan);
     // к специалисту записываются с болезнями его профиля, которые больница принимает (spec 2026-10-specialists)
@@ -1686,7 +1732,7 @@ function soonest(ctx: HospitalCtx, s: ShiftState, p: ShiftPatient, rooms: readon
  */
 function fromRoom(ctx: HospitalCtx, p: ShiftPatient): string | undefined {
   if (p.bay) return p.bay.room;
-  if (p.by) return ctx.staff.find(m => m.id === p.by)?.room;
+  if (p.by) return ctx.all.find(m => m.id === p.by)?.room;
   return doctorRoom(ctx.plan);
 }
 
@@ -2505,7 +2551,7 @@ function finishOperation(db: ContentDb, s: ShiftState, p: ShiftPatient | undefin
   const op = p?.stay?.op;
   if (!p || !op || op.done || op.start === undefined || p.status !== 'admitted') return;
   op.done = true;
-  const surgeon = hospitalCtx(db, s).staff.find(m => m.id === op.surgeon);
+  const surgeon = hospitalCtx(db, s).all.find(m => m.id === op.surgeon);
   const day = surgeryDay(s);
   const stay = p.stay!;
   day.done++;
@@ -2913,6 +2959,8 @@ function handle(db: ContentDb, s: ShiftState, ev: ShiftEvent, notices: Notice[])
       return morning(db, s, notices);
     case 'rounds':
       return rounds(db, s);
+    case 'duty':
+      return duty(db, s);
     case 'reach': {
       // поток для ПК (spec 2026-10-owner-play-2): ваш пациент дошёл — если он ещё ваш и не ушёл на другое обследование
       const p = s.patients[ev.id];
@@ -3016,7 +3064,7 @@ function seatedIn(s: ShiftState, hall: string): number {
 function standBack(db: ContentDb, s: ShiftState, p: ShiftPatient) {
   if (!s.flow || !p.stands || db.inflow?.hall === undefined) return;
   const ctx = hospitalCtx(db, s);
-  const office = p.by ? ctx.staff.find(m => m.id === p.by)?.room : doctorRoom(ctx.plan);
+  const office = p.by ? ctx.all.find(m => m.id === p.by)?.room : doctorRoom(ctx.plan);
   if (!office) return;
   p.next = office;
   p.nextAt = s.t;
@@ -3193,11 +3241,12 @@ function results(db: ContentDb, s: ShiftState, p: ShiftPatient, notices: Notice[
 
 /**
  * Кто из нанятых врачей сегодня принимает: терапевт в работающем кабинете врача — не в вашем
- * и с местом в ординаторской. Порядок — по номеру кабинета, затем человека.
+ * и с местом в ординаторской; со сменами (spec 2026-10-staff-shifts) — кто в смене часа `at`. Порядок — по номеру
+ * кабинета, затем человека.
  */
-export function colleaguesOf(db: ContentDb, s: ShiftState): StaffMember[] {
+export function colleaguesOf(db: ContentDb, s: ShiftState, at = s.t): StaffMember[] {
   if (!s.hospital || !s.staff) return [];
-  const ctx = hospitalCtx(db, s);
+  const ctx = hospitalCtx(db, s, at);
   const mine = doctorRoom(ctx.plan);
   return ctx.staff
     .filter(m => db.roles[m.role]?.stands === DOCTOR && m.room !== undefined && m.room !== mine && ctx.working.has(m.room) && ctx.staffed(m.room, DOCTOR))
@@ -3286,20 +3335,66 @@ export function leftForPlayer(db: ContentDb, s: ShiftState, p: ShiftPatient): bo
 function staffDesks(db: ContentDb, s: ShiftState) {
   if (!s.dayOpen) return;
   const list = colleaguesOf(db, s);
-  callIn(db, s, list);
-  if (s.flow) toDoors(db, s, list);
+  const late = s.flow ? lateOf(db, s) : [];
+  callIn(db, s, list, late);
+  if (s.flow) toDoors(db, s, list, late);
 }
 
 /** Следующие — к дверям (spec 2026-10-walk): после того, как очередь изменилась без вызова нанятым врачом. */
 function doors(db: ContentDb, s: ShiftState) {
-  if (s.flow && s.dayOpen) toDoors(db, s, colleaguesOf(db, s));
+  if (s.flow && s.dayOpen) toDoors(db, s, colleaguesOf(db, s), lateOf(db, s));
 }
 
-function callIn(db: ContentDb, s: ShiftState, list: readonly StaffMember[]) {
-  if (list.length === 0) return;
+/**
+ * Кто из нанятых врачей уже не в смене (spec 2026-10-staff-shifts), а его больной ещё у него на приёме, на обследовании или
+ * вернулся к нему с результатами, или в очереди ждёт записанный к нему, кого на пересменке некому было передать: врач
+ * доводит их и уходит, новых не зовёт. Без смен — никого.
+ */
+export function lateOf(db: ContentDb, s: ShiftState): StaffMember[] {
+  const ctx = hospitalCtx(db, s);
+  if (ctx.staff === ctx.all) return [];
+  const on = new Set(ctx.staff.map(m => m.id));
+  const ids = new Set<string>();
+  for (const p of Object.values(s.patients)) {
+    if (p.by !== undefined && !on.has(p.by) && (p.status === 'waiting' || p.status === 'inRoom' || p.status === 'away')) ids.add(p.by);
+    else if (p.by === undefined && p.doc !== undefined && !on.has(p.doc) && p.status === 'waiting') ids.add(p.doc);
+  }
+  return ids.size > 0 ? ctx.all.filter(m => ids.has(m.id) && m.room !== undefined) : [];
+}
+
+/**
+ * Свободные врачи зовут: сначала своего, вернувшегося с результатами, потом нового из очереди. Ушедший со сменой (`late`,
+ * spec 2026-10-staff-shifts) — только своих: вернувшегося и записанного к нему.
+ */
+function callIn(db: ContentDb, s: ShiftState, list: readonly StaffMember[], late: readonly StaffMember[] = []) {
+  if (list.length === 0 && late.length === 0) return;
   const all = Object.values(s.patients);
   const busy = new Set(all.flatMap(p => (p.status === 'inRoom' && p.by ? [p.by] : [])));
   const ctx = hospitalCtx(db, s);
+  const backOf = (m: StaffMember) => all.filter(p => p.status === 'waiting' && p.by === m.id).sort((a, b) => a.queuedT - b.queuedT || (a.id < b.id ? -1 : 1))[0];
+  const call = (m: StaffMember, id: string, back: boolean) => {
+    const p = s.patients[id];
+    s.queue = s.queue.filter(x => x !== id);
+    p.status = 'inRoom';
+    if (!back) {
+      p.by = m.id;
+      p.phase = {};
+    }
+    p.calledT ??= s.t;
+    p.wait++; // прежняя проверка терпения недействительна
+    journey.called(s, p, m.room);
+    p.spent.seconds += MIN;
+    // поток для ПК (spec 2026-10-walk): приём начнётся, когда он дойдёт до кабинета; врач ждёт его
+    const walk = s.flow && m.room ? toDoctor(ctx.plan, p, m.room, s.t) : 0;
+    if (s.flow) {
+      p.doc = m.id;
+      delete p.next;
+      delete p.nextAt;
+    }
+    if (walk > 0) p.walk = { to: m.room!, at: s.t + walk };
+    schedule(s, s.t + Math.max(MIN, walk), { kind: 'colleague', id });
+    busy.add(m.id);
+  };
   // поток для ПК (spec 2026-10-walk): сперва все свободные зовут своих, потом свободный без своих — из чужой очереди
   for (const steal of s.flow ? [false, true] : [false]) {
     for (const m of list) {
@@ -3308,46 +3403,32 @@ function callIn(db: ContentDb, s: ShiftState, list: readonly StaffMember[]) {
         releaseWaiting(db, s, all.find(p => p.status === 'inRoom' && p.by === m.id)!, m, list);
         continue;
       }
-      const back = all.filter(p => p.status === 'waiting' && p.by === m.id).sort((a, b) => a.queuedT - b.queuedT || (a.id < b.id ? -1 : 1))[0];
+      const back = backOf(m);
       const id = back?.id ?? (s.flow ? pickPc(db, s, m, list, steal) : s.queue.find(x => colleagueTakes(db, s, s.patients[x], m, list)));
-      if (!id) continue;
-      const p = s.patients[id];
-      s.queue = s.queue.filter(x => x !== id);
-      p.status = 'inRoom';
-      if (!back) {
-        p.by = m.id;
-        p.phase = {};
-      }
-      p.calledT ??= s.t;
-      p.wait++; // прежняя проверка терпения недействительна
-      journey.called(s, p, m.room);
-      p.spent.seconds += MIN;
-      // поток для ПК (spec 2026-10-walk): приём начнётся, когда он дойдёт до кабинета; врач ждёт его
-      const walk = s.flow && m.room ? toDoctor(ctx.plan, p, m.room, s.t) : 0;
-      if (s.flow) {
-        p.doc = m.id;
-        delete p.next;
-        delete p.nextAt;
-      }
-      if (walk > 0) p.walk = { to: m.room!, at: s.t + walk };
-      schedule(s, s.t + Math.max(MIN, walk), { kind: 'colleague', id });
-      busy.add(m.id);
+      if (id) call(m, id, back !== undefined);
     }
+  }
+  for (const m of late) {
+    if ((s.desk?.[m.id] ?? 0) > s.t || busy.has(m.id)) continue;
+    const back = backOf(m);
+    const id = back?.id ?? pickPc(db, s, m, list, false);
+    if (id) call(m, id, back !== undefined);
   }
 }
 
 /**
  * Следующие к каждому врачу идут к двери его кабинета (spec 2026-10-walk; геймдизайн §5: «ждут у двери кабинета, и врач
  * зовёт следующего, заканчивая с прежним»): к нанятому — первые `AT_DOOR` из тех, кого он позовёт, к вам — первые из ваших
- * в очереди. Один проход по очереди. Кто уже у двери, там и остаётся, даже если впереди встал срочный.
+ * в очереди. Один проход по очереди. Кто уже у двери, там и остаётся, даже если впереди встал срочный. К ушедшему со
+ * сменой (`late`, spec 2026-10-staff-shifts) — только его: вернувшиеся с результатами и записанные к нему.
  */
-function toDoors(db: ContentDb, s: ShiftState, list: readonly StaffMember[]) {
+function toDoors(db: ContentDb, s: ShiftState, list: readonly StaffMember[], late: readonly StaffMember[] = []) {
   const plan = hospitalCtx(db, s).plan;
   // сколько уже идут к двери каждого врача; свои, вернувшиеся с результатами, — первыми, как их зовёт `callIn`: раньше
   // вставший в очередь
   const n = new Map<string, number>();
   const doc = new Map<string, StaffMember>();
-  for (const m of list) if (m.room) doc.set(m.id, m);
+  for (const m of [...list, ...late]) if (m.room) doc.set(m.id, m);
   if (doc.size > 0) {
     const back = Object.values(s.patients).filter(p => p.status === 'waiting' && p.by !== undefined && doc.has(p.by));
     back.sort((a, b) => a.queuedT - b.queuedT || (a.id < b.id ? -1 : 1));
@@ -3438,7 +3519,7 @@ function takeOver(db: ContentDb, s: ShiftState, id: string): Notice[] {
   p.from = by;
   // поток для ПК (spec 2026-10-walk): теперь он ваш; был у врача — идёт из его кабинета
   if (s.flow) delete p.doc;
-  const room = s.flow ? hospitalCtx(db, s).staff.find(x => x.id === by)?.room : undefined;
+  const room = s.flow ? hospitalCtx(db, s).all.find(x => x.id === by)?.room : undefined;
   // начатый вопрос или осмотр врач доделывает: результат уже записан, со временем конца. Время
   // шага записано вперёд, до следующего шага; ожидание результатов у врача — не в счёт приёма
   const busy = Math.max(s.t, ...p.results.map(r => r.at));
@@ -3541,7 +3622,8 @@ function colleagueStep(db: ContentDb, s: ShiftState, p: ShiftPatient, ev?: Shift
     if (!p.done.includes(r.step.exam)) p.done.push(r.step.exam); // сделать нельзя — дальше без него
     // результатов ждать, а в очереди есть кого принять, — отпустить ждать и позвать следующего, как вы
     const list = colleaguesOf(db, s);
-    if (p.pending.length > 0 && s.queue.some(x => colleagueTakes(db, s, s.patients[x], m, list))) {
+    // ушедший со сменой (spec 2026-10-staff-shifts) новых не зовёт: ждёт результатов с больным
+    if (p.pending.length > 0 && onDuty(db, m, s.t) && s.queue.some(x => colleagueTakes(db, s, s.patients[x], m, list))) {
       p.status = 'away';
       delete p.out;
       p.wait++;
@@ -3658,7 +3740,8 @@ function answerConsult(db: ContentDb, s: ShiftState, cmd: Extract<Command, { kin
 /** Чей это приём, если врач его ведёт: день открыт, пациент у него в кабинете, врач в штате. */
 function colleagueOf(db: ContentDb, s: ShiftState, p: ShiftPatient): StaffMember | undefined {
   if (!s.dayOpen || p.status !== 'inRoom' || !p.by) return undefined;
-  return hospitalCtx(db, s).staff.find(x => x.id === p.by);
+  // врач доводит приём и после своей смены (spec 2026-10-staff-shifts)
+  return hospitalCtx(db, s).all.find(x => x.id === p.by);
 }
 
 /** Шаг нанятого врача по частям (`stepParts`): по тому, что он знает о пациенте сейчас. */

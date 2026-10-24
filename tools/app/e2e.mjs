@@ -13,10 +13,12 @@
 // запись к ним, tools/app/e2e-specialists.mjs. Часть 9 — игра владельца 18.10: «Открыть карту» у любого, «Ход приёма»,
 // «Следить», «Позвать» — карта, когда вошёл, tools/app/e2e-owner2.mjs. Часть 10 — сохранения: сохранить,
 // «Продолжить», загрузить, удалить, испорченный файл, tools/app/e2e-saves.mjs. Часть 11 — карта ушедшего: «Приняты»,
-// решение врача в карте отпущенного, карточка ушедшего, tools/app/e2e-discharged.mjs. Ошибок в консоли и запросов наружу нет.
+// решение врача в карте отпущенного, карточка ушедшего, tools/app/e2e-discharged.mjs. Часть 12 — смены персонала:
+// пересменка в 20:00, ночная смена в карточке помещения, найм на ночь, tools/app/e2e-shifts.mjs. Ошибок в консоли и запросов
+// наружу нет.
 // Снимки — tools/app/out/e2e.png, e2e-build-*.png и e2e-flow-*.png; `--shots high` — снимки частей 2 и 3 в этом качестве
 // (на время снимка).
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|3|4|5|6|7|8|9|10|11] [--shots low|medium|high] [--port 8093]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|3|4|5|6|7|8|9|10|11|12] [--shots low|medium|high] [--port 8093]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -28,6 +30,7 @@ import { polyPart } from './e2e-poly.mjs';
 import { dischargedPart } from './e2e-discharged.mjs';
 import { readyPart } from './e2e-ready.mjs';
 import { savesPart } from './e2e-saves.mjs';
+import { shiftsPart } from './e2e-shifts.mjs';
 import { specialistsPart } from './e2e-specialists.mjs';
 import { serve } from './serve.mjs';
 
@@ -109,6 +112,8 @@ try {
   if (run(10)) await savesPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   // часть 11 — карта ушедшего (spec docs/specs/2026-10-discharged-card.md)
   if (run(11)) await dischargedPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  // часть 12 — смены персонала (spec docs/specs/2026-10-staff-shifts.md)
+  if (run(12)) await shiftsPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);
@@ -129,14 +134,16 @@ async function partOne() {
   // процессоре кадров мало, часы идут медленнее)
   await page.keyboard.press('Digit3');
   await page.waitForTimeout(6000);
-  await page.waitForFunction(() => window.__game.crowd.walkers.size > window.__game.staff.length, null, { timeout: 120000 }).catch(() => {});
+  // пациенты — кто не из штата (со сменами, spec 2026-10-staff-shifts, на карте только дневная смена)
+  await page.waitForFunction(() => [...window.__game.crowd.walkers.values()].some(w => !w.staff), null, { timeout: 120000 }).catch(() => {});
   const s = await page.evaluate(() => {
     const g = window.__game;
     return {
       rooms: g.layout.plan.rooms.length,
       things: g.layout.things.length,
       people: g.crowd.walkers.size,
-      staff: g.staff.length,
+      // на карте — штат этой смены (spec 2026-10-staff-shifts)
+      staff: [...g.crowd.walkers.values()].filter(w => w.staff).length,
       calls: g.stage.calls,
       tris: g.stage.tris,
       t: g.t,
@@ -313,14 +320,17 @@ async function partTwo() {
     }
     await page.click('#card-furnish');
     await until(rid => window.__game.hospital.site.rooms.find(r => r.id === rid)?.items.length > 0, id);
-    // дверь — посередине нижней стены
+    // дверь — посередине нижней стены; карточка внизу (с должностями по сменам — выше, spec 2026-10-staff-shifts) не
+    // должна закрыть стену: на время двери — без неё, для найма — снова
     if (last) await look(x + w / 2, y + h / 2);
+    await page.evaluate(() => window.__game.selectRoomId(undefined));
     await tool('door');
     const d = await at(x + Math.floor(w / 2), y + h - 1);
     await page.mouse.move(d.x, d.y);
     await page.waitForTimeout(120);
     await page.mouse.click(d.x, d.y);
     await until(rid => !!window.__game.hospital.site.rooms.find(r => r.id === rid)?.door, id);
+    await page.evaluate(rid => window.__game.selectRoomId(rid), id);
     for (const role of roles) {
       await page.click(`#hire-${role.slice(5)}`);
       await until(([rid, n]) => window.__game.staff.filter(m => m.room === rid).length >= n, [id, roles.indexOf(role) + 1]);
@@ -510,11 +520,13 @@ async function partThree() {
   // ходьба в движке (spec docs/specs/2026-10-walk.md): идущий — в карточке «идёт … · дойдёт к ЧЧ:ММ»; дошёл (в движке и на
   // экране) — «идёт» и срок пропадают
   await page.keyboard.press('Digit1');
+  // дойдёт в ближайшие 1–6 игровых минут: с «своим залом» (spec 2026-10-own-hall) в городской идут и к дальним кабинетам —
+  // по 10–15 минут игры, а без видеокарты кадров мало и часы идут медленнее
   const going = await page
     .waitForFunction(
       () => {
         const g = window.__game;
-        for (const [key, now] of g.pop.patients()) if (now.arrive > g.t + 60 && g.crowd.walkers.get(key)?.state === 'walk') return key;
+        for (const [key, now] of g.pop.patients()) if (now.arrive > g.t + 60 && now.arrive < g.t + 360 && g.crowd.walkers.get(key)?.state === 'walk') return key;
         return null;
       },
       null,
@@ -526,20 +538,22 @@ async function partThree() {
     await page.evaluate(k => window.__game.actions.select(k), going);
     await page.waitForTimeout(300);
     const on = await page.evaluate(() => document.querySelector('#card dl')?.textContent ?? '');
-    const there = await page
+    // дошёл — в карточке ни «идёт», ни срока; у двери очередь подвигается (spec 2026-10-own-hall), и он может снова пойти
+    // на шаг вперёд — поэтому смотрим, что карточка это показала
+    const off = await page
       .waitForFunction(
         k => {
           const g = window.__game;
           const n = g.pop.now(k);
-          return !n || (n.arrive <= g.t && g.crowd.walkers.get(k)?.state !== 'walk');
+          const text = document.querySelector('#card dl')?.textContent ?? '';
+          return (!n || (n.arrive <= g.t && g.crowd.walkers.get(k)?.state !== 'walk')) && !text.includes('дойдёт') && !text.includes('идёт') ? text : null;
         },
         going,
-        { timeout: 60000, polling: 100 },
+        { timeout: 90000, polling: 100 },
       )
-      .then(() => true)
-      .catch(() => false);
-    await page.waitForTimeout(300);
-    const off = await page.evaluate(() => document.querySelector('#card dl')?.textContent ?? '');
+      .then(h => h.jsonValue())
+      .catch(() => page.evaluate(() => document.querySelector('#card dl')?.textContent ?? ''));
+    const there = !off.includes('дойдёт') && !off.includes('идёт');
     if (/идёт .*дойдёт к \d\d:\d\d/.test(on) && there && !off.includes('дойдёт') && !off.includes('идёт')) ok(`идёт — «${on.match(/Что делает(.*?)Срочность/)?.[1] ?? on}»; дошёл — «${off.match(/Что делает(.*?)Срочность/)?.[1] ?? off}»`);
     else fail(`идущий: «${on}» → «${off}» (дошёл: ${there})`);
     await page.evaluate(() => window.__game.actions.select(undefined));

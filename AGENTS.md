@@ -91,8 +91,10 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # gastroenterologist in the polyclinic, «по записи к …»; then the owner's play of 18.10:
                                    # «Открыть карту» of anyone, «Следить», «Позвать» — the card when they come in; then
                                    # saves: save, «Продолжить», load from the menu, delete, a broken file; then the card of the
-                                   # departed: «Приняты», the decision in a discharged patient's card, the departed's person card);
-                                   # screenshots in tools/app/out/; `-- --only 1|2|3|4|5|6|7|8|9|10|11` for one part
+                                   # departed: «Приняты», the decision in a discharged patient's card, the departed's person card;
+                                   # then staff shifts: at 20:00 the day shift walks out and the night shift in, the night
+                                   # rows of a room card, hiring a night registrar, «Сейчас в смене»);
+                                   # screenshots in tools/app/out/; `-- --only 1|2|3|4|5|6|7|8|9|10|11|12` for one part
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -139,6 +141,11 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   Money of the PC flow is ours: `shift/money.ts` (cash now, wages and upkeep by the hour, building from cash, the
   overdraft limit, the loan), `shift/inflow.ts` (the flow from the hospital), `shift/meeting.ts` (the day's bottlenecks,
   «стало хуже»), numbers in `content/hospital/inflow.yaml` and `money.yaml` — `docs/specs/2026-10-economy.md`.
+- Staff shifts (`docs/specs/2026-10-staff-shifts.md`): a hired person works the day (08:00–20:00) or the night shift
+  (`shift` in `hospital/staff.ts`; none — round the clock, saves before 0.9.0); who is on duty — `dutyOf`, and
+  `hospitalCtx(db, s, at)` builds the hospital from them; the `duty` event at 08:00 and 20:00 in `engine.ts` hands queued
+  patients to those on duty, and a doctor off duty finishes their own cases (`lateOf`); wages per shift, night ×1.25
+  (`wageOf`); a ready hospital with beds or an emergency room starts with a night shift (`withNightShift`).
 - Saves (`docs/specs/2026-10-saves.md`): `src/engine/shift/migrate.ts` — the save schema number and the migration chain;
   `src/sim/packing.ts` — the file (header, engine snapshot, window view; JSON + gzip), written by the worker;
   `src/app/saves.ts` — slots (`auto-1…3` shifted each morning, `exit`, `manual-<n>`) over a disk: `electron/saves.cjs`

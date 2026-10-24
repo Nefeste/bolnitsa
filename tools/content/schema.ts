@@ -657,6 +657,8 @@ export const roomSchema = z.strictObject({
   box: z.boolean().default(false),
   /** работает — в больницу приходят и больные этих отделений: приёмное — хирургию (часть 30) */
   admits: z.array(z.string().regex(/^dept\.[a-z0-9_]+$/)).min(1).optional(),
+  /** работает и ночью (spec 2026-10-staff-shifts): готовая больница начинает здесь и с ночной сменой */
+  night: z.boolean().default(false),
   sizes: z.array(roomSize).min(1),
   texts: z.strictObject({ hint }),
 });
@@ -806,6 +808,11 @@ export const economySchema = z.strictObject({
       minGain: z.tuple([int, int, int, int, int]),
       forget: z.tuple([pct, pct, pct, pct, pct]),
     }),
+    /**
+     * смены (spec 2026-10-staff-shifts; геймдизайн §2, §7): дневная — с какого часа и до какого, ночная — остальное;
+     * зарплата ночной смены, % от дневной
+     */
+    shifts: z.strictObject({ day: z.tuple([z.number().int().min(0).max(23), z.number().int().min(1).max(24)]), night: z.number().int().min(100).max(300) }).optional(),
   }),
   /** тарифы: ОМС по тяжести диагноза, доля по обоснованности и без подтверждения; ДМС и платно — обращение и прайс, % цены */
   tariffs: z.strictObject({
