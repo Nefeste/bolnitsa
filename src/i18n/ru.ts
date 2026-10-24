@@ -393,6 +393,8 @@ export const ru = {
     walk: (d: string) => `дорога ${d}`,
     examQueue: (d: string) => `очередь ${d}`,
     roomBusy: (until: string) => `кабинет был занят до ${until}`,
+    /** spec docs/specs/2026-10-staff-shifts.md, часть 2б: «рентгенолаборант на перерыве — начали в 14:20» */
+    examRest: (role: string, start: string) => `${role.toLowerCase()} на перерыве — начали в ${start}`,
     procedure: (d: string) => `процедура ${d}`,
     back: (d: string) => `обратно ${d}`,
     ready: (at: string) => `результат к ${at}`,

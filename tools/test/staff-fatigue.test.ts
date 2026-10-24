@@ -1,14 +1,15 @@
 // Усталость и перерывы нанятых врачей (spec docs/specs/2026-10-staff-shifts.md, часть 2): усталость 0–100 растёт за часы в
 // смене и за каждого принятого, ночью быстрее; с 70 врач работает дольше, с 90 ставит диагноз при меньшей уверенности;
 // звать некого, а усталость не ниже 70, — идёт в ординаторскую на 20 минут, усталость падает на 50; на пределе — после
-// приёма, даже если ждут; в туалет — раз в 3–4 часа на 5 минут; туда и назад — пешком. Без смен врачи не устают.
+// приёма, даже если ждут; в туалет — раз в 4–5 часов на 5 минут; туда и назад — пешком. Часть 2б — так же те, кто делает
+// обследования: отдыхают после записанных, обследование ждёт их возвращения. Без смен никто не устаёт.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { hospitalOf } from '../../src/engine/hospital/site';
 import { siteOfPlan } from '../../src/engine/hospital/site-plan';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { doctorOf, presetStaff, shiftStartOf, type StaffMember, speedOf, withNightShift } from '../../src/engine/hospital/staff';
-import { blurredOf, levelOf, POINT, pointsOf, slowedOf, startRest, tiredOf } from '../../src/engine/shift/crew';
+import { backAt, blurredOf, levelOf, POINT, pointsOf, slowedOf, startRest, tiredOf } from '../../src/engine/shift/crew';
 import { apply, colleaguesOf, hospitalCtx, newFlowShift } from '../../src/engine/shift/engine';
 import { walkPc } from '../../src/engine/shift/walking';
 import type { Rest, ShiftState } from '../../src/engine/shift/types';
@@ -51,7 +52,7 @@ function watch(s: ShiftState, hour: number, step = 60): Record<string, Rest[]> {
 
 describe('усталость и перерывы', () => {
   test('числа — в economy.yaml: гипотезы части 2', () => {
-    expect(F).toEqual({ hour: 5, case: 2, night: 150, slow: 70, slower: 115, tired: 90, blur: 5, rest: 20, relief: 50, toilet: [4, 5], wc: 5 });
+    expect(F).toEqual({ hour: 5, case: 2, exam: 1, night: 150, slow: 70, slower: 115, tired: 90, blur: 5, rest: 20, relief: 50, toilet: [4, 5], wc: 5 });
     expect(shiftStartOf(db, 9 * H)).toBe(8 * H);
     expect(shiftStartOf(db, 21 * H)).toBe(20 * H);
     expect(shiftStartOf(db, 86400 + 3 * H)).toBe(20 * H);
@@ -234,6 +235,62 @@ describe('усталость и перерывы', () => {
     expect(d).toBeGreaterThanOrEqual(F.hour);
     expect(d).toBeLessThan(25);
   }, 120_000);
+
+  // часть 2б: устают и отдыхают те, кто делает обследования — лаборант, медсестра процедурного и ЭКГ, рентгенолаборант, врач
+  // УЗИ, эндоскопист
+  test('обследования: кто делает — отдыхает, не бросив записанных; записанных при нём начинают, когда он вернётся', () => {
+    const s = poly(11, 14);
+    const p = siteOfPlan(db, db.sites!['site.polyclinic']);
+    if (!p.ok) throw new Error('поликлиника не строится');
+    const rests: Record<string, Rest[]> = {};
+    const end = at(s, 19);
+    while (s.t < end) {
+      apply(db, s, { kind: 'advance', seconds: 60 });
+      for (const [id, c] of Object.entries(s.crew ?? {})) {
+        const list = (rests[id] ??= []);
+        if (c.rest && !c.rest.planned && !list.some(r => r.from === c.rest!.from)) list.push({ ...c.rest });
+      }
+    }
+    const exams: { room: string; at: number; start: number; end: number; rest?: string }[] = [];
+    for (const j of Object.values(s.journeys!.of)) for (const x of j.steps) if (x.k === 'exam') exams.push({ room: x.room, at: x.at, start: x.start, end: x.end, ...(x.rest ? { rest: x.rest } : {}) });
+    const doerOf = (room: string) => {
+      const type = p.site.rooms.find(r => r.id === room)!.type;
+      return s.staff!.find(m => m.room === room && m.shift === 'day' && m.role === db.rooms[type].staff[0]);
+    };
+    let checked = 0;
+    for (const r of p.site.rooms.filter(x => ['room.xray', 'room.procedure', 'room.ecg', 'room.lab'].includes(x.type))) {
+      const m = doerOf(r.id);
+      expect(m).toBeDefined();
+      for (const rest of rests[m!.id] ?? []) {
+        // в кабинете, пока его нет, никого не обследуют: начатое — до его ухода, новое — после возвращения
+        for (const x of exams.filter(e => e.room === r.id)) {
+          expect(x.end <= rest.from || x.start >= rest.until).toBe(true);
+          // кто ждал у кабинета, пока тот вернётся, — путь знает почему
+          if (x.start === rest.until && x.start > x.at) expect(x.rest).toBe(m!.role);
+        }
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+    expect(exams.some(x => x.rest !== undefined)).toBe(true);
+    // устают и отдыхают не только врачи
+    const tired = Object.keys(rests).filter(id => rests[id].length > 0);
+    expect(tired.some(id => !colleaguesOf(db, s).some(m => m.id === id) && s.staff!.find(m => m.id === id)?.role !== 'role.therapist')).toBe(true);
+  }, 180_000);
+
+  test('нужен в час перерыва — с его конца; работа, задевшая перерыв, — тоже с его конца', () => {
+    const s = poly(12);
+    const m = s.staff![0];
+    (s.crew ??= {})[m.id] = { f: 0, at: s.t, rest: { kind: 'staff', room: 'r1', from: 1000, at: 1100, back: 2000, until: 2100, planned: true } };
+    expect(backAt(s, m, 900)).toBe(900);
+    expect(backAt(s, m, 999)).toBe(999);
+    expect(backAt(s, m, 1000)).toBe(2100);
+    expect(backAt(s, m, 2099)).toBe(2100);
+    expect(backAt(s, m, 2100)).toBe(2100);
+    expect(backAt(s, m, 900, 100)).toBe(900);
+    expect(backAt(s, m, 900, 101)).toBe(2100);
+    expect(backAt(s, undefined, 1500)).toBe(1500);
+  });
 
   test('при шаге 60, 7 и 1 с — то же состояние', () => {
     const a = poly(9);

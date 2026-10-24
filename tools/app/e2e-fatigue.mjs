@@ -1,8 +1,9 @@
 // Сценарий в браузере, часть 13 — усталость и перерывы (spec docs/specs/2026-10-staff-shifts.md, часть 2, «Проверки»).
 // Поликлиника, поток 14 в час — врачам звать есть кого весь день: «До утра» до 15:00, дальше ×12, пока кто-то из врачей не
 // пойдёт на перерыв в ординаторскую; тогда пауза: он идёт в ординаторскую или сидит там (цель на карте — в ней); карточка —
-// «… ординаторск… до …» и усталость полоской; «Персонал» — «усталость N · перерыв до …»; пациент у двери его кабинета — в
-// пути «врач на перерыве до …». Снимок — `e2e-fatigue-1.jpg`.
+// «… ординаторск… до …» и усталость полоской; устаёт и тот, кто делает обследования (часть 2б), — у него в карточке та же
+// полоска; «Персонал» — «усталость N · перерыв до …»; пациент у двери его кабинета — в пути «врач на перерыве до …». Снимок
+// — `e2e-fatigue-1.jpg`.
 import { join } from 'node:path';
 
 /** @param {{ page: import('playwright-core').Page, port: number, out: string, ok: (m: string) => void, fail: (m: string) => void, q: string, shots: string }} x */
@@ -85,6 +86,23 @@ export async function fatiguePart({ page, port, out, ok, fail, q, shots }) {
   else fail(`карточка врача: «${card}» (усталость ${bar})`);
   ok(`снимок: ${join(out, 'e2e-fatigue-1.jpg')} (${await shot('e2e-fatigue-1.jpg')} КБ)`);
   await page.keyboard.press('Escape');
+
+  // ---------------------------------------------------------------- и те, кто делает обследования (часть 2б)
+  const doer = await page.evaluate(() => {
+    const g = window.__game;
+    for (const [id, c] of g.crew) {
+      const m = g.staff.find(x => x.id === id);
+      if (m && !g.db.roles[m.role]?.stands) return { id, f: c.f, role: m.role, rest: c.rest?.kind };
+    }
+    return null;
+  });
+  if (doer) {
+    await page.evaluate(id => window.__game.actions.select(`s:${id}`), doer.id);
+    await page.waitForSelector('#card-fatigue', { timeout: 10000 });
+    const text = flat(await page.textContent('#card'));
+    ok(`устаёт и тот, кто делает обследования: «${text.slice(0, 120)}»`);
+    await page.keyboard.press('Escape');
+  } else fail('усталость тех, кто делает обследования: в «crew» никого, кроме врачей');
 
   // ---------------------------------------------------------------- «Персонал»: усталость и перерыв
   await page.evaluate(() => window.__game.actions.setTab('staff'));

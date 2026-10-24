@@ -819,7 +819,7 @@ export const economySchema = z.strictObject({
      * — минут и на сколько очков меньше; туалет — раз в сколько часов (от, до) и минут
      */
     fatigue: z.strictObject({
-      hour: z.number().int().min(1).max(50), case: z.number().int().min(0).max(50), night: z.number().int().min(100).max(300),
+      hour: z.number().int().min(1).max(50), case: z.number().int().min(0).max(50), exam: z.number().int().min(0).max(50), night: z.number().int().min(100).max(300),
       slow: z.number().int().min(1).max(99), slower: z.number().int().min(100).max(200), tired: z.number().int().min(1).max(100), blur: pct,
       rest: z.number().int().min(1).max(120), relief: z.number().int().min(1).max(100),
       toilet: z.tuple([z.number().int().min(1).max(12), z.number().int().min(1).max(12)]), wc: z.number().int().min(1).max(30),

@@ -4,7 +4,7 @@
 // порядок сообщений даёт то же состояние, что и в основном потоке. Срез упаковывается (pack.ts). Путь пациента, которого
 // показывает окно (`watch`, spec docs/specs/2026-10-flow-ui.md), — в срезе, когда он изменился.
 import type { ContentDb } from '../content/types';
-import { apply, catchUp, colleaguesOf, lateOf, newFlowShift, prepareFinish } from '../engine/shift/engine';
+import { apply, catchUp, crewList, lateOf, newFlowShift, prepareFinish } from '../engine/shift/engine';
 import { crewOf, type CrewView } from '../engine/shift/crew';
 import { sliceOf } from '../engine/shift/slice';
 import type { Command, Notice, ShiftState } from '../engine/shift/types';
@@ -85,7 +85,7 @@ export function createSim(db: ContentDb): SimHost {
     // усталость и перерывы (spec docs/specs/2026-10-staff-shifts.md, часть 2): врачи в смене — очки и перерыв; изменились или
     // больница стала другой — заново
     let crew: CrewView[] | undefined;
-    const crewNow = s!.flow ? crewOf(db, s!, colleaguesOf(db, s!)) : [];
+    const crewNow = s!.flow ? crewOf(db, s!, crewList(db, s!)) : [];
     const crewSig = JSON.stringify(crewNow);
     if (crewSig !== sentCrew || world) {
       sentCrew = crewSig;

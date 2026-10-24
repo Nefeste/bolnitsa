@@ -24,9 +24,10 @@ export type Step =
   | { t: number; k: 'doctor'; by?: string; room?: string }
   /**
    * на обследование в другой кабинет: вышел `t`, дошёл `at`, начали `start` (раньше — очередь: кабинет был занят), кончили
-   * `end`, у врача снова — к `back`; результат — к `ready`
+   * `end`, у врача снова — к `back`; результат — к `ready`; `rest` — ждал, пока с перерыва вернётся тот, кто делает (его
+   * должность, spec 2026-10-staff-shifts, часть 2б)
    */
-  | { t: number; k: 'exam'; exam: Id; room: string; at: number; start: number; end: number; back: number; ready: number }
+  | { t: number; k: 'exam'; exam: Id; room: string; at: number; start: number; end: number; back: number; ready: number; rest?: Id }
   /** ждёт результатов: врач отпустил его и позвал другого; с конца последней процедуры; результаты — к `ready` */
   | { t: number; k: 'results'; ready: number }
   /** ждёт своего врача: вернулся с результатами, а врач занят; `refer` — направлен к другому нанятому врачу */
@@ -153,13 +154,13 @@ export function called(s: ShiftState, p: ShiftPatient, room?: string) {
  * Ушёл на обследование в другой кабинет (`orderExam`, сразу после `goOut`): выйдет в `leave`, дойдёт к `at`; где, когда
  * начнут и кончат, когда вернётся и будет результат — из `p.out` и только что назначенного.
  */
-export function examOut(s: ShiftState, p: ShiftPatient, leave: number, at: number) {
+export function examOut(s: ShiftState, p: ShiftPatient, leave: number, at: number, rest?: Id) {
   const out = p.out;
   const x = p.pending[p.pending.length - 1];
   if (!out || !x) return;
   const j = journeyOf(s, p);
   if (!j) return;
-  push(j, { t: leave, k: 'exam', exam: out.exam, room: out.room, at, start: Math.max(at, x.start ?? at), end: out.until, back: out.back, ready: x.readyAt });
+  push(j, { t: leave, k: 'exam', exam: out.exam, room: out.room, at, start: Math.max(at, x.start ?? at), end: out.until, back: out.back, ready: x.readyAt, ...(rest ? { rest } : {}) });
 }
 
 /** Врач отпустил ждать результатов и зовёт другого: ждёт с конца последней процедуры до готовности всех результатов. */

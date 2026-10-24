@@ -371,6 +371,7 @@ export const en: Strings = {
     walk: (d: string) => `walk ${d}`,
     examQueue: (d: string) => `queue ${d}`,
     roomBusy: (until: string) => `the room was busy until ${until}`,
+    examRest: (role: string, start: string) => `the ${role.toLowerCase()} was on a break — started at ${start}`,
     procedure: (d: string) => `procedure ${d}`,
     back: (d: string) => `back ${d}`,
     ready: (at: string) => `result by ${at}`,

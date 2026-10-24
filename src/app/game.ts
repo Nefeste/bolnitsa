@@ -800,6 +800,7 @@ export class Game {
       return m ? genitive(this.db.roles[m.role], m.role) : T.flow.doctorAny;
     },
     exam: (id: Id) => ({ name: named(this.db.exams[id]?.name, id), kind: this.db.exams[id]?.kind ?? 'lab' }),
+    role: (id: Id) => named(this.db.roles[id]?.name, id),
   };
 
   /** 10 раз в секунду: значки и цвет пола помещений, вкладка «Пациенты», «Приняты», «Ушли», путь выбранного. */

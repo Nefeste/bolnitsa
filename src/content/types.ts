@@ -925,12 +925,12 @@ export interface Economy {
      */
     shifts?: { day: [number, number]; night: number };
     /**
-     * Усталость нанятых врачей в смене (spec docs/specs/2026-10-staff-shifts.md, часть 2): очков за час в смене и за
-     * принятого, в ночную смену — быстрее, %; с `slow` работает на `slower` % дольше; с `tired` порог диагноза ниже на
+     * Усталость нанятых в смене (spec docs/specs/2026-10-staff-shifts.md, часть 2): очков за час в смене, за принятого
+     * (врач) и за обследование (кто его делает), в ночную смену — быстрее, %; с `slow` работает на `slower` % дольше; с `tired` порог диагноза ниже на
      * `blur` п. п.; перерыв в ординаторской — `rest` минут, усталость меньше на `relief`; туалет — раз в `toilet` часов (от,
      * до), на `wc` минут. Нет — врачи не устают.
      */
-    fatigue?: { hour: number; case: number; night: number; slow: number; slower: number; tired: number; blur: number; rest: number; relief: number; toilet: [number, number]; wc: number };
+    fatigue?: { hour: number; case: number; exam: number; night: number; slow: number; slower: number; tired: number; blur: number; rest: number; relief: number; toilet: [number, number]; wc: number };
   };
   /**
    * ОМС — за обращение по тяжести диагноза; экспертиза страховой: доля по обоснованности и
