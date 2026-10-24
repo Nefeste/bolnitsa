@@ -133,6 +133,18 @@ export function shiftAt(db: ContentDb, t: number): Shift {
   return h >= day[0] && h < day[1] ? 'day' : 'night';
 }
 
+/**
+ * Начало смены, что идёт в `t`: дневной — в `day[0]` часов этих суток, ночной — в `day[1]` часов этих суток или прошлых,
+ * если ночь уже за полночь.
+ */
+export function shiftStartOf(db: ContentDb, t: number): number {
+  const day = db.economy.staff.shifts?.day ?? [0, 24];
+  const base = Math.floor(t / 86400) * 86400;
+  const h = t - base;
+  if (h >= day[0] * 3600 && h < day[1] * 3600) return base + day[0] * 3600;
+  return h >= day[1] * 3600 ? base + day[1] * 3600 : base - 86400 + day[1] * 3600;
+}
+
 /** В смене ли человек в `t`: без смены — всегда. */
 export const onDuty = (db: ContentDb, m: StaffMember, t: number): boolean => m.shift === undefined || m.shift === shiftAt(db, t);
 
