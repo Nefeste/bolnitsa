@@ -49,7 +49,7 @@ function district(seed: number, perHour: number): ShiftState {
 }
 
 describe('ходьба в движке', () => {
-  test('дорога каждого перехода — расстояние по плану, делённое на скорость; терпение — с того, как сел в зале', () => {
+  test('дорога каждого перехода — расстояние по плану, делённое на скорость; терпение — с того, как встал на место', () => {
     const s = city(1);
     let p: ShiftPatient | undefined;
     while (!p && s.t < 12 * 3600) {
@@ -60,17 +60,19 @@ describe('ходьба в движке', () => {
     const plan = hospitalCtx(db, s).plan;
     const reception = roomOf(s, 'room.reception');
     const triage = roomOf(s, 'room.triage');
-    // вход → регистратура → медсестра → зал у кабинета его врача
-    expect(p!.hall).toBe(roomOf(s, 'room.waiting'));
+    // вход → регистратура → медсестра → к двери кабинета его врача: зал — в 63 м от него, своего зала нет, стоит (spec
+    // 2026-10-own-hall)
+    const hall = roomOf(s, 'room.waiting');
+    expect(Math.round(walkPc(plan, hall, 'r28') / 60)).toBe(13);
+    expect([p!.stands, p!.hall, p!.next]).toEqual(['far', undefined, 'r28']);
     expect(p!.regAt).toBe(p!.arriveT + Math.round(metersFromEntrance(plan, reception)! / WALK_SPEED_PC));
     expect(p!.triAt).toBe(p!.regAt! + REGISTRATION + walkPc(plan, reception, triage));
-    expect(p!.seatAt).toBe(p!.triAt! + TRIAGE + walkPc(plan, triage, p!.hall));
+    expect(p!.seatAt).toBe(p!.triAt! + TRIAGE + walkPc(plan, triage, 'r28'));
+    expect(p!.nextAt).toBe(p!.seatAt);
     expect(readyAt(p!)).toBe(p!.triAt! + TRIAGE);
-    // терпение — с того, как сел
+    // терпение — с того, как встал у двери
     const patience = s.events.find(e => e.event.kind === 'patience' && e.event.id === p!.id);
     expect(patience?.t).toBe(p!.seatAt! + p!.patience);
-    // 63 м от зала до дальнего кабинета терапевта — 13 минут пешком
-    expect(Math.round(walkPc(plan, p!.hall, 'r28') / 60)).toBe(13);
   });
 
   test('нанятый врач зовёт оформленного и измеренного; приём — когда дошёл; в срезе — к какому часу дойдёт', () => {
@@ -98,7 +100,8 @@ describe('ходьба в движке', () => {
       }
     }
     expect(called.size).toBeGreaterThan(10);
-    expect(walked).toBeGreaterThan(5);
+    // у двери стоящие (spec 2026-10-own-hall) к врачу не идут — дорогу проходят те, кого позвали в пути
+    expect(walked).toBeGreaterThan(2);
     expect(sliced).toBeGreaterThan(0);
   }, 60_000);
 

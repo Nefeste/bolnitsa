@@ -169,6 +169,7 @@ describe('поток расчёта: карта ушедшего и «Приня
     liveTo(db, s, 9);
     const desk = new DoctorDesk(db);
     expect(desk.out(s).seen).toBeDefined();
+    // ничего не изменилось — не шлётся
     expect(desk.out(s).seen).toBeUndefined();
     const n = released(s).length;
     let seen = undefined as ReturnType<DoctorDesk['out']>['seen'];
@@ -176,9 +177,9 @@ describe('поток расчёта: карта ушедшего и «Приня
       apply(db, s, { kind: 'advance', seconds: 60 });
       const out = desk.out(s);
       if (released(s).length > n) seen = out.seen;
-      else expect(out.seen).toBeUndefined();
     }
     expect(seen!.rows[0].id).toBe(released(s).at(-1)!.p.id);
+    expect(desk.out(s).seen).toBeUndefined();
     desk.view(null, 'en', 'student');
     expect(desk.out(s).seen!.rows[0].by).toMatch(/skill \d/);
     desk.view(null, 'ru', 'student');

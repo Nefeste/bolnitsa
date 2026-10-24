@@ -15,7 +15,7 @@ import { type CampaignProgress, campaignEvening, chapterOf, nextChapterOf, start
 import { build, emptyPlot, type HospitalState, type PlacedRoom, type Plan, planOf, presetHospital, sizeOf, UNDO_DEPTH, widenPlot } from '../hospital/build';
 import { bedsideIn, DOCTOR, doctorRoom, examWhere, NONE_BROKEN, openBlocks, type Problem, problemsOf, slotKey, type Staffing, workingRooms } from '../hospital/requirements';
 import { applicantsOf, doctorOf, grow, memberAt, presetStaff, PROFILE_PRIOR, readingOf, type StaffMember, speedOf, staffingOf } from '../hospital/staff';
-import { WALK_SPEED, walkSeconds } from '../hospital/walk';
+import { metersBetween, WALK_SPEED, walkSeconds } from '../hospital/walk';
 import { log2 } from '../core/math';
 import { P_ONE, RNG_VERSION, Rng } from '../core/rng';
 import { examHarmOutcome, observe, type Outcome, rscOutcome } from '../med/course';
@@ -483,7 +483,9 @@ function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
         p.wait++;
         journey.away(s, p);
       } else {
-        // в очередь на своё место — как вернувшийся с анализов, по времени прихода
+        // в очередь на своё место — как вернувшийся с анализов, по времени прихода; стоял — снова у двери (spec
+        // 2026-10-own-hall)
+        standBack(db, s, p);
         enqueue(s, p, p.arriveT);
       }
       return later(db, s, p, MIN);
@@ -899,10 +901,10 @@ function flowArrive(db: ContentDb, s: ShiftState, ev: Extract<ShiftEvent, { kind
     ...(s.economy ? { payer: kind === 'ambulance' ? 'oms' : payerOf(db, s.meta.seed, id, s.economy.reputation ?? db.economy.reputation.start) } : {}),
   };
   if (ev.stream !== 'ret') scheduleFlow(db, s, ev.stream, ev.n + 1, s.t, ev.to);
-  // путь пациента (spec 2026-10-flow-ui): полна ли зона ожидания — до прихода, как её видит `arrive`
-  const full = s.queue.length >= hospitalCtx(db, s).seats;
   arrive(db, s, s.patients[id], notices);
-  journey.arrived(s, s.patients[id], () => colleaguesOf(db, s).filter((m, _, list) => colleagueTakes(db, s, s.patients[id], m, list)).length, () => forPlayer(db, s, s.patients[id]), full);
+  // путь пациента (spec 2026-10-flow-ui): стоит ли и почему — решил приход (spec 2026-10-own-hall)
+  const stood = s.patients[id].stands;
+  journey.arrived(s, s.patients[id], () => colleaguesOf(db, s).filter((m, _, list) => colleagueTakes(db, s, s.patients[id], m, list)).length, () => forPlayer(db, s, s.patients[id]), stood === 'far' ? { far: db.inflow?.hall ?? 0 } : stood === 'full' ? { full: true } : {});
 }
 
 /**
@@ -2863,7 +2865,7 @@ function handle(db: ContentDb, s: ShiftState, ev: ShiftEvent, notices: Notice[])
     case 'arrive':
       return arrive(db, s, s.patients[ev.id], notices);
     case 'result':
-      results(s, s.patients[ev.id], notices);
+      results(db, s, s.patients[ev.id], notices);
       return staffDesks(db, s);
     case 'patience': {
       const p = s.patients[ev.id];
@@ -2943,8 +2945,9 @@ function arrive(db: ContentDb, s: ShiftState, p: ShiftPatient, notices: Notice[]
   const sure = nurse ? triageOf(db, p, vitalsOf(db, s, p)) : p.triage;
   const [lo, hi] = sure === 'red' ? [0, 0] : PATIENCE[sure];
   p.patience = Math.round(branch(s, `patience:${p.id}`).range(lo, hi) * MIN * patienceOf(s.meta.difficulty));
-  // своя больница: пришёл в полную зону ожидания — стоит, и ждать готов вдвое меньше
-  if (s.hospital && p.patience > 0 && s.queue.length >= ctx.seats) p.patience = Math.round(p.patience / 2);
+  // своя больница: пришёл в полную зону ожидания — стоит, и ждать готов вдвое меньше; в потоке для ПК — по своему залу,
+  // это решает `seatPc` (spec 2026-10-own-hall)
+  if (s.hospital && !s.flow && p.patience > 0 && s.queue.length >= ctx.seats) p.patience = Math.round(p.patience / 2);
   s.summary.arrived++;
   if (p.kind === 'return') s.summary.returnsToday++;
   // поток для ПК (spec 2026-10-walk): к какому врачу записан, где ждёт и когда туда дойдёт
@@ -2964,12 +2967,59 @@ function arrive(db: ContentDb, s: ShiftState, p: ShiftPatient, notices: Notice[]
 function seatPc(db: ContentDb, s: ShiftState, p: ShiftPatient, ctx: HospitalCtx, nurse: boolean) {
   const m = docFor(db, s, p, colleaguesOf(db, s));
   if (m) p.doc = m.id;
-  p.hall = hallNear(ctx.plan, ctx.working, m?.room ?? doctorRoom(ctx.plan));
-  const r = route(ctx.plan, ctx.working, p.hall, nurse, s.t);
+  const office = m?.room ?? doctorRoom(ctx.plan);
+  const hall = hallNear(ctx.plan, ctx.working, office);
+  // сидя или стоя — по своему залу (spec 2026-10-own-hall): стоит — ждать готов вдвое меньше и ждёт у двери кабинета, в
+  // дальний зал не идёт
+  const stands = standsPc(db, s, ctx, hall, office);
+  if (stands) {
+    p.stands = stands;
+    if (p.patience > 0) p.patience = Math.round(p.patience / 2);
+  }
+  const door = stands !== undefined && office !== undefined && db.inflow?.hall !== undefined;
+  const r = route(ctx.plan, ctx.working, door ? office : hall, nurse, s.t);
+  if (door) {
+    p.next = office;
+    p.nextAt = r.seatAt;
+  } else p.hall = hall;
   p.regAt = r.regAt;
   if (r.triAt !== undefined) p.triAt = r.triAt;
   if (r.leg) p.leg = r.leg;
   p.seatAt = r.seatAt;
+}
+
+/**
+ * Сидя или стоя (spec 2026-10-own-hall; решение владельца 18.10.2026): свой зал — `hall`, ближайший к кабинету его врача
+ * `office`, — не дальше `inflow.hall` м от двери кабинета; в нём есть место — сидит. Нет такого зала — стоит (`far`), он
+ * полон — стоит (`full`). Числа нет — как прежде: по местам всей больницы.
+ */
+function standsPc(db: ContentDb, s: ShiftState, ctx: HospitalCtx, hall: string | undefined, office: string | undefined): ShiftPatient['stands'] {
+  const near = db.inflow?.hall;
+  if (near === undefined) return s.queue.length >= ctx.seats ? 'full' : undefined;
+  const room = hall !== undefined ? ctx.plan.rooms.find(r => r.id === hall) : undefined;
+  if (!room) return 'far';
+  if (office !== undefined && (metersBetween(ctx.plan, room.id, office) ?? Number.POSITIVE_INFINITY) > near) return 'far';
+  return seatedIn(s, room.id) >= room.seats.length ? 'full' : undefined;
+}
+
+/** Сколько ждут в зале `hall` — сидят или идут туда, — а не у двери кабинета (поток для ПК). */
+function seatedIn(s: ShiftState, hall: string): number {
+  let n = 0;
+  for (const p of Object.values(s.patients)) if (p.status === 'waiting' && p.hall === hall && p.next === undefined) n++;
+  return n;
+}
+
+/**
+ * Вернулся с результатами ждать своего врача (поток для ПК, spec 2026-10-own-hall): стоял — снова у двери кабинета врача,
+ * в зал не садится.
+ */
+function standBack(db: ContentDb, s: ShiftState, p: ShiftPatient) {
+  if (!s.flow || !p.stands || db.inflow?.hall === undefined) return;
+  const ctx = hospitalCtx(db, s);
+  const office = p.by ? ctx.staff.find(m => m.id === p.by)?.room : doctorRoom(ctx.plan);
+  if (!office) return;
+  p.next = office;
+  p.nextAt = s.t;
 }
 
 /**
@@ -3117,7 +3167,7 @@ function sortQueue(s: ShiftState) {
 }
 
 /** Результаты пришли. Ушедший на анализы возвращается в очередь — впереди, по времени прихода. */
-function results(s: ShiftState, p: ShiftPatient, notices: Notice[]) {
+function results(db: ContentDb, s: ShiftState, p: ShiftPatient, notices: Notice[]) {
   const ready = p.pending.filter(x => x.readyAt <= s.t).sort((a, b) => a.readyAt - b.readyAt || (a.exam < b.exam ? -1 : 1));
   if (ready.length === 0) return;
   p.pending = p.pending.filter(x => x.readyAt > s.t);
@@ -3127,8 +3177,10 @@ function results(s: ShiftState, p: ShiftPatient, notices: Notice[]) {
     p.status = 'waiting';
     p.queuedT = s.t;
     p.wait++;
+    standBack(db, s, p);
     journey.own(s, p);
   } else if (p.status === 'away' && p.pending.length === 0) {
+    standBack(db, s, p);
     enqueue(s, p, p.arriveT);
     notices.push({ kind: 'resultsReady', id: p.id });
   } else if (p.status === 'inRoom' && !p.by) {

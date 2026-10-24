@@ -112,7 +112,7 @@ describe('путь пациента', () => {
     expect(qm.length).toBeGreaterThan(3);
   }, 120_000);
 
-  test('скорая без места в смотровой ждёт у входа; в полную зону ожидания — стоя', () => {
+  test('скорая без места в смотровой ждёт у входа; своего зала у кабинета нет или он полон — стоя (spec 2026-10-own-hall)', () => {
     const amb = flowShift(1, { flow: { perHour: 6, ambulancePerHour: 8 } });
     liveUntil(db, amb, 12);
     const door = journeys(amb).filter(([, j]) => j.steps.some(x => x.k === 'queue' && x.door));
@@ -120,9 +120,11 @@ describe('путь пациента', () => {
     expect(door.every(([, j]) => j.kind === 'ambulance')).toBe(true);
     const crowd = flowShift(1, { flow: { perHour: 40, ambulancePerHour: 1 } });
     liveUntil(db, crowd, 11);
-    const full = journeys(crowd).filter(([, j]) => j.steps.some(x => x.k === 'queue' && x.full));
-    expect(full.length).toBeGreaterThan(10);
-    expect(full.every(([, j]) => j.kind !== 'ambulance')).toBe(true);
+    // зал городской больницы — в 37–63 м от кабинетов нанятых врачей: их больные стоят, «зала не дальше 10 м нет»
+    const stood = journeys(crowd).filter(([, j]) => j.steps.some(x => x.k === 'queue' && (x.full || x.far !== undefined)));
+    expect(stood.length).toBeGreaterThan(10);
+    expect(stood.every(([, j]) => j.kind !== 'ambulance')).toBe(true);
+    expect(stood.some(([, j]) => j.steps.some(x => x.k === 'queue' && x.far === 10))).toBe(true);
   }, 120_000);
 
   test('ушёл, не дождавшись: путь кончается ожиданием врача — ровно столько, сколько был готов ждать', () => {

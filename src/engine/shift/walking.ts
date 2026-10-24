@@ -84,9 +84,18 @@ export const waitsAt = (p: ShiftPatient): { at: string | undefined; t: number | 
   p.next !== undefined ? { at: p.next, t: p.nextAt } : { at: p.hall, t: p.seatAt };
 
 /**
- * Перевели к другому врачу (spec 2026-10-walk): из кабинета прежнего `from` с `t` — в зону ожидания у кабинета нового.
+ * Перевели к другому врачу (spec 2026-10-walk): из кабинета прежнего `from` с `t` — в зону ожидания у кабинета нового;
+ * стоял (spec 2026-10-own-hall) — к двери кабинета нового.
  */
 export function moveTo(plan: Plan, working: ReadonlySet<string>, p: ShiftPatient, from: string | undefined, office: string | undefined, t: number) {
+  // стоящий у двери в зале не числится (`hall` нет)
+  if (p.stands && office && p.hall === undefined) {
+    p.next = office;
+    if (from) p.leg = { from, at: t };
+    else delete p.leg;
+    p.nextAt = t + walkPc(plan, from, office);
+    return;
+  }
   p.hall = hallNear(plan, working, office);
   delete p.next;
   delete p.nextAt;

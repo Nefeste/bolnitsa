@@ -139,7 +139,7 @@ export interface PathNames {
 
 const queueWhy = (x: Extract<Step, { k: 'queue' }>): string => {
   const why = x.why === 'busy' ? T.flow.busy(x.docs ?? 0, x.asks ?? 0, x.ahead) : x.why === 'none' ? T.flow.none : T.flow.you;
-  return [why, ...(x.full ? [T.flow.full] : [])].join('; ');
+  return [why, ...(x.full ? [T.flow.full] : []), ...(x.far !== undefined ? [T.flow.far(x.far)] : [])].join('; ');
 };
 
 /**
