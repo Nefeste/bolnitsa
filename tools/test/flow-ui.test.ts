@@ -14,6 +14,7 @@ const H = (h: number, m = 0) => h * 3600 + m * 60;
 const names: PathNames = {
   doctor: id => (id === 's1' ? 'терапевта' : 'врача'),
   exam: id => (id === 'exam.xray' ? { name: 'Рентгенография', kind: 'imaging' } : { name: 'Общий анализ крови', kind: 'lab' }),
+  role: id => (id === 'role.radiographer' ? 'Рентгенолаборант' : 'Медсестра'),
 };
 
 describe('путь пациента в карточке', () => {
@@ -47,6 +48,26 @@ describe('путь пациента в карточке', () => {
     // ждал: врача 12, у рентгена 14, своего врача 5 — из 81 минуты
     expect(c.summary).toBe('в больнице 1 ч 21 мин, из них ждал 31 мин (38 %)');
     expect(c.left).toBeUndefined();
+  });
+
+  // spec docs/specs/2026-10-staff-shifts.md, часть 2: врач ушёл на перерыв — ждут его; рентгенолаборант на перерыве — ждут у
+  // кабинета, пока вернётся
+  test('перерывы: «врач на перерыве до …», «врач в туалете», «рентгенолаборант на перерыве — начали в …»', () => {
+    const j: Journey = {
+      kind: 'walkIn', at: H(13),
+      steps: [
+        { t: H(13), k: 'queue', why: 'busy', ahead: 1, docs: 1 },
+        { t: H(13, 5), k: 'rest', by: 's1', until: H(13, 41) },
+        { t: H(13, 45), k: 'doctor', by: 's1', room: 'r5' },
+        { t: H(13, 50), k: 'exam', exam: 'exam.xray', room: 'r9', at: H(13, 52), start: H(14, 20), end: H(14, 30), back: H(14, 32), ready: H(14, 40), rest: 'role.radiographer' },
+        { t: H(14, 32), k: 'rest', by: 's1', until: H(14, 40), wc: true },
+      ],
+    };
+    const c = pathCard(j, false, H(14, 45), names);
+    const rest = c.lines.find(l => l.at === '13:05')!;
+    expect(rest).toMatchObject({ text: 'ожидание своего врача — 40 мин', why: 'врач на перерыве до 13:41', kind: 'wait' });
+    expect(c.lines.find(l => l.at === '13:50')!.why).toBe('рентгенолаборант на перерыве — начали в 14:20');
+    expect(c.lines.find(l => l.at === '14:32')!).toMatchObject({ why: 'врач в туалете — вернётся к 14:40', now: true });
   });
 
   test('ушла, не дождавшись: почему — первой строкой; ждала ровно своё терпение', () => {

@@ -65,12 +65,15 @@ function settle(db: ContentDb, s: ShiftState, m: StaffMember, f: Fatigue): Crew 
   return c;
 }
 
-/** Принял больного: усталость — на `case` очков больше. Ушедший со сменой не устаёт. */
-export function worked(db: ContentDb, s: ShiftState, m: StaffMember) {
+/**
+ * Принял больного (`case`) или записал обследование (`exam`, часть 2б): усталость — на столько очков больше. Ушедший со
+ * сменой не устаёт.
+ */
+export function worked(db: ContentDb, s: ShiftState, m: StaffMember, what: 'case' | 'exam' = 'case') {
   const f = numbersOf(db, s, m);
   if (!f || !onDuty(db, m, s.t)) return;
   const c = settle(db, s, m, f);
-  c.f = Math.min(MAX, c.f + f.case * POINT);
+  c.f = Math.min(MAX, c.f + f[what] * POINT);
 }
 
 /** Сколько времени у врача займёт работа, % (`speedOf`): с усталостью не ниже `slow` — на `slower` % дольше. */
@@ -96,7 +99,17 @@ export function blurredOf(db: ContentDb, s: ShiftState, m: StaffMember, threshol
 /** Сколько секунд ещё отдыхать врачу `id`: не отдыхает — 0. */
 export function restLeft(s: ShiftState, id: string | undefined): number {
   const r = id !== undefined ? s.crew?.[id]?.rest : undefined;
-  return r && r.until > s.t ? r.until - s.t : 0;
+  return r && !r.planned && r.until > s.t ? r.until - s.t : 0;
+}
+
+/**
+ * С какого часа человек `m` на месте, если нужен в `t` на `dur` секунд (часть 2б): работа задела его перерыв — когда
+ * вернётся; иначе — `t`. Нет человека — `t`.
+ */
+export function backAt(s: ShiftState, m: StaffMember | undefined, t: number, dur = 0): number {
+  const r = m ? s.crew?.[m.id]?.rest : undefined;
+  // миг — секунда: нужен ровно в час, когда ушёл, — уже нет
+  return r && t < r.until && Math.max(t + dur, t + 1) > r.from ? r.until : t;
 }
 
 /**
@@ -146,11 +159,13 @@ function nearest(plan: Plan, working: ReadonlySet<string>, type: string, from: s
  * своём кабинете вдвое дольше. Туда и назад — пешком, как ходят люди (`walkPc`); пока отдыхает, не устаёт. Ушёл — его
  * перерыв, нет — ничего.
  */
-export function startRest(db: ContentDb, s: ShiftState, plan: Plan, working: ReadonlySet<string>, m: StaffMember, kind: 'toilet' | 'rest'): Rest | undefined {
+export function startRest(db: ContentDb, s: ShiftState, plan: Plan, working: ReadonlySet<string>, m: StaffMember, kind: 'toilet' | 'rest', from = s.t): Rest | undefined {
   const f = numbersOf(db, s, m);
   if (!f || !onDuty(db, m, s.t)) return undefined;
   const c = settle(db, s, m, f);
   if (c.rest) return undefined;
+  // отложенный (часть 2б): уйдёт в `from`, когда кончит записанных к нему; усталость падает тогда же (`beginRest`)
+  const later = from > s.t ? { planned: true as const } : {};
   if (kind === 'toilet') {
     const room = nearest(plan, working, 'room.toilet', m.room);
     if (!room) {
@@ -159,7 +174,7 @@ export function startRest(db: ContentDb, s: ShiftState, plan: Plan, working: Rea
     }
     const go = walkPc(plan, m.room, room);
     const there = f.wc * MIN;
-    c.rest = { kind: 'toilet', room, from: s.t, at: s.t + go, back: s.t + go + there, until: s.t + 2 * go + there };
+    c.rest = { kind: 'toilet', room, from, at: from + go, back: from + go + there, until: from + 2 * go + there, ...later };
     c.wc = c.rest.until + toiletGap(s, f, m, c.rest.until);
     return c.rest;
   }
@@ -167,11 +182,31 @@ export function startRest(db: ContentDb, s: ShiftState, plan: Plan, working: Rea
   const go = room ? walkPc(plan, m.room, room) : 0;
   const there = (room ? 1 : 2) * f.rest * MIN;
   c.rest = room
-    ? { kind: 'staff', room, from: s.t, at: s.t + go, back: s.t + go + there, until: s.t + 2 * go + there }
-    : { kind: 'here', ...(m.room ? { room: m.room } : {}), from: s.t, at: s.t, back: s.t + there, until: s.t + there };
+    ? { kind: 'staff', room, from, at: from + go, back: from + go + there, until: from + 2 * go + there, ...later }
+    : { kind: 'here', ...(m.room ? { room: m.room } : {}), from, at: from, back: from + there, until: from + there, ...later };
+  if (!c.rest.planned) relieve(f, c);
+  return c.rest;
+}
+
+/** Ушёл на перерыв: усталость на `relief` меньше и до конца перерыва не растёт; в туалет — растёт, как шла. */
+function relieve(f: Fatigue, c: Crew) {
+  if (!c.rest || c.rest.kind === 'toilet') return;
   c.f = Math.max(0, c.f - f.relief * POINT);
   c.at = c.rest.until;
-  return c.rest;
+}
+
+/** Отложенный перерыв начался (часть 2б): он ушёл — усталость досчитана до этой минуты и падает. */
+export function beginRest(db: ContentDb, s: ShiftState, m: StaffMember) {
+  const f = numbersOf(db, s, m);
+  const r = s.crew?.[m.id]?.rest;
+  if (!f || !r?.planned || s.t < r.from) return;
+  const c = s.crew![m.id];
+  if (s.t > c.at) {
+    c.f = Math.min(MAX, c.f + rateOf(f, m) * (s.t - c.at));
+    c.at = s.t;
+  }
+  delete r.planned;
+  relieve(f, c);
 }
 
 /** Для окна: усталость в очках и перерыв, если он ещё идёт. */
@@ -191,7 +226,8 @@ export function crewOf(db: ContentDb, s: ShiftState, list: readonly StaffMember[
     const l = levelOf(db, s, m);
     if (l === undefined) return [];
     const r = s.crew?.[m.id]?.rest;
-    const on = r !== undefined && r.until > s.t;
+    // отложенный перерыв (часть 2б) — ещё работает
+    const on = r !== undefined && !r.planned && r.until > s.t;
     const left = on && r.kind !== 'toilet' ? Math.round((relief * (r.until - s.t)) / Math.max(1, r.until - r.from)) : 0;
     return [{ id: m.id, f: Math.min(100, pointsOf(l) + left), ...(on ? { rest: { ...r } } : {}) }];
   });

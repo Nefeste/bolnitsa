@@ -151,7 +151,9 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   `shift/crew.ts`: hired doctors on a shift tire by the hour and by the case, work slower from 70 and diagnose with less
   certainty from 90, walk to the nearest staff room for a break when nobody waits (at the limit — even if someone does)
   and to the toilet every 4–5 hours; `s.crew` keeps it, integer fatigue, the same at any clock step; numbers —
-  `economy.yaml`, `staff.fatigue`. Staff without a shift never tire.
+  `economy.yaml`, `staff.fatigue`. Staff without a shift never tire. Part 2b — those who do exams (the first role of an
+  exam room) tire per exam too and rest after their bookings (`planned` rest, the `crew` event in `engine.ts`): the
+  machine queue waits for them, a blood draw waits for the nurse, a lab result for the lab tech.
 - Saves (`docs/specs/2026-10-saves.md`): `src/engine/shift/migrate.ts` — the save schema number and the migration chain;
   `src/sim/packing.ts` — the file (header, engine snapshot, window view; JSON + gzip), written by the worker;
   `src/app/saves.ts` — slots (`auto-1…3` shifted each morning, `exit`, `manual-<n>`) over a disk: `electron/saves.cjs`

@@ -34,7 +34,7 @@ import {
   SHIFT_START, type ShiftEvent, type ShiftPatient, type ShiftState, TRIAGE, type Triage, type VisitKind, type WardDay, type AmbulanceDay, type SurgeryDay,
 } from './types';
 import { type Ask, askFor, askLong } from './consult';
-import { blurredOf, dropCrew, dueOf, restLeft, slowedOf, startRest, tiredOf, wakeOf, worked } from './crew';
+import { backAt, beginRest, blurredOf, dropCrew, dueOf, restLeft, slowedOf, startRest, tiredOf, wakeOf, worked } from './crew';
 import * as journey from './journey';
 import { AT_DOOR, fromDesk, hallNear, moveTo, PER_QUEUED, readyAt, route, toDoctor, toDoor, WALK_SPEED_PC, waitsAt, walkPc } from './walking';
 import { COMPLICATION_DAYS, complicationAt, complicationsOf, deathsOf, onsetHours, operationFor } from './surgery';
@@ -244,7 +244,10 @@ export function newFlowShift(
   planDay(db, s);
   // усталость (spec 2026-10-staff-shifts, часть 2): у врачей в смене перерывы и туалет — с первой минуты, даже если звать
   // ещё некого
-  if (s.staff?.some(m => m.shift !== undefined)) staffDesks(db, s);
+  if (s.staff?.some(m => m.shift !== undefined)) {
+    staffDesks(db, s);
+    crewAll(db, s);
+  }
   return s;
 }
 
@@ -613,8 +616,10 @@ function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       const was = s.flow?.auto ? capacityOf(db, s) : undefined;
       const out = siteCommand(db, s, cmd.cmd);
       reflow(db, s, was);
-      // нанят первый со сменой (spec 2026-10-staff-shifts): пересменки этих суток — с этой минуты
+      // нанят первый со сменой (spec 2026-10-staff-shifts): пересменки этих суток — с этой минуты; нанятый делать
+      // обследования — его перерывы и туалет (часть 2б)
       scheduleDuty(db, s);
+      crewAll(db, s);
       return out;
     }
     // касса ПК (spec 2026-10-economy): кредит, который банк предложил на планёрке
@@ -875,6 +880,8 @@ function duty(db: ContentDb, s: ShiftState) {
   }
   reflow(db, s, was);
   staffDesks(db, s);
+  // часть 2б: пришедшие делать обследования — их перерывы и туалет
+  crewAll(db, s);
 }
 
 /**
@@ -1597,7 +1604,11 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
     if (s.flow) meeting.examWait(s, room.id, go.at + go.walk, start);
     addPending(s, p, examId, end + after * MIN, obs, { room: room.id, start, end });
     goOut(ctx, s, p, examId, room.id, end);
-    journey.examOut(s, p, go.at, go.at + go.walk);
+    // кто делает (spec 2026-10-staff-shifts, часть 2б): устаёт за каждое; начнут, когда он вернётся с перерыва, — путь знает
+    const doer = examDoerOf(db, ctx, room.id);
+    if (doer) worked(db, s, doer, 'exam');
+    const r = doer ? s.crew?.[doer.id]?.rest : undefined;
+    journey.examOut(s, p, go.at, go.at + go.walk, r && start === r.until && start > go.at + go.walk ? doer!.role : undefined);
     return order;
   }
   // вопрос расспроса у вас — короче с «Быстрым опросом» (spec 2026-10-skills)
@@ -1612,24 +1623,34 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
   const second = obs.filter(o => again.includes(o.f));
   // анализ: кровь берут в процедурном — пациент идёт туда сразу, как выписали направление (FR-HOS-4; 0.5.12), и
   // возвращается; результат — когда лаборатория приготовит. Берут там, где он лежит, — на месте
+  // кто берёт и кто готовит (spec 2026-10-staff-shifts, часть 2б): устают за каждое; медсестра на перерыве — берут, когда
+  // вернётся; лаборант на перерыве — готовят, когда вернётся
+  const lab = room && after > 0 ? examDoerOf(db, ctx, room.id) : undefined;
+  if (lab) worked(db, s, lab, 'exam');
+  const ready = (end: number) => backAt(s, lab, end) + wait;
   if (after > 0 && room && to !== undefined && to !== fromRoom(ctx, p)) {
     const order = ORDER_MINUTES * MIN;
     const go = outFrom(ctx, s, p, to, s.t + order);
-    const start = go.at + go.walk;
-    addPending(s, p, examId, start + cost + wait, first, { room: room.id, start, end: start + cost });
+    const nurse = examDoerOf(db, ctx, to);
+    if (nurse) worked(db, s, nurse, 'exam');
+    const start = backAt(s, nurse, go.at + go.walk, cost);
+    // к ней записан: до конца забора не уйдёт (очереди, как у аппарата, здесь нет — помнит она сама)
+    const c = nurse ? s.crew?.[nurse.id] : undefined;
+    if (c) c.busy = Math.max(c.busy ?? 0, start + cost);
+    addPending(s, p, examId, ready(start + cost), first, { room: room.id, start, end: start + cost });
     goOut(ctx, s, p, examId, to, start + cost);
-    journey.examOut(s, p, go.at, start);
+    journey.examOut(s, p, go.at, go.at + go.walk, start > go.at + go.walk ? nurse!.role : undefined);
     if (e.repeat && second.length > 0) {
       const draw = s.t + e.repeat.minutes * MIN + walk;
-      addPending(s, p, examId, draw + cost + wait, second, { room: room.id, start: draw, end: draw + cost }, true);
+      addPending(s, p, examId, ready(draw + cost), second, { room: room.id, start: draw, end: draw + cost }, true);
     }
     return order;
   }
-  if (after > 0) addPending(s, p, examId, s.t + away + walk + cost + wait, first, room ? { room: room.id, start: s.t + away + walk, end: s.t + away + walk + cost } : undefined);
+  if (after > 0) addPending(s, p, examId, ready(s.t + away + walk + cost), first, room ? { room: room.id, start: s.t + away + walk, end: s.t + away + walk + cost } : undefined);
   else p.results.push({ exam: examId, obs: first, at: s.t + away + cost, step: p.step });
   if (e.repeat && second.length > 0) {
     const draw = s.t + away + e.repeat.minutes * MIN + walk;
-    addPending(s, p, examId, draw + cost + wait, second, room ? { room: room.id, start: draw, end: draw + cost } : undefined, true);
+    addPending(s, p, examId, ready(draw + cost), second, room ? { room: room.id, start: draw, end: draw + cost } : undefined, true);
   }
   return away + cost;
 }
@@ -1670,6 +1691,97 @@ function goOut(ctx: HospitalCtx, s: ShiftState, p: ShiftPatient, exam: Id, room:
   if (s.flow && !p.by) schedule(s, p.out.back, { kind: 'reach', id: p.id });
 }
 
+// --- усталость тех, кто делает обследования (spec docs/specs/2026-10-staff-shifts.md, часть 2б) ---------------------------
+
+/** Как в помещении этого вида делают обследования: у аппарата по очереди, берут материал, готовят анализы. */
+type ExamRoom = 'queued' | 'collect' | 'lab';
+const examRoomsOf = new WeakMap<ContentDb, Map<Id, ExamRoom>>();
+
+/**
+ * Помещения, где обследования делает их первая должность: снимки и функциональные — по очереди у аппарата, забор материала,
+ * лаборатория. Смотровая приёмного, где тоже берут кровь, — нет: там медсестра сортирует привезённых.
+ */
+function examRooms(db: ContentDb): Map<Id, ExamRoom> {
+  let m = examRoomsOf.get(db);
+  if (m) return m;
+  m = new Map();
+  for (const e of Object.values(db.exams)) {
+    if (e.room) m.set(e.room, e.kind === 'imaging' || e.kind === 'functional' ? 'queued' : (m.get(e.room) ?? 'lab'));
+    if (e.collect && !db.rooms[e.collect]?.emergency && !m.has(e.collect)) m.set(e.collect, 'collect');
+  }
+  examRoomsOf.set(db, m);
+  return m;
+}
+
+/** Кто делает обследования в помещении `room`: его первая должность, кто в смене; не обследования там — никто. */
+function examDoerOf(db: ContentDb, ctx: HospitalCtx, room: string): StaffMember | undefined {
+  const type = ctx.plan.rooms.find(r => r.id === room)?.type;
+  return type && examRooms(db).has(type) ? memberAt(ctx.staff, room, db.rooms[type].staff[0]) : undefined;
+}
+
+/** До какого часа к нему записаны: очередь аппарата; в процедурном — кто записан сдать кровь; в лаборатории — никто. */
+function bookedUntil(s: ShiftState, how: ExamRoom, m: StaffMember): number {
+  if (how === 'queued') return s.rooms[m.room!] ?? 0;
+  return how === 'collect' ? (s.crew?.[m.id]?.busy ?? 0) : 0;
+}
+
+/**
+ * Отдыхать ли тому, кто делает обследования, — как врачу: никто к нему не записан, а усталость не ниже `slow`, — на
+ * перерыв; на пределе — после записанных, и новых пишут после перерыва; в туалет — тоже после записанных. Иначе — проверить
+ * снова, когда станет пора или кончатся записанные. Перерыв, который начнётся позже, — отложенный: ушёл — событие `crew`.
+ */
+function examCrew(db: ContentDb, s: ShiftState, m: StaffMember) {
+  if (!m.room) return;
+  const ctx = hospitalCtx(db, s);
+  const how = examRooms(db).get(ctx.plan.rooms.find(r => r.id === m.room)?.type ?? '');
+  if (!how || examDoerOf(db, ctx, m.room)?.id !== m.id) return;
+  const due = dueOf(db, s, m);
+  if (!due) return;
+  const booked = bookedUntil(s, how, m);
+  const from = Math.max(s.t, booked);
+  const go = (kind: 'toilet' | 'rest'): boolean => {
+    // к тому часу смена кончится — уйдёт домой
+    if (!onDuty(db, m, from)) return false;
+    const r = startRest(db, s, ctx.plan, ctx.working, m, kind, from);
+    if (!r) return false;
+    if (how === 'queued') s.rooms[m.room!] = Math.max(s.rooms[m.room!] ?? 0, r.until);
+    if (r.planned) schedule(s, r.from, { kind: 'crew', id: m.id });
+    schedule(s, r.until, { kind: 'crew', id: m.id });
+    return true;
+  };
+  if (due.wc && go('toilet')) return;
+  if ((due.tired === 2 || (due.tired === 1 && booked <= s.t)) && go('rest')) return;
+  const c = s.crew?.[m.id];
+  const next = Math.min(wakeOf(db, s, m) ?? Number.POSITIVE_INFINITY, due.tired === 1 && booked > s.t ? booked : Number.POSITIVE_INFINITY);
+  if (!c || !Number.isFinite(next) || c.wake === next || !onDuty(db, m, next)) return;
+  c.wake = next;
+  schedule(s, next, { kind: 'crew', id: m.id });
+}
+
+/** Событие `crew`: ушёл на отложенный перерыв — усталость падает; вернулся или пора проверить — решает `examCrew`. */
+function crewStep(db: ContentDb, s: ShiftState, id: string) {
+  const m = s.staff?.find(x => x.id === id);
+  if (!m || !s.flow) return;
+  const r = s.crew?.[id]?.rest;
+  if (r?.planned) {
+    if (s.t >= r.from) beginRest(db, s, m);
+    return;
+  }
+  examCrew(db, s, m);
+}
+
+/** Для окна (spec 2026-10-staff-shifts, часть 2): кто устаёт и отдыхает — нанятые врачи и те, кто делает обследования, в смене. */
+export function crewList(db: ContentDb, s: ShiftState): StaffMember[] {
+  const ctx = hospitalCtx(db, s);
+  return [...colleaguesOf(db, s), ...ctx.staff.filter(m => m.room !== undefined && examDoerOf(db, ctx, m.room)?.id === m.id)];
+}
+
+/** Все, кто сейчас в смене делает обследования: их перерывы и туалет — с этой минуты (начало игры, пересменка, найм). */
+function crewAll(db: ContentDb, s: ShiftState) {
+  if (!s.flow || !db.economy.staff.fatigue || !s.staff?.some(m => m.shift !== undefined)) return;
+  for (const m of hospitalCtx(db, s).staff) if (m.shift !== undefined) examCrew(db, s, m);
+}
+
 /** Где и как сделать обследование этому пациенту сейчас: у постели или в кабинете, время — с поправкой аппарата и человека; нельзя — null. */
 function examSetup(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id) {
   const e = db.exams[examId];
@@ -1687,8 +1799,10 @@ function examSetup(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id) {
   const broken = brokenOf(s);
   const eqId = room?.equipment.find((x, slot) => x !== null && (e.equipment ?? []).includes(x) && !broken.has(slotKey(room.id, slot))) ?? undefined;
   const eq = eqId ? db.equipment[eqId] : undefined;
-  // время: аппарат и тот, кто делает (первая должность помещения), — в процентах записанного
-  const roomPct = room ? Math.round((eq?.speed ?? 1) * speedOf(db, memberAt(ctx.staff, room.id, db.rooms[room.type].staff[0]))) : 100;
+  // время: аппарат и тот, кто делает (первая должность помещения), — в процентах записанного; устал — дольше (spec
+  // 2026-10-staff-shifts, часть 2б)
+  const doer = room ? memberAt(ctx.staff, room.id, db.rooms[room.type].staff[0]) : undefined;
+  const roomPct = room ? Math.round((eq?.speed ?? 1) * (doer ? slowedOf(db, s, doer, speedOf(db, doer)) : speedOf(db, doer))) : 100;
   // дорога (FR-HOS-4, spec 2026-10-walk-breakdowns): снимок и функциональное — в своём кабинете, материал берут там, где
   // записано (кровь — в процедурном, тропонин и пункцию — в смотровой приёмного)
   const to = queued ? room?.id : e.collect && !bed ? collectRoom(ctx, p, e.collect, s.flow !== undefined) : undefined;
@@ -2969,6 +3083,8 @@ function handle(db: ContentDb, s: ShiftState, ev: ShiftEvent, notices: Notice[])
       return rounds(db, s);
     case 'duty':
       return duty(db, s);
+    case 'crew':
+      return crewStep(db, s, ev.id);
     case 'reach': {
       // поток для ПК (spec 2026-10-owner-play-2): ваш пациент дошёл — если он ещё ваш и не ушёл на другое обследование
       const p = s.patients[ev.id];

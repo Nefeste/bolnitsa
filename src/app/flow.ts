@@ -135,6 +135,8 @@ export interface PathCard {
 export interface PathNames {
   doctor(staffId: string): string;
   exam(id: Id): { name: string; kind: string };
+  /** должность — для «… на перерыве» (spec docs/specs/2026-10-staff-shifts.md, часть 2б) */
+  role(id: Id): string;
 }
 
 const queueWhy = (x: Extract<Step, { k: 'queue' }>): string => {
@@ -191,7 +193,9 @@ export function pathCard(j: Journey, female: boolean, now: number, names: PathNa
         }
         if (e.kind === 'lab') parts.push(T.flow.ready(clock(x.ready)));
         const busy = x.start > x.at && stop >= x.at;
-        lines.push({ at: clock(from), text: T.flow.exam(e.name, parts.join(', ')), ...(busy ? { why: T.flow.roomBusy(clock(x.start)) } : {}), kind: 'do', ...(open && now < x.back ? mark : {}) });
+        // ждал, пока тот, кто делает, вернётся с перерыва (spec docs/specs/2026-10-staff-shifts.md, часть 2б)
+        const why = busy ? (x.rest ? T.flow.examRest(names.role(x.rest), clock(x.start)) : T.flow.roomBusy(clock(x.start))) : undefined;
+        lines.push({ at: clock(from), text: T.flow.exam(e.name, parts.join(', ')), ...(why ? { why } : {}), kind: 'do', ...(open && now < x.back ? mark : {}) });
         // вернулся к врачу — снова у него до следующего шага
         const back = away ? x.end : x.back;
         if (!away && next - back >= 60) {
