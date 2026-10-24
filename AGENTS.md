@@ -93,8 +93,10 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # saves: save, «Продолжить», load from the menu, delete, a broken file; then the card of the
                                    # departed: «Приняты», the decision in a discharged patient's card, the departed's person card;
                                    # then staff shifts: at 20:00 the day shift walks out and the night shift in, the night
-                                   # rows of a room card, hiring a night registrar, «Сейчас в смене»);
-                                   # screenshots in tools/app/out/; `-- --only 1|2|3|4|5|6|7|8|9|10|11|12` for one part
+                                   # rows of a room card, hiring a night registrar, «Сейчас в смене»; then fatigue: a tired
+                                   # doctor walks to the staff room, his card and fatigue bar, «Персонал», «врач на перерыве»
+                                   # in a waiting patient's path);
+                                   # screenshots in tools/app/out/; `-- --only 1|2|3|4|5|6|7|8|9|10|11|12|13` for one part
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -145,7 +147,11 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   (`shift` in `hospital/staff.ts`; none — round the clock, saves before 0.9.0); who is on duty — `dutyOf`, and
   `hospitalCtx(db, s, at)` builds the hospital from them; the `duty` event at 08:00 and 20:00 in `engine.ts` hands queued
   patients to those on duty, and a doctor off duty finishes their own cases (`lateOf`); wages per shift, night ×1.25
-  (`wageOf`); a ready hospital with beds or an emergency room starts with a night shift (`withNightShift`).
+  (`wageOf`); a ready hospital with beds or an emergency room starts with a night shift (`withNightShift`). Part 2 —
+  `shift/crew.ts`: hired doctors on a shift tire by the hour and by the case, work slower from 70 and diagnose with less
+  certainty from 90, walk to the nearest staff room for a break when nobody waits (at the limit — even if someone does)
+  and to the toilet every 4–5 hours; `s.crew` keeps it, integer fatigue, the same at any clock step; numbers —
+  `economy.yaml`, `staff.fatigue`. Staff without a shift never tire.
 - Saves (`docs/specs/2026-10-saves.md`): `src/engine/shift/migrate.ts` — the save schema number and the migration chain;
   `src/sim/packing.ts` — the file (header, engine snapshot, window view; JSON + gzip), written by the worker;
   `src/app/saves.ts` — slots (`auto-1…3` shifted each morning, `exit`, `manual-<n>`) over a disk: `electron/saves.cjs`

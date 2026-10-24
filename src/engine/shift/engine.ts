@@ -3404,7 +3404,9 @@ function callIn(db: ContentDb, s: ShiftState, list: readonly StaffMember[], late
     schedule(s, s.t + Math.max(MIN, walk), { kind: 'colleague', id });
     busy.add(m.id);
   };
-  // усталость (spec 2026-10-staff-shifts, часть 2): ушёл отдыхать — никого не зовёт до `until`, тогда и вернётся
+  // усталость (spec 2026-10-staff-shifts, часть 2): устают только люди со сменой; ушёл отдыхать — никого не зовёт до `until`,
+  // тогда и вернётся
+  const tires = s.flow !== undefined && list.some(m => m.shift !== undefined);
   const rest = (m: StaffMember, kind: 'toilet' | 'rest'): boolean => {
     const r = startRest(db, s, ctx.plan, ctx.working, m, kind);
     if (!r) return false;
@@ -3420,7 +3422,7 @@ function callIn(db: ContentDb, s: ShiftState, list: readonly StaffMember[], late
   // поток для ПК (spec 2026-10-walk): сперва все свободные зовут своих, потом свободный без своих — из чужой очереди
   for (const steal of s.flow ? [false, true] : [false]) {
     // своих звать некого, а устал (spec 2026-10-staff-shifts, часть 2), — на перерыв, а не к чужой очереди
-    if (steal) {
+    if (steal && tires) {
       for (const m of list) {
         if (busy.has(m.id) || (s.desk?.[m.id] ?? 0) > s.t || !dueOf(db, s, m)?.tired || backOf(m)) continue;
         rest(m, 'rest');
@@ -3435,7 +3437,7 @@ function callIn(db: ContentDb, s: ShiftState, list: readonly StaffMember[], late
       const back = backOf(m);
       // в туалет и на пределе усталости — между приёмами, даже если его ждут; своего, вернувшегося с результатами, сперва
       // принимает
-      if (s.flow && !steal && !back) {
+      if (tires && !steal && !back) {
         const due = dueOf(db, s, m);
         if (due && ((due.wc && rest(m, 'toilet')) || (due.tired === 2 && rest(m, 'rest')))) continue;
       }
@@ -3445,7 +3447,7 @@ function callIn(db: ContentDb, s: ShiftState, list: readonly StaffMember[], late
   }
   // свободному звать некого и отдыхать не пора (spec 2026-10-staff-shifts, часть 2) — разбудить, когда станет пора: без
   // событий в больнице его никто не позовёт
-  if (s.flow) {
+  if (tires) {
     for (const m of list) {
       if (busy.has(m.id) || (s.desk?.[m.id] ?? 0) > s.t) continue;
       const at = wakeOf(db, s, m);

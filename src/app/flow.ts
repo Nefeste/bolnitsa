@@ -220,6 +220,14 @@ export function pathCard(j: Journey, female: boolean, now: number, names: PathNa
         lines.push({ at: clock(from), text: T.flow.ask(dur(d), clock(x.until)), ...(late ? { why: T.flow.askLate } : {}), kind: 'wait', ...mark });
         break;
       }
+      // врач ушёл отдыхать (spec docs/specs/2026-10-staff-shifts.md, часть 2): ждёт его — почему и до какого часа
+      case 'rest': {
+        if (d < 60 && !open) break;
+        waited += d;
+        const until = clock(x.until);
+        lines.push({ at: clock(from), text: T.flow.own(dur(d)), why: x.wc ? T.flow.restWc(until) : x.here ? T.flow.restHere(until) : T.flow.rest(until), kind: 'wait', ...mark });
+        break;
+      }
     }
     prev = next;
   });

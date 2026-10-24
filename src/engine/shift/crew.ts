@@ -174,6 +174,29 @@ export function startRest(db: ContentDb, s: ShiftState, plan: Plan, working: Rea
   return c.rest;
 }
 
+/** Для окна: усталость в очках и перерыв, если он ещё идёт. */
+export interface CrewView {
+  id: string;
+  f: number;
+  rest?: Rest;
+}
+
+/**
+ * Для окна (spec 2026-10-staff-shifts, часть 2): усталость и перерыв каждого из `list` (врачи в смене), кто устаёт. В движке
+ * усталость падает на `relief`, как только врач ушёл на перерыв; игрок видит, как она падает, пока он отдыхает.
+ */
+export function crewOf(db: ContentDb, s: ShiftState, list: readonly StaffMember[]): CrewView[] {
+  const relief = db.economy.staff.fatigue?.relief ?? 0;
+  return list.flatMap(m => {
+    const l = levelOf(db, s, m);
+    if (l === undefined) return [];
+    const r = s.crew?.[m.id]?.rest;
+    const on = r !== undefined && r.until > s.t;
+    const left = on && r.kind !== 'toilet' ? Math.round((relief * (r.until - s.t)) / Math.max(1, r.until - r.from)) : 0;
+    return [{ id: m.id, f: Math.min(100, pointsOf(l) + left), ...(on ? { rest: { ...r } } : {}) }];
+  });
+}
+
 /**
  * Пересменка: записи тех, кого больше нет в смене или в штате, — долой, кроме тех, кто ещё не вернулся с перерыва; записи
  * прошлой смены тех, кто снова в смене, — тоже: пришли отдохнувшими.

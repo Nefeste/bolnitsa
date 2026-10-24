@@ -500,14 +500,25 @@ function doingLine(info: Extract<PersonInfo, { kind: 'patient' }>): string {
   return info.arrive !== undefined ? `${what} · ${T.card.arrives(clock(info.arrive))}` : what;
 }
 
+/** Перерыв человека штата (spec docs/specs/2026-10-staff-shifts.md, часть 2): идёт в ординаторскую, там, идёт назад. */
+function restLine(r: NonNullable<Extract<PersonInfo, { kind: 'staff' }>['rest']>): string {
+  const until = clock(r.until);
+  if (r.phase === 'back') return T.card.rest.back(until);
+  if (r.kind === 'toilet') return T.card.rest.toilet(until);
+  if (r.kind === 'here') return T.card.rest.here(until);
+  return r.phase === 'go' ? T.card.rest.toStaff(until) : T.card.rest.staff(until);
+}
+
 function personLines(info: PersonInfo, names: Names): [string, string][] {
-  // смены (spec docs/specs/2026-10-staff-shifts.md): чья смена; не в больнице — дома до своей смены
+  // смены (spec docs/specs/2026-10-staff-shifts.md): чья смена; не в больнице — дома до своей смены; на перерыве — где и до
+  // какого часа (часть 2)
   if (info.kind === 'staff') {
     const h = info.hours;
     return [
       [T.card.staff, names.role(info.role)],
       [T.card.where, info.home && h ? T.card.home(clock(h[0] * 3600)) : names.room(info.room)],
       ...(info.shift && h ? [[T.card.shift, T.card.shiftLine(info.shift, clock(h[0] * 3600), clock(h[1] * 3600))] as [string, string]] : []),
+      ...(info.rest ? [[T.card.doing, restLine(info.rest)] as [string, string]] : []),
     ];
   }
   // ушёл — на карте его нет: кто и как пришёл, остальное — в пути (spec 2026-10-flow-ui)
@@ -524,6 +535,22 @@ function personLines(info: PersonInfo, names: Names): [string, string][] {
     [T.card.by, info.by ? names.role(info.by) : T.card.byNobody],
     [T.card.visit, visit],
   ];
+}
+
+/** Усталость полоской (spec docs/specs/2026-10-staff-shifts.md, часть 2): число и что оно значит. */
+function Fatigue({ value, worn }: { value: number; worn?: 'slow' | 'blur' }) {
+  return (
+    <div className="fatigue" id="card-fatigue" data-value={value}>
+      <span className="label">{T.card.fatigue}</span>
+      <span className={`fbar${worn ? ` f-${worn}` : ''}`}>
+        <i style={{ width: `${Math.min(100, value)}%` }} />
+      </span>
+      <span>
+        {value}
+        {worn ? <span className="muted"> — {T.card.worn[worn]}</span> : null}
+      </span>
+    </div>
+  );
 }
 
 /** Подсказка первых минут (spec docs/specs/2026-10-aaa-polish.md, «Первые минуты»): одна строка внизу, крестик закрывает. */
@@ -567,6 +594,7 @@ function BottomCard({ hud, actions, names }: P) {
             </div>
           ))}
         </dl>
+        {info.kind === 'staff' && info.fatigue !== undefined ? <Fatigue value={info.fatigue} worn={info.worn} /> : null}
         {/* ушедший — только карта, сутки (spec docs/specs/2026-10-discharged-card.md) */}
         {info.kind === 'patient' ? <TakeCase info={info} said={hud.doctor?.said} actions={actions} /> : null}
         {info.kind === 'patient' ? <PathSection hud={hud} /> : null}

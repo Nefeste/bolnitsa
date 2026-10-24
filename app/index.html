@@ -109,6 +109,13 @@
     .card dl > .posts { grid-column: 1 / -1; }
     .card .post .prole { min-width: 9em; color: var(--muted); }
     .card .post .pshift { display: inline-flex; gap: 6px; align-items: center; }
+    /* усталость полоской (docs/specs/2026-10-staff-shifts.md, часть 2): с 70 — жёлтая, с 90 — красная */
+    .card .fatigue { display: flex; gap: 8px; align-items: center; margin-top: 6px; font-variant-numeric: tabular-nums; }
+    .card .fatigue .label { margin: 0; font-size: 11px; }
+    .fbar { position: relative; width: 120px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.1); overflow: hidden; }
+    .fbar > i { position: absolute; inset: 0 auto 0 0; background: var(--green); }
+    .fbar.f-slow > i { background: var(--yellow); }
+    .fbar.f-blur > i { background: var(--red); }
     .card .post .hires { display: flex; gap: 4px; align-items: center; }
     .card .post .hires select { padding: 1px 4px; }
     .card .row { display: flex; gap: 6px; margin-top: 6px; }

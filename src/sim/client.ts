@@ -4,6 +4,7 @@
 // Исправлено, как в копии «Фармзавода» (pharma: src/sim/client.ts @ b9696c0, Nefeste/pharma#53): счёт `roundTripsTaken`
 // — память времён обрезана, и отметка начала прогона бенча длиной массива давала пустую выборку.
 import type { Command, Notice, ShiftState } from '../engine/shift/types';
+import type { CrewView } from '../engine/shift/crew';
 import type { NameRow } from './pack';
 import type { SaveMeta } from './packing';
 import type { DoctorAct, DoctorOut, FromSim, PathView, ToSim, World } from './protocol';
@@ -21,6 +22,8 @@ export interface Slice extends DoctorOut {
   broken?: string[];
   /** кто из штата не в смене, а ещё в больнице — доводит приёмы (spec 2026-10-staff-shifts); когда список изменился */
   late?: number[];
+  /** усталость и перерывы врачей в смене (spec 2026-10-staff-shifts, часть 2); когда изменились */
+  crew?: CrewView[];
 }
 
 export class SimClient {
@@ -72,7 +75,7 @@ export class SimClient {
     this.onSlice({
       buf: msg.buf, names: msg.names, notices: msg.notices, lag: msg.lag, ...(msg.world ? { world: msg.world } : {}),
       ...(msg.doctor ? { doctor: msg.doctor } : {}), ...(msg.card !== undefined ? { card: msg.card } : {}), ...(msg.seen ? { seen: msg.seen } : {}), ...(msg.refused ? { refused: msg.refused } : {}),
-      ...(msg.path ? { path: msg.path } : {}), ...(msg.broken ? { broken: msg.broken } : {}), ...(msg.late ? { late: msg.late } : {}),
+      ...(msg.path ? { path: msg.path } : {}), ...(msg.broken ? { broken: msg.broken } : {}), ...(msg.late ? { late: msg.late } : {}), ...(msg.crew ? { crew: msg.crew } : {}),
     });
   }
 

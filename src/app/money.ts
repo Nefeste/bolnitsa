@@ -20,6 +20,8 @@ export interface DoctorDay {
   asked: number;
   taken: number;
   unsafe: number;
+  /** диагнозов, выбранных уставшим (spec docs/specs/2026-10-staff-shifts.md, часть 2) */
+  tired: number;
   /** специалист без записи — в потоке не принимает (spec «Чего в части нет») */
   idle: boolean;
 }
@@ -124,13 +126,13 @@ export class Money {
       const role = c.role ?? m?.role ?? '';
       return {
         role: named(db.roles[role]?.name, role), skill: m?.skill ?? 0, seen: c.seen, correct: c.seen > 0 ? Math.round((100 * c.correct) / c.seen) : 0,
-        asked: c.asked ?? 0, taken: c.taken ?? 0, unsafe: c.unsafe ?? 0, idle: false,
+        asked: c.asked ?? 0, taken: c.taken ?? 0, unsafe: c.unsafe ?? 0, tired: c.tired ?? 0, idle: false,
       };
     });
     // специалисты, которые за сутки никого не приняли: к ним никто не записался (spec docs/specs/2026-10-specialists.md)
     for (const m of staff) {
       if (!m.room || !db.roles[m.role]?.profile || summary.colleagues?.[m.id]) continue;
-      doctors.push({ role: named(db.roles[m.role]?.name, m.role), skill: m.skill, seen: 0, correct: 0, asked: 0, taken: 0, unsafe: 0, idle: true });
+      doctors.push({ role: named(db.roles[m.role]?.name, m.role), skill: m.skill, seen: 0, correct: 0, asked: 0, taken: 0, unsafe: 0, tired: 0, idle: true });
     }
     const rooms: Record<string, string> = {};
     for (const id of Object.keys(summary.load?.rooms ?? {})) {

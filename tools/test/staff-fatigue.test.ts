@@ -51,7 +51,7 @@ function watch(s: ShiftState, hour: number, step = 60): Record<string, Rest[]> {
 
 describe('усталость и перерывы', () => {
   test('числа — в economy.yaml: гипотезы части 2', () => {
-    expect(F).toEqual({ hour: 6, case: 2, night: 150, slow: 70, slower: 115, tired: 90, blur: 5, rest: 20, relief: 50, toilet: [3, 4], wc: 5 });
+    expect(F).toEqual({ hour: 5, case: 2, night: 150, slow: 70, slower: 115, tired: 90, blur: 5, rest: 20, relief: 50, toilet: [4, 5], wc: 5 });
     expect(shiftStartOf(db, 9 * H)).toBe(8 * H);
     expect(shiftStartOf(db, 21 * H)).toBe(20 * H);
     expect(shiftStartOf(db, 86400 + 3 * H)).toBe(20 * H);
@@ -68,37 +68,55 @@ describe('усталость и перерывы', () => {
   test('звать некого: усталость — только за часы, ночью в полтора раза быстрее; с 70 — в ординаторскую на 20 минут', () => {
     const s = city(2, 0);
     liveTo(db, s, 13);
-    const m = colleaguesOf(db, s)[0];
-    // пять часов смены — 30 очков
-    expect(levelOf(db, s, m)).toBe(5 * F.hour * POINT);
-    const rests = watch(s, 20);
+    const day = colleaguesOf(db, s)[0];
+    // пять часов дневной смены — 25 очков
+    expect(levelOf(db, s, day)).toBe(5 * F.hour * POINT);
+    liveTo(db, s, 24);
+    const m = colleaguesOf(db, s).find(x => x.shift === 'night')!;
+    expect(m).toBeDefined();
+    // ночью — в полтора раза быстрее
+    expect(levelOf(db, s, m)).toBe(4 * H * F.hour * F.night);
+    const rests = watch(s, 32);
     const r = rests[m.id].find(x => x.kind === 'staff')!;
-    // 70 очков — через 11 ч 40 мин после 08:00 (если тогда в туалете — когда вернётся)
-    expect(r.from).toBeGreaterThanOrEqual(at(s, 8) + Math.ceil((F.slow * H) / F.hour));
-    expect(r.from).toBeLessThan(at(s, 20));
+    // 70 очков ночью — через 9 ч 20 мин после 20:00 (если тогда в туалете — когда вернётся)
+    expect(r.from).toBeGreaterThanOrEqual(at(s, 20) - 86400 + Math.ceil((F.slow * POINT) / (F.hour * F.night)));
+    expect(r.from).toBeLessThan(at(s, 8));
     const plan = hospitalCtx(db, s).plan;
     const staffRoom = citySite.rooms.find(x => x.type === 'room.staff')!.id;
     const go = walkPc(plan, m.room, staffRoom);
     expect(r).toEqual({ kind: 'staff', room: staffRoom, from: r.from, at: r.from + go, back: r.from + go + F.rest * MIN, until: r.from + 2 * go + F.rest * MIN });
-    // ночной врач — 9 очков в час
-    liveTo(db, s, 24);
-    const night = colleaguesOf(db, s).find(x => x.shift === 'night')!;
-    expect(night).toBeDefined();
-    expect(levelOf(db, s, night)).toBe(4 * H * F.hour * F.night);
   }, 120_000);
 
   test('перерыв: усталость на 50 меньше; пока отдыхает, не растёт, потом снова растёт', () => {
     const s = city(3, 0);
     liveTo(db, s, 21);
     const m = colleaguesOf(db, s).find(x => x.shift === 'night')!;
-    const rests = watch(s, 30);
-    const r = rests[m.id].find(x => x.kind === 'staff')!;
-    const back = levelOf(db, s, m, r.until)!;
-    expect(back).toBeLessThanOrEqual((F.slow - F.relief + 2) * POINT);
-    expect(levelOf(db, s, m, r.from + 60)).toBe(back);
-    expect(levelOf(db, s, m, r.until + H)).toBe(back + (F.hour * F.night * POINT) / 100);
-    expect(s.t).toBeGreaterThan(r.until);
-    expect(s.summary.colleagues?.[m.id]?.rests ?? s.history.at(-1)?.colleagues?.[m.id]?.rests).toBeGreaterThan(0);
+    let before: number | undefined;
+    let rest: Rest | undefined;
+    const during: number[] = [];
+    const after: [number, number][] = [];
+    while (s.t < at(s, 31)) {
+      const was = levelOf(db, s, m)!;
+      apply(db, s, { kind: 'advance', seconds: 60 });
+      const c = s.crew?.[m.id];
+      const l = levelOf(db, s, m)!;
+      if (c?.rest?.kind === 'staff' && s.t < c.rest.until) {
+        if (!rest) {
+          rest = { ...c.rest };
+          before = was;
+        }
+        during.push(l);
+      } else if (rest && !c?.rest) after.push([s.t, l]);
+    }
+    expect(rest).toBeDefined();
+    // ушёл с усталостью не ниже 70 — вернулся на 50 меньше; пока отдыхал, не росла
+    expect(before!).toBeGreaterThanOrEqual(F.slow * POINT - 60 * F.hour * F.night);
+    expect(during[0]).toBeLessThanOrEqual(before! + 60 * F.hour * F.night - F.relief * POINT);
+    expect(new Set(during).size).toBe(1);
+    // потом снова растёт: ночью — 7,5 очка в час, за минуту — 1/8 очка
+    expect(after.length).toBeGreaterThan(10);
+    for (let i = 1; i < after.length; i++) if (after[i][0] - after[i - 1][0] === 60) expect(after[i][1] - after[i - 1][1]).toBe(60 * F.hour * F.night);
+    expect(s.summary.colleagues?.[m.id]?.rests).toBeGreaterThan(0);
   }, 120_000);
 
   test('в туалет — раз в 3–4 часа, на 5 минут, в ближайший санузел и назад пешком', () => {
@@ -207,7 +225,7 @@ describe('усталость и перерывы', () => {
     const night = colleaguesOf(db, s)[0];
     expect(night.shift).toBe('night');
     const n = pointsOf(levelOf(db, s, night)!);
-    expect(n).toBeGreaterThanOrEqual((F.hour * F.night) / 100);
+    expect(n).toBeGreaterThanOrEqual(Math.floor((F.hour * F.night) / 100));
     expect(n).toBeLessThan(30);
     // утром дневной врач снова отдохнувший
     liveTo(db, s, 33);

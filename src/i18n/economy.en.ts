@@ -37,8 +37,11 @@ export const economyEn: EconomyStrings = {
     hired: 'Hired doctors',
     hiredRow: (role: string, skill: number, seen: number, correct: number) =>
       `${role}, skill ${skill}: ${seen} ${pl(seen, 'patient', 'patients')}${seen > 0 ? `, correct ${correct} %` : ''}`,
-    hiredMore: (asked: number, taken: number, unsafe: number) =>
-      [asked > 0 ? `asked you to look — ${asked}` : '', taken > 0 ? `you took over — ${taken}` : '', unsafe > 0 ? `decisions with a safety remark — ${unsafe}` : ''].filter(Boolean).join(', '),
+    hiredMore: (asked: number, taken: number, unsafe: number, tired = 0) =>
+      [
+        asked > 0 ? `asked you to look — ${asked}` : '', taken > 0 ? `you took over — ${taken}` : '', unsafe > 0 ? `decisions with a safety remark — ${unsafe}` : '',
+        tired > 0 ? `diagnoses made tired — ${tired}` : '',
+      ].filter(Boolean).join(', '),
     idle: 'nobody booked with him',
     you: (seen: number, correct: number) => `You: ${seen} ${pl(seen, 'patient', 'patients')}, correct ${correct}`,
     cash: 'Cash for the day',

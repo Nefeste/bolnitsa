@@ -4,6 +4,7 @@
 // (src/sim/pack.ts), строки новых людей и извещения. Сообщения — structured clone; массив среза передаётся без копии.
 import type { Flow, Notice, ShiftState, Command } from '../engine/shift/types';
 import type { Journey } from '../engine/shift/journey';
+import type { CrewView } from '../engine/shift/crew';
 import type { HospitalState } from '../engine/hospital/build';
 import type { StaffMember } from '../engine/hospital/staff';
 import type { Season } from '../content/types';
@@ -69,9 +70,10 @@ export type FromSim =
    * часы смены отстали от часов игры (игровых секунд); `world` — если больница или штат изменились; `broken` — сломанные
    * с утра аппараты, «помещение:место», когда список изменился (spec 2026-10-flow-ui: «не работает: аппарат сломан»; меняется
    * в 08:00 — без пересборки сцены); `late` — кто из штата (номера в его списке) уже не в смене, а ещё в больнице: доводит
-   * приёмы (spec docs/specs/2026-10-staff-shifts.md), — когда список изменился
+   * приёмы (spec docs/specs/2026-10-staff-shifts.md), — когда список изменился; `crew` — усталость и перерывы врачей в смене
+   * (там же, часть 2), когда изменились
    */
-  | ({ kind: 'slice'; buf: Int32Array; names: NameRow[]; notices: Notice[]; lag: number; world?: World; path?: PathView; broken?: string[]; late?: number[] } & DoctorOut)
+  | ({ kind: 'slice'; buf: Int32Array; names: NameRow[]; notices: Notice[]; lag: number; world?: World; path?: PathView; broken?: string[]; late?: number[]; crew?: CrewView[] } & DoctorOut)
   | { kind: 'state'; state: ShiftState }
   /** файл сохранения: сжатые байты (без копии) и его шапка; не вышло — `packFailed` */
   | { kind: 'packed'; bytes: Uint8Array; meta: SaveMeta }
