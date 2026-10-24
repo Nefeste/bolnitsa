@@ -69,7 +69,7 @@ describe('сидя или стоя — по своему залу', () => {
     for (const p of far) {
       expect(p.hall).toBeUndefined();
       // у двери: пока не позвали — `next` — кабинет его врача
-      if (p.status === 'waiting' && p.next !== undefined) expect(p.next).toBe(officeOf(s, p));
+      if (p.status === 'waiting' && p.next !== undefined) expect(officeOf(s, p)).toBe(p.next);
       // тот же человек без правила — терпения вдвое больше (пришёл в неполную больницу)
       const q = was.patients[p.id];
       if (q && !q.stands && q.patience > 0) expect(p.patience).toBe(Math.round(q.patience / 2));
