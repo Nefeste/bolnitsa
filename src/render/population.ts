@@ -58,6 +58,8 @@ export interface PatientNow {
   ask?: { at: number; until: number };
   /** идёт — к какому часу дойдёт (spec 2026-10-walk); нет — NO_TIME */
   arrive: number;
+  /** ждёт у двери кабинета на скамье (spec docs/specs/2026-10-door-benches.md): номер скамьи коридора; -1 — нет */
+  seat: number;
 }
 
 /** Сколько строк пришедших помнить (для «Ушли» и карточки ушедшего). */
@@ -288,7 +290,7 @@ export class Population {
       }
     }
     const n = buf[H.count];
-    const waiting: { key: string; room: number }[] = [];
+    const waiting: { key: string; room: number; bench?: number }[] = [];
     const benched: string[] = [];
     const present = new Set<string>();
     // смены (spec 2026-10-staff-shifts): пересменка или ушедший со сменой довёл приёмы — кто в больнице, заново
@@ -300,7 +302,9 @@ export class Population {
       const doing = DOINGS[buf[o + P.doing]];
       // поток для ПК (spec 2026-10-walk): ждёт в своей зоне ожидания — номер помещения плана
       const roomH = buf[o + P.room];
-      if (doing === 'waiting') waiting.push({ key, room: roomH >= 0 ? (this.roomIndex[roomH] ?? -1) : -1 });
+      // у двери на скамье, куда посадил движок (spec docs/specs/2026-10-door-benches.md)
+      const bench = buf[o + P.bench];
+      if (doing === 'waiting') waiting.push({ key, room: roomH >= 0 ? (this.roomIndex[roomH] ?? -1) : -1, ...(bench >= 0 ? { bench } : {}) });
       if (doing === 'examQueue' || doing === 'results') benched.push(key);
     }
     this.places.sync(waiting, benched);
@@ -321,7 +325,7 @@ export class Population {
       const now: PatientNow = {
         row, status: STATUSES[buf[o + P.status]], triage: TRIAGES[buf[o + P.triage]], doing, room, by: buf[o + P.by], bed: buf[o + P.bed], kind: String(buf[o + P.flags]),
         since: buf[o + P.since], limit: buf[o + P.limit], ...(askUntil !== NO_TIME ? { ask: { at: buf[o + P.askAt], until: askUntil } } : {}),
-        arrive: buf[o + P.arrive],
+        arrive: buf[o + P.arrive], seat: this.places.doorSeat(key),
       };
       // идёт — дойти к часу движка (spec 2026-10-walk)
       const due = now.arrive === NO_TIME ? NaN : now.arrive;
@@ -338,7 +342,8 @@ export class Population {
         continue;
       }
       // к врачу зовут — идёт сразу, без остановок; после стройки — к новому месту (то же место — тот же ключ: не встаёт)
-      if (this.dirty || !prev || prev.doing !== doing || prev.room !== room || w.goals.length === 0) this.crowd.retarget(w, spot, doing === 'office' && prev?.doing !== 'office', due);
+      // у двери сел на скамью или встал с неё — тоже к новому месту
+      if (this.dirty || !prev || prev.doing !== doing || prev.room !== room || prev.seat !== now.seat || w.goals.length === 0) this.crowd.retarget(w, spot, doing === 'office' && prev?.doing !== 'office', due);
       else w.due = due;
     }
     this.dirty = false;

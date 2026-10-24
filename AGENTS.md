@@ -96,8 +96,10 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # rows of a room card, hiring a night registrar, «Сейчас в смене»; then fatigue: a tired
                                    # doctor walks to the staff room, his card and fatigue bar, «Персонал», «врач на перерыве»
                                    # in a waiting patient's path; then the encyclopedia: the start screen button, search,
-                                   # links, «Назад», F1 over a name, «Подробнее» in «Что это?»);
-                                   # screenshots in tools/app/out/; `-- --only 1|2|3|4|5|6|7|8|9|10|11|12|13|14` for one part
+                                   # links, «Назад», F1 over a name, «Подробнее» in «Что это?»; then door benches: someone
+                                   # sits on a bench by an office door, «на скамье у кабинета» in a path, the «Скамья» tool,
+                                   # its ghost, Ctrl+Z, demolishing a bench);
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|15` for one part
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -109,6 +111,7 @@ npm run bench -- --mode flow --quick --flat    # flat arrivals by hour: the same
 bun tools/bench/consults.ts                    # «Просят посмотреть»: share of hired doctors' cases that ask you (--probe: why these thresholds)
 bun tools/sim/economy.ts --seeds 1,2,3         # economy simulator: scripted hospitals for 7 days, cash, flow, reputation and the criteria
 bun tools/sim/halls.ts --flow 14               # the polyclinic under load: waiting halls by the offices vs at the entrance
+                                               # (both: `--hall 0` — seats of the whole hospital, `--bench 0` — no door benches)
 bun --cpu-prof --cpu-prof-dir=tools/bench/out/prof tools/bench/bench.ts --mode flow --only 200 --quick --until 11
 bun tools/bench/profile.ts tools/bench/out/prof/<file>.cpuprofile 30 --under catchUp
 bun tools/test/make-review-fixture.ts          # only with the ORIGINAL engine: fingerprints of the eager review
@@ -140,7 +143,11 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   — `docs/specs/2026-10-day.md`. Who left the state (`evict`) keeps their card in `s.past` for a day, at most 600, like
   their path — read-only, for «Открыть карту» and «Приняты» (`docs/specs/2026-10-discharged-card.md`).
   `shift/journey.ts` is ours: the patient's path with the reason of every wait (PC flow only; one-line hooks in
-  `engine.ts`) — `docs/specs/2026-10-flow-ui.md`.
+  `engine.ts`) — `docs/specs/2026-10-flow-ui.md`. Door benches (`docs/specs/2026-10-door-benches.md`): a corridor bench
+  within `inflow.bench` steps of an office door (`doorBenches` in `shift/walking.ts`) seats one; who waits at the door
+  without a seat in their hall sits on a free one (`bench`, patience as is) or stands (half the patience); the player
+  places and removes them (`checkBench`, the `bench` and `undecor` site commands); the ready city's door benches are a
+  PC-only list (`benches` in the preset), so Anamnez's modes keep their hospital byte for byte.
   Money of the PC flow is ours: `shift/money.ts` (cash now, wages and upkeep by the hour, building from cash, the
   overdraft limit, the loan), `shift/inflow.ts` (the flow from the hospital), `shift/meeting.ts` (the day's bottlenecks,
   «стало хуже»), numbers in `content/hospital/inflow.yaml` and `money.yaml` — `docs/specs/2026-10-economy.md`.

@@ -70,9 +70,11 @@ describe('сидя или стоя — по своему залу', () => {
       expect(p.hall).toBeUndefined();
       // у двери: пока не позвали — `next` — кабинет его врача
       if (p.status === 'waiting' && p.next !== undefined) expect(officeOf(s, p)).toBe(p.next);
-      // тот же человек без правила — терпения вдвое больше (пришёл в неполную больницу)
+      // тот же человек без правила — терпения вдвое больше (пришёл в неполную больницу); сел у двери на скамью (spec
+      // 2026-10-door-benches) — столько же
       const q = was.patients[p.id];
-      if (q && !q.stands && q.patience > 0) expect(p.patience).toBe(Math.round(q.patience / 2));
+      const bench = s.journeys?.of[p.id]?.steps.some(x => x.k === 'queue' && x.bench);
+      if (q && !q.stands && q.patience > 0) expect(p.patience).toBe(bench ? q.patience : Math.round(q.patience / 2));
     }
     // в срезе — у двери кабинета: место ожидания — кабинет, а не зал
     const slice = sliceOf(s);

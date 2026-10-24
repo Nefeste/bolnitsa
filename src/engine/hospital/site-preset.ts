@@ -3,10 +3,11 @@
 // переводится: помещения — прямоугольники с дверью, их мебель и аппараты — предметы образцов на тех же клетках, штат —
 // тот же (номера помещений те же). Внутренность здания — коридоры и полы помещений: стены помещений готовой больницы —
 // стены корпуса. Одинарная дверь помещения, где лежат, становится двойной — в ПК-версии каталка в одинарную не проходит.
+// Скамьи у дверей кабинетов (`benches`, spec docs/specs/2026-10-door-benches.md) — только здесь: ставятся, как ставит игрок.
 import type { Cell, ContentDb, Preset } from '../../content/types';
 import { planOf, presetHospital } from './build';
 import { doctorRoom } from './requirements';
-import { checkDoor, type Rect, rulesOf, sideOf, type Site, type SiteItem, type SiteRoom, templateItems } from './site';
+import { addBench, checkDoor, type Rect, rulesOf, sideOf, type Site, type SiteItem, type SiteRoom, templateItems } from './site';
 
 /** Клетки коридора → прямоугольники по строкам: подряд идущие клетки строки — один. */
 function runs(w: number, cells: readonly number[]): Rect[] {
@@ -50,5 +51,11 @@ export function siteOfPreset(db: ContentDb, p: Preset): Site {
     const items: SiteItem[] = (t?.items ?? []).map(d => ({ id: n++, ...d }));
     return { ...room, items };
   });
-  return { ...doors, rooms: furnished, nextItem: n };
+  let site: Site = { ...doors, rooms: furnished, nextItem: n };
+  // что не встаёт, сборка базы называет (tools/content/load.ts)
+  for (const [x, y] of p.benches ?? []) {
+    const c = addBench(db, site, x, y);
+    if (c.ok) site = c.site;
+  }
+  return site;
 }

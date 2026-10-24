@@ -193,6 +193,7 @@ function LeftTools({ hud, actions }: P) {
     ['item', '▪', T.build.item],
     ['door', '▯', T.build.door],
     ['door2', '▯▯', T.build.door2],
+    ['bench', '▬', T.build.bench],
     ['demolish', '✖', T.build.demolish],
   ];
   let body: ReactNode = null;

@@ -504,6 +504,8 @@ export type SiteError =
   | { kind: 'badWall' }
   | { kind: 'shared' }
   | { kind: 'notCorridor' }
+  /** скамья — только в коридоре (spec docs/specs/2026-10-door-benches.md) */
+  | { kind: 'corridorOnly' }
   | { kind: 'notEmpty' }
   | { kind: 'noFit' }
   | { kind: 'nothing' }
@@ -962,6 +964,46 @@ export function removeDoor(db: ContentDb, site: Site, roomId: string): Done {
   return { ok: true, site: { ...withRoom(site, next), editing: roomId }, cost: -refundOf(db, DOOR_PRICE[room.door.length] ?? 0), room: roomId };
 }
 
+/**
+ * Скамья в коридоре (spec docs/specs/2026-10-door-benches.md): в клетке коридора; не в двери и не в проходе входа, не
+ * перед дверью и не на другом предмете коридора; не перекрывает проход — всё, до чего от главного входа можно было дойти
+ * мимо скамей, остаётся достижимым. Цена — скамьи из каталога мебели.
+ */
+export function checkBench(db: ContentDb, site: Site, x: number, y: number): Check {
+  const m = mapOf(site);
+  if (x < 0 || y < 0 || x >= m.w || y >= m.h || !m.inside[y * m.w + x]) return fail({ kind: 'outside' });
+  const i = y * m.w + x;
+  if (m.cells[i] !== CELL.corridor) return fail({ kind: 'corridorOnly' });
+  const d = site.decor.find(o => o.x === x && o.y === y);
+  if (d) return fail({ kind: 'occupied', item: d.kind });
+  if (m.keep.has(i)) return fail({ kind: 'doorway' });
+  const before = passOf(site, m, -1);
+  const after = passOf(site, m, i);
+  for (let j = 0; j < before.length; j++) if (j !== i && before[j] && !after[j]) return fail({ kind: 'blocks' });
+  return { ok: true, cost: priceOf(db, 'bench') };
+}
+
+/** Куда можно дойти от главного входа по коридору и дверям мимо скамей (растение не мешает, как на карте); `extra` — ещё одна. */
+function passOf(site: Site, m: SiteMap, extra: number): Uint8Array {
+  const cells = Uint8Array.from(m.cells);
+  for (const d of site.decor) if (d.kind !== 'plant') cells[d.y * m.w + d.x] = CELL.wall;
+  if (extra >= 0) cells[extra] = CELL.wall;
+  return reachOf(m.w, m.h, cells, site.main);
+}
+
+export function addBench(db: ContentDb, site: Site, x: number, y: number): Done {
+  const c = checkBench(db, site, x, y);
+  if (!c.ok) return c;
+  return { ok: true, site: { ...site, decor: [...site.decor, { kind: 'bench', x, y }] }, cost: c.cost };
+}
+
+/** Убрать скамью или растение коридора: часть цены назад, как за предмет помещения. */
+export function removeDecor(db: ContentDb, site: Site, x: number, y: number): Done {
+  const d = site.decor.find(o => o.x === x && o.y === y);
+  if (!d) return fail({ kind: 'nothing' });
+  return { ok: true, site: { ...site, decor: site.decor.filter(o => o !== d) }, cost: -refundOf(db, priceOf(db, d.kind)) };
+}
+
 /** Цена и предметы «Обставить» — только пустое помещение. */
 export function furnishOf(db: ContentDb, site: Site, roomId: string): { ok: true; cost: number; items: ItemDraft[]; size: RoomSizeId } | { ok: false; error: SiteError } {
   const room = site.rooms.find(r => r.id === roomId);
@@ -1126,7 +1168,7 @@ export function setOffice(db: ContentDb, site: Site, room?: string): Done {
 }
 
 /** Что под курсором для сноса: предмет, дверь, помещение — в этом порядке. */
-export type Target = { kind: 'item'; room: string; id: number } | { kind: 'door'; room: string } | { kind: 'room'; room: string };
+export type Target = { kind: 'item'; room: string; id: number } | { kind: 'door'; room: string } | { kind: 'room'; room: string } | { kind: 'decor'; x: number; y: number };
 
 export function targetAt(site: Site, x: number, y: number): Target | undefined {
   for (const r of site.rooms) {
@@ -1137,6 +1179,8 @@ export function targetAt(site: Site, x: number, y: number): Target | undefined {
   for (const r of site.rooms) if (r.door?.some(c => c[0] === x && c[1] === y)) return { kind: 'door', room: r.id };
   for (const r of site.rooms) if (isInterior(r, x, y)) return { kind: 'room', room: r.id };
   for (const r of site.rooms) if (onBorder(r, x, y)) return { kind: 'room', room: r.id };
+  // скамья или растение в коридоре (spec docs/specs/2026-10-door-benches.md)
+  if (site.decor.some(d => d.x === x && d.y === y)) return { kind: 'decor', x, y };
   return undefined;
 }
 
@@ -1393,7 +1437,10 @@ export type SiteCommand =
   /** стройка закончена: перестраиваемое помещение открыто */
   | { kind: 'done' }
   /** ваш кабинет — «Мой кабинет»; без `room` — «Не принимаю» (spec 2026-10-doctor-mode) */
-  | { kind: 'office'; room?: string };
+  | { kind: 'office'; room?: string }
+  /** скамья в коридор и убрать предмет коридора — скамью или растение (spec docs/specs/2026-10-door-benches.md) */
+  | { kind: 'bench'; x: number; y: number }
+  | { kind: 'undecor'; x: number; y: number };
 
 /** Что вышло: извещение движка `{ kind: 'site', … }`. */
 export interface SiteResult {

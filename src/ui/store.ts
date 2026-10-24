@@ -17,7 +17,7 @@ export type Speed = 0 | 1 | 3 | 12;
 export type Tab = 'patients' | 'staff' | 'asks' | 'journal' | 'reports' | 'goals';
 
 /** Инструменты стройки (spec docs/specs/2026-10-build.md, «Экран и управление»; готовое — docs/specs/2026-10-ready-rooms.md). */
-export type Tool = 'ready' | 'room' | 'item' | 'door' | 'door2' | 'demolish';
+export type Tool = 'ready' | 'room' | 'item' | 'door' | 'door2' | 'bench' | 'demolish';
 
 export interface BuildHud {
   on: boolean;

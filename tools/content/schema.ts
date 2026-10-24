@@ -1,4 +1,4 @@
-// из anamnez: tools/content/schema.ts @ 96503ac, изменено: hospital/consults.yaml — «Просят посмотреть» (spec 2026-10-consults); hospital/day.yaml — сутки целиком (spec 2026-10-day); hospital/inflow.yaml и hospital/money.yaml, `long` у consults.yaml — поток от больницы, касса ПК, долгий случай (spec 2026-10-economy); hospital/sites — готовые больницы из готовых помещений (spec 2026-10-real-hospital)
+// из anamnez: tools/content/schema.ts @ 96503ac, изменено: hospital/consults.yaml — «Просят посмотреть» (spec 2026-10-consults); hospital/day.yaml — сутки целиком (spec 2026-10-day); hospital/inflow.yaml и hospital/money.yaml, `long` у consults.yaml — поток от больницы, касса ПК, долгий случай (spec 2026-10-economy); hospital/sites — готовые больницы из готовых помещений (spec 2026-10-real-hospital); `benches` у готовых больниц и больниц из готовых помещений — скамьи у дверей кабинетов (spec 2026-10-door-benches)
 // Схема исходных записей медицинской базы (YAML в content/, `docs/11-content.md` §4).
 // Строгие объекты: опечатка в имени поля — ошибка сборки, а не молча пропущенное поле.
 import { z } from 'zod';
@@ -745,6 +745,11 @@ export const presetSchema = z.strictObject({
   })).min(1),
   decor: z.array(z.tuple([z.enum(OBJECT_KINDS), int, int])).default([]),
   /**
+   * скамьи у дверей кабинетов — только в больнице ПК (spec 2026-10-door-benches): клетки (x, y), ставятся, как ставит игрок;
+   * в режимах «Анамнеза» их нет
+   */
+  benches: z.array(z.tuple([int, int])).default([]),
+  /**
    * кто где работает: должность и номер помещения в списке; `later` — нанимают в главе (часть 60а): в «Смене» он на месте,
    * в начале главы кампании — нет; у помещения, которое строят заданием, штат — тоже такой
    */
@@ -754,7 +759,8 @@ export const presetSchema = z.strictObject({
 /**
  * Готовая больница из готовых помещений (spec 2026-10-real-hospital) — своё «Больницы»: помещения в пустом здании игры в
  * порядке постройки; каждое ставится, как готовое помещение стройки, — тип, образец, левый верхний угол, поворот (дверная
- * сторона, как у готовой больницы). `mine` — ваш кабинет, он один. Люди — на всех должностях, кроме вашей.
+ * сторона, как у готовой больницы). `mine` — ваш кабинет, он один. Люди — на всех должностях, кроме вашей. `benches` —
+ * скамьи коридора, клетки (x, y): ставятся, как ставит игрок (spec 2026-10-door-benches).
  */
 export const siteSchema = z.strictObject({
   id: z.string().regex(/^site\.[a-z0-9_]+$/),
@@ -766,6 +772,7 @@ export const siteSchema = z.strictObject({
     rot: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]),
     mine: z.literal(true).optional(),
   })).min(1),
+  benches: z.array(z.tuple([int, int])).default([]),
 });
 
 /** Поправка чувствительности и специфичности, процентные пункты. */
@@ -916,6 +923,8 @@ export const inflowSchema = z.strictObject({
   booked: z.number().min(0).max(20).optional(),
   /** сидя или стоя — по своему залу (spec 2026-10-own-hall): зал у кабинета — не дальше стольких метров от двери кабинета */
   hall: z.number().int().min(1).max(100).optional(),
+  /** скамейки у дверей кабинетов (spec 2026-10-door-benches): у двери — не дальше стольких шагов от клетки перед дверью */
+  bench: z.number().int().min(0).max(20).optional(),
   targets: z.array(z.strictObject({ name: z.string().min(1), offices: z.number().int().min(0), bays: z.number().int().min(0), day: range, ambulance: range })).min(1),
 });
 

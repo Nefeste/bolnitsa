@@ -1,4 +1,4 @@
-// из anamnez: src/engine/shift/engine.ts @ 96503ac, изменено: разбор приёма нанятого врача — по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults); стройка ПК — команда `site`, событие `siteFree`, приход в закрытую больницу, аппараты коек ПИТ из плана (spec 2026-10-build); сутки целиком в потоке для ПК — часы приёма, поток по часам, планёрка в 08:00, обход нанятых врачей, ночь по часам (spec 2026-10-day); путь пациента — однострочные вызовы `journey.*` (spec 2026-10-flow-ui); фибрилляция желудочков после полуночи — в ночь суток поступления и в сменах «Анамнеза» (`hospitalDay`; так же в anamnez 0.6.4, Nefeste/anamnez#152); касса и поток от больницы, планёрка с узкими местами, «стало хуже», долгий случай нанятого врача (spec 2026-10-economy); ходьба в потоке для ПК — свой врач, свой зал, следующие у двери, приём, когда дошёл (spec 2026-10-walk); приём вашего — когда он дошёл, `meet` и событие `reach` (spec 2026-10-owner-play-2); карты ушедших — `s.past` (spec 2026-10-discharged-card)
+// из anamnez: src/engine/shift/engine.ts @ 96503ac, изменено: разбор приёма нанятого врача — по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults); стройка ПК — команда `site`, событие `siteFree`, приход в закрытую больницу, аппараты коек ПИТ из плана (spec 2026-10-build); сутки целиком в потоке для ПК — часы приёма, поток по часам, планёрка в 08:00, обход нанятых врачей, ночь по часам (spec 2026-10-day); путь пациента — однострочные вызовы `journey.*` (spec 2026-10-flow-ui); фибрилляция желудочков после полуночи — в ночь суток поступления и в сменах «Анамнеза» (`hospitalDay`; так же в anamnez 0.6.4, Nefeste/anamnez#152); касса и поток от больницы, планёрка с узкими местами, «стало хуже», долгий случай нанятого врача (spec 2026-10-economy); ходьба в потоке для ПК — свой врач, свой зал, следующие у двери, приём, когда дошёл (spec 2026-10-walk); приём вашего — когда он дошёл, `meet` и событие `reach` (spec 2026-10-owner-play-2); карты ушедших — `s.past` (spec 2026-10-discharged-card); скамьи у дверей кабинетов — `bench` (spec 2026-10-door-benches)
 // Движок смены: приход пациентов, сортировка, очередь, терпение, обследования со своими
 // сроками, закрытие случая и дня (spec 2026-09-first-shift, «Движок»; ADR 0005).
 //
@@ -36,7 +36,7 @@ import {
 import { type Ask, askFor, askLong } from './consult';
 import { backAt, beginRest, blurredOf, dropCrew, dueOf, restLeft, slowedOf, startRest, tiredOf, wakeOf, worked } from './crew';
 import * as journey from './journey';
-import { AT_DOOR, fromDesk, hallNear, moveTo, PER_QUEUED, readyAt, route, toDoctor, toDoor, WALK_SPEED_PC, waitsAt, walkPc } from './walking';
+import { AT_DOOR, doorBenches, fromDesk, hallNear, moveTo, PER_QUEUED, readyAt, route, toDoctor, toDoor, WALK_SPEED_PC, waitsAt, walkPc } from './walking';
 import { COMPLICATION_DAYS, complicationAt, complicationsOf, deathsOf, onsetHours, operationFor } from './surgery';
 import { dueIn, type TargetPlace, targetResults } from './targets';
 import { siteCommand, siteFree } from './site';
@@ -957,9 +957,11 @@ function flowArrive(db: ContentDb, s: ShiftState, ev: Extract<ShiftEvent, { kind
   };
   if (ev.stream !== 'ret') scheduleFlow(db, s, ev.stream, ev.n + 1, s.t, ev.to);
   arrive(db, s, s.patients[id], notices);
-  // путь пациента (spec 2026-10-flow-ui): стоит ли и почему — решил приход (spec 2026-10-own-hall)
+  // путь пациента (spec 2026-10-flow-ui): стоит ли и почему — решил приход (spec 2026-10-own-hall); сел ли на скамейку у
+  // двери (spec 2026-10-door-benches)
   const stood = s.patients[id].stands;
-  journey.arrived(s, s.patients[id], () => colleaguesOf(db, s).filter((m, _, list) => colleagueTakes(db, s, s.patients[id], m, list)).length, () => forPlayer(db, s, s.patients[id]), stood === 'far' ? { far: db.inflow?.hall ?? 0 } : stood === 'full' ? { full: true } : {});
+  const sat = s.patients[id].bench !== undefined ? { bench: true as const } : {};
+  journey.arrived(s, s.patients[id], () => colleaguesOf(db, s).filter((m, _, list) => colleagueTakes(db, s, s.patients[id], m, list)).length, () => forPlayer(db, s, s.patients[id]), stood === 'far' ? { far: db.inflow?.hall ?? 0, ...sat } : stood === 'full' ? { full: true, ...sat } : {});
 }
 
 /**
@@ -1456,6 +1458,7 @@ function call(db: ContentDb, s: ShiftState, id: string): Notice[] {
   delete p.doc;
   delete p.next;
   delete p.nextAt;
+  delete p.bench;
   doors(db, s);
   goTo(s, p);
   // поток для ПК (spec 2026-10-owner-play-2): дорога — часами игры, а не разом; приём — когда встретитесь
@@ -3141,14 +3144,16 @@ function seatPc(db: ContentDb, s: ShiftState, p: ShiftPatient, ctx: HospitalCtx,
   if (m) p.doc = m.id;
   const office = m?.room ?? doctorRoom(ctx.plan);
   const hall = hallNear(ctx.plan, ctx.working, office);
-  // сидя или стоя — по своему залу (spec 2026-10-own-hall): стоит — ждать готов вдвое меньше и ждёт у двери кабинета, в
-  // дальний зал не идёт
+  // сидя или стоя — по своему залу (spec 2026-10-own-hall): места в своём зале нет — ждёт у двери кабинета, в дальний зал
+  // не идёт; у двери свободная скамейка (spec 2026-10-door-benches) — сидит на ней, нет — стоит и ждать готов вдвое меньше
   const stands = standsPc(db, s, ctx, hall, office);
+  const door = stands !== undefined && office !== undefined && db.inflow?.hall !== undefined;
+  const bench = door ? freeBench(db, s, ctx.plan, office, p) : undefined;
   if (stands) {
     p.stands = stands;
-    if (p.patience > 0) p.patience = Math.round(p.patience / 2);
+    if (bench !== undefined) p.bench = bench;
+    else if (p.patience > 0) p.patience = Math.round(p.patience / 2);
   }
-  const door = stands !== undefined && office !== undefined && db.inflow?.hall !== undefined;
   const r = route(ctx.plan, ctx.working, door ? office : hall, nurse, s.t);
   if (door) {
     p.next = office;
@@ -3192,6 +3197,32 @@ function standBack(db: ContentDb, s: ShiftState, p: ShiftPatient) {
   if (!office) return;
   p.next = office;
   p.nextAt = s.t;
+  seatDoor(db, s, ctx.plan, p);
+}
+
+/**
+ * Свободная скамейка у двери кабинета `office` (spec 2026-10-door-benches): ближняя к двери, на которой никто, кроме `me`,
+ * не ждёт. Числа `inflow.bench` нет — скамеек у дверей не ищут.
+ */
+function freeBench(db: ContentDb, s: ShiftState, plan: Plan, office: string, me: ShiftPatient): number | undefined {
+  const steps = db.inflow?.bench;
+  if (steps === undefined) return undefined;
+  const near = doorBenches(plan, office, steps);
+  if (near.length === 0) return undefined;
+  const taken = new Set<number>();
+  for (const p of Object.values(s.patients)) if (p !== me && p.bench !== undefined && p.status === 'waiting' && p.next !== undefined) taken.add(p.bench);
+  return near.find(c => !taken.has(c));
+}
+
+/**
+ * Снова у двери (spec 2026-10-door-benches): кто ждёт у двери, потому что места в своём зале не было, садится на свободную
+ * скамейку у неё; нет её — стоит. Терпение — как решилось при приходе.
+ */
+function seatDoor(db: ContentDb, s: ShiftState, plan: Plan, p: ShiftPatient) {
+  delete p.bench;
+  if (!p.stands || p.next === undefined) return;
+  const b = freeBench(db, s, plan, p.next, p);
+  if (b !== undefined) p.bench = b;
 }
 
 /**
@@ -3515,6 +3546,7 @@ function callIn(db: ContentDb, s: ShiftState, list: readonly StaffMember[], late
       p.doc = m.id;
       delete p.next;
       delete p.nextAt;
+      delete p.bench;
     }
     if (walk > 0) p.walk = { to: m.room!, at: s.t + walk };
     schedule(s, s.t + Math.max(MIN, walk), { kind: 'colleague', id });
@@ -3589,6 +3621,12 @@ function callIn(db: ContentDb, s: ShiftState, list: readonly StaffMember[], late
  */
 function toDoors(db: ContentDb, s: ShiftState, list: readonly StaffMember[], late: readonly StaffMember[] = []) {
   const plan = hospitalCtx(db, s).plan;
+  // к другой двери (spec 2026-10-door-benches): кто стоял у прежней без места в зале — на свободную скамейку у новой
+  const go = (p: ShiftPatient, office: string) => {
+    const was = p.next;
+    toDoor(plan, p, office, s.t);
+    if (p.next !== was && p.stands) seatDoor(db, s, plan, p);
+  };
   // сколько уже идут к двери каждого врача; свои, вернувшиеся с результатами, — первыми, как их зовёт `callIn`: раньше
   // вставший в очередь
   const n = new Map<string, number>();
@@ -3600,7 +3638,7 @@ function toDoors(db: ContentDb, s: ShiftState, list: readonly StaffMember[], lat
     for (const p of back) {
       const k = n.get(p.by!) ?? 0;
       if (k >= AT_DOOR) continue;
-      toDoor(plan, p, doc.get(p.by!)!.room!, s.t);
+      go(p, doc.get(p.by!)!.room!);
       n.set(p.by!, k + 1);
     }
   }
@@ -3611,14 +3649,14 @@ function toDoors(db: ContentDb, s: ShiftState, list: readonly StaffMember[], lat
     const p = s.patients[x];
     if (p.doc === undefined) {
       if (!office || yours >= AT_DOOR || p.kind === 'ambulance') continue;
-      toDoor(plan, p, office, s.t);
+      go(p, office);
       yours++;
       continue;
     }
     const m = doc.get(p.doc);
     const k = m ? (n.get(m.id) ?? 0) : AT_DOOR;
     if (k >= AT_DOOR || !colleagueTakes(db, s, p, m!, list)) continue;
-    toDoor(plan, p, m!.room!, s.t);
+    go(p, m!.room!);
     n.set(m!.id, k + 1);
   }
 }
@@ -3711,6 +3749,7 @@ function takeOver(db: ContentDb, s: ShiftState, id: string): Notice[] {
         : 0;
       delete p.next;
       delete p.nextAt;
+      delete p.bench;
       goTo(s, p);
       // поток для ПК (spec 2026-10-owner-play-2): дослушать и дойти — часами игры
       if (s.flow) notices = meetAt(s, p, busy + Math.max(meet, walk), Math.max(meet, walk));
@@ -3721,6 +3760,7 @@ function takeOver(db: ContentDb, s: ShiftState, id: string): Notice[] {
         const ctx = hospitalCtx(db, s);
         const w = waitsAt(p);
         moveTo(ctx.plan, ctx.working, p, was === 'inRoom' ? room : w.at, doctorRoom(ctx.plan), Math.max(s.t, w.t ?? s.t));
+        seatDoor(db, s, ctx.plan, p);
       }
       enqueue(s, p, p.arriveT);
     }
@@ -3909,6 +3949,7 @@ function answerConsult(db: ContentDb, s: ShiftState, cmd: Extract<Command, { kin
     const ctx = hospitalCtx(db, s);
     p.doc = to.id;
     moveTo(ctx.plan, ctx.working, p, m.room, to.room, s.t + MIN);
+    seatDoor(db, s, ctx.plan, p);
   }
   journey.own(s, p, true);
   // минута — передать карту, и этот врач свободен

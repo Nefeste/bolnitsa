@@ -3,6 +3,7 @@
 // клеткам плана, делённая на скорость, с какой люди идут на экране (`WALK_SPEED_PC`): движок и окно видят одну дорогу.
 // Случайности нет: та же больница — те же числа.
 import type { Plan } from '../hospital/build';
+import { CELL } from '../hospital/grid';
 import { metersBetween, metersFromEntrance } from '../hospital/walk';
 import { REGISTRATION, type ShiftPatient, TRIAGE } from './types';
 
@@ -79,15 +80,77 @@ export interface Leg {
   at: number;
 }
 
+const N4: readonly (readonly [number, number])[] = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
+
+const BENCHES = new WeakMap<Plan, Map<string, number[]>>();
+
+/**
+ * Скамейки у двери кабинета `office` (spec 2026-10-door-benches): скамейки коридора не дальше `steps` шагов по коридору от
+ * клетки перед дверью — клетки y·w + x, ближние к двери раньше. Список — один на план и кабинет.
+ */
+export function doorBenches(plan: Plan, office: string, steps: number): readonly number[] {
+  let byOffice = BENCHES.get(plan);
+  if (!byOffice) BENCHES.set(plan, (byOffice = new Map()));
+  const key = `${office}:${steps}`;
+  let list = byOffice.get(key);
+  if (!list) byOffice.set(key, (list = benchesNear(plan, office, steps)));
+  return list;
+}
+
+function benchesNear(plan: Plan, office: string, steps: number): number[] {
+  const r = plan.rooms.find(x => x.id === office);
+  const { w, h, cells } = plan.grid;
+  const benches = new Set<number>();
+  for (const o of plan.objects) if (o.kind === 'bench' && cells[o.y * w + o.x] === CELL.corridor) benches.add(o.y * w + o.x);
+  if (!r?.door.length || benches.size === 0) return [];
+  // от клеток коридора перед дверью — по коридору, шаг за шагом
+  const dist = new Map<number, number>();
+  let front: number[] = [];
+  for (const [x, y] of r.door) {
+    for (const [dx, dy] of N4) {
+      const nx = x + dx;
+      const ny = y + dy;
+      const i = ny * w + nx;
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h || cells[i] !== CELL.corridor || dist.has(i)) continue;
+      dist.set(i, 0);
+      front.push(i);
+    }
+  }
+  for (let d = 1; d <= steps && front.length; d++) {
+    const next: number[] = [];
+    for (const i of front) {
+      const x = i % w;
+      const y = (i - x) / w;
+      for (const [dx, dy] of N4) {
+        const nx = x + dx;
+        const ny = y + dy;
+        const j = ny * w + nx;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h || cells[j] !== CELL.corridor || dist.has(j)) continue;
+        dist.set(j, d);
+        next.push(j);
+      }
+    }
+    front = next;
+  }
+  return [...benches].filter(i => dist.has(i)).sort((a, b) => dist.get(a)! - dist.get(b)! || a - b);
+}
+
 /** Где пациент ждёт — у двери кабинета или в зале — и к какому часу туда дойдёт. */
 export const waitsAt = (p: ShiftPatient): { at: string | undefined; t: number | undefined } =>
   p.next !== undefined ? { at: p.next, t: p.nextAt } : { at: p.hall, t: p.seatAt };
 
 /**
  * Перевели к другому врачу (spec 2026-10-walk): из кабинета прежнего `from` с `t` — в зону ожидания у кабинета нового;
- * стоял (spec 2026-10-own-hall) — к двери кабинета нового.
+ * стоял (spec 2026-10-own-hall) — к двери кабинета нового. Скамейка прежней двери — не его (spec 2026-10-door-benches):
+ * у новой двери её ищет движок.
  */
 export function moveTo(plan: Plan, working: ReadonlySet<string>, p: ShiftPatient, from: string | undefined, office: string | undefined, t: number) {
+  delete p.bench;
   // стоящий у двери в зале не числится (`hall` нет)
   if (p.stands && office && p.hall === undefined) {
     p.next = office;
@@ -118,6 +181,8 @@ export function toDoor(plan: Plan, p: ShiftPatient, office: string, t: number) {
   const was = waitsAt(p);
   const fresh = p.next === undefined;
   p.next = office;
+  // скамейка была у прежней двери (spec 2026-10-door-benches)
+  delete p.bench;
   // ещё у стойки или у медсестры — оттуда прямо к двери
   if (fresh && p.leg && t < p.leg.at) {
     p.nextAt = p.leg.at + walkPc(plan, p.leg.from, office);

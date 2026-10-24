@@ -4,13 +4,14 @@
 import type { Cell, ContentDb, Id, ObjectKind, RoomSizeId, Rot } from '../content/types';
 import { DOCTOR, standInOf } from '../engine/hospital/requirements';
 import {
-  autoRot, cellsOf, checkDoor, checkItem, checkReady, checkRoom, demolishRefund, DOOR_PRICE, FACE, isInterior, priceOf, type ReadyDraft, readyCorner, readyTurn,
-  refundOf, rulesOf, sideOf, type Site, type SiteCommand, type SiteError, type SiteResult, targetAt,
+  autoRot, cellsOf, checkBench, checkDoor, checkItem, checkReady, checkRoom, demolishRefund, DOOR_PRICE, FACE, isInterior, priceOf, type ReadyDraft, readyCorner,
+  readyTurn, refundOf, rulesOf, sideOf, type Site, type SiteCommand, type SiteError, type SiteResult, targetAt,
 } from '../engine/hospital/site';
 import { nightHospital, payOf, salaryOf, type Shift } from '../engine/hospital/staff';
 import { money, named, T } from '../i18n';
 import { GHOST_BAD, GHOST_DOOR, GHOST_OK } from '../render/ghost';
 import { type Thing, yawOf } from '../render/layout';
+import { objectTurns } from '../render/orient';
 import type { WallMode } from '../render/world';
 import type { BuildHud, Tool } from '../ui/store';
 import type { Game } from './game';
@@ -61,6 +62,8 @@ export function whyText(db: ContentDb, site: Site | undefined, e: SiteError): st
       return T.site.shared;
     case 'notCorridor':
       return T.site.notCorridor;
+    case 'corridorOnly':
+      return T.site.corridorOnly;
     case 'notEmpty':
       return T.site.notEmpty;
     case 'noFit':
@@ -274,11 +277,16 @@ export class Builder {
         else if (!d) this.g.selectRoomAt(cell);
         break;
       }
+      case 'bench':
+        // скамья в коридоре (spec docs/specs/2026-10-door-benches.md); денег не хватает — ответит движок
+        if (checkBench(this.db, site, x, y).ok) this.g.command({ kind: 'bench', x, y });
+        break;
       case 'demolish': {
         const t = targetAt(site, x, y);
         if (t?.kind === 'item') this.g.command({ kind: 'remove', room: t.room, id: t.id });
         else if (t?.kind === 'door') this.g.command({ kind: 'undoor', room: t.room });
         else if (t?.kind === 'room') this.g.command({ kind: 'demolish', room: t.room });
+        else if (t?.kind === 'decor') this.g.command({ kind: 'undecor', x: t.x, y: t.y });
         break;
       }
       default:
@@ -505,10 +513,32 @@ export class Builder {
           : d.ok ? { ok: true, text: T.build.ghostDoor(two, money(d.cost)) } : { ok: false, text: T.build.ghostBad(T.build.ghostDoor(two, money(DOOR_PRICE[two ? 2 : 1])), whyText(db, site, d.why ?? { kind: 'unknown' })) };
         break;
       }
+      case 'bench': {
+        if (!hover) {
+          this.ghost = { ok: true, text: T.build.hintBench };
+          break;
+        }
+        const c = checkBench(db, site, hover[0], hover[1]);
+        const need = c.ok ? this.short(c.cost) : 0;
+        // спиной к стене, как скамьи коридора на карте
+        const [fx, fy] = FACE[objectTurns(this.g.plan.grid, [{ kind: 'bench', x: hover[0], y: hover[1] }])[0]];
+        gh.item({ kind: 'bench', room: -1, type: '', cell: hover, cells: [hover], face: [fx, fy], yaw: yawOf(fx, fy) }, c.ok && need === 0);
+        const what = T.build.ghostItem(upper(T.objects.bench), money(priceOf(db, 'bench')));
+        this.ghost = need > 0 ? { ok: false, text: T.build.ghostBad(what, T.money.short(money(need))) }
+          : c.ok ? { ok: true, text: `${what} · ${T.build.benchHint}` } : { ok: false, text: T.build.ghostBad(upper(T.objects.bench), whyText(db, site, c.error)) };
+        break;
+      }
       case 'demolish': {
         const t = hover ? targetAt(site, hover[0], hover[1]) : undefined;
         if (!t) {
           this.ghost = { ok: true, text: T.build.hintDemolish };
+          break;
+        }
+        // скамья или растение коридора (spec docs/specs/2026-10-door-benches.md)
+        if (t.kind === 'decor') {
+          const d = site.decor.find(o => o.x === t.x && o.y === t.y)!;
+          gh.cells([[t.x, t.y]], GHOST_BAD);
+          this.ghost = { ok: true, text: T.build.ghostDemolish(T.build.decorWhat[d.kind] ?? objectName(db, d.kind, ''), money(refundOf(db, priceOf(db, d.kind)))) };
           break;
         }
         const r = site.rooms.find(x => x.id === t.room)!;

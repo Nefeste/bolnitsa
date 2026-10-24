@@ -4,6 +4,7 @@
 import type { Id, ObjectKind } from '../content/types';
 import type { StaffMember } from '../engine/hospital/staff';
 import type { Doing } from '../engine/shift/slice';
+import { doorBenches } from '../engine/shift/walking';
 import type { LieAnchor, SeatAnchor } from './furniture';
 import { type Cell, inside, isLong, type Layout, yawOf } from './layout';
 
@@ -152,39 +153,11 @@ export function nearestWalk(l: Layout, from: number, taken: ReadonlySet<number> 
   return from;
 }
 
-// из anamnez: src/state/clinicMap.ts @ 96b5137 (assignSeats)
+// по образцу anamnez: src/state/clinicMap.ts @ 96b5137 (assignSeats)
 /**
- * Места в зале и на скамьях: кто сел, тот сидит, пока не встанет, — иначе при каждом новом пришедшем очередь
- * пересаживалась бы. Новым — первые свободные места; мест нет — -1.
- */
-export function assignSeats(prev: ReadonlyMap<string, number>, ids: readonly string[], count: number): Map<string, number> {
-  const next = new Map<string, number>();
-  const taken = new Set<number>();
-  for (const id of ids) {
-    const was = prev.get(id);
-    if (was !== undefined && was >= 0 && !taken.has(was)) {
-      next.set(id, was);
-      taken.add(was);
-    }
-  }
-  for (const id of ids) {
-    if (next.has(id)) continue;
-    let free = -1;
-    for (let i = 0; i < count; i++) {
-      if (!taken.has(i)) {
-        free = i;
-        break;
-      }
-    }
-    next.set(id, free);
-    if (free >= 0) taken.add(free);
-  }
-  return next;
-}
-
-/**
- * Места из `pool` (номера в списке мест) тем, кто ждёт в одном зале (spec docs/specs/2026-10-walk.md): кто сел, сидит, как
- * у `assignSeats`; новым — первые свободные, мест нет — -1. `taken` — занятые во всех залах.
+ * Места из `pool` (номера в списке мест) тем, кто ждёт в одном зале (spec docs/specs/2026-10-walk.md) или на скамьях
+ * коридора: кто сел, тот сидит, пока не встанет, — иначе при каждом новом пришедшем очередь пересаживалась бы; новым —
+ * первые свободные, мест нет — -1. `taken` — занятые где угодно.
  */
 function seatIn(prev: ReadonlyMap<string, number>, ids: readonly string[], pool: readonly number[], taken: Set<number>, out: Map<string, number>) {
   const own = new Set(pool);
@@ -213,7 +186,9 @@ export interface Who {
 
 /**
  * Места больницы для людей из среза: стулья зон ожидания и скамьи коридора раздаются так, чтобы севший не
- * пересаживался; остальное — по помещению и шаблону. Один объект на раскладку.
+ * пересаживался; остальное — по помещению и шаблону. Один объект на раскладку. `doorSteps` — скамья у двери кабинета не
+ * дальше стольких шагов от клетки перед дверью (`inflow.bench`, spec docs/specs/2026-10-door-benches.md); нет — у дверей
+ * стоят.
  */
 export class Places {
   /** стулья зон ожидания: предметы раскладки по порядку помещений, ближний к двери ряд — первым */
@@ -222,13 +197,20 @@ export class Places {
   private hallSeats = new Map<number, number[]>();
   /** скамьи коридора */
   readonly benches: number[] = [];
+  /** скамья коридора по клетке (y·w + x) — номер в `benches` */
+  private benchAt = new Map<number, number>();
+  /** скамьи у двери кабинета: номер помещения плана → номера в `benches`, ближние к двери — первыми */
+  private nearDoor = new Map<number, number[]>();
   private seatOf = new Map<string, number>();
   private benchOf = new Map<string, number>();
+  /** ждёт у двери кабинета на скамье: номер в `benches` */
+  private doorOf = new Map<string, number>();
   private firstOf = new Map<Id, number>();
 
   constructor(
     private l: Layout,
     private a: Anchors,
+    private doorSteps?: number,
   ) {
     l.plan.rooms.forEach((r, n) => {
       if (!this.firstOf.has(r.type) && r.door.length && l.plan.connected[r.id]) this.firstOf.set(r.type, n);
@@ -242,8 +224,27 @@ export class Places {
       }
     });
     l.things.forEach((t, i) => {
-      if (t.room < 0 && t.kind === 'bench' && a.seats[i]) this.benches.push(i);
+      if (t.room < 0 && t.kind === 'bench' && a.seats[i]) {
+        this.benchAt.set(t.cell[1] * l.w + t.cell[0], this.benches.length);
+        this.benches.push(i);
+      }
     });
+  }
+
+  /** Скамьи у двери кабинета `room` (номер помещения плана) — по тому же правилу, что в движке. */
+  private benchesBy(room: number): number[] {
+    let list = this.nearDoor.get(room);
+    if (!list) {
+      const r = this.l.plan.rooms[room];
+      list = r && this.doorSteps !== undefined ? doorBenches(this.l.plan, r.id, this.doorSteps).flatMap(c => this.benchAt.get(c) ?? []) : [];
+      this.nearDoor.set(room, list);
+    }
+    return list;
+  }
+
+  /** На какой скамье у двери ждёт (номер в `benches`); -1 — стоит или ждёт не у двери. */
+  doorSeat(key: string): number {
+    return this.doorOf.get(key) ?? -1;
   }
 
   /**
@@ -261,6 +262,7 @@ export class Places {
     };
     move(prev.seats, prev.l, this.seats, prev.seatOf, this.seatOf);
     move(prev.benches, prev.l, this.benches, prev.benchOf, this.benchOf);
+    move(prev.benches, prev.l, this.benches, prev.doorOf, this.doorOf);
   }
 
   /** Первое помещение этого типа с дверью; нет — -1. */
@@ -270,25 +272,48 @@ export class Places {
 
   /**
    * Раздать стулья и скамьи тем, кто ждёт: `waiting` — в очереди к врачу (`room` — его зона ожидания, spec
-   * docs/specs/2026-10-walk.md: стулья — в ней; зала нет — любой свободный; у двери кабинета стула нет), `benched` — ждёт
-   * обследования или результатов.
+   * docs/specs/2026-10-walk.md: стулья — в ней; зала нет — любой свободный); у двери кабинета — скамьи у неё (spec
+   * docs/specs/2026-10-door-benches.md): `bench` — клетка скамьи, на которую его посадил движок, остальным — свободные у
+   * этой двери, кто сел, тот сидит; `benched` — ждёт обследования или результатов, на остальных скамьях коридора.
    */
-  sync(waiting: readonly { key: string; room: number }[], benched: readonly string[]) {
+  sync(waiting: readonly { key: string; room: number; bench?: number }[], benched: readonly string[]) {
     const halls = new Map<number, string[]>();
     const any: string[] = [];
+    const doors: { key: string; room: number; bench?: number }[] = [];
     for (const w of waiting) {
       if (this.hallSeats.has(w.room)) {
         const q = halls.get(w.room);
         if (q) q.push(w.key);
         else halls.set(w.room, [w.key]);
       } else if (w.room < 0) any.push(w.key);
+      else if (this.l.plan.rooms[w.room]?.type !== 'room.waiting') doors.push(w);
     }
     const taken = new Set<number>();
     const seatOf = new Map<string, number>();
     for (const [room, ids] of halls) seatIn(this.seatOf, ids, this.hallSeats.get(room)!, taken, seatOf);
     if (any.length) seatIn(this.seatOf, any, this.seats.map((_, i) => i), taken, seatOf);
     this.seatOf = seatOf;
-    this.benchOf = assignSeats(this.benchOf, benched, this.benches.length);
+    const used = new Set<number>();
+    const doorOf = new Map<string, number>();
+    for (const w of doors) {
+      const b = w.bench !== undefined ? this.benchAt.get(w.bench) : undefined;
+      if (b === undefined || used.has(b)) continue;
+      doorOf.set(w.key, b);
+      used.add(b);
+    }
+    for (const w of doors) {
+      if (doorOf.has(w.key)) continue;
+      const near = this.benchesBy(w.room);
+      const was = this.doorOf.get(w.key);
+      const b = was !== undefined && near.includes(was) && !used.has(was) ? was : near.find(x => !used.has(x));
+      if (b === undefined) continue;
+      doorOf.set(w.key, b);
+      used.add(b);
+    }
+    this.doorOf = doorOf;
+    const benchOf = new Map<string, number>();
+    seatIn(this.benchOf, benched, this.benches.map((_, i) => i), used, benchOf);
+    this.benchOf = benchOf;
   }
 
   /** Место человека. `taken` — клетки, где уже кто-то стоит. */
@@ -307,10 +332,13 @@ export class Places {
         return inRoom('room.reception', 'act') ?? this.waitSpot(w.key, taken);
       case 'triage':
         return inRoom('room.triage', 'act') ?? this.waitSpot(w.key, taken);
-      case 'waiting':
-        // поток для ПК (spec docs/specs/2026-10-walk.md): следующие к врачу — у двери его кабинета, остальные — в своём зале
-        if (room && room.type !== 'room.waiting') return this.doorSpot(w.room, taken);
-        return this.waitSpot(w.key, taken, w.room);
+      case 'waiting': {
+        // поток для ПК (spec docs/specs/2026-10-walk.md): следующие к врачу — у двери его кабинета, остальные — в своём зале;
+        // у двери — на скамье, если досталась (spec docs/specs/2026-10-door-benches.md)
+        if (!room || room.type === 'room.waiting') return this.waitSpot(w.key, taken, w.room);
+        const b = this.doorOf.get(w.key);
+        return b !== undefined ? spotOn(l, a, this.benches[b], 'wait', 0, taken) : this.doorSpot(w.room, taken);
+      }
       case 'office':
       case 'exam':
       case 'surgery': {

@@ -166,7 +166,8 @@ describe('раскладка больницы ПК', () => {
     const staff = presetStaff(db, rec);
     const l = layoutOf(db, plan, site.decor, staffCells(plan, staff, db));
     const old = presetLayout(db, id).layout;
-    expect(l.things.length).toBe(old.things.length);
+    // и скамьи у дверей кабинетов — только в больнице ПК (spec docs/specs/2026-10-door-benches.md)
+    expect(l.things.length).toBe(old.things.length + (rec.benches?.length ?? 0));
     const [ex, ey] = plan.entrance;
     sound(l, ey * l.w + ex);
     // вход у готовой больницы — один, как в 2а (у пустого здания — ещё вход скорой)
