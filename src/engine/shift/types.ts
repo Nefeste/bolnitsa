@@ -151,6 +151,11 @@ export interface ShiftPatient {
   triAt?: number;
   seatAt?: number;
   nextAt?: number;
+  /**
+   * поток для ПК (spec 2026-10-own-hall): пришёл и стоит — своего зала у кабинета нет (`far`) или он был полон (`full`);
+   * ждёт у двери кабинета своего врача, ждать готов вдвое меньше
+   */
+  stands?: 'far' | 'full';
   /** откуда и с какого часа идёт туда, где ждёт (от стойки, от медсестры, из зала к двери, от прежнего врача) */
   leg?: { from: string; at: number };
   walk?: { to: string; at: number };

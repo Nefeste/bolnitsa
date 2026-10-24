@@ -10,7 +10,8 @@
 //              2026-10-specialists): у специалистов своя запись, пришедших сами берёт один терапевт.
 // Критерии: касса ни разу не ниже предела минуса (кредит не нужен); за 7 суток больница не окупается целиком — не богатеет
 // нелепо; поток за сутки — в ориентирах геймдизайна §5.
-//   bun tools/sim/economy.ts [--days 7] [--seeds 1,2,3] [--only clinic,district,city,poly,polyspec] [--json]
+// `--hall N` — сидя или стоя по своему залу не дальше N м (content/hospital/inflow.yaml, `hall`); `--hall 0` — по всей больнице.
+//   bun tools/sim/economy.ts [--days 7] [--seeds 1,2,3] [--only clinic,district,city,poly,polyspec] [--hall N] [--json]
 import type { ContentDb, Id } from '../../src/content/types';
 import { expensesOf, incomeOf } from '../../src/engine/economy/economy';
 import { DOOR_PRICE, emptySite, hospitalOf, priceOf, roomPrice, type Site, type SiteCommand } from '../../src/engine/hospital/site';
@@ -36,6 +37,11 @@ const { db, errors } = buildDb();
 if (errors.length) {
   console.error(errors.join('\n'));
   process.exit(1);
+}
+const HALL = arg('hall', '');
+if (HALL !== '' && db.inflow) {
+  if (Number(HALL) > 0) db.inflow.hall = Number(HALL);
+  else delete db.inflow.hall;
 }
 
 /** Помещение по плану: тип, прямоугольник со стенами, дверь — `door` клеток посередине верхней (`top`) или нижней стены. */
