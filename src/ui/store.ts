@@ -52,9 +52,13 @@ export interface RoomCard {
   needs?: { name: string; have: number; need: number }[];
   /**
    * должности: кто на месте или кого нанять; на место врача — выбор: терапевт или специалист (`options`, spec
-   * docs/specs/2026-10-specialists.md)
+   * docs/specs/2026-10-specialists.md); смены (spec docs/specs/2026-10-staff-shifts.md): строка на смену, `both` — человек
+   * без смены, на обеих
    */
-  posts?: { role: Id; name: string; who?: string; staffId?: string; salary: string; you?: boolean; options?: { role: Id; name: string; salary: string; hint: string }[] }[];
+  posts?: {
+    role: Id; name: string; who?: string; staffId?: string; salary: string; you?: boolean; shift?: 'day' | 'night' | 'both';
+    options?: { role: Id; name: string; salary: string; hint: string }[];
+  }[];
   furnish?: { ok: boolean; text: string };
   demolish?: string;
   catalog?: { kind: ObjectKind; eq?: Id; name: string; price: string }[];
@@ -115,13 +119,16 @@ export interface Hud {
   path?: { lines: PathLine[]; summary: string; left?: string } | { none: true };
   /** слои карты: меню открыто; «Очереди и загрузка» включён */
   layers: { open: boolean; queues: boolean };
-  staffList: { key: string; text: string }[];
+  /** вкладка «Персонал»: `on` — сейчас в смене (spec docs/specs/2026-10-staff-shifts.md) */
+  staffList: { key: string; text: string; on?: true }[];
   debug: boolean;
   build: BuildHud;
   roomTypes: RoomTypeRow[];
   readyTypes: ReadyTypeRow[];
   /** больница ПК закрыта — почему (пациенты не приходят) */
   closed?: string;
+  /** не та смена (spec docs/specs/2026-10-staff-shifts.md): пришедших сами не примут до утра — спокойной строкой */
+  night?: string;
   /** выбор начала: пустое здание или готовая больница */
   choose?: boolean;
   fps: number;
@@ -226,8 +233,11 @@ export interface Actions {
   done(): void;
   furnish(room: string): void;
   demolish(room: string): void;
-  /** `as` — кого на место врача: терапевта или специалиста (spec docs/specs/2026-10-specialists.md) */
-  hire(room: string, role: Id, as?: Id): void;
+  /**
+   * `as` — кого на место врача: терапевта или специалиста (spec docs/specs/2026-10-specialists.md); `shift` — на дневную или
+   * ночную смену (spec docs/specs/2026-10-staff-shifts.md)
+   */
+  hire(room: string, role: Id, as?: Id, shift?: 'day' | 'night'): void;
   dismiss(id: string): void;
   /** начало игры: пустое здание, готовая больница или поликлиника; `{ load }` — сохранение (spec 2026-10-saves) */
   startGame(kind: 'empty' | 'preset' | 'poly' | { load: string }): void;

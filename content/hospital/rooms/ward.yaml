@@ -2,6 +2,8 @@ id: room.ward
 name: { ru: "Палата" }
 gen: { ru: "палаты" }
 staff: [role.nurse]
+# работает и ночью (spec docs/specs/2026-10-staff-shifts.md): готовая больница — и с ночной сменой
+night: true
 beds: true
 sizes:
   - id: S

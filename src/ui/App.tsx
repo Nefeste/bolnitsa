@@ -343,32 +343,9 @@ function SiteCard({ r, actions, hud }: { r: RoomCard; actions: Actions; hud: Hud
             ))}
           </dd>
         </div>
-        <div>
+        <div className="posts">
           <dt>{T.card.posts}</dt>
-          <dd>
-            {r.posts?.length
-              ? r.posts.map(p => (
-                  <div key={p.role} className="post">
-                    {p.you ? (
-                      <span className="muted">{T.card.you}</span>
-                    ) : p.who ? (
-                      <>
-                        <span>{p.who}</span>
-                        <button type="button" className="small" id={`dismiss-${p.role.slice(5)}`} onClick={() => actions.dismiss(p.staffId!)}>
-                          {T.card.dismiss}
-                        </button>
-                      </>
-                    ) : p.options ? (
-                      <HirePick room={r.id} role={p.role} options={p.options} actions={actions} />
-                    ) : (
-                      <button type="button" className="small" id={`hire-${p.role.slice(5)}`} onClick={() => actions.hire(r.id, p.role)}>
-                        {T.card.hire(p.name, p.salary)}
-                      </button>
-                    )}
-                  </div>
-                ))
-              : '—'}
-          </dd>
+          <dd>{r.posts?.length ? <Posts r={r} actions={actions} /> : '—'}</dd>
         </div>
       </dl>
       <div className="row">
@@ -387,6 +364,8 @@ function SiteCard({ r, actions, hud }: { r: RoomCard; actions: Actions; hud: Hud
 }
 
 function RightTabs({ hud, actions }: P) {
+  // «Персонал»: только кто сейчас в смене (spec docs/specs/2026-10-staff-shifts.md)
+  const [onDuty, setOnDuty] = useState(false);
   const tabs: [Tab, string][] = [
     ['patients', T.tabs.patients],
     ['staff', T.tabs.staff],
@@ -399,15 +378,22 @@ function RightTabs({ hud, actions }: P) {
   if (hud.tab === 'patients') body = <PatientsTab hud={hud} actions={actions} />;
   else if (hud.tab === 'staff')
     body = (
-      <ul>
-        {hud.staffList.map(p => (
-          <li key={p.key}>
-            <button type="button" className="row" onClick={() => actions.select(p.key)}>
-              {p.text}
-            </button>
-          </li>
-        ))}
-      </ul>
+      <>
+        <label className="check">
+          <input type="checkbox" id="staff-on-duty" checked={onDuty} onChange={e => setOnDuty(e.target.checked)} /> {T.card.onDutyOnly}
+        </label>
+        <ul>
+          {hud.staffList
+            .filter(p => !onDuty || p.on)
+            .map(p => (
+              <li key={p.key}>
+                <button type="button" className={p.on ? 'row' : 'row muted'} onClick={() => actions.select(p.key)}>
+                  {p.text}
+                </button>
+              </li>
+            ))}
+        </ul>
+      </>
     );
   else if (hud.tab === 'journal')
     body = (
@@ -438,22 +424,70 @@ function RightTabs({ hud, actions }: P) {
 }
 
 /**
+ * Должности помещения — строка на должность (spec docs/specs/2026-10-staff-shifts.md): «Регистратор · день Иванова · 3
+ * [Уволить] · ночь [Нанять · 1 625 ₽]»; кто без смены (сохранение до смен) — «круглые сутки». Полные слова найма — в
+ * подсказке кнопки: карточка не растёт и не закрывает карту.
+ */
+function Posts({ r, actions }: { r: RoomCard; actions: Actions }) {
+  const posts = r.posts ?? [];
+  const roles = [...new Set(posts.map(p => p.role))];
+  return (
+    <>
+      {roles.map(role => {
+        const rows = posts.filter(p => p.role === role);
+        return (
+          <div key={role} className="post">
+            <span className="prole">{rows[0].name}</span>
+            {rows.map(p => {
+              // смены: строка ночной смены — свои номера кнопок
+              const id = `${p.role.slice(5)}${p.shift === 'night' ? '-night' : ''}`;
+              const shift = p.shift === 'night' || p.shift === 'day' ? p.shift : undefined;
+              return (
+                <span key={p.shift ?? 'you'} className="pshift">
+                  {p.shift ? <span className="muted shift">{T.card.shifts[p.shift]}</span> : null}
+                  {p.you ? (
+                    <span className="muted">{T.card.you}</span>
+                  ) : p.who ? (
+                    <>
+                      <span>{p.who}</span>
+                      <button type="button" className="small" id={`dismiss-${id}`} onClick={() => actions.dismiss(p.staffId!)}>
+                        {T.card.dismiss}
+                      </button>
+                    </>
+                  ) : p.options ? (
+                    <HirePick room={r.id} role={p.role} id={id} shift={shift} options={p.options} actions={actions} />
+                  ) : (
+                    <button type="button" className="small" id={`hire-${id}`} title={T.card.hire(p.name, p.salary, shift === 'night')} onClick={() => actions.hire(r.id, p.role, undefined, shift)}>
+                      {T.card.hireShort(p.salary)}
+                    </button>
+                  )}
+                </span>
+              );
+            })}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+/**
  * На место врача — терапевт или специалист (spec docs/specs/2026-10-specialists.md): список должностей с зарплатой и
  * «Нанять» одной строкой — карточка не растёт; подсказка выбранной должности — при наведении.
  */
-function HirePick({ room, role, options, actions }: { room: string; role: string; options: { role: string; name: string; salary: string; hint: string }[]; actions: Actions }) {
+function HirePick({ room, role, id, shift, options, actions }: { room: string; role: string; id: string; shift?: 'day' | 'night'; options: { role: string; name: string; salary: string; hint: string }[]; actions: Actions }) {
   const [as, setAs] = useState(options[0].role);
   const o = options.find(x => x.role === as) ?? options[0];
   return (
     <span className="hires">
-      <select id={`hire-${role.slice(5)}-as`} value={o.role} title={o.hint} onChange={ev => setAs(ev.target.value)}>
+      <select id={`hire-${id}-as`} value={o.role} title={o.hint} onChange={ev => setAs(ev.target.value)}>
         {options.map(x => (
           <option key={x.role} value={x.role}>
             {T.card.hireOption(x.name, x.salary)}
           </option>
         ))}
       </select>
-      <button type="button" className="small" id={`hire-${role.slice(5)}`} title={o.hint} onClick={() => actions.hire(room, role, o.role)}>
+      <button type="button" className="small" id={`hire-${id}`} title={o.hint} onClick={() => actions.hire(room, role, o.role, shift)}>
         {T.card.hireAs}
       </button>
     </span>
@@ -467,7 +501,15 @@ function doingLine(info: Extract<PersonInfo, { kind: 'patient' }>): string {
 }
 
 function personLines(info: PersonInfo, names: Names): [string, string][] {
-  if (info.kind === 'staff') return [[T.card.staff, names.role(info.role)], [T.card.where, names.room(info.room)]];
+  // смены (spec docs/specs/2026-10-staff-shifts.md): чья смена; не в больнице — дома до своей смены
+  if (info.kind === 'staff') {
+    const h = info.hours;
+    return [
+      [T.card.staff, names.role(info.role)],
+      [T.card.where, info.home && h ? T.card.home(clock(h[0] * 3600)) : names.room(info.room)],
+      ...(info.shift && h ? [[T.card.shift, T.card.shiftLine(info.shift, clock(h[0] * 3600), clock(h[1] * 3600))] as [string, string]] : []),
+    ];
+  }
   // ушёл — на карте его нет: кто и как пришёл, остальное — в пути (spec 2026-10-flow-ui)
   // записан к специалисту (spec docs/specs/2026-10-specialists.md): «по записи к гастроэнтерологу»
   const visit = info.to ? T.card.booked(names.dat(info.to)) : (T.visit[info.visit as keyof typeof T.visit] ?? info.visit);
@@ -728,6 +770,10 @@ export function App({ store, actions, names }: { store: Store; actions: Actions;
         {hud.closed ? (
           <div className="banner panel" id="closed" title={T.top.closedHint}>
             {T.top.closed(hud.closed)}
+          </div>
+        ) : hud.night ? (
+          <div className="banner panel calm" id="night">
+            {hud.night}
           </div>
         ) : null}
         <HintStrip {...p} />

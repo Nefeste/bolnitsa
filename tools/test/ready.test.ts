@@ -138,14 +138,15 @@ describe('готовое помещение — команда движка', ()
     const spent0 = s.works!.spent;
     const price = (checkReady(db, s.hospital!.site!, 'room.ward', 'S', 6, 6, 0) as { cost: number }).cost;
     const n = site(db, s, READY('room.ward', 'S', 6, 6));
-    expect(n).toMatchObject({ cmd: 'ready', ok: true, cost: price, hired: 1 });
+    // палата работает и ночью, а больница, где лежат, — ночная тоже (spec 2026-10-staff-shifts): медсестра на день и на ночь
+    expect(n).toMatchObject({ cmd: 'ready', ok: true, cost: price, hired: 2 });
     const ward = n.room!;
     const r = s.hospital!.site!.rooms.find(x => x.id === ward)!;
     expect(r.door!.length).toBe(2);
     expect(r.items.filter(i => i.kind === 'bed').length).toBe(2);
     // взялись за другое — прежнее открыто; готовое не закрыто
     expect(s.hospital!.site!.editing).toBeUndefined();
-    expect(s.staff!.filter(m => m.room === ward).map(m => m.role)).toEqual(['role.nurse']);
+    expect(s.staff!.filter(m => m.room === ward).map(m => `${m.role}:${m.shift}`)).toEqual(['role.nurse:day', 'role.nurse:night']);
     expect(s.works!.spent).toBe(spent0 + price);
     expect(cashNow(s)).toBe(cash0 - s.works!.spent);
     const ctx = hospitalCtx(db, s);
@@ -155,7 +156,7 @@ describe('готовое помещение — команда движка', ()
     const u = site(db, s, { kind: 'undo' });
     expect(u).toMatchObject({ cmd: 'undo', ok: true, cost: -price });
     expect(s.hospital!.site!.rooms.some(x => x.id === ward)).toBe(false);
-    expect(s.staff!.length).toBe(staff - 1);
+    expect(s.staff!.length).toBe(staff - 2);
     expect(s.works!.spent).toBe(spent0);
     expect(cashNow(s)).toBe(cash0 - spent0);
   });
@@ -165,20 +166,20 @@ describe('готовое помещение — команда движка', ()
     const bare = site(db, s, READY('room.icu', 'S', 6, 6, false));
     expect(bare.hired).toBeUndefined();
     expect(s.staff ?? []).toEqual([]);
-    // снесли ПИТ с людьми — медсестра и анестезиолог ушли в резерв; новая ПИТ берёт их же
+    // снесли ПИТ с людьми — медсестры и анестезиологи дня и ночи ушли в резерв; новая ПИТ берёт их же
     const s2 = shift(2);
     const icu = site(db, s2, READY('room.icu', 'S', 6, 6)).room!;
     const was = s2.staff!.map(m => m.id).sort();
-    expect(s2.staff!.map(m => m.role).sort()).toEqual(['role.anesthetist', 'role.nurse']);
+    expect(s2.staff!.map(m => `${m.role}:${m.shift}`).sort()).toEqual(['role.anesthetist:day', 'role.anesthetist:night', 'role.nurse:day', 'role.nurse:night']);
     site(db, s2, { kind: 'demolish', room: icu });
     expect(s2.staff!.every(m => m.room === undefined)).toBe(true);
     const again = site(db, s2, READY('room.icu', 'S', 14, 6));
-    expect(again.hired).toBe(2);
+    expect(again.hired).toBe(4);
     expect(s2.staff!.map(m => m.id).sort()).toEqual(was);
     expect(s2.staff!.every(m => m.room === again.room)).toBe(true);
-    // кабинет врача — терапевт
+    // кабинет врача — терапевт, на дневную смену: ночью кабинеты закрыты
     const doc = site(db, s2, READY('room.office', 'M', 22, 6));
-    expect(s2.staff!.filter(m => m.room === doc.room).map(m => m.role)).toEqual(['role.therapist']);
+    expect(s2.staff!.filter(m => m.room === doc.room).map(m => `${m.role}:${m.shift}`)).toEqual(['role.therapist:day']);
   });
 
   test('нельзя — ничего не меняется, извещение с причиной; денег не хватает до предела минуса — «money»', () => {

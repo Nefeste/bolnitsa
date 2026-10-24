@@ -76,6 +76,8 @@
     .status { position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); padding: 12px 18px; font-size: 15px; max-width: 70%; text-align: center; }
     /* стройка (docs/specs/2026-10-build.md) */
     .banner { padding: 5px 12px; color: var(--yellow); max-width: 100%; box-sizing: border-box; text-align: center; }
+    .banner.calm { color: var(--muted); }
+    .post .shift { display: inline-block; min-width: 2.6em; }
     .left.wide { top: 100px; width: 270px; max-height: calc(100vh - 108px); overflow: hidden; }
     .left.wide > * { flex-shrink: 0; }
     .left.wide > .list { flex-shrink: 1; min-height: 48px; overflow-y: auto; }
@@ -103,7 +105,10 @@
     .card .need { display: inline-block; margin-right: 8px; }
     .card .need.ok { color: #8fe3b4; }
     .card .need.bad { color: #ff9b86; }
-    .card .post { display: flex; gap: 6px; align-items: center; margin: 1px 0; }
+    .card .post { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: center; margin: 1px 0; }
+    .card dl > .posts { grid-column: 1 / -1; }
+    .card .post .prole { min-width: 9em; color: var(--muted); }
+    .card .post .pshift { display: inline-flex; gap: 6px; align-items: center; }
     .card .post .hires { display: flex; gap: 4px; align-items: center; }
     .card .post .hires select { padding: 1px 4px; }
     .card .row { display: flex; gap: 6px; margin-top: 6px; }
@@ -111,6 +116,7 @@
     .labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
     .rlabel { position: absolute; left: 0; top: 0; padding: 2px 7px; border-radius: 4px; background: rgba(22,30,34,.84); border-left: 3px solid var(--green); font-size: 11px; line-height: 1.25; white-space: nowrap; color: var(--text); }
     .rlabel.bad { border-left-color: var(--red); }
+    .rlabel.rest { border-left-color: var(--muted); }
     .rlabel b { display: block; font-size: 12px; }
     .rlabel span { color: var(--muted); }
     .rlabel.bad span { color: #ffb4a6; }
@@ -136,7 +142,7 @@
     .roomchip.t-busy { color: #8fd3ff; }
     .roomchip.t-queue { color: var(--yellow); border-color: rgba(231,180,22,.55); }
     .roomchip.t-bad { color: #ff9b86; border-color: rgba(216,57,43,.6); }
-    .roomchip.t-off { color: var(--muted); }
+    .roomchip.t-off, .roomchip.t-rest { color: var(--muted); }
     .roomchip.t-ask { color: var(--accent); border-color: rgba(47,181,201,.6); }
     .roomchip.t-ok span { color: var(--muted); }
     .patients .pfilters { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }

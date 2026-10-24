@@ -7,7 +7,7 @@ import {
   autoRot, cellsOf, checkDoor, checkItem, checkReady, checkRoom, demolishRefund, DOOR_PRICE, FACE, isInterior, priceOf, type ReadyDraft, readyCorner, readyTurn,
   refundOf, rulesOf, sideOf, type Site, type SiteCommand, type SiteError, type SiteResult, targetAt,
 } from '../engine/hospital/site';
-import { salaryOf } from '../engine/hospital/staff';
+import { nightHospital, payOf, salaryOf, type Shift } from '../engine/hospital/staff';
 import { money, named, T } from '../i18n';
 import { GHOST_BAD, GHOST_DOOR, GHOST_OK } from '../render/ghost';
 import { type Thing, yawOf } from '../render/layout';
@@ -336,19 +336,26 @@ export class Builder {
     return c.ok ? { rot, ok: true, cost: c.cost, draft: c.draft } : { rot, ok: false, why: c.error, cost: 0, ...(c.draft ? { draft: c.draft } : {}) };
   }
 
-  /** «С персоналом»: кто встанет на должности готового `type` и сколько им в сутки — резерв раньше новых, как в движке. */
+  /**
+   * «С персоналом»: кто встанет на должности готового `type` и сколько им в сутки — резерв раньше новых, как в движке; в
+   * больнице, что работает ночью, — и ночная смена помещения, что работает ночью (spec docs/specs/2026-10-staff-shifts.md).
+   */
   private staffText(type: Id): string {
     const db = this.db;
     if (!this.withStaff) return '';
     const free = this.g.staff.filter(m => m.room === undefined);
     const who: string[] = [];
     let salary = 0;
-    for (const post of db.rooms[type]?.staff ?? []) {
-      const role = post === DOCTOR ? standInOf(db, DOCTOR) : post;
-      if (!role || !db.roles[role]?.hire) continue;
-      const i = free.findIndex(m => m.role === role);
-      salary += i >= 0 ? free.splice(i, 1)[0].salary : salaryOf(db, role, 3);
-      who.push(lower(named(db.roles[role]?.name, role)));
+    const shifts: Shift[] = db.rooms[type]?.night && nightHospital(db, [...(this.site?.rooms ?? []), { type }]) ? ['day', 'night'] : ['day'];
+    for (const shift of shifts) {
+      for (const post of db.rooms[type]?.staff ?? []) {
+        const role = post === DOCTOR ? standInOf(db, DOCTOR) : post;
+        if (!role || !db.roles[role]?.hire) continue;
+        const i = free.findIndex(m => m.role === role);
+        salary += payOf(db, i >= 0 ? free.splice(i, 1)[0].salary : salaryOf(db, role, 3), shift);
+        const name = lower(named(db.roles[role]?.name, role));
+        who.push(shift === 'night' ? `${name} (${T.card.shifts.night})` : name);
+      }
     }
     return who.length ? T.build.ghostStaff(who.join(', '), money(salary)) : '';
   }

@@ -1,4 +1,4 @@
-// из anamnez: src/engine/hospital/staff.ts @ 96503ac, изменено: мест в ординаторской больницы ПК — из плана (spec 2026-10-build)
+// из anamnez: src/engine/hospital/staff.ts @ 96503ac, изменено: мест в ординаторской больницы ПК — из плана (spec 2026-10-build); смены дня и ночи — `shift`, кто в смене, зарплата за сутки, ночная смена готовой больницы (spec 2026-10-staff-shifts)
 // Персонал своей больницы (spec 2026-09-own-hospital, часть 8): кандидаты дня, найм, навык 1–5,
 // черта, зарплата за смену, скорость и точность работы, рост навыка с отработанными сменами.
 // Числа — баланс игры (content/hospital/economy.yaml, `staff`). Имя человека — из словаря игры,
@@ -6,9 +6,12 @@
 import type { ContentDb, Id, Preset } from '../../content/types';
 import { Rng } from '../core/rng';
 import type { Plan } from './build';
-import type { Staffing } from './requirements';
+import { DOCTOR, type Staffing } from './requirements';
 
 export type Trait = 'careful' | 'fast' | 'novice' | 'experienced';
+
+/** Смена (spec docs/specs/2026-10-staff-shifts.md; геймдизайн §2): дневная или ночная. */
+export type Shift = 'day' | 'night';
 export const TRAITS: Trait[] = ['careful', 'experienced', 'fast', 'novice'];
 
 export interface StaffMember {
@@ -26,6 +29,11 @@ export interface StaffMember {
   room?: string;
   /** отработанных смен с последней ступени навыка */
   days: number;
+  /**
+   * смена (spec 2026-10-staff-shifts): работает в ней каждый день; нет — круглые сутки (сохранения до смен, смены
+   * «Анамнеза»)
+   */
+  shift?: Shift;
 }
 
 /**
@@ -114,6 +122,82 @@ export function grow(db: ContentDb, m: StaffMember): StaffMember {
   const need = Math.max(1, Math.ceil(b.growthDays / (m.trait ? (b.traits[m.trait].growth ?? 1) : 1)));
   const days = m.days + 1;
   return days >= need ? { ...m, skill: m.skill + 1, days: 0 } : { ...m, days };
+}
+
+// --- смены (spec docs/specs/2026-10-staff-shifts.md) ------------------------------------------------------------------
+
+/** Какая смена идёт в `t` (игровые секунды): дневная — с часа `day[0]` до `day[1]`, ночная — остальное. */
+export function shiftAt(db: ContentDb, t: number): Shift {
+  const day = db.economy.staff.shifts?.day ?? [0, 24];
+  const h = Math.floor((((t % 86400) + 86400) % 86400) / 3600);
+  return h >= day[0] && h < day[1] ? 'day' : 'night';
+}
+
+/** В смене ли человек в `t`: без смены — всегда. */
+export const onDuty = (db: ContentDb, m: StaffMember, t: number): boolean => m.shift === undefined || m.shift === shiftAt(db, t);
+
+/** Работает ли человек в смене `shift`: без смены — в обеих (круглые сутки). */
+export const covers = (m: StaffMember, shift: Shift): boolean => m.shift === undefined || m.shift === shift;
+
+/**
+ * Работает ли больница ночью (spec 2026-10-staff-shifts): в ней лежат или в неё везёт скорая. Тогда у готовой больницы и
+ * у готового помещения «С персоналом» — и ночная смена в помещениях, что работают ночью (`night`); поликлиника ночью закрыта.
+ */
+export function nightHospital(db: ContentDb, rooms: readonly { type: Id }[]): boolean {
+  return rooms.some(r => {
+    const k = db.rooms[r.type];
+    return k !== undefined && (k.emergency || k.beds || k.icu || k.box);
+  });
+}
+
+const duties = new WeakMap<readonly StaffMember[], Record<Shift, StaffMember[]>>();
+
+/**
+ * Кто в смене в `t` — один и тот же массив на штат и смену: больница и «кто на месте» считаются раз на пересменку. Без
+ * смен — сам штат.
+ */
+export function dutyOf(db: ContentDb, staff: readonly StaffMember[], t: number): readonly StaffMember[] {
+  if (!staff.some(m => m.shift !== undefined)) return staff;
+  let d = duties.get(staff);
+  if (!d) {
+    d = { day: staff.filter(m => m.shift !== 'night'), night: staff.filter(m => m.shift !== 'day') };
+    duties.set(staff, d);
+  }
+  return d[shiftAt(db, t)];
+}
+
+/** Зарплата за сутки, ₽, при зарплате должности `salary` в смене `shift`: ночная — с надбавкой (`shifts.night`, %). */
+export function payOf(db: ContentDb, salary: number, shift?: Shift): number {
+  return shift === 'night' ? Math.round((salary * (db.economy.staff.shifts?.night ?? 100)) / 100) : salary;
+}
+
+/** Зарплата человека за сутки, ₽: дневная смена и без смены — зарплата; ночная — с надбавкой. */
+export const wageOf = (db: ContentDb, m: StaffMember): number => payOf(db, m.salary, m.shift);
+
+/** Зарплаты штата за сутки, ₽ (spec 2026-10-staff-shifts): по сменам, ночная — с надбавкой. */
+export const wagesOf = (db: ContentDb, staff: readonly StaffMember[]): number => staff.reduce((n, m) => n + wageOf(db, m), 0);
+
+/**
+ * Штат готовой больницы со сменами (spec 2026-10-staff-shifts): все — дневная смена. Больница, где лежат или куда везёт
+ * скорая, работает и ночью: в её помещениях, что работают ночью (`night` у вида помещения), — ещё ночная смена, копия
+ * дневного человека: та же должность, навык и черта, другой человек; есть смотровая приёмного — и ночной врач для
+ * привезённых скорой: копия первого нанятого терапевта, в его же кабинете. Поликлиника ночью закрыта — ночной смены у неё
+ * нет. Номера ночных — после номеров готовой больницы (`p<n>`), облик — из ветви зерна дневного.
+ */
+export function withNightShift(db: ContentDb, rooms: readonly { id: string; type: Id }[], staff: readonly StaffMember[]): StaffMember[] {
+  const out: StaffMember[] = staff.map(m => ({ ...m, shift: 'day' as const }));
+  if (!nightHospital(db, rooms)) return out;
+  const night = new Set(rooms.filter(r => db.rooms[r.type]?.night).map(r => r.id));
+  let n = staff.reduce((k, m) => (m.id.startsWith('p') ? Math.max(k, Number(m.id.slice(1)) || 0) : k), 0);
+  const copy = (m: StaffMember): StaffMember => {
+    const id = `p${++n}`;
+    const r = Rng.seeded(m.seed).fork(`night:${id}`);
+    return { ...m, id, sex: r.chance(5000) ? 'f' : 'm', seed: r.u32(), days: 0, shift: 'night' };
+  };
+  for (const m of staff) if (m.room !== undefined && night.has(m.room)) out.push(copy(m));
+  const doctor = staff.find(m => m.room !== undefined && db.roles[m.role]?.stands === DOCTOR && !db.roles[m.role]?.profile);
+  if (doctor && rooms.some(r => db.rooms[r.type]?.emergency)) out.push(copy(doctor));
+  return out;
 }
 
 /** Мест для нанятых врачей в помещениях этого типа, до двери которых можно дойти. */

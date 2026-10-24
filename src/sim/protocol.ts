@@ -68,9 +68,10 @@ export type FromSim =
    * после каждого tick и command: упакованный срез (`buf`, src/sim/pack.ts), строки новых людей, извещения, на сколько
    * часы смены отстали от часов игры (игровых секунд); `world` — если больница или штат изменились; `broken` — сломанные
    * с утра аппараты, «помещение:место», когда список изменился (spec 2026-10-flow-ui: «не работает: аппарат сломан»; меняется
-   * в 08:00 — без пересборки сцены)
+   * в 08:00 — без пересборки сцены); `late` — кто из штата (номера в его списке) уже не в смене, а ещё в больнице: доводит
+   * приёмы (spec docs/specs/2026-10-staff-shifts.md), — когда список изменился
    */
-  | ({ kind: 'slice'; buf: Int32Array; names: NameRow[]; notices: Notice[]; lag: number; world?: World; path?: PathView; broken?: string[] } & DoctorOut)
+  | ({ kind: 'slice'; buf: Int32Array; names: NameRow[]; notices: Notice[]; lag: number; world?: World; path?: PathView; broken?: string[]; late?: number[] } & DoctorOut)
   | { kind: 'state'; state: ShiftState }
   /** файл сохранения: сжатые байты (без копии) и его шапка; не вышло — `packFailed` */
   | { kind: 'packed'; bytes: Uint8Array; meta: SaveMeta }

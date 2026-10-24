@@ -23,6 +23,10 @@
 //                                                вторых суток, планёрка в 08:00 и обход в 09:00 — отдельно
 // bun tools/bench/bench.ts --mode flow --flat  — ровная форма потока по часам: до 14:00 приходят те же, что до суток целиком,
 //                                                — сравнение с прежним движком в окне 09:00–14:00
+//
+// Смены (spec docs/specs/2026-10-staff-shifts.md), только --mode flow:
+// bun tools/bench/bench.ts --mode flow --day --emergency --shifts — штат со сменами, как у готовой больницы: все — дневная,
+//                                                а в больнице со смотровой — и ночная там, где работают ночью
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { gzipSync } from 'bun';
@@ -30,6 +34,7 @@ import { heapStats } from 'bun:jsc';
 import { hospitalFor, type Layout } from './hospital';
 import type { ContentDb } from '../../src/content/types';
 import { generatePatient } from '../../src/engine/med/generate';
+import { withNightShift } from '../../src/engine/hospital/staff';
 import { apply, candidatesOf, catchUp, hospitalCtx, newFlowShift, newSingle, reviewsDue, SANDBOX_VENUE } from '../../src/engine/shift/engine';
 import { DAY, SHIFT_END, SHIFT_START, type ShiftState } from '../../src/engine/shift/types';
 import { buildDb } from '../content/load';
@@ -130,6 +135,7 @@ console.log(`\nГенерация пациента (${gen.n} шт.): медиа�
  * около полутора больных сразу, а приём с обследованиями идёт около 50 минут — приток ≈ 1,4 × нагрузка в час.
  */
 const EMERGENCY = flag('emergency');
+const SHIFTS = flag('shifts');
 const flowOf = (load: number) => ({ desks: Math.ceil(load / 1.5), perHour: Math.round(1.4 * load), ambulancePerHour: EMERGENCY ? Math.max(1, Math.round(load / 50)) : 0 });
 
 function layoutFor(n: number): Layout {
@@ -140,7 +146,8 @@ let flowLoad = 0;
 function start(layout: Layout): ShiftState {
   if (MODE === 'flow') {
     const f = flowOf(flowLoad);
-    return newFlowShift(db, { seed: SEED, season: 'winter', hospital: layout.hospital, staff: layout.staff, flow: { perHour: f.perHour, ambulancePerHour: f.ambulancePerHour } });
+    const staff = SHIFTS ? withNightShift(db, layout.hospital.rooms, layout.staff) : layout.staff;
+    return newFlowShift(db, { seed: SEED, season: 'winter', hospital: layout.hospital, staff, flow: { perHour: f.perHour, ambulancePerHour: f.ambulancePerHour } });
   }
   return newSingle(db, { seed: SEED, season: 'winter', venue: SANDBOX_VENUE, hospital: layout.hospital, staff: layout.staff });
 }

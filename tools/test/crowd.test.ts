@@ -12,14 +12,19 @@ import { Paths } from '../../src/render/path';
 import { doorInside, Places, standAt } from '../../src/render/place';
 import { Population } from '../../src/render/population';
 import { CATALOG, EXTRA_MODELS } from '../../src/render/catalog';
+import { withNightShift } from '../../src/engine/hospital/staff';
 import { buildDb } from '../content/load';
 import { bakedPeople, furnitureModels, presetLayout } from './render-kit';
 
 const { db } = buildDb();
 
-/** Городская больница на отрисовке: раскладка, пути, толпа на ×12 и население со штатом на местах. */
-async function cityScene() {
-  const { hospital, staff, layout } = presetLayout(db, 'preset.city');
+/**
+ * Городская больница на отрисовке: раскладка, пути, толпа на ×12 и население со штатом на местах. `shifts` — штат со сменами,
+ * как его начинает игра (spec docs/specs/2026-10-staff-shifts.md), часы — 08:00.
+ */
+async function cityScene(shifts = false) {
+  const { hospital, staff: base, layout } = presetLayout(db, 'preset.city');
+  const staff = shifts ? withNightShift(db, hospital.rooms, base) : base;
   const names = [...new Set([...Object.values(CATALOG).flatMap(e => ('model' in e ? [e.model] : [])), ...EXTRA_MODELS])];
   const models = await furnitureModels(names);
   const fur = furnish(layout, models);
@@ -34,6 +39,7 @@ async function cityScene() {
   crowd.speed = 12;
   crowd.rate = 12 * GAME_PER_REAL;
   const pop = new Population(db, layout, places, crowd, people.looks, staff, hospital.rooms);
+  pop.setTime(8 * 3600);
   pop.placeStaff();
   return { hospital, staff, layout, crowd, pop };
 }
@@ -127,6 +133,35 @@ describe('толпа по срезу потока', () => {
     }
     expect(visited).toBe(true);
     expect(w.state).toBe('gone');
+  }, 180_000);
+
+  // spec docs/specs/2026-10-staff-shifts.md: на карте — кто в смене; в 20:00 дневные идут к выходу, ночные входят с улицы на
+  // свои места; кто уже уходил, но ещё нужен (доводит приём), — снова на своём месте
+  test('пересменка: ночные входят с улицы и встают на места, дневные уходят; передумавший уходить — снова на месте', async () => {
+    const { staff, crowd, pop } = await cityScene(true);
+    const night = staff.filter(m => m.shift === 'night').map(m => `s:${m.id}`);
+    const day = staff.filter(m => m.shift === 'day').map(m => `s:${m.id}`);
+    expect(night.length).toBeGreaterThan(0);
+    expect(day.every(k => crowd.walkers.has(k))).toBe(true);
+    expect(night.some(k => crowd.walkers.has(k))).toBe(false);
+    const spotOf = (k: string) => crowd.walkers.get(k)!.at?.key;
+    const was = new Map(day.map(k => [k, spotOf(k)]));
+    pop.setTime(20 * 3600 + 30);
+    pop.placeStaff(true);
+    // пришедшие — от входа, ушедшие — к выходу
+    expect(night.every(k => crowd.walkers.get(k)?.state === 'walk')).toBe(true);
+    expect(day.every(k => crowd.walkers.get(k)?.leaving)).toBe(true);
+    // один дневной врач ещё доводит приём — передумал уходить
+    const stays = staff.findIndex(m => m.shift === 'day' && db.roles[m.role]?.stands === 'role.doctor');
+    const key = `s:${staff[stays].id}`;
+    for (let f = 0; f < 30; f++) crowd.update(1 / 60);
+    pop.setLate([stays]);
+    pop.placeStaff(true);
+    expect(crowd.walkers.get(key)?.leaving).toBe(false);
+    for (let f = 0; f < 60 * 60 && day.some(k => k !== key && crowd.walkers.has(k)); f++) crowd.update(1 / 60);
+    expect(day.filter(k => k !== key && crowd.walkers.has(k))).toEqual([]);
+    expect(night.every(k => crowd.walkers.get(k)?.state !== 'walk' && crowd.walkers.get(k)?.at !== undefined)).toBe(true);
+    expect(spotOf(key)).toBe(was.get(key));
   }, 180_000);
 
   // spec docs/specs/2026-10-walk.md, «Проверки»: окно ведёт человека так, чтобы он дошёл к часу движка (±10 %) при ×1, ×3 и

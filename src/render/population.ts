@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import type { ContentDb, Id } from '../content/types';
 import type { RoomInstance } from '../engine/hospital/build';
-import type { StaffMember } from '../engine/hospital/staff';
+import { onDuty, type StaffMember } from '../engine/hospital/staff';
 import type { Doing } from '../engine/shift/slice';
 import type { Triage } from '../engine/shift/types';
 import { DOINGS, H, HEADER, KINDS, type NameRow, NO_TIME, P, STATUSES, STRIDE, TRIAGES } from '../sim/pack';
@@ -21,7 +21,11 @@ export const YOU = 'you';
 
 /** Что показать о человеке в панели; `gone` — пациент ушёл, на карте его нет (spec 2026-10-flow-ui). */
 export type PersonInfo =
-  | { kind: 'staff'; role: Id; room?: string; sex: 'm' | 'f' }
+  | {
+      kind: 'staff'; role: Id; room?: string; sex: 'm' | 'f'; id?: string;
+      /** смена и её часы — с какого и до какого (spec docs/specs/2026-10-staff-shifts.md); `home` — не в больнице */
+      shift?: 'day' | 'night'; hours?: [number, number]; home?: true;
+    }
   | {
       kind: 'patient'; id: string; name?: string; sex: 'm' | 'f'; age: number; complaint?: Id; triage: Triage; doing: Doing; room?: string; by?: Id; visit: string; gone?: true;
       /** записан к специалисту — его должность (spec docs/specs/2026-10-specialists.md) */
@@ -75,6 +79,13 @@ export class Population {
   private roomIndex: number[] = [];
   /** раскладка новая (стройка) — в следующем срезе места раздаются всем заново */
   private dirty = false;
+  /**
+   * кто из штата сейчас в больнице (spec docs/specs/2026-10-staff-shifts.md): в смене или доводит начатые приёмы — по
+   * последнему срезу; строка — чтобы заметить пересменку
+   */
+  private here = '';
+  /** кто не в смене, а ещё в больнице — доводит приёмы (номера в штате); присылает поток расчёта, когда список меняется */
+  private late = new Set<string>();
 
   constructor(
     private db: ContentDb,
@@ -100,14 +111,28 @@ export class Population {
     return list[Math.abs(seed) % list.length];
   }
 
+  /** В больнице ли человек штата (spec 2026-10-staff-shifts): в смене часов среза или доводит начатые приёмы. */
+  private present(m: StaffMember): boolean {
+    return onDuty(this.db, m, this.t) || this.late.has(m.id);
+  }
+
+  /** Кто из штата не в смене, а ещё в больнице (номера в списке штата) — как прислал поток расчёта. */
+  setLate(index: readonly number[]) {
+    this.late = new Set(index.flatMap(i => (this.staff[i] ? [this.staff[i].id] : [])));
+  }
+
   /**
    * Штат — сразу на местах своих помещений; на стуле сидит, иначе стоит лицом к работе. Номер человека на экране — его
-   * номер в штате (`s:<id>`): после стройки и найма он тот же; у кого место прежнее, тот не двигается.
+   * номер в штате (`s:<id>`): после стройки и найма он тот же; у кого место прежнее, тот не двигается. Со сменами (spec
+   * docs/specs/2026-10-staff-shifts.md) — только те, кто в больнице; на пересменке (`shift`) пришедшие входят с улицы, а
+   * ушедшие идут к выходу.
    */
-  placeStaff() {
+  placeStaff(shift = false) {
     const taken = new Set<number>();
     const keep = new Set<string>();
+    this.here = this.staff.map(m => (this.present(m) ? 1 : 0)).join('');
     for (const m of this.staff) {
+      if (!this.present(m)) continue;
       const room = this.layout.plan.rooms.find(r => r.id === m.room);
       if (!room) continue;
       const role = this.db.roles[m.role]?.stands ?? m.role;
@@ -120,15 +145,21 @@ export class Population {
       keep.add(key);
       const w = this.crowd.walkers.get(key);
       if (w) {
-        if (w.at?.key !== spot.key) this.crowd.settle(w, spot);
+        if (w.leaving) this.crowd.stay(w, spot);
+        else if (w.at?.key !== spot.key && !(shift && w.goals.some(g => g.key === spot.key))) this.crowd.settle(w, spot);
         continue;
       }
       const use = m.role === 'role.registrar' ? 'registrar' : 'staff';
       const look = this.pick(use, m.sex, m.seed % 3 === 0, m.seed);
-      this.crowd.add(key, look, spot, true);
+      this.crowd.add(key, look, spot, true, false, NaN, shift);
       this.paints.set(key, { clothes: new THREE.Color(roleColor(m.role)), skin: new THREE.Color(SKIN[m.seed % SKIN.length]) });
     }
-    for (const [key, w] of [...this.crowd.walkers]) if (w.staff && !keep.has(key) && key !== YOU) this.crowd.remove(key);
+    for (const [key, w] of [...this.crowd.walkers]) {
+      if (!w.staff || keep.has(key) || key === YOU) continue;
+      // ушёл со сменой — к выходу; уволен, снесено помещение — сразу
+      if (shift && this.staff.some(m => `s:${m.id}` === key)) this.crowd.leave(w);
+      else this.crowd.remove(key);
+    }
   }
 
   /**
@@ -166,6 +197,11 @@ export class Population {
     this.dirty = true;
   }
 
+  /** Часы игры до первого среза (spec 2026-10-staff-shifts): кто в смене, тот и на местах с самого начала. */
+  setTime(t: number) {
+    this.t = t;
+  }
+
   /** Сверить с упакованным срезом: новые входят, ушедшие уходят, у кого новое место — идут туда. */
   sync(buf: Int32Array, names: readonly NameRow[]) {
     this.t = buf[H.t];
@@ -184,6 +220,8 @@ export class Population {
     const waiting: { key: string; room: number }[] = [];
     const benched: string[] = [];
     const present = new Set<string>();
+    // смены (spec 2026-10-staff-shifts): пересменка или ушедший со сменой довёл приёмы — кто в больнице, заново
+    if (this.staff.map(m => (this.present(m) ? 1 : 0)).join('') !== this.here) this.placeStaff(true);
     for (let i = 0; i < n; i++) {
       const o = HEADER + i * STRIDE;
       const key = `p:${buf[o + P.handle]}`;
@@ -298,7 +336,13 @@ export class Population {
   info(key: string): PersonInfo | undefined {
     if (key.startsWith('s:')) {
       const m = this.staff.find(x => x.id === key.slice(2));
-      return m ? { kind: 'staff', role: m.role, ...(m.room ? { room: m.room } : {}), sex: m.sex } : undefined;
+      if (!m) return undefined;
+      const day = this.db.economy.staff.shifts?.day;
+      const hours: [number, number] | undefined = m.shift && day ? (m.shift === 'day' ? [day[0], day[1]] : [day[1], day[0]]) : undefined;
+      return {
+        kind: 'staff', role: m.role, ...(m.room ? { room: m.room } : {}), sex: m.sex, id: m.id,
+        ...(m.shift && hours ? { shift: m.shift, hours } : {}), ...(this.present(m) ? {} : { home: true as const }),
+      };
     }
     const l = this.last.get(key);
     if (!l) return undefined;

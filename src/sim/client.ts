@@ -19,6 +19,8 @@ export interface Slice extends DoctorOut {
   path?: PathView;
   /** сломанные с утра аппараты, «помещение:место», — когда список изменился */
   broken?: string[];
+  /** кто из штата не в смене, а ещё в больнице — доводит приёмы (spec 2026-10-staff-shifts); когда список изменился */
+  late?: number[];
 }
 
 export class SimClient {
@@ -70,7 +72,7 @@ export class SimClient {
     this.onSlice({
       buf: msg.buf, names: msg.names, notices: msg.notices, lag: msg.lag, ...(msg.world ? { world: msg.world } : {}),
       ...(msg.doctor ? { doctor: msg.doctor } : {}), ...(msg.card !== undefined ? { card: msg.card } : {}), ...(msg.seen ? { seen: msg.seen } : {}), ...(msg.refused ? { refused: msg.refused } : {}),
-      ...(msg.path ? { path: msg.path } : {}), ...(msg.broken ? { broken: msg.broken } : {}),
+      ...(msg.path ? { path: msg.path } : {}), ...(msg.broken ? { broken: msg.broken } : {}), ...(msg.late ? { late: msg.late } : {}),
     });
   }
 

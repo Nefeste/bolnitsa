@@ -308,7 +308,8 @@ export function roomLoads(people: Iterable<Pick<Seen, 'status' | 'doing' | 'room
   return out;
 }
 
-export type ChipTone = 'ok' | 'busy' | 'queue' | 'bad' | 'off' | 'ask';
+/** `rest` — помещение не в своей смене (spec docs/specs/2026-10-staff-shifts.md): спокойно, только в слое очередей */
+export type ChipTone = 'ok' | 'busy' | 'queue' | 'bad' | 'off' | 'ask' | 'rest';
 export type ChipIcon = 'ok' | 'busy' | 'queue' | 'bed' | 'staff' | 'closed' | 'down' | 'ask' | 'mine';
 
 /** Значок состояния помещения (spec «Значки состояния помещений»): короткий текст; `long` — для слоя очередей. */
@@ -320,10 +321,15 @@ export interface RoomChip {
 }
 
 /** Состояние помещения: «не работает: причина», нет персонала, закрыто, врач ждёт ответа, очередь, койки, занято, работает. */
-export function roomChip(load: RoomLoad, problem: { kind: Problem['kind'] | 'broken'; text: string } | undefined, mine: boolean): RoomChip {
+export function roomChip(load: RoomLoad, problem: { kind: Problem['kind'] | 'broken' | 'offShift'; text: string } | undefined, mine: boolean): RoomChip {
   if (problem?.kind === 'closed') return { tone: 'off', icon: 'closed', text: T.flow.room.closed };
-  if (problem?.kind === 'noStaff') return { tone: 'bad', icon: 'staff', text: problem.text, long: T.problem.down(problem.text) };
-  if (problem) return { tone: 'bad', icon: 'down', text: T.problem.down(problem.text) };
+  // не его смена (spec docs/specs/2026-10-staff-shifts.md): «закрыто до 08:00» — спокойно; а врач доводит приём или лежат
+  // больные — видно их, как днём
+  const off = problem?.kind === 'offShift';
+  if (off && !load.busy && load.queue === 0 && !load.ask && !(load.beds && load.beds[0] > 0)) return { tone: 'rest', icon: 'closed', text: problem.text };
+  const why = off ? undefined : problem;
+  if (why?.kind === 'noStaff') return { tone: 'bad', icon: 'staff', text: why.text, long: T.problem.down(why.text) };
+  if (why) return { tone: 'bad', icon: 'down', text: T.problem.down(why.text) };
   if (load.ask) return { tone: 'ask', icon: 'ask', text: T.flow.room.ask };
   if (load.queue > 0) {
     const tone: ChipTone = load.wait >= WAIT_BAD ? 'bad' : load.wait >= WAIT_OK ? 'queue' : 'busy';

@@ -4,7 +4,7 @@
 // порядок сообщений даёт то же состояние, что и в основном потоке. Срез упаковывается (pack.ts). Путь пациента, которого
 // показывает окно (`watch`, spec docs/specs/2026-10-flow-ui.md), — в срезе, когда он изменился.
 import type { ContentDb } from '../content/types';
-import { apply, catchUp, newFlowShift, prepareFinish } from '../engine/shift/engine';
+import { apply, catchUp, lateOf, newFlowShift, prepareFinish } from '../engine/shift/engine';
 import { sliceOf } from '../engine/shift/slice';
 import type { Command, Notice, ShiftState } from '../engine/shift/types';
 import { patientName } from './caseView';
@@ -38,6 +38,8 @@ export function createSim(db: ContentDb): SimHost {
   let shown: { hospital: unknown; staff: unknown } = { hospital: undefined, staff: undefined };
   /** список сломанных аппаратов, который окно уже получило; null — ещё никакого */
   let sentBroken: unknown = null;
+  /** кто из ушедших со сменой ещё в больнице — как окно уже получило (номера в списке штата через запятую) */
+  let sentLate = '';
   /** чей путь показывает окно и каким он был отправлен */
   let watch: string | null = null;
   let sentPath: string | undefined;
@@ -69,15 +71,24 @@ export function createSim(db: ContentDb): SimHost {
         path = { id: watch, journey: j ? structuredClone(j) : null };
       }
     }
+    // смены (spec docs/specs/2026-10-staff-shifts.md): кто не в смене, а доводит приёмы — на карте он ещё на месте; список
+    // изменился или штат стал другим (номера в нём — по новому списку) — заново
+    let late: number[] | undefined;
+    const lateNow = s!.flow ? lateOf(db, s!).flatMap(m => staff.get(m.id) ?? []) : [];
+    if (lateNow.join() !== sentLate || world) {
+      sentLate = lateNow.join();
+      late = lateNow;
+    }
     const lag = owed + (s!.until !== undefined ? s!.until - s!.t : 0);
     const { buf, names } = packSlice(s!, sliceOf(s!, officeOf(db, s!)), lag, handles, rooms, staff, patientName);
-    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
+    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...(late ? { late } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
   };
   const fresh = () => {
     owed = 0;
     handles.reset();
     shown = { hospital: undefined, staff: undefined };
     sentBroken = null;
+    sentLate = '';
     sentPath = undefined;
     desk.reset();
   };

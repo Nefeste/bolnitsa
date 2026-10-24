@@ -127,6 +127,10 @@ export const ru = {
     down: (why: string) => `не работает: ${why}`,
     noRoom: (gen: string) => `нет ${gen}`,
     roomDown: (name: string, why: string) => `${name} — ${why}`,
+    /** смены (spec docs/specs/2026-10-staff-shifts.md): в этой смене никого, в другой есть — не поломка */
+    offShift: (time: string) => `закрыто до ${time}`,
+    /** больница не принимает пришедших сами, потому что сейчас не их смена: амбулатория закрыта до утра */
+    nightClosed: (time: string) => `Амбулатория закрыта до ${time}: ночной смены в ней нет`,
   },
   objects: {
     bed: 'кровать', chair: 'стул', desk: 'письменный стол', couch: 'кушетка', cabinet: 'шкаф', machine: 'аппарат', plant: 'растение', sink: 'раковина',
@@ -250,10 +254,19 @@ export const ru = {
     posts: 'Должности',
     vacant: 'никого',
     you: 'вы — ваш кабинет',
-    hire: (name: string, salary: string) => `Нанять: ${name} — ${salary} в сутки`,
+    /** смены (spec docs/specs/2026-10-staff-shifts.md): место — на две смены, зарплата — за смену, ночная дороже */
+    hire: (name: string, salary: string, night = false) => `${night ? 'Нанять на ночь' : 'Нанять на день'}: ${name} — ${salary} за смену`,
+    /** кнопка в строке должности: смена — перед ней, полные слова — в подсказке */
+    hireShort: (salary: string) => `Нанять · ${salary}`,
     /** на место врача — терапевт или специалист (spec docs/specs/2026-10-specialists.md) */
     hireAs: 'Нанять',
-    hireOption: (name: string, salary: string) => `${name} — ${salary} в сутки`,
+    hireOption: (name: string, salary: string) => `${name} — ${salary} за смену`,
+    /** строка должности: чья смена; `both` — человек без смены (сохранение до смен) */
+    shifts: { day: 'день', night: 'ночь', both: 'круглые сутки' },
+    shift: 'Смена',
+    shiftLine: (shift: 'day' | 'night', from: string, to: string) => `${shift === 'day' ? 'дневная' : 'ночная'}, ${from}–${to}`,
+    home: (from: string) => `дома — смена с ${from}`,
+    onDutyOnly: 'Сейчас в смене',
     dismiss: 'Уволить',
     demolish: (back: string) => `Снести — вернётся ${back}`,
     furnish: (cost: string) => `Обставить — ${cost}`,

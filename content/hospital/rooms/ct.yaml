@@ -2,6 +2,8 @@ id: room.ct
 name: { ru: "Кабинет КТ" }
 gen: { ru: "кабинета КТ" }
 staff: [role.radiographer, role.radiologist]
+# работает и ночью (spec docs/specs/2026-10-staff-shifts.md): готовая больница — и с ночной сменой
+night: true
 needsEquipment: true
 # работает кабинет КТ — привозят и больных неврологии (spec 2026-10-chapter-3, часть 41а): при подозрении
 # на инсульт КТ с заключением нужна в первые 40 минут (814_1, раздел 2.4)
