@@ -1,0 +1,9 @@
+# скачанные модели, текстуры и цели (tools/fetch.mjs) и их обработка (tools/prepare.mjs) — в git не кладём
+assets/
+dist/
+# ссылка на node_modules корня, если её завели для запуска из этой папки
+node_modules
+results/*.png
+*.log
+# числа прогона снимков (tools/shots.mjs) — в README
+results/stats.json
