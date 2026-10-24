@@ -32,7 +32,12 @@ export type Step =
   /** ждёт своего врача: вернулся с результатами, а врач занят; `refer` — направлен к другому нанятому врачу */
   | { t: number; k: 'own'; by: string; refer?: true }
   /** нанятый врач просит вас посмотреть его — ждёт ответа до `until` (spec 2026-10-consults) */
-  | { t: number; k: 'ask'; by: string; until: number };
+  | { t: number; k: 'ask'; by: string; until: number }
+  /**
+   * ждёт своего врача, а тот ушёл на перерыв до `until` (spec 2026-10-staff-shifts, часть 2): `wc` — в туалет, `here` —
+   * отдыхает в кабинете, ординаторской нет
+   */
+  | { t: number; k: 'rest'; by: string; until: number; wc?: true; here?: true };
 
 /** Свои места для лежащих: палаты, ПИТ, реанимация, боксы. */
 export type Place = 'ward' | 'icu' | 'ricu' | 'box';
@@ -83,7 +88,7 @@ export const MAX_STEPS = 40;
 export const SWEEP = 3600;
 
 /** Ожидания: такое без минуты (позвали в ту же секунду) — не ожидание, его заменяет следующий шаг. */
-const WAITS: ReadonlySet<Step['k']> = new Set(['queue', 'own', 'results', 'ask']);
+const WAITS: ReadonlySet<Step['k']> = new Set(['queue', 'own', 'results', 'ask', 'rest']);
 
 /** Пути смены; только в потоке для ПК — в режимах «Анамнеза» поля нет. */
 function book(s: ShiftState): Journeys | undefined {
@@ -184,6 +189,19 @@ export function queued(s: ShiftState, p: ShiftPatient) {
   const j = journeyOf(s, p);
   if (!j) return;
   push(j, { t: s.t, k: 'queue', why: 'you', ahead: Math.max(0, s.queue.indexOf(p.id)) });
+}
+
+/**
+ * Нанятый врач `by` ушёл отдыхать до `until` (`callIn`): у всех, кто ждёт именно его, — вернувшихся к нему с результатами и
+ * записанных к нему в очереди, — шаг пути.
+ */
+export function rested(s: ShiftState, by: string, kind: 'staff' | 'toilet' | 'here', until: number) {
+  if (!book(s)) return;
+  for (const p of Object.values(s.patients)) {
+    if (p.status !== 'waiting' || (p.by ?? p.doc) !== by) continue;
+    const j = journeyOf(s, p);
+    if (j) push(j, { t: s.t, k: 'rest', by, until, ...(kind === 'toilet' ? { wc: true as const } : kind === 'here' ? { here: true as const } : {}) });
+  }
 }
 
 /** Нанятый врач `by` просит вас посмотреть больного — ждёт ответа до `until` (`openConsult`). */

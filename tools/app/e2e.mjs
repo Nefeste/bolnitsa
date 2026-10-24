@@ -14,16 +14,18 @@
 // «Следить», «Позвать» — карта, когда вошёл, tools/app/e2e-owner2.mjs. Часть 10 — сохранения: сохранить,
 // «Продолжить», загрузить, удалить, испорченный файл, tools/app/e2e-saves.mjs. Часть 11 — карта ушедшего: «Приняты»,
 // решение врача в карте отпущенного, карточка ушедшего, tools/app/e2e-discharged.mjs. Часть 12 — смены персонала:
-// пересменка в 20:00, ночная смена в карточке помещения, найм на ночь, tools/app/e2e-shifts.mjs. Ошибок в консоли и запросов
-// наружу нет.
+// пересменка в 20:00, ночная смена в карточке помещения, найм на ночь, tools/app/e2e-shifts.mjs. Часть 13 — усталость и
+// перерывы: врач идёт в ординаторскую, карточка, «Персонал», «врач на перерыве» в пути пациента, tools/app/e2e-fatigue.mjs.
+// Ошибок в консоли и запросов наружу нет.
 // Снимки — tools/app/out/e2e.png, e2e-build-*.png и e2e-flow-*.png; `--shots high` — снимки частей 2 и 3 в этом качестве
 // (на время снимка).
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|3|4|5|6|7|8|9|10|11|12] [--shots low|medium|high] [--port 8093]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|3|4|5|6|7|8|9|10|11|12|13] [--shots low|medium|high] [--port 8093]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { doctorPart } from './e2e-doctor.mjs';
 import { economyPart } from './e2e-economy.mjs';
+import { fatiguePart } from './e2e-fatigue.mjs';
 import { findChromium } from './e2e-lib.mjs';
 import { ownerTwoPart } from './e2e-owner2.mjs';
 import { polyPart } from './e2e-poly.mjs';
@@ -114,6 +116,8 @@ try {
   if (run(11)) await dischargedPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   // часть 12 — смены персонала (spec docs/specs/2026-10-staff-shifts.md)
   if (run(12)) await shiftsPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  // часть 13 — усталость и перерывы (spec docs/specs/2026-10-staff-shifts.md, часть 2)
+  if (run(13)) await fatiguePart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);
@@ -666,7 +670,12 @@ async function partThree() {
         const g = window.__game;
         if (g.left.length <= n) return null;
         const key = g.pop.walkerKey(g.left[0].id);
-        return key ? { key, angry: g.pop.leavingAngry(key), unhappy: g.stage.icons.shown.unhappy, leaving: g.crowd.walkers.get(key).leaving, clock: document.getElementById('clock')?.textContent } : { gone: true };
+        if (!key) return { gone: true };
+        // значки считаются кадром: ушёл только что — его значок с ближайшего кадра; прежде проверка успевала, только пока
+        // к выходу шёл кто-то ушедший раньше
+        if (g.stage.icons.shown.unhappy === 0) return null;
+        const w = g.crowd.walkers.get(key);
+        return { key, angry: g.pop.leavingAngry(key), unhappy: g.stage.icons.shown.unhappy, icon: g.iconOf(w), leaving: w.leaving, clock: document.getElementById('clock')?.textContent };
       },
       left0,
       { timeout: 120000, polling: 50 },
@@ -674,6 +683,7 @@ async function partThree() {
     .then(h => h.jsonValue())
     .catch(() => null);
   await page.keyboard.press('Space');
-  if (leaving?.key && leaving.angry && leaving.leaving && leaving.unhappy > 0) ok(`ушёл, не дождавшись, — идёт к выходу со значком (${leaving.clock})`);
+  // значок «недоволен» — первый в списке значков после «ждёт долго» (src/render/icons.ts)
+  if (leaving?.key && leaving.angry && leaving.leaving && leaving.unhappy > 0 && leaving.icon === 1) ok(`ушёл, не дождавшись, — идёт к выходу со значком (${leaving.clock})`);
   else fail(`уход недовольного: ${JSON.stringify(leaving)}`);
 }

@@ -7,8 +7,9 @@ import * as THREE from 'three';
 import type { ContentDb, Id } from '../content/types';
 import type { RoomInstance } from '../engine/hospital/build';
 import { onDuty, type StaffMember } from '../engine/hospital/staff';
+import type { CrewView } from '../engine/shift/crew';
 import type { Doing } from '../engine/shift/slice';
-import type { Triage } from '../engine/shift/types';
+import type { Rest, Triage } from '../engine/shift/types';
 import { DOINGS, H, HEADER, KINDS, type NameRow, NO_TIME, P, STATUSES, STRIDE, TRIAGES } from '../sim/pack';
 import type { Look } from './bake';
 import { CLOTHES, COAT, GOWN, lookSpec, OLD_AGE, roleColor, SKIN } from './cast';
@@ -25,6 +26,11 @@ export type PersonInfo =
       kind: 'staff'; role: Id; room?: string; sex: 'm' | 'f'; id?: string;
       /** смена и её часы — с какого и до какого (spec docs/specs/2026-10-staff-shifts.md); `home` — не в больнице */
       shift?: 'day' | 'night'; hours?: [number, number]; home?: true;
+      /**
+       * усталость 0–100 и что она значит: с `slow` работает медленнее, с `tired` ставит диагноз при меньшей уверенности; перерыв,
+       * пока он идёт: идёт туда, там, идёт назад (там же, часть 2)
+       */
+      fatigue?: number; worn?: 'slow' | 'blur'; rest?: { kind: Rest['kind']; until: number; phase: 'go' | 'there' | 'back' };
     }
   | {
       kind: 'patient'; id: string; name?: string; sex: 'm' | 'f'; age: number; complaint?: Id; triage: Triage; doing: Doing; room?: string; by?: Id; visit: string; gone?: true;
@@ -86,6 +92,10 @@ export class Population {
   private here = '';
   /** кто не в смене, а ещё в больнице — доводит приёмы (номера в штате); присылает поток расчёта, когда список меняется */
   private late = new Set<string>();
+  /** усталость и перерывы врачей в смене (spec 2026-10-staff-shifts, часть 2): по номеру человека — как прислал поток расчёта */
+  private crew = new Map<string, CrewView>();
+  /** куда ушёл человек штата: «вид:помещение:вышел»; изменилось — он идёт туда или на своё место */
+  private going = new Map<string, string>();
 
   constructor(
     private db: ContentDb,
@@ -121,6 +131,65 @@ export class Population {
     this.late = new Set(index.flatMap(i => (this.staff[i] ? [this.staff[i].id] : [])));
   }
 
+  /** Усталость и перерывы врачей в смене (spec 2026-10-staff-shifts, часть 2) — как прислал поток расчёта. */
+  setCrew(rows: readonly CrewView[]) {
+    this.crew = new Map(rows.map(r => [r.id, r]));
+  }
+
+  /** Перерыв, на который человек ушёл со своего места: идёт туда или уже там; пошёл назад или отдыхает в кабинете — нет. */
+  private away(m: StaffMember): Rest | undefined {
+    const r = this.crew.get(m.id)?.rest;
+    return r && r.kind !== 'here' && r.room !== undefined && this.t < r.back ? r : undefined;
+  }
+
+  /** Место человека штата на его посту; на стуле — сидит. `taken` — клетки, где стоят другие. */
+  private postOf(m: StaffMember, taken: ReadonlySet<number>): Spot | undefined {
+    const room = this.layout.plan.rooms.find(r => r.id === m.room);
+    if (!room) return undefined;
+    const role = this.db.roles[m.role]?.stands ?? m.role;
+    const cell = room.staff[role] ?? room.staff[m.role];
+    return cell ? this.places.staffSpot(m, () => cell, taken) : undefined;
+  }
+
+  /**
+   * Перерывы (spec docs/specs/2026-10-staff-shifts.md, часть 2): ушёл — идёт в ординаторскую или в санузел, к часу, когда
+   * дошёл бы в движке, и сидит или стоит там; пора назад — идёт на своё место к концу перерыва. Только когда это меняется.
+   */
+  private rests() {
+    if (this.crew.size === 0 && this.going.size === 0) return;
+    const used = new Set<string>();
+    for (const m of this.staff) {
+      if (!this.going.get(m.id)) continue;
+      const w = this.crowd.walkers.get(`s:${m.id}`);
+      const g = w ? (w.goals[w.goals.length - 1] ?? w.at) : undefined;
+      if (g) used.add(g.key);
+    }
+    for (const m of this.staff) {
+      const w = this.crowd.walkers.get(`s:${m.id}`);
+      if (!w || w.leaving) {
+        this.going.delete(m.id);
+        continue;
+      }
+      const r = this.away(m);
+      const now = r ? `${r.kind}:${r.room}:${r.from}` : '';
+      if (now === (this.going.get(m.id) ?? '')) continue;
+      let spot: Spot | undefined;
+      if (r) {
+        const room = this.layout.plan.rooms.findIndex(x => x.id === r.room);
+        if (room < 0) continue;
+        spot = this.places.restSpot(room, r.kind === 'toilet' ? 'toilet' : 'staff', used, new Set());
+        used.add(spot.key);
+        this.going.set(m.id, now);
+      } else {
+        const taken = new Set<number>();
+        for (const x of this.crowd.walkers.values()) if (x.staff && x !== w && x.at) taken.add(x.at.cell);
+        spot = this.postOf(m, taken);
+        this.going.delete(m.id);
+      }
+      if (spot) this.crowd.retarget(w, spot, true, r ? r.at : (this.crew.get(m.id)?.rest?.until ?? NaN));
+    }
+  }
+
   /**
    * Штат — сразу на местах своих помещений; на стуле сидит, иначе стоит лицом к работе. Номер человека на экране — его
    * номер в штате (`s:<id>`): после стройки и найма он тот же; у кого место прежнее, тот не двигается. Со сменами (spec
@@ -145,6 +214,8 @@ export class Population {
       keep.add(key);
       const w = this.crowd.walkers.get(key);
       if (w) {
+        // на перерыве (spec 2026-10-staff-shifts, часть 2) — не на посту: место за ним, назад приведёт `rests`
+        if (!w.leaving && this.going.get(m.id)) continue;
         if (w.leaving) this.crowd.stay(w, spot);
         else if (w.at?.key !== spot.key && !(shift && w.goals.some(g => g.key === spot.key))) this.crowd.settle(w, spot);
         continue;
@@ -222,6 +293,7 @@ export class Population {
     const present = new Set<string>();
     // смены (spec 2026-10-staff-shifts): пересменка или ушедший со сменой довёл приёмы — кто в больнице, заново
     if (this.staff.map(m => (this.present(m) ? 1 : 0)).join('') !== this.here) this.placeStaff(true);
+    this.rests();
     for (let i = 0; i < n; i++) {
       const o = HEADER + i * STRIDE;
       const key = `p:${buf[o + P.handle]}`;
@@ -339,9 +411,15 @@ export class Population {
       if (!m) return undefined;
       const day = this.db.economy.staff.shifts?.day;
       const hours: [number, number] | undefined = m.shift && day ? (m.shift === 'day' ? [day[0], day[1]] : [day[1], day[0]]) : undefined;
+      const c = this.present(m) ? this.crew.get(m.id) : undefined;
+      const f = this.db.economy.staff.fatigue;
+      const worn = c && f ? (c.f >= f.tired ? 'blur' : c.f >= f.slow ? 'slow' : undefined) : undefined;
+      const r = c?.rest;
       return {
         kind: 'staff', role: m.role, ...(m.room ? { room: m.room } : {}), sex: m.sex, id: m.id,
         ...(m.shift && hours ? { shift: m.shift, hours } : {}), ...(this.present(m) ? {} : { home: true as const }),
+        ...(c ? { fatigue: c.f } : {}), ...(worn ? { worn } : {}),
+        ...(r ? { rest: { kind: r.kind, until: r.until, phase: this.t >= r.back ? 'back' : this.t < r.at ? 'go' : 'there' } } : {}),
       };
     }
     const l = this.last.get(key);

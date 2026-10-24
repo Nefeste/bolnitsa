@@ -12,6 +12,7 @@ import { demolishRefund, emptySite, furnishOf, hospitalOf, priceOf, readyCost, r
 import { siteOfPlan } from '../engine/hospital/site-plan';
 import { siteOfPreset } from '../engine/hospital/site-preset';
 import { dutyOf, onDuty, payOf, presetStaff, salaryOf, type Shift, shiftAt, type StaffMember, staffingOf, withNightShift } from '../engine/hospital/staff';
+import type { CrewView } from '../engine/shift/crew';
 import type { Notice } from '../engine/shift/types';
 import { clock, genitive, type Lang, money, named, setLang, T } from '../i18n';
 import type { Walker } from '../render/crowd';
@@ -203,6 +204,8 @@ export class Game {
   private seen: SeenList = { rows: [], total: 0 };
   private problems: ({ kind: Problem['kind'] | 'broken' | 'offShift'; text: string } | undefined)[] = [];
   private broken = new Set<string>();
+  /** усталость и перерывы врачей в смене — как прислал поток расчёта (spec docs/specs/2026-10-staff-shifts.md, часть 2) */
+  private crew = new Map<string, CrewView>();
   /** первая зона ожидания (общая очередь к врачам) и кабинет человека штата — номера в плане */
   private hall = -1;
   private office: number[] = [];
@@ -397,6 +400,24 @@ export class Game {
     return b.kind === 'down' && b.problem.kind === 'noStaff' && plan.rooms.some(r => r.type === b.room && !problemsOf(db, plan, r, this.full).some(x => x.kind === 'noStaff'));
   }
 
+  /**
+   * Строки «Персонала»: должность, место, смена и в смене ли сейчас (spec docs/specs/2026-10-staff-shifts.md); у врачей в
+   * смене — усталость и перерыв (там же, часть 2).
+   */
+  private staffRows() {
+    const { db, plan } = this;
+    return this.staff.map(m => {
+      const c = this.crew.get(m.id);
+      const rest = c?.rest ? (c.rest.kind === 'toilet' ? T.card.wcShort : T.card.restShort(clock(c.rest.until))) : undefined;
+      const room = m.room ? named(db.rooms[plan.rooms.find(r => r.id === m.room)?.type ?? '']?.name, m.room) : T.card.reserve(1);
+      return {
+        key: `s:${m.id}`,
+        text: [named(db.roles[m.role]?.name, m.role), room, T.card.shifts[m.shift ?? 'both'], ...(c ? [T.card.fatigueShort(c.f)] : []), ...(rest ? [rest] : [])].join(' · '),
+        ...(onDuty(db, m, this.t) ? { on: true as const } : {}),
+      };
+    });
+  }
+
   /** Слова о больнице — со стройкой и с языком: подписи помещений, список штата, «закрыта», типы помещений. */
   private texts() {
     const { db, plan } = this;
@@ -423,12 +444,7 @@ export class Game {
       }),
     );
     this.store.set({
-      // смены (spec docs/specs/2026-10-staff-shifts.md): чья смена и в смене ли сейчас
-      staffList: this.staff.map(m => ({
-        key: `s:${m.id}`,
-        text: `${named(db.roles[m.role]?.name, m.role)} · ${m.room ? named(db.rooms[plan.rooms.find(r => r.id === m.room)?.type ?? '']?.name, m.room) : T.card.reserve(1)} · ${T.card.shifts[m.shift ?? 'both']}`,
-        ...(onDuty(db, m, this.t) ? { on: true } : {}),
-      })),
+      staffList: this.staffRows(),
       closed: this.closedText(),
       night: this.nightText(),
       roomTypes: Object.values(db.rooms)
@@ -539,6 +555,12 @@ export class Game {
     if (s.seen) this.seen = s.seen;
     // смены (spec docs/specs/2026-10-staff-shifts.md): кто не в смене, а доводит приёмы, — ещё на месте
     if (s.late) this.pop.setLate(s.late);
+    // усталость и перерывы (spec docs/specs/2026-10-staff-shifts.md, часть 2): люди идут отдыхать и назад, «Персонал» — заново
+    if (s.crew) {
+      this.crew = new Map(s.crew.map(c => [c.id, c]));
+      this.pop.setCrew(s.crew);
+      this.store.set({ staffList: this.staffRows() });
+    }
     this.pop.sync(s.buf, s.names);
     for (const n of s.notices) {
       if (n.kind === 'site' && n.cmd === 'office') this.doctor.onOffice(n);

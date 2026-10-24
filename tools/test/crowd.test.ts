@@ -164,6 +164,59 @@ describe('толпа по срезу потока', () => {
     expect(spotOf(key)).toBe(was.get(key));
   }, 180_000);
 
+  // spec docs/specs/2026-10-staff-shifts.md, часть 2: врач ушёл на перерыв — идёт в ординаторскую и садится там; пора назад
+  // — идёт на своё место; в туалет — к раковине санузла
+  test('перерыв: врач идёт в ординаторскую и садится, потом — на своё место; в туалет — в санузел', async () => {
+    const { staff, layout, crowd, pop } = await cityScene(true);
+    const m = staff.find(x => x.shift === 'day' && db.roles[x.role]?.stands === 'role.doctor' && !db.roles[x.role]?.profile)!;
+    const key = `s:${m.id}`;
+    const post = crowd.walkers.get(key)!.at!.key;
+    const staffRoom = layout.plan.rooms.findIndex(r => r.type === 'room.staff');
+    const toilet = layout.plan.rooms.findIndex(r => r.type === 'room.toilet');
+    const t0 = 13 * 3600;
+    const slice = (t: number) => {
+      const buf = new Int32Array(14);
+      buf[H.t] = t;
+      buf[H.count] = 0;
+      return buf;
+    };
+    const rest = { kind: 'staff' as const, room: layout.plan.rooms[staffRoom].id, from: t0, at: t0 + 300, back: t0 + 1500, until: t0 + 1800 };
+    pop.setCrew([{ id: m.id, f: 70, rest }]);
+    pop.sync(slice(t0 + 10), []);
+    const w = crowd.walkers.get(key)!;
+    const goal = w.goals[w.goals.length - 1];
+    expect(goal).toBeDefined();
+    // идёт к стулу или дивану ординаторской
+    expect(goal.pose).toBe('sit');
+    const inStaff = (x: number, z: number) => {
+      const r = layout.plan.rooms[staffRoom];
+      return x >= r.x && x < r.x + r.w && z >= r.y && z < r.y + r.h;
+    };
+    expect(inStaff(goal.x, goal.z)).toBe(true);
+    for (let f = 0; f < 60 * 60 && w.goals.length > 0; f++) crowd.update(1 / 60);
+    expect(w.at?.key).toBe(goal.key);
+    // в карточке — идёт в ординаторскую, потом на перерыве до 13:30
+    expect(pop.info(key)).toMatchObject({ rest: { phase: 'go' } });
+    pop.sync(slice(t0 + 400), []);
+    expect(w.at?.key).toBe(goal.key);
+    expect(pop.info(key)).toMatchObject({ kind: 'staff', fatigue: 70, worn: 'slow', rest: { kind: 'staff', until: t0 + 1800, phase: 'there' } });
+    // пора назад — на своё место
+    pop.sync(slice(t0 + 1500), []);
+    for (let f = 0; f < 60 * 60 && w.goals.length > 0; f++) crowd.update(1 / 60);
+    expect(w.at?.key).toBe(post);
+    // туалет: к раковине санузла
+    pop.setCrew([{ id: m.id, f: 20, rest: { kind: 'toilet', room: layout.plan.rooms[toilet].id, from: t0 + 3600, at: t0 + 3700, back: t0 + 4000, until: t0 + 4100 } }]);
+    pop.sync(slice(t0 + 3610), []);
+    const g = w.goals[w.goals.length - 1];
+    const tr = layout.plan.rooms[toilet];
+    expect(g.x >= tr.x && g.x < tr.x + tr.w && g.z >= tr.y && g.z < tr.y + tr.h).toBe(true);
+    // перерыв кончился, а окно этого не видело (промотка) — всё равно на своё место
+    pop.setCrew([{ id: m.id, f: 21 }]);
+    pop.sync(slice(t0 + 5000), []);
+    for (let f = 0; f < 60 * 60 && w.goals.length > 0; f++) crowd.update(1 / 60);
+    expect(w.at?.key).toBe(post);
+  }, 180_000);
+
   // spec docs/specs/2026-10-walk.md, «Проверки»: окно ведёт человека так, чтобы он дошёл к часу движка (±10 %) при ×1, ×3 и
   // ×12; не успевает и в полтора шага — опаздывает, но не бежит; обычный шаг — та скорость, с какой дорогу считает движок
   test('идёт к часу движка: доходит к сроку при ×1, ×3 и ×12; не успевает — идёт в полтора шага', async () => {

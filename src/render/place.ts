@@ -371,6 +371,20 @@ export class Places {
     return this.waitSpot(key, taken);
   }
 
+  /**
+   * Место на перерыве (spec docs/specs/2026-10-staff-shifts.md, часть 2): в ординаторской — свободный стул или диван, в
+   * санузле — у раковины; все заняты или их нет — у двери изнутри. `used` — места других отдыхающих.
+   */
+  restSpot(room: number, kind: 'staff' | 'toilet', used: ReadonlySet<string>, taken: ReadonlySet<number>): Spot {
+    const { l, a } = this;
+    for (let t = 0; t < l.things.length; t++) {
+      if (l.things[t].room !== room || (kind === 'staff' ? !a.seats[t] : l.things[t].kind !== 'sink')) continue;
+      const s = spotOn(l, a, t, 'wait', 0, taken);
+      if (!used.has(s.key)) return s;
+    }
+    return standAt(l, nearestWalk(l, doorInside(l, room), taken), 'wait', 0);
+  }
+
   /** Место человека штата: его клетка в помещении; на стуле — сидит. */
   staffSpot(m: StaffMember, roleCell: (m: StaffMember) => readonly [number, number] | undefined, taken: ReadonlySet<number>): Spot | undefined {
     const c = roleCell(m);

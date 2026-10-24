@@ -4,7 +4,8 @@
 // порядок сообщений даёт то же состояние, что и в основном потоке. Срез упаковывается (pack.ts). Путь пациента, которого
 // показывает окно (`watch`, spec docs/specs/2026-10-flow-ui.md), — в срезе, когда он изменился.
 import type { ContentDb } from '../content/types';
-import { apply, catchUp, lateOf, newFlowShift, prepareFinish } from '../engine/shift/engine';
+import { apply, catchUp, colleaguesOf, lateOf, newFlowShift, prepareFinish } from '../engine/shift/engine';
+import { crewOf, type CrewView } from '../engine/shift/crew';
 import { sliceOf } from '../engine/shift/slice';
 import type { Command, Notice, ShiftState } from '../engine/shift/types';
 import { patientName } from './caseView';
@@ -40,6 +41,8 @@ export function createSim(db: ContentDb): SimHost {
   let sentBroken: unknown = null;
   /** кто из ушедших со сменой ещё в больнице — как окно уже получило (номера в списке штата через запятую) */
   let sentLate = '';
+  /** усталость и перерывы врачей в смене — как окно уже получило */
+  let sentCrew = '';
   /** чей путь показывает окно и каким он был отправлен */
   let watch: string | null = null;
   let sentPath: string | undefined;
@@ -79,9 +82,18 @@ export function createSim(db: ContentDb): SimHost {
       sentLate = lateNow.join();
       late = lateNow;
     }
+    // усталость и перерывы (spec docs/specs/2026-10-staff-shifts.md, часть 2): врачи в смене — очки и перерыв; изменились или
+    // больница стала другой — заново
+    let crew: CrewView[] | undefined;
+    const crewNow = s!.flow ? crewOf(db, s!, colleaguesOf(db, s!)) : [];
+    const crewSig = JSON.stringify(crewNow);
+    if (crewSig !== sentCrew || world) {
+      sentCrew = crewSig;
+      crew = crewNow;
+    }
     const lag = owed + (s!.until !== undefined ? s!.until - s!.t : 0);
     const { buf, names } = packSlice(s!, sliceOf(s!, officeOf(db, s!)), lag, handles, rooms, staff, patientName);
-    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...(late ? { late } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
+    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...(late ? { late } : {}), ...(crew ? { crew } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
   };
   const fresh = () => {
     owed = 0;
@@ -89,6 +101,7 @@ export function createSim(db: ContentDb): SimHost {
     shown = { hospital: undefined, staff: undefined };
     sentBroken = null;
     sentLate = '';
+    sentCrew = '';
     sentPath = undefined;
     desk.reset();
   };

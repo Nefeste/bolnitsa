@@ -67,7 +67,7 @@ export function MeetingBody({ m, e, actions }: { m: MeetingView; e: EconomyHud; 
               <li key={i}>
                 {t.hiredRow(x.role, x.skill, x.seen, x.correct)}
                 {x.idle ? <span className="muted"> — {t.idle}</span> : null}
-                {t.hiredMore(x.asked, x.taken, x.unsafe) ? <span className="muted"> · {t.hiredMore(x.asked, x.taken, x.unsafe)}</span> : null}
+                {t.hiredMore(x.asked, x.taken, x.unsafe, x.tired) ? <span className="muted"> · {t.hiredMore(x.asked, x.taken, x.unsafe, x.tired)}</span> : null}
               </li>
             ))}
             {d.seen > 0 ? <li>{t.you(d.seen, d.correct)}</li> : null}

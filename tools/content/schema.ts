@@ -813,6 +813,17 @@ export const economySchema = z.strictObject({
      * зарплата ночной смены, % от дневной
      */
     shifts: z.strictObject({ day: z.tuple([z.number().int().min(0).max(23), z.number().int().min(1).max(24)]), night: z.number().int().min(100).max(300) }).optional(),
+    /**
+     * усталость нанятых врачей в смене (spec 2026-10-staff-shifts, часть 2): очков за час и за принятого, ночью — %; с какой
+     * работает дольше и на сколько %, с какой ставит диагноз при меньшей уверенности и на сколько п. п. ниже порог; перерыв
+     * — минут и на сколько очков меньше; туалет — раз в сколько часов (от, до) и минут
+     */
+    fatigue: z.strictObject({
+      hour: z.number().int().min(1).max(50), case: z.number().int().min(0).max(50), night: z.number().int().min(100).max(300),
+      slow: z.number().int().min(1).max(99), slower: z.number().int().min(100).max(200), tired: z.number().int().min(1).max(100), blur: pct,
+      rest: z.number().int().min(1).max(120), relief: z.number().int().min(1).max(100),
+      toilet: z.tuple([z.number().int().min(1).max(12), z.number().int().min(1).max(12)]), wc: z.number().int().min(1).max(30),
+    }).refine(f => f.slow <= f.tired && f.toilet[0] <= f.toilet[1], 'fatigue: slow не выше tired, toilet — от и до').optional(),
   }),
   /** тарифы: ОМС по тяжести диагноза, доля по обоснованности и без подтверждения; ДМС и платно — обращение и прайс, % цены */
   tariffs: z.strictObject({
