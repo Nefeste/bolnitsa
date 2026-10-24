@@ -849,3 +849,15 @@ describe('скамейки у дверей кабинетов (spec 2026-10-door
     has(broken(d => edit(d, 'hospital/sites/polyclinic.yaml', '  - [10, 13]\n', '  - [9, 13]\n')), 'site.polyclinic: скамья 0 (9, 13) не ставится: doorway');
   });
 });
+
+describe('свободная земля у городской больницы (spec 2026-10-city-land)', () => {
+  const has = (errors: string[], text: string) => expect({ text, found: errors.some(e => e.includes(text)) }).toEqual({ text, found: true });
+
+  test('участок не меньше прежнего; земля — в участке и не у края; вся достижима от входа', () => {
+    const city = 'hospital/presets/city.yaml';
+    has(broken(d => edit(d, city, '  plot: [78, 40]\n', '  plot: [50, 40]\n')), 'preset.city: земля под стройку — участок 50 × 40 меньше прежнего 56 × 40');
+    has(broken(d => edit(d, city, '    - [52, 1, 75, 35]\n', '    - [52, 1, 77, 35]\n')), 'preset.city: земля под стройку (52, 1, 26 × 35) — у края участка или за ним');
+    // крыло отдельно от корпуса — к нему не дойти
+    has(broken(d => edit(d, city, '    - [52, 1, 75, 35]\n', '    - [58, 1, 75, 35]\n')), 'preset.city: земля под стройку не вся достижима от входа');
+  });
+});

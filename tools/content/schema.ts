@@ -1,4 +1,4 @@
-// из anamnez: tools/content/schema.ts @ 96503ac, изменено: hospital/consults.yaml — «Просят посмотреть» (spec 2026-10-consults); hospital/day.yaml — сутки целиком (spec 2026-10-day); hospital/inflow.yaml и hospital/money.yaml, `long` у consults.yaml — поток от больницы, касса ПК, долгий случай (spec 2026-10-economy); hospital/sites — готовые больницы из готовых помещений (spec 2026-10-real-hospital); `benches` у готовых больниц и больниц из готовых помещений — скамьи у дверей кабинетов (spec 2026-10-door-benches)
+// из anamnez: tools/content/schema.ts @ 96503ac, изменено: hospital/consults.yaml — «Просят посмотреть» (spec 2026-10-consults); hospital/day.yaml — сутки целиком (spec 2026-10-day); hospital/inflow.yaml и hospital/money.yaml, `long` у consults.yaml — поток от больницы, касса ПК, долгий случай (spec 2026-10-economy); hospital/sites — готовые больницы из готовых помещений (spec 2026-10-real-hospital); `benches` у готовых больниц и больниц из готовых помещений — скамьи у дверей кабинетов (spec 2026-10-door-benches); `land` у готовых больниц — свободная земля под стройку (spec 2026-10-city-land)
 // Схема исходных записей медицинской базы (YAML в content/, `docs/11-content.md` §4).
 // Строгие объекты: опечатка в имени поля — ошибка сборки, а не молча пропущенное поле.
 import { z } from 'zod';
@@ -749,6 +749,14 @@ export const presetSchema = z.strictObject({
    * в режимах «Анамнеза» их нет
    */
   benches: z.array(z.tuple([int, int])).default([]),
+  /**
+   * свободная земля под стройку — только в больнице ПК (spec 2026-10-city-land): участок `plot` и прямоугольники
+   * внутренности здания `inside` — x0, y0, x1, y1 включительно; в режимах «Анамнеза» больница та же
+   */
+  land: z.strictObject({
+    plot: z.tuple([z.number().int().min(8).max(90), z.number().int().min(8).max(60)]),
+    inside: z.array(z.tuple([int, int, int, int])).min(1),
+  }).optional(),
   /**
    * кто где работает: должность и номер помещения в списке; `later` — нанимают в главе (часть 60а): в «Смене» он на месте,
    * в начале главы кампании — нет; у помещения, которое строят заданием, штат — тоже такой

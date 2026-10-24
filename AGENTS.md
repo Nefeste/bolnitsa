@@ -98,8 +98,9 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # in a waiting patient's path; then the encyclopedia: the start screen button, search,
                                    # links, «Назад», F1 over a name, «Подробнее» in «Что это?»; then door benches: someone
                                    # sits on a bench by an office door, «на скамье у кабинета» in a path, the «Скамья» tool,
-                                   # its ghost, Ctrl+Z, demolishing a bench);
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|15` for one part
+                                   # its ghost, Ctrl+Z, demolishing a bench; then the city's free land: a ready ward in the
+                                   # east wing works);
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|16` for one part
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -147,7 +148,8 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   within `inflow.bench` steps of an office door (`doorBenches` in `shift/walking.ts`) seats one; who waits at the door
   without a seat in their hall sits on a free one (`bench`, patience as is) or stands (half the patience); the player
   places and removes them (`checkBench`, the `bench` and `undecor` site commands); the ready city's door benches are a
-  PC-only list (`benches` in the preset), so Anamnez's modes keep their hospital byte for byte.
+  PC-only list (`benches` in the preset), so Anamnez's modes keep their hospital byte for byte; so is the city's free
+  land — a wider lot and an empty east wing (`land` in the preset, `docs/specs/2026-10-city-land.md`).
   Money of the PC flow is ours: `shift/money.ts` (cash now, wages and upkeep by the hour, building from cash, the
   overdraft limit, the loan), `shift/inflow.ts` (the flow from the hospital), `shift/meeting.ts` (the day's bottlenecks,
   «стало хуже»), numbers in `content/hospital/inflow.yaml` and `money.yaml` — `docs/specs/2026-10-economy.md`.

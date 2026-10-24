@@ -1,4 +1,4 @@
-// из anamnez: tools/content/load.ts @ 96503ac, изменено: hospital/consults.yaml — «Просят посмотреть» (spec 2026-10-consults); hospital/day.yaml — сутки целиком (spec 2026-10-day); hospital/inflow.yaml и hospital/money.yaml — поток от больницы и касса ПК (spec 2026-10-economy); hospital/sites — готовые больницы из готовых помещений (spec 2026-10-real-hospital); `benches` у готовых больниц и больниц из готовых помещений — скамьи у дверей кабинетов (spec 2026-10-door-benches)
+// из anamnez: tools/content/load.ts @ 96503ac, изменено: hospital/consults.yaml — «Просят посмотреть» (spec 2026-10-consults); hospital/day.yaml — сутки целиком (spec 2026-10-day); hospital/inflow.yaml и hospital/money.yaml — поток от больницы и касса ПК (spec 2026-10-economy); hospital/sites — готовые больницы из готовых помещений (spec 2026-10-real-hospital); `benches` у готовых больниц и больниц из готовых помещений — скамьи у дверей кабинетов (spec 2026-10-door-benches); `land` у готовых больниц — свободная земля под стройку (spec 2026-10-city-land)
 // Сборка медицинской базы из YAML в память: схема, ссылки, полосы → числа
 // (`docs/11-content.md` §6, `docs/04-data-model.md` §1). Используют build.ts, тесты и
 // «виртуальный врач» — все читают одну и ту же базу.
@@ -10,7 +10,8 @@ import { type AttrSpec, beyond, byParams, type Cell, type Condition, type Conten
 import { planOf, presetHospital } from '../../src/engine/hospital/build';
 import { presetStaff, staffingOf } from '../../src/engine/hospital/staff';
 import { openBlocks, problemsOf, workingRooms } from '../../src/engine/hospital/requirements';
-import { addBench, planOfSite } from '../../src/engine/hospital/site';
+import { CELL } from '../../src/engine/hospital/grid';
+import { addBench, mapOf, planOfSite } from '../../src/engine/hospital/site';
 import { siteOfPlan } from '../../src/engine/hospital/site-plan';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { ALLERGY_EXAM } from '../../src/engine/career/achievements';
@@ -1162,6 +1163,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
         ...(r.later ? { later: r.later } : {}),
       })),
       decor: p.decor.map(([kind, x, y]) => ({ kind, x, y })), ...(p.benches.length ? { benches: p.benches.map(([x, y]) => [x, y] as [number, number]) } : {}),
+      ...(p.land ? { land: { plot: p.land.plot, inside: p.land.inside.map(([x0, y0, x1, y1]) => ({ x: Math.min(x0, x1), y: Math.min(y0, y1), w: Math.abs(x1 - x0) + 1, h: Math.abs(y1 - y0) + 1 })) } } : {}),
       staff: p.staff.map(x => ({ role: x.role, room: x.room, ...(x.later ? { later: x.later } : {}) })),
     };
     db.presets[p.id] = out;
@@ -1387,6 +1389,19 @@ function checkPresets(db: ContentDb, errors: string[]) {
     const staffed = staffingOf(db, plan, presetStaff(db, p));
     for (const r of plan.rooms) {
       for (const pr of problemsOf(db, plan, r, staffed)) errors.push(`${p.id}: ${r.type} (${r.id}) не работает: ${pr.kind}${pr.kind === 'noStaff' ? ` ${pr.role}` : ''}`);
+    }
+    // свободная земля больницы ПК (spec 2026-10-city-land): участок не меньше прежнего, внутренность — в нём и не у края,
+    // вся достижима от входа
+    if (p.land) {
+      const [lw, lh] = p.land.plot;
+      if (lw < w || lh < h) errors.push(`${p.id}: земля под стройку — участок ${lw} × ${lh} меньше прежнего ${w} × ${h}`);
+      for (const r of p.land.inside) if (r.x < 1 || r.y < 1 || r.x + r.w > lw - 1 || r.y + r.h > lh - 1) errors.push(`${p.id}: земля под стройку (${r.x}, ${r.y}, ${r.w} × ${r.h}) — у края участка или за ним`);
+      const m = mapOf(siteOfPreset(db, { ...p, benches: [] }));
+      const cut = p.land.inside.some(r => {
+        for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) if (m.cells[y * m.w + x] === CELL.corridor && !m.reach[y * m.w + x]) return true;
+        return false;
+      });
+      if (cut) errors.push(`${p.id}: земля под стройку не вся достижима от входа`);
     }
     // скамьи у дверей кабинетов больницы ПК (spec 2026-10-door-benches) — по правилам игрока
     let site = siteOfPreset(db, { ...p, benches: [] });
