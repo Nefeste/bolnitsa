@@ -20,8 +20,9 @@ export async function polyPart({ page, port, out, ok, fail, q, shots }) {
 
   await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru`);
   await page.waitForSelector('#start', { timeout: 60000 });
-  // карточки новой игры; «Продолжить» и список сохранений (spec 2026-10-saves) — от прошлых частей сценария, не в счёт
-  const cards = (await page.$$eval('#start button', els => els.map(e => [e.id, e.querySelector('b')?.textContent ?? '']))).filter(([id]) => !id.startsWith('start-continue') && !id.startsWith('start-save'));
+  // карточки новой игры; «Продолжить» и список сохранений (spec 2026-10-saves) — от прошлых частей сценария, не в счёт;
+  // «Энциклопедия» (spec 2026-10-encyclopedia) — не больница
+  const cards = (await page.$$eval('#start button', els => els.map(e => [e.id, e.querySelector('b')?.textContent ?? '']))).filter(([id]) => !id.startsWith('start-continue') && !id.startsWith('start-save') && id !== 'start-enc');
   const want = [['start-empty', 'Пустое здание'], ['start-poly', 'Поликлиника'], ['start-preset', 'Городская больница']];
   if (JSON.stringify(cards) === JSON.stringify(want)) ok(`экран начала — три карточки: ${cards.map(c => `«${c[1]}»`).join(', ')}`);
   else fail(`карточки начала: ${JSON.stringify(cards)}`);
