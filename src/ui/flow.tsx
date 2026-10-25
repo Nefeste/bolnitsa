@@ -3,7 +3,7 @@
 // панели: читают хранилище и просят игру.
 import type { ReactNode } from 'react';
 import { LONG_WAIT, type Mood, type PatientFilter, type PatientRow, WAIT_BAD, WAIT_OK, type Where } from '../app/flow';
-import { METRICS, METRICS_READY } from '../app/metrics';
+import { METRICS, MONEY_METRICS } from '../app/metrics';
 import type { Triage } from '../engine/shift/types';
 import { T } from '../i18n';
 import type { Actions, Hud } from './store';
@@ -199,26 +199,44 @@ export function Layers({ hud, actions }: P) {
             </button>
           ))}
           {hud.layers.queues ? <p className="hint">{T.flow.legend(WAIT_OK / 60, WAIT_BAD / 60)}</p> : null}
-          {/* «Показатели»: столбики над помещениями; выручка и прибыль — следующей частью */}
+          {/* «Показатели»: столбики над помещениями; выручка и прибыль — за сутки, с ползунком по суткам (часть 2) */}
           <div className="metrics" id="metrics-menu" title={T.metrics.hint}>
             <b>{T.metrics.title}</b>
             <div className="row">
-              {METRICS.map(m => {
-                const ready = METRICS_READY.includes(m);
-                return (
-                  <button
-                    key={m} type="button" id={`metric-${m}`} className={metric === m ? 'on' : undefined} disabled={!ready} title={ready ? T.metrics.hint : T.metrics.soon}
-                    onClick={() => actions.setMetric(metric === m ? null : m)}
-                  >
-                    {T.metrics.name[m]}
-                  </button>
-                );
-              })}
+              {METRICS.map(m => (
+                <button key={m} type="button" id={`metric-${m}`} className={metric === m ? 'on' : undefined} title={T.metrics.hint} onClick={() => actions.setMetric(metric === m ? null : m)}>
+                  {T.metrics.name[m]}
+                </button>
+              ))}
             </div>
-            {metric === 'load' || metric === 'wait' ? <p className="hint">{T.metrics.legend[metric](WAIT_OK / 60, WAIT_BAD / 60)}</p> : null}
+            {metric ? <p className="hint">{T.metrics.legend[metric](WAIT_OK / 60, WAIT_BAD / 60)}</p> : null}
+            {metric && MONEY_METRICS.includes(metric) ? <MoneyDay hud={hud} actions={actions} /> : null}
           </div>
         </div>
       ) : null}
     </>
+  );
+}
+
+/**
+ * Ползунок по суткам денег (spec docs/specs/2026-10-metrics-layer.md, часть 2): справа — сегодня до сих пор, левее —
+ * прошедшие сутки, последние 14. Часы при этом идут: слой только показывает.
+ */
+function MoneyDay({ hud, actions }: P) {
+  const days = hud.layers.days;
+  const at = hud.layers.day === null ? days.length : Math.max(0, days.indexOf(hud.layers.day));
+  return (
+    <div className="moneyday">
+      <label htmlFor="metric-day">
+        {T.metrics.day}: <b id="metric-day-label">{hud.layers.day === null ? T.metrics.today : T.metrics.dayN(hud.layers.day)}</b>
+      </label>
+      <input
+        type="range" id="metric-day" min={0} max={days.length} step={1} value={at} disabled={days.length === 0}
+        onChange={e => {
+          const i = Number(e.target.value);
+          actions.setMetricDay(i >= days.length ? null : days[i]);
+        }}
+      />
+    </div>
   );
 }

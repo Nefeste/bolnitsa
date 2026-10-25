@@ -9,7 +9,7 @@ import type { MoodView } from '../engine/shift/mood';
 import type { ScenarioView } from './campaign';
 import type { NameRow } from './pack';
 import type { SaveMeta } from './packing';
-import type { DoctorAct, DoctorOut, FromSim, PathView, ToSim, World } from './protocol';
+import type { DoctorAct, DoctorOut, FromSim, PathView, RoomsMoney, ToSim, World } from './protocol';
 
 /** Срез и, если изменились, режим врача (spec docs/specs/2026-10-doctor-mode.md). */
 export interface Slice extends DoctorOut {
@@ -32,6 +32,8 @@ export interface Slice extends DoctorOut {
   rides?: Ride[];
   /** ход сценария (spec docs/specs/2026-10-scenario-1.md): письма, цели и отметки; когда изменились */
   scenario?: ScenarioView;
+  /** деньги по помещениям (spec docs/specs/2026-10-metrics-layer.md, часть 2); когда изменились */
+  money?: RoomsMoney;
 }
 
 export class SimClient {
@@ -86,6 +88,7 @@ export class SimClient {
       ...(msg.refused ? { refused: msg.refused } : {}),
       ...(msg.path ? { path: msg.path } : {}), ...(msg.broken ? { broken: msg.broken } : {}), ...(msg.late ? { late: msg.late } : {}), ...(msg.crew ? { crew: msg.crew } : {}),
       ...(msg.moods ? { moods: msg.moods } : {}), ...(msg.rides ? { rides: msg.rides } : {}), ...(msg.scenario ? { scenario: msg.scenario } : {}),
+      ...(msg.money ? { money: msg.money } : {}),
     });
   }
 

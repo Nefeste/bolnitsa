@@ -546,12 +546,30 @@ export const en: Strings = {
     title: 'Metrics',
     hint: 'M — columns over the rooms',
     name: { load: 'Load', wait: 'Waiting', revenue: 'Revenue', profit: 'Profit' },
-    soon: 'money by room — in the next part',
     off: 'Turn off',
     legend: {
       load: (a: number, b: number) => `Height — people at the room: waiting and inside; wards — beds taken. Colour — the longest wait: under ${a} min, ${a}–${b}, ${b} or longer.`,
       wait: (a: number, b: number) => `Height — the longest wait now, up to an hour. Colour: under ${a} min, ${a}–${b}, ${b} or longer.`,
+      /** money by room (part 2) */
+      revenue: () => "Height — the room's revenue for the day: visits, tests, inpatient stays; the biggest one is full height.",
+      profit: () =>
+        "Height — profit for the day: the room's revenue minus its costs — wages of the people at its posts, upkeep, machines, consumables. Green — in the black, red — in the red, grey — a service room: its costs, it works for the whole hospital.",
     },
+    /** money by room (spec docs/specs/2026-10-metrics-layer.md, part 2) */
+    revenue: (rub: string, visits: number, exams: number, stays: number) =>
+      [`revenue ${rub}`, visits > 0 ? `visits ${visits}` : '', exams > 0 ? `tests ${exams}` : '', stays > 0 ? `inpatient stays ${stays}` : ''].filter(Boolean).join(' · '),
+    profit: (sum: string, income: string, expenses: string) => `profit ${sum}: revenue ${income}, costs ${expenses}`,
+    service: (expenses: string) => `costs ${expenses} — works for the whole hospital`,
+    serviceRevenue: 'no revenue — works for the whole hospital',
+    noRevenue: 'no revenue for the day',
+    noMoney: 'no income and no costs for the day',
+    thousands: (n: number) => `${n}k`,
+    day: 'Day',
+    today: 'today, so far',
+    dayN: (n: number) => `day ${n}`,
+    chart: 'Money by day',
+    chartIncome: 'revenue',
+    chartExpenses: 'costs',
     load: (queue: number, busy: boolean) => [queue > 0 ? `${queue} waiting` : '', busy ? 'busy inside' : ''].filter(Boolean).join(' · '),
     beds: (used: number, all: number) => `beds: ${used} of ${all} taken`,
     free: 'free',

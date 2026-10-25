@@ -1,8 +1,9 @@
-// Сценарий в браузере, часть 25 — слой «Показатели» (spec docs/specs/2026-10-metrics-layer.md, часть 1, «Проверки»).
-// Городская больница, поток числами: «Слои» → «Загрузка» — столбиков столько, сколько помещений, у помещения с людьми —
-// выше, чем у пустого; «Выручка» и «Прибыль» ждут части 2; наведение на столбик — подпись с числами, щелчок — карточка
-// его помещения; «Ожидание» — подпись о самом долгом ожидании; M — по кругу; показатель запоминается и после перезагрузки.
-// Снимки — `e2e-metrics-*.jpg`.
+// Сценарий в браузере, часть 25 — слой «Показатели» (spec docs/specs/2026-10-metrics-layer.md, «Проверки»). Городская
+// больница, поток числами: «Слои» → «Загрузка» — столбиков столько, сколько помещений, у помещения с людьми — выше, чем у
+// пустого; наведение на столбик — подпись с числами, щелчок — карточка его помещения; «Ожидание» — подпись о самом долгом
+// ожидании; M — по кругу; показатель запоминается и после перезагрузки. Часть 2 — деньги по помещениям: «Выручка» — у
+// кабинетов, за что; «Прибыль» — плюс и минус, служебные — свои расходы серым, «работает на всю больницу»; «До утра» — на
+// ползунке прошедшие сутки; в карточке помещения — график по суткам. Снимки — `e2e-metrics-*.jpg`.
 import { join } from 'node:path';
 
 /** @param {{ page: import('playwright-core').Page, port: number, out: string, ok: (m: string) => void, fail: (m: string) => void, q: string, shots: string }} x */
@@ -39,9 +40,9 @@ export async function metricsPart({ page, port, out, ok, fail, q, shots }) {
   // ---------------------------------------------------------------- «Слои» → «Загрузка»
   await page.click('#layers');
   await page.waitForSelector('#metrics-menu', { timeout: 5000 });
-  const disabled = await page.$$eval('#metrics-menu button', els => els.filter(e => e.disabled).map(e => e.id));
-  if (JSON.stringify(disabled) === JSON.stringify(['metric-revenue', 'metric-profit'])) ok('«Выручка» и «Прибыль» — следующей частью: кнопки пока выключены');
-  else fail(`выключенные показатели: ${JSON.stringify(disabled)}`);
+  const buttons = await page.$$eval('#metrics-menu button', els => els.map(e => ({ id: e.id, off: e.disabled })));
+  if (buttons.length === 4 && buttons.every(b => !b.off)) ok(`все четыре показателя включаются: ${buttons.map(b => b.id.replace('metric-', '')).join(', ')}`);
+  else fail(`показатели в меню: ${JSON.stringify(buttons)}`);
   await page.click('#metric-load');
   await until(() => window.__game.store.get().layers.metric === 'load' && window.__game.stage.columns.heights.length > 0, null, 5000);
   // столбики растут плавно: кадров без видеокарты мало — подождать
@@ -137,8 +138,84 @@ export async function metricsPart({ page, port, out, ok, fail, q, shots }) {
   const kept = await page.evaluate(() => window.__game.store.get().layers.metric);
   if (kept === 'wait') ok('после перезагрузки — тот же показатель: «Ожидание» запомнено в настройках игрока');
   else fail(`после перезагрузки: ${kept}`);
+
+  // ---------------------------------------------------------------- часть 2: «Выручка» — деньги за сутки по помещениям
+  await page.keyboard.press('KeyM');
+  await until(() => window.__game.store.get().layers.metric === 'revenue', null, 5000).catch(() => fail('M: не «Выручка»'));
+  await page.evaluate(() => window.__game.actions.setSpeed(12));
+  await until(() => Object.values(window.__game.roomsMoney.now).filter(r => r.income > 0).length >= 2, null, 180000).catch(() => {});
+  await page.evaluate(() => window.__game.actions.setSpeed(0));
+  await page.waitForTimeout(1200);
+  c = await cols();
+  const revenue = c.texts.map((t, i) => ({ t, h: c.heights[i] })).filter(x => /^выручка /.test(x.t)).sort((a, b) => b.h - a.h);
+  const money = await page.evaluate(() => window.__game.colLabels.dump());
+  if (revenue.length >= 2 && revenue[0].h > revenue[revenue.length - 1].h - 1e-6 && money.some(t => /тыс\.|₽/.test(t))) {
+    ok(`M — «Выручка»: ${revenue.length} помещений с выручкой, больше всех — «${revenue[0].t}»; числа — ${money.slice(0, 4).join(', ')} (снимок ${await shot('e2e-metrics-3-revenue.jpg')} КБ)`);
+  } else fail(`«Выручка»: ${JSON.stringify({ revenue: revenue.slice(0, 3), money: money.slice(0, 4) })}`);
+
+  // ---------------------------------------------------------------- «Прибыль»: плюс и минус; служебные — расходы серым
+  await page.keyboard.press('KeyM');
+  await until(() => window.__game.store.get().layers.metric === 'profit', null, 5000).catch(() => fail('M: не «Прибыль»'));
+  await page.waitForTimeout(800);
+  c = await cols();
+  const profit = c.texts.filter(t => /^прибыль [+−]?/.test(t));
+  const service = c.texts.filter(t => /работает на всю больницу/.test(t));
+  if (profit.length > 0 && service.length > 0) ok(`M — «Прибыль»: «${profit[0]}»; служебных — ${service.length}, «${service[0]}» (снимок ${await shot('e2e-metrics-4-profit.jpg')} КБ)`);
+  else fail(`«Прибыль»: ${JSON.stringify(c.texts.slice(0, 8))}`);
+
+  // ---------------------------------------------------------------- «До утра»: прошедшие сутки на ползунке
+  const t0 = Date.now();
+  await page.click('#speed-ff');
+  for (;;) {
+    const h = await page.evaluate(() => ({ open: window.__game.store.get().economy?.open ?? false, ff: window.__game.ff, speed: window.__game.speed, card: window.__game.doctor.open }));
+    if (h.open || Date.now() - t0 > 300000) break;
+    if (h.card) await page.keyboard.press('Escape');
+    else if (!h.ff && h.speed === 0) await page.click('#speed-ff');
+    await page.waitForTimeout(200);
+  }
+  await page.click('#meeting-close').catch(() => {});
+  await until(() => !window.__game.store.get().economy?.open, null, 10000).catch(() => {});
+  await page.evaluate(() => window.__game.actions.setSpeed(0));
+  await until(() => window.__game.store.get().layers.days.length > 0, null, 20000).catch(() => {});
+  await page.click('#layers');
+  await page.waitForSelector('#metric-day', { timeout: 5000 });
+  const day = await page.evaluate(() => {
+    const el = document.getElementById('metric-day');
+    const days = window.__game.store.get().layers.days;
+    // ползунок — на прошедшие сутки: значение «0» — самые старые из присланных
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, '0');
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    return days[0];
+  });
+  const label = await until(x => document.getElementById('metric-day-label')?.textContent === `день ${x}` && window.__game.store.get().layers.day === x, day, 5000).then(
+    () => `день ${day}`,
+    () => '',
+  );
+  await page.waitForTimeout(800);
+  c = await cols();
+  if (label && c.texts.some(t => /^прибыль /.test(t))) ok(`ползунок по суткам: «${label}» — столбики по итогу тех суток, «${c.texts.find(t => /^прибыль /.test(t))}»`);
+  else fail(`ползунок по суткам: ${JSON.stringify({ day, label, texts: c.texts.slice(0, 4) })}`);
+  await page.click('#layers');
+
+  // ---------------------------------------------------------------- карточка помещения: деньги по суткам графиком
+  const office = await page.evaluate(() => {
+    const g = window.__game;
+    const i = g.layout.plan.rooms.findIndex(r => r.type === 'room.office' && r.id !== g.hospital.site?.mine);
+    return g.layout.plan.rooms[i]?.id;
+  });
+  await page.evaluate(id => window.__game.selectRoomId(id), office);
+  await page.waitForSelector('#room-money svg', { timeout: 10000 }).catch(() => {});
+  const chart = await page.evaluate(() => ({
+    bars: document.querySelectorAll('#room-money svg rect').length,
+    tips: [...document.querySelectorAll('#room-money svg title')].map(t => t.textContent),
+    label: document.querySelector('#room-money .label')?.textContent ?? '',
+  }));
+  if (chart.bars >= 4 && chart.tips.some(t => /выручка/.test(t ?? ''))) ok(`карточка кабинета — «${chart.label}»: ${chart.bars / 2} суток, «${chart.tips[0]}» (снимок ${await shot('e2e-metrics-5-chart.jpg')} КБ)`);
+  else fail(`график в карточке: ${JSON.stringify(chart)}`);
+  await page.keyboard.press('Escape');
+
   await page.keyboard.press('KeyM');
   const off = await until(() => window.__game.store.get().layers.metric === null && window.__game.stage.columns.heights.length === 0, null, 5000).then(() => true, () => false);
-  if (off) ok('M ещё раз — слой выключен, столбиков нет');
+  if (off) ok('M после «Прибыли» — слой выключен, столбиков нет');
   else fail('M: слой не выключился');
 }

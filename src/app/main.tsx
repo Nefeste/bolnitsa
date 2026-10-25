@@ -66,6 +66,7 @@ const actions: Actions = {
   reshift: later('reshift'),
   study: later('study'),
   reserve: later('reserve'),
+  setMetricDay: later('setMetricDay'),
   filterPatients: later('filterPatients'),
   focus: later('focus'),
   find: later('find'),

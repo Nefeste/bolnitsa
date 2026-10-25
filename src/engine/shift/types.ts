@@ -122,6 +122,11 @@ export interface ShiftPatient {
   pending: PendingResult[];
   /** обследования, уже сделанные или назначенные этому пациенту */
   done: Id[];
+  /**
+   * поток для ПК, деньги по помещениям (spec docs/specs/2026-10-metrics-layer.md, часть 2): где сделали обследование —
+   * помещение; у постели — где лежит; нет — в кабинете врача
+   */
+  examRooms?: Record<Id, string>;
   /** песочница: какие из них были показаны, когда их назначали, — их оплачивают ОМС и ДМС */
   indicated?: Id[];
   /** песочница: что заплатили за закрытый приём и что сняла экспертиза */
@@ -398,6 +403,18 @@ export interface DayLoad {
   gurney?: { n: number; wait: number; now?: number };
 }
 
+/**
+ * Деньги помещения за сутки (spec docs/specs/2026-10-metrics-layer.md, часть 2): доходы и расходы, ₽; приёмов закрыто,
+ * обследований оплачено, случаев стационара закрыто — то, за что пришли доходы.
+ */
+export interface RoomDay {
+  income: number;
+  expenses: number;
+  visits?: number;
+  exams?: number;
+  stays?: number;
+}
+
 /** Кредит банка (spec 2026-10-economy, «Предел минуса и кредит»): сколько осталось вернуть и по сколько на планёрке, ₽. */
 export interface Loan {
   left: number;
@@ -614,6 +631,12 @@ export interface DaySummary {
   isolation?: { seen: number; ward: number };
   /** поток для ПК, «Главврач утверждает» (spec 2026-10-two-ways, F3): сколько решений пришло и чем кончилось */
   chief?: ChiefDay;
+  /**
+   * поток для ПК, деньги по помещениям (spec docs/specs/2026-10-metrics-layer.md, часть 2): по номеру помещения — доходы и
+   * расходы суток и за что; `''` — общее: коридор, стройка, кредит, проценты, выплаты уволенным, учёба, люди в резерве и
+   * копейки округления. Сумма по всем — касса суток (`shift/rooms.ts`)
+   */
+  rooms?: Record<string, RoomDay>;
 }
 
 /**

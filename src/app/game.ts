@@ -16,7 +16,7 @@ import { dutyOf, onDuty, ORDERLY, payOf, presetStaff, salaryOf, type Shift, shif
 import type { CrewView } from '../engine/shift/crew';
 import { marketOf, type MoodView, raisedOf, severanceOf } from '../engine/shift/mood';
 import { mentorOf, stepsLeft } from '../engine/shift/growth';
-import type { Notice } from '../engine/shift/types';
+import type { Notice, RoomDay } from '../engine/shift/types';
 import { clock, genitive, type Lang, money, named, setLang, T } from '../i18n';
 import { lowerFirst } from '../i18n/case';
 import type { Walker } from '../render/crowd';
@@ -49,7 +49,7 @@ import { chipShown, dur, medicLine, moodOf, pathCard, type PatientRow, patientRo
 import { type HintKey, hintOf } from './hints';
 import { DEFAULT_ROLE, firstOffice, type Role, ROLE_SETS, startFor } from './roles';
 import { ScenarioDesk, scenarioTitle } from './scenario';
-import { columnOf, type Metric, METRICS, METRICS_READY } from './metrics';
+import { columnOf, type Metric, METRICS, METRICS_READY, MONEY_METRICS, moneyColumnOf, moneyTop, serviceRoom } from './metrics';
 import { ColumnLabels } from './collabels';
 import { AutoQuality, type QualityMode, readSettings, type Settings, writeSettings } from './settings';
 import { HoverLabel } from './hover';
@@ -264,6 +264,8 @@ export class Game {
   private roomState: string[] = [];
   /** слой «Показатели» (spec docs/specs/2026-10-metrics-layer.md): строка столбика каждого помещения — для подписи */
   private metricText: string[] = [];
+  /** деньги по помещениям (там же, часть 2): сегодня до сих пор и прошедшие сутки — как прислал поток расчёта */
+  private roomsMoney: { now: Record<string, RoomDay>; days: { day: number; rooms: Record<string, RoomDay> }[] } = { now: {}, days: [] };
   /** числа над столбиками */
   colLabels!: ColumnLabels;
   /** подсказки первых минут (spec 2026-10-aaa-polish): закрытые игроком; смотрел ли он уже карточку или вкладку */
@@ -787,6 +789,17 @@ export class Game {
       for (const k of s.scenario.hints) this.seenHints.add(k as HintKey);
       if (first && !this.scenarioId) this.texts();
     }
+    // деньги по помещениям (spec docs/specs/2026-10-metrics-layer.md, часть 2): прошедшие сутки — ползунку; выбранных среди
+    // них больше нет — сегодня
+    if (s.money) {
+      this.roomsMoney.now = s.money.now;
+      if (s.money.days) {
+        this.roomsMoney.days = s.money.days;
+        const days = s.money.days.map(d => d.day);
+        const l = this.store.get().layers;
+        this.store.set({ layers: { ...l, days, day: l.day !== null && days.includes(l.day) ? l.day : null } });
+      }
+    }
     // первый пришедший (spec docs/specs/2026-10-scenario-1.md): письмо о его пути — когда он пришёл
     if (this.scenario.view && s.buf[H.arrived] > 0) this.scenario.reach('look');
     if (s.world || s.scenario) this.scenarioOffice();
@@ -1169,7 +1182,13 @@ export class Game {
     const metric = hud.layers.metric;
     this.stage.columns.show(metric !== null);
     if (metric) {
+      // деньги (часть 2): за выбранные сутки — от самого большого среди помещений; служебные — свои расходы серым
+      const money = MONEY_METRICS.includes(metric) ? this.moneyOf(hud.layers.day) : undefined;
+      const service = money ? plan.rooms.map(r => serviceRoom(db, r.type)) : [];
+      const days = money ? plan.rooms.map(r => money[r.id]) : [];
+      const top = money ? moneyTop(metric, days, service) : 0;
       const cols = loads.map((l, i) => {
+        if (money) return moneyColumnOf(metric, days[i], top, service[i]);
         const c = chips[i];
         return columnOf(metric, l, c.icon === 'down' || c.icon === 'staff' || c.icon === 'closed' ? (c.long ?? c.text) : undefined);
       });
@@ -1496,6 +1515,12 @@ export class Game {
       this.remember({ metric: m });
       this.hud();
     },
+    // сутки денег на слое (часть 2): прошедшие или сегодня; не запоминаются — новая игра начнёт с сегодня
+    setMetricDay: (day: number | null) => {
+      const l = this.store.get().layers;
+      this.store.set({ layers: { ...l, day: day !== null && l.days.includes(day) ? day : null } });
+      this.hud();
+    },
     doctor: a => this.doctor.dispatch(a),
     money: a => this.money.dispatch(a),
     scenario: a => this.scenario.dispatch(a),
@@ -1536,6 +1561,11 @@ export class Game {
    * Карточка помещения: кто работает, сколько людей; у больницы ПК — размер, работает ли и почему нет, нужное с
    * отметками, должности с «Нанять» и «Уволить», «Обставить», «Снести», каталог предметов.
    */
+  /** Деньги по помещениям за сутки слоя (часть 2): прошедшие — из присланных, `null` — сегодня до сих пор. */
+  private moneyOf(day: number | null): Record<string, RoomDay> {
+    return day === null ? this.roomsMoney.now : (this.roomsMoney.days.find(d => d.day === day)?.rooms ?? {});
+  }
+
   private roomCard(id: string): RoomCard | undefined {
     const { db, plan } = this;
     const n = plan.rooms.findIndex(r => r.id === id);
@@ -1592,6 +1622,11 @@ export class Game {
     return {
       ...base, size: `${r.w} × ${r.h}`, ok: why.length === 0, state: why.length ? T.problem.down(this.problemText(why[0])) : T.problem.works,
       problems: why.map(p => this.problemText(p)), needs, posts, ...(night ? { note: T.card.nightCarrier } : {}),
+      // деньги по суткам (spec docs/specs/2026-10-metrics-layer.md, часть 2): прошедшие и сегодня — графиком
+      money: [...this.roomsMoney.days.map(d => ({ day: d.day as number | null, r: d.rooms[id] })), { day: null, r: this.roomsMoney.now[id] }].map(x => ({
+        day: x.day, income: x.r?.income ?? 0, expenses: x.r?.expenses ?? 0,
+      })),
+      ...(serviceRoom(db, r.type) ? { service: true as const } : {}),
       furnish: f.ok ? { ok: true, text: T.card.furnish(money(f.cost)) } : { ok: false, text: whyText(db, site, f.error) },
       demolish: T.card.demolish(money(demolishRefund(db, room))),
       catalog: [

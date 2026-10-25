@@ -119,7 +119,9 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # patients set by the scenario, «Цели» and «Без обучения», «Письма» at the meeting, the
                                    # build order in the catalog and in «Цели» (on and off), no role row in the scenario; then the
                                    # «Показатели» layer: columns over the rooms from «Слои», taller where people are, numbers,
-                                   # hover and click on a column, «Ожидание» with M, remembered after a reload);
+                                   # hover and click on a column, «Ожидание» with M, remembered after a reload; «Выручка» and
+                                   # «Прибыль» with service rooms in grey, «До утра» — a past day on the slider, the room
+                                   # card's chart by day);
                                    # screenshots in tools/app/out/; `-- --only 1|2|…|25` for one part
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
                                                      # (`-- --people rb` — with Rocketbox people, `-- --metric load` —
@@ -268,6 +270,10 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   «Показатели» layer (`docs/specs/2026-10-metrics-layer.md`): `metrics.ts` — a room's column from its load (`columnOf`: height,
   colour, the hover line, the number), `collabels.ts` — numbers over the columns, `src/render/columns.ts` — one instanced mesh
   of shaded boxes, picked by a ray; the chosen metric is a player setting (`metric`), M cycles it, `?metric=load` for bench.
+  Part 2 — money by room: the engine writes every move of the day's cash to its room too (`src/engine/shift/rooms.ts`,
+  `DaySummary.rooms`; `''` — the common part), so the rooms sum to the day's cash to the rouble; the sim sends
+  `RoomsMoney` (today so far, the last 14 days); `moneyColumnOf` — revenue and profit, `serviceRoom` — rooms that never
+  earn show their costs in grey (owner's decision #120); the «Сутки» slider and the room card's chart (`MoneyChart`).
 - `src/render/` — the 3D view (Three.js): `layout.ts` places template items on the engine plan, `catalog.ts` maps
   engine items to CC0 models or code-made ones, `world.ts` floors and cut walls, `doors.ts`, `lamps.ts`, `post.ts`
   (MSAA + GTAO), `stage.ts`, build ghosts `ghost.ts`; people: `bake.ts` (animations baked into a texture), `cast.ts`

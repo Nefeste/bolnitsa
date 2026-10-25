@@ -49,6 +49,7 @@ import { ambulancePerHour, bookedPerHour, type Capacity, walkPerHour } from './i
 import * as meeting from './meeting';
 import { depart, leaversDue, moodMorning } from './mood';
 import { backMorning, growMorning, sickMorning, tenure } from './growth';
+import { caseIncomeRooms, caseRoom, COMMON as ROOMS_COMMON, roomExpense, roomIncome } from './rooms';
 import { cover } from './reserve';
 import { book, carriersOf, gurneyOf, lying, planRide, rideHome, ridesUntil } from './gurney';
 
@@ -1320,7 +1321,7 @@ function morning(db: ContentDb, s: ShiftState, notices: Notice[]) {
   // учёба и болезнь (разделы 4–5): вернувшиеся — с навыком и настроением; кто сегодня болеет, на смену не выйдет и денег за
   // неё не получит
   const back = backMorning(db, s);
-  const sick = sickMorning(db, s, m => wageOf(db, m), rub => unpaidShift(s, rub));
+  const sick = sickMorning(db, s, m => wageOf(db, m), (rub, m) => unpaidShift(s, rub, m.room));
   // резерв (spec 2026-10-staff-mood, часть 5; решение владельца #97): на место заболевшего — из резерва; вернувшийся — на своё
   const cov = cover(s, () => occupied(db, s).staff);
   const news = mood || grew || back || sick || cov ? { ...mood, ...(grew ? { grew } : {}), ...(back ? { back } : {}), ...(sick ? { sick } : {}), ...cov } : undefined;
@@ -1447,12 +1448,18 @@ function settle(db: ContentDb, s: ShiftState) {
   const repairs = repairsOf(db, s);
   if (repairs > 0) ledger.expenses.repairs = repairs;
   if (upkeep) ledger.expenses.rooms = upkeep.rooms;
-  // лежащие ночуют в палате: койко-день у каждого (часть 26), по месту и тому, что с ними делают (`bedDayOf`)
-  ledger.expenses.ward = inpatientsOf(s).reduce((a, p) => a + bedDayOf(db, s, p), 0);
+  // лежащие ночуют в палате: койко-день у каждого (часть 26), по месту и тому, что с ними делают (`bedDayOf`); и палате
+  // (spec docs/specs/2026-10-metrics-layer.md, часть 2)
+  ledger.expenses.ward = inpatientsOf(s).reduce((a, p) => {
+    const day = bedDayOf(db, s, p);
+    roomExpense(s, p.stay!.room, day);
+    return a + day;
+  }, 0);
   // поток для ПК: выплата по кредиту (spec 2026-10-economy)
   if (s.flow) repay(s);
   const before = e.cash + incomeOf(ledger) - expensesOf(ledger);
   ledger.expenses.interest = interestOf(db, before);
+  roomExpense(s, ROOMS_COMMON, ledger.expenses.interest);
   e.cash = before - ledger.expenses.interest;
   // поток для ПК: касса ниже предела — банк предлагает кредит до следующей планёрки
   if (s.flow) {
@@ -1549,13 +1556,15 @@ export function breakdowns(db: ContentDb, s: ShiftState): string[] {
 /** Сломанные сегодня аппараты — для `examWhere`. */
 export const brokenOf = (s: ShiftState): ReadonlySet<string> => (s.broken && s.broken.length > 0 ? new Set(s.broken) : NONE_BROKEN);
 
-/** Сколько стоит починить сломанное сегодня, ₽: процент цены каждого аппарата. */
+/** Сколько стоит починить сломанное сегодня, ₽: процент цены каждого аппарата; и помещению, где он стоит (часть 2 слоя «Показатели»). */
 function repairsOf(db: ContentDb, s: ShiftState): number {
   const plan = hospitalCtx(db, s).plan;
   return (s.broken ?? []).reduce((sum, key) => {
     const [room, slot] = key.split(':');
     const id = plan.rooms.find(r => r.id === room)?.equipment[Number(slot)];
-    return sum + (id ? Math.round((db.equipment[id].price * REPAIR_PCT) / 100) : 0);
+    const rub = id ? Math.round((db.equipment[id].price * REPAIR_PCT) / 100) : 0;
+    roomExpense(s, room, rub);
+    return sum + rub;
   }, 0);
 }
 
@@ -1724,7 +1733,16 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
   p.done.push(examId);
   p.spent.money += e.cost;
   if (!p.by) s.summary.money += e.cost; // в итогах — ваши обследования
-  if (s.economy) ledgerOf(s).expenses.consumables += consumablesOf(db, e);
+  // деньги по помещениям (spec docs/specs/2026-10-metrics-layer.md, часть 2): где делают — у постели, в кабинете
+  // обследований (анализ — в лаборатории), где берут (процедурный) или у врача; туда — и расходники, и доход, когда приём
+  // закроют
+  const where = bed && p.bay ? p.bay.room : (room?.id ?? to ?? caseRoom(s, p));
+  if (s.flow && s.hospital?.site) (p.examRooms ??= {})[examId] = where;
+  if (s.economy) {
+    const used = consumablesOf(db, e);
+    ledgerOf(s).expenses.consumables += used;
+    roomExpense(s, where, used);
+  }
   const obs = runExam(db, p.patient, examId, branch(s, `exam:${p.id}:${p.done.length}:${examId}`), skill, exact(s));
   // ушёл на обследование в другой кабинет (0.5.12, отзыв на 0.5.11) — что делают при нём, то когда вернётся
   const away = Math.max(0, (p.out?.back ?? 0) - s.t);
@@ -2132,6 +2150,8 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient, at = s.t): 
     const ledger = ledgerOf(s);
     ledger.income[payer] += x.paid;
     ledger.cases[payer]++;
+    // деньги по помещениям (часть 2 слоя «Показатели»): обследования — где сделали, обращение — кабинету врача
+    caseIncomeRooms(db, s, p, payer, x.paid, x.unindicated);
     ledger.audit.cut += x.cut;
     if (x.quality < 100) ledger.audit.weak++;
     if (x.unconfirmed) ledger.audit.unconfirmed++;
@@ -2952,7 +2972,10 @@ function finishOperation(db: ContentDb, s: ShiftState, p: ShiftPatient | undefin
       });
     }
   }
-  if (s.economy) ledgerOf(s).expenses.consumables += db.treatments[op.tx].cost;
+  if (s.economy) {
+    ledgerOf(s).expenses.consumables += db.treatments[op.tx].cost;
+    roomExpense(s, op.room ?? stay.room, db.treatments[op.tx].cost);
+  }
   // каталка (spec docs/specs/2026-10-orderlies.md): со стола — назад на свою койку; стол свободен, когда его увезли
   if (op.carried && op.room) {
     const ride = carry(db, s, p, 'back', op.room, stay.room);
@@ -3223,7 +3246,14 @@ function closeStay(db: ContentDb, s: ShiftState, p: ShiftPatient, end: StayEnd, 
     // — если она была нужна, нужна была ПИТ — прибавка за ПИТ (spec 2026-10-chapter-4, часть 47); за бокс — если
     // изоляция была нужна (часть 49а)
     const unit = careUnit(chosen, recommended);
-    ledger.ward.income += wardIncome(db, closed.diagnosis, closed.grades.defensibility, close, stay.op?.done ? stay.op.tx : undefined, unit);
+    const op = stay.op?.done ? stay.op.tx : undefined;
+    const paid = wardIncome(db, closed.diagnosis, closed.grades.defensibility, close, op, unit);
+    ledger.ward.income += paid;
+    // деньги по помещениям (часть 2 слоя «Показатели»): палате — случай стационара; операционной — то, что прибавила
+    // операция, — разница тарифа с ней и без неё
+    const surgery = op && stay.op?.room ? paid - wardIncome(db, closed.diagnosis, closed.grades.defensibility, close, undefined, unit) : 0;
+    if (surgery !== 0) roomIncome(s, stay.op!.room!, surgery);
+    roomIncome(s, stay.room, paid - surgery, 'stays');
     if (close === 'interrupted') ledger.ward.interrupted++;
     if (close === 'unindicated') ledger.ward.unindicated++;
     if (close === 'repeat') ledger.ward.repeat = (ledger.ward.repeat ?? 0) + 1;

@@ -73,6 +73,12 @@ export interface RoomCard {
   }[];
   furnish?: { ok: boolean; text: string };
   demolish?: string;
+  /**
+   * деньги помещения по суткам (spec docs/specs/2026-10-metrics-layer.md, часть 2): прошедшие (последние 14) и сегодня до сих
+   * пор (`day: null`) — для графика; `service` — служебное: выручки нет, оно работает на всю больницу
+   */
+  money?: { day: number | null; income: number; expenses: number }[];
+  service?: true;
   catalog?: { kind: ObjectKind; eq?: Id; name: string; price: string }[];
 }
 
@@ -133,7 +139,11 @@ export interface Hud {
   /** «Путь пациента» выбранного: лента, итог, почему ушёл; `none` — пути нет (пришёл до этой версии) */
   path?: { lines: PathLine[]; summary: string; left?: string } | { none: true };
   /** слои карты: меню, «Очереди и загрузка», «Показатели» — включённый показатель (spec docs/specs/2026-10-metrics-layer.md) */
-  layers: { open: boolean; queues: boolean; metric: Metric | null };
+  /**
+   * `day` — сутки денег на слое (часть 2): номер прошедших суток, `null` — сегодня до сих пор; `days` — какие прошедшие
+   * сутки есть (последние 14)
+   */
+  layers: { open: boolean; queues: boolean; metric: Metric | null; day: number | null; days: number[] };
   /** вкладка «Персонал»: `on` — сейчас в смене (spec docs/specs/2026-10-staff-shifts.md) */
   /** «Персонал»: строка человека; `on` — в смене; `bad` — собирается уйти или уходит (spec docs/specs/2026-10-staff-mood.md) */
   staffList: { key: string; text: string; on?: true; bad?: true }[];
@@ -200,7 +210,7 @@ export const initial: Hud = {
   gone: [],
   seenRows: [],
   seenAll: 0,
-  layers: { open: false, queues: false, metric: null },
+  layers: { open: false, queues: false, metric: null, day: null, days: [] },
   staffList: [],
   reserveHire: [],
   debug: false,
@@ -287,8 +297,9 @@ export interface Actions {
   follow(): void;
   toggleLayers(): void;
   toggleQueues(): void;
-  /** слой «Показатели»: показатель или выключить (`null`) */
+  /** слой «Показатели»: показатель или выключить (`null`); сутки денег — прошедшие или сегодня (`null`) */
   setMetric(m: Metric | null): void;
+  setMetricDay(day: number | null): void;
   /** режим врача (spec docs/specs/2026-10-doctor-mode.md) */
   doctor(a: DoctorAction): void;
   /** касса и планёрка (spec docs/specs/2026-10-economy.md): экран планёрки, автопауза, часы приёма, кредит */
