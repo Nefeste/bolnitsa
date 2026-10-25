@@ -90,10 +90,10 @@ export function shiftEnded(db: ContentDb, s: ShiftState) {
 }
 
 /**
- * Принял больного (`case`) или записал обследование (`exam`, часть 2б): усталость — на столько очков больше. Ушедший со
- * сменой не устаёт.
+ * Принял больного (`case`), записал обследование (`exam`, часть 2б) или перевозку на каталке (`ride`, spec
+ * docs/specs/2026-10-orderlies.md): усталость — на столько очков больше. Ушедший со сменой не устаёт.
  */
-export function worked(db: ContentDb, s: ShiftState, m: StaffMember, what: 'case' | 'exam' = 'case') {
+export function worked(db: ContentDb, s: ShiftState, m: StaffMember, what: 'case' | 'exam' | 'ride' = 'case') {
   const f = numbersOf(db, s, m);
   if (!f || !onDuty(db, m, s.t)) return;
   const c = settle(db, s, m, f);
@@ -129,12 +129,16 @@ export function restLeft(s: ShiftState, id: string | undefined): number {
 
 /**
  * С какого часа человек `m` на месте, если нужен в `t` на `dur` секунд (часть 2б): работа задела его перерыв — когда
- * вернётся; иначе — `t`. Нет человека — `t`.
+ * вернётся; везёт лежачего на каталке (медсестра, когда санитаров в смене нет, spec docs/specs/2026-10-orderlies.md) — когда
+ * вернётся с перевозки; иначе — `t`. Нет человека — `t`.
  */
 export function backAt(s: ShiftState, m: StaffMember | undefined, t: number, dur = 0): number {
-  const r = m ? s.crew?.[m.id]?.rest : undefined;
+  if (!m) return t;
+  let at = t;
   // миг — секунда: нужен ровно в час, когда ушёл, — уже нет
-  return r && t < r.until && Math.max(t + dur, t + 1) > r.from ? r.until : t;
+  for (const x of s.rides ?? []) if (x.by === m.id && at < x.home && Math.max(at + dur, at + 1) > x.go) at = x.home;
+  const r = s.crew?.[m.id]?.rest;
+  return r && at < r.until && Math.max(at + dur, at + 1) > r.from ? r.until : at;
 }
 
 /**

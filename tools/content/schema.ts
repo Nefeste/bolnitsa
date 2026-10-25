@@ -702,6 +702,11 @@ export const roleSchema = z.strictObject({
   /** описывает снимки своего помещения — от навыка точность (рентгенолог, врач УЗД, часть 29) */
   reads: z.boolean().optional(),
   /**
+   * помещение работает и без него (spec docs/specs/2026-10-orderlies.md: санитар — лежачие ждут каталку, везёт медсестра);
+   * в кандидатах дня «Анамнеза» его нет — нанимают на место
+   */
+  optional: z.boolean().optional(),
+  /**
    * нанятый врач со специальностью (spec 2026-10-chapter-4, часть 59): с какими болезнями к нему записываются — у его
    * кабинета своя запись из них, и принимает он только записанных к нему
    */
@@ -834,11 +839,14 @@ export const economySchema = z.strictObject({
      * — минут и на сколько очков меньше; туалет — раз в сколько часов (от, до) и минут
      */
     fatigue: z.strictObject({
-      hour: z.number().int().min(1).max(50), case: z.number().int().min(0).max(50), exam: z.number().int().min(0).max(50), night: z.number().int().min(100).max(300),
+      hour: z.number().int().min(1).max(50), case: z.number().int().min(0).max(50), exam: z.number().int().min(0).max(50), ride: z.number().int().min(0).max(50),
+      night: z.number().int().min(100).max(300),
       slow: z.number().int().min(1).max(99), slower: z.number().int().min(100).max(200), tired: z.number().int().min(1).max(100), blur: pct,
       rest: z.number().int().min(1).max(120), relief: z.number().int().min(1).max(100),
       toilet: z.tuple([z.number().int().min(1).max(12), z.number().int().min(1).max(12)]), wc: z.number().int().min(1).max(30),
     }).refine(f => f.slow <= f.tired && f.toilet[0] <= f.toilet[1], 'fatigue: slow не выше tired, toilet — от и до').optional(),
+    /** каталка (spec docs/specs/2026-10-orderlies.md): переложить на каталку и с неё, минут */
+    gurney: z.strictObject({ load: z.number().int().min(1).max(30), unload: z.number().int().min(1).max(30) }).optional(),
     /**
      * рост, наставник, учёба, болезнь нанятых в смене (spec 2026-10-staff-mood, разделы 3–5): насколько быстрее растут с
      * наставником, %; учёба — суток, цена в сменах, прибавка настроения; болеет — раз в столько смен в среднем

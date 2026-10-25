@@ -1,4 +1,4 @@
-// из anamnez: src/engine/hospital/requirements.ts @ 96503ac, изменено: причины больницы ПК, ваш кабинет из плана (spec 2026-10-build)
+// из anamnez: src/engine/hospital/requirements.ts @ 96503ac, изменено: причины больницы ПК, ваш кабинет из плана (spec 2026-10-build); без должности `optional` помещение работает (санитар, spec 2026-10-orderlies)
 // Требования своей больницы (spec 2026-09-own-hospital, «Движок»): помещение работает, если у
 // него есть дверь в коридор, от входа до неё можно дойти, на каждой нужной должности есть
 // человек и стоит нужный аппарат. Обследование доступно, если работает его помещение с
@@ -70,6 +70,8 @@ export function problemsOf(db: ContentDb, plan: Plan, room: PlacedRoom, staffed:
   if (t.needsEquipment && !room.equipment.some(Boolean)) out.push({ kind: 'noEquipment' });
   const doctor = doctorRoom(plan);
   for (const role of t.staff) {
+    // санитар (spec 2026-10-orderlies): без него помещение работает — лежачие ждут каталку
+    if (db.roles[role]?.optional) continue;
     const here = role === DOCTOR ? room.id === doctor || staffed(room.id, DOCTOR) : staffed(room.id, role);
     if (here) continue;
     // в другом кабинете врача — нанятый врач: нет его — «нет терапевта», нет ему места — «нет места»

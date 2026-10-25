@@ -108,6 +108,8 @@ function doingOf(s: ShiftState, p: ShiftPatient, rooms: Map<string, string> | un
     if (!next) return { doing: 'results' };
     return { doing: examQueued(s, p, next.end) === false ? 'exam' : 'examQueue', room: next.room };
   }
+  // положили в стационар, а каталки ещё нет (spec docs/specs/2026-10-orderlies.md) — лежит на своём месте в смотровой
+  if (p.status === 'admitted' && p.bay) return { doing: 'ambulance', room: p.bay.room, bed: p.bay.bed };
   // лежит; идёт операция — на операционном столе
   const op = p.stay?.op;
   if (op && !op.done && op.start !== undefined && op.start <= s.t && op.room) return { doing: 'surgery', room: op.room };

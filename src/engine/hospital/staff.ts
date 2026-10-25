@@ -1,4 +1,4 @@
-// из anamnez: src/engine/hospital/staff.ts @ 96503ac, изменено: мест в ординаторской больницы ПК — из плана (spec 2026-10-build); смены дня и ночи — `shift`, кто в смене, зарплата за сутки, ночная смена готовой больницы (spec 2026-10-staff-shifts); настроение нанятого — `Mood`, нет на смене — `away`: учится или болеет (spec 2026-10-staff-mood)
+// из anamnez: src/engine/hospital/staff.ts @ 96503ac, изменено: мест в ординаторской больницы ПК — из плана (spec 2026-10-build); смены дня и ночи — `shift`, кто в смене, зарплата за сутки, ночная смена готовой больницы (spec 2026-10-staff-shifts); настроение нанятого — `Mood`, нет на смене — `away`: учится или болеет (spec 2026-10-staff-mood); санитара (`optional`) в кандидатах дня нет (spec 2026-10-orderlies); санитары готовой больницы ПК — `withOrderlies`
 // Персонал своей больницы (spec 2026-09-own-hospital, часть 8): кандидаты дня, найм, навык 1–5,
 // черта, зарплата за смену, скорость и точность работы, рост навыка с отработанными сменами.
 // Числа — баланс игры (content/hospital/economy.yaml, `staff`). Имя человека — из словаря игры,
@@ -95,7 +95,8 @@ export function applicantsOf(db: ContentDb, seed: number, day: number, next: num
   let n = next;
   const roles = Object.keys(db.roles).sort();
   for (const role of [...roles.filter(id => !db.roles[id].profile), ...roles.filter(id => db.roles[id].profile)]) {
-    if (!db.roles[role].hire || !allow(role)) continue;
+    // санитар (spec 2026-10-orderlies, `optional`) — только в больнице ПК, его нанимают на место: кандидаты «Анамнеза» те же
+    if (!db.roles[role].hire || db.roles[role].optional || !allow(role)) continue;
     const r = root.fork(role);
     const count = r.range(b.candidates[0], b.candidates[1]);
     for (let i = 0; i < count; i++) {
@@ -220,18 +221,44 @@ export const wageOf = (db: ContentDb, m: StaffMember): number => payOf(db, m.sal
 /** Зарплаты штата за сутки, ₽ (spec 2026-10-staff-shifts): по сменам, ночная — с надбавкой. */
 export const wagesOf = (db: ContentDb, staff: readonly StaffMember[]): number => staff.reduce((n, m) => n + wageOf(db, m), 0);
 
+/** Санитар (spec docs/specs/2026-10-orderlies.md): возит лежачих; помещение работает и без него. */
+export const ORDERLY: Id = 'role.orderly';
+
+/** Наибольший номер готовой больницы (`p<n>`) в штате; нет — 0. */
+const lastPreset = (staff: readonly StaffMember[]): number => staff.reduce((k, m) => (m.id.startsWith('p') ? Math.max(k, Number(m.id.slice(1)) || 0) : k), 0);
+
+/**
+ * Санитары готовой больницы ПК (spec docs/specs/2026-10-orderlies.md, «Санитар»): в каждом помещении, где есть место санитара
+ * (смотровая приёмного, операционная), — санитар, если его там нет: навык 3, зарплата каталога, облик — из ветви зерна по
+ * номеру. Номера — после номеров готовой больницы (`p<n>`). Штат «Анамнеза» этим не зовут — он прежний.
+ */
+export function withOrderlies(db: ContentDb, rooms: readonly { id: string; type: Id }[], staff: readonly StaffMember[]): StaffMember[] {
+  const out = [...staff];
+  if (!db.roles[ORDERLY]) return out;
+  let n = lastPreset(staff);
+  for (const r of rooms) {
+    if (!db.rooms[r.type]?.staff.includes(ORDERLY) || out.some(m => m.room === r.id && m.role === ORDERLY)) continue;
+    const id = `p${++n}`;
+    const x = Rng.seeded(n).fork(`orderly:${r.id}`);
+    out.push({ id, role: ORDERLY, sex: x.chance(5000) ? 'f' : 'm', seed: x.u32(), skill: 3, salary: salaryOf(db, ORDERLY, 3), room: r.id, days: 0 });
+  }
+  return out;
+}
+
 /**
  * Штат готовой больницы со сменами (spec 2026-10-staff-shifts): все — дневная смена. Больница, где лежат или куда везёт
  * скорая, работает и ночью: в её помещениях, что работают ночью (`night` у вида помещения), — ещё ночная смена, копия
  * дневного человека: та же должность, навык и черта, другой человек; есть смотровая приёмного — и ночной врач для
  * привезённых скорой: копия первого нанятого терапевта, в его же кабинете. Поликлиника ночью закрыта — ночной смены у неё
- * нет. Номера ночных — после номеров готовой больницы (`p<n>`), облик — из ветви зерна дневного.
+ * нет. Номера ночных — после номеров готовой больницы (`p<n>`), облик — из ветви зерна дневного. Сначала — санитары
+ * (`withOrderlies`): ночная смена у них тоже есть.
  */
-export function withNightShift(db: ContentDb, rooms: readonly { id: string; type: Id }[], staff: readonly StaffMember[]): StaffMember[] {
+export function withNightShift(db: ContentDb, rooms: readonly { id: string; type: Id }[], given: readonly StaffMember[]): StaffMember[] {
+  const staff = withOrderlies(db, rooms, given);
   const out: StaffMember[] = staff.map(m => ({ ...m, shift: 'day' as const }));
   if (!nightHospital(db, rooms)) return out;
   const night = new Set(rooms.filter(r => db.rooms[r.type]?.night).map(r => r.id));
-  let n = staff.reduce((k, m) => (m.id.startsWith('p') ? Math.max(k, Number(m.id.slice(1)) || 0) : k), 0);
+  let n = lastPreset(staff);
   const copy = (m: StaffMember): StaffMember => {
     const id = `p${++n}`;
     const r = Rng.seeded(m.seed).fork(`night:${id}`);

@@ -52,7 +52,7 @@ function watch(s: ShiftState, hour: number, step = 60): Record<string, Rest[]> {
 
 describe('усталость и перерывы', () => {
   test('числа — в economy.yaml: гипотезы части 2', () => {
-    expect(F).toEqual({ hour: 5, case: 2, exam: 1, night: 150, slow: 70, slower: 115, tired: 90, blur: 5, rest: 20, relief: 50, toilet: [4, 5], wc: 5 });
+    expect(F).toEqual({ hour: 5, case: 2, exam: 1, ride: 1, night: 150, slow: 70, slower: 115, tired: 90, blur: 5, rest: 20, relief: 50, toilet: [4, 5], wc: 5 });
     expect(shiftStartOf(db, 9 * H)).toBe(8 * H);
     expect(shiftStartOf(db, 21 * H)).toBe(20 * H);
     expect(shiftStartOf(db, 86400 + 3 * H)).toBe(20 * H);

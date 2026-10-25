@@ -7,7 +7,7 @@ import { db } from '../../src/content';
 import { hospitalOf } from '../../src/engine/hospital/site';
 import { siteOfPlan } from '../../src/engine/hospital/site-plan';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
-import { dutyOf, presetStaff, shiftAt, type StaffMember, wageOf, wagesOf, withNightShift } from '../../src/engine/hospital/staff';
+import { dutyOf, ORDERLY, presetStaff, shiftAt, type StaffMember, wageOf, wagesOf, withNightShift, withOrderlies } from '../../src/engine/hospital/staff';
 import { apply, colleaguesOf, hospitalCtx, newFlowShift } from '../../src/engine/shift/engine';
 import type { ShiftState } from '../../src/engine/shift/types';
 import { buildProto, emptyShift, FLOW, hash, liveTo, site } from './site-kit';
@@ -42,12 +42,18 @@ describe('смены персонала', () => {
   });
 
   test('городская: все — дневная смена; ночная — в помещениях, что работают ночью, и ночной терапевт', () => {
-    expect(shifts.filter(m => m.shift === 'day').length).toBe(legacy.length);
+    // и санитары (spec docs/specs/2026-10-orderlies.md): по одному в смотровой приёмного и операционной, в каждую смену
+    const day = withOrderlies(db, citySite.rooms, legacy);
+    expect(shifts.filter(m => m.shift === 'day').length).toBe(day.length);
     const night = shifts.filter(m => m.shift === 'night');
     const type = (m: StaffMember) => citySite.rooms.find(r => r.id === m.room)!.type;
     for (const m of night) expect(db.rooms[type(m)].night || db.roles[m.role]?.stands === 'role.doctor').toBe(true);
     // копия дневного: та же должность, навык, место; другой человек
-    for (const m of night.filter(x => db.rooms[type(x)].night)) expect(legacy.some(d => d.room === m.room && d.role === m.role && d.skill === m.skill)).toBe(true);
+    for (const m of night.filter(x => db.rooms[type(x)].night)) expect(day.some(d => d.room === m.room && d.role === m.role && d.skill === m.skill)).toBe(true);
+    const posts = citySite.rooms.filter(r => db.rooms[r.type].staff.includes(ORDERLY)).map(r => r.id).sort();
+    expect(posts.length).toBeGreaterThan(0);
+    for (const shift of ['day', 'night'] as const) expect(shifts.filter(m => m.role === ORDERLY && m.shift === shift).map(m => m.room).sort()).toEqual(posts);
+    expect(legacy.some(m => m.role === ORDERLY)).toBe(false);
     expect(night.filter(m => db.roles[m.role]?.stands === 'role.doctor').length).toBe(1);
     // номера — после номеров готовой больницы, не повторяются
     expect(new Set(shifts.map(m => m.id)).size).toBe(shifts.length);

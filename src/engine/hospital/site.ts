@@ -218,6 +218,11 @@ export interface RoomRules {
   needs: { kind: ObjectKind; n: number }[];
   /** где лежат — нужна двойная дверь: в образцах есть кровать или пациент лежит на столе аппарата */
   gurney: boolean;
+  /**
+   * сюда везут лежачего на обследование (spec docs/specs/2026-10-orderlies.md, решение владельца #90): снимки и функциональные
+   * обследования — у готового помещения двойная дверь; без неё помещение работает, но лежачего сюда не везут
+   */
+  wheels: boolean;
   /** мебель образцов — каталог помещения; аппараты, которые сюда ставят */
   kinds: ObjectKind[];
   equipment: Id[];
@@ -293,11 +298,13 @@ export function rulesOf(db: ContentDb, type: Id): RoomRules | undefined {
   const kinds = [...new Set(t.sizes.flatMap(s => s.objects.map(o => o.kind)))];
   const gurney = t.sizes.some(s => s.objects.some(o => o.kind === 'bed') || (s.patient !== undefined && s.slots.some(q => q[0] === s.patient![0] && q[1] === s.patient![1])));
   const fromSlots = [...new Set(t.sizes.flatMap(s => Object.keys(s.slotsOf ?? {})))].sort();
+  const wheels = t.exams.some(id => db.exams[id]?.kind === 'imaging' || db.exams[id]?.kind === 'functional');
   const rules: RoomRules = {
     smallest: z,
     min: [Math.min(z.w, z.h), Math.max(z.w, z.h)],
     needs: (Object.entries(need) as [ObjectKind, number][]).map(([kind, n]) => ({ kind, n })),
     gurney,
+    wheels,
     kinds,
     equipment: t.equipment,
     bedEquipment: t.icu ? (fromSlots.length ? fromSlots : t.equipment) : [],
@@ -1053,7 +1060,7 @@ export type ReadyCheck = { ok: true; cost: number; draft: ReadyDraft } | { ok: f
 
 /**
  * Образец `size` типа `type` целиком с углом в (x, y) и поворотом `rot` — без проверок: размер образца, дверь там, где у
- * него (на его «нижней» стене; где лежат — двойная, иначе как у образца, не шире двух клеток — посередине его проёма;
+ * него (на его «нижней» стене; где лежат и куда везут лежачих — двойная, иначе как у образца, не шире двух клеток — посередине его проёма;
  * вторая клетка — следующая вдоль стены), все предметы и аппараты на своих местах (длинный без второй клетки — короткий,
  * как в готовой больнице).
  * Нет такого образца — нет.
@@ -1064,7 +1071,7 @@ export function readyDraft(db: ContentDb, site: Site, type: Id, size: RoomSizeId
   if (!z || !rules) return undefined;
   const [w, h] = dimsOf(z, rot);
   const rect = { x, y, w, h };
-  const width = rules.gurney ? 2 : Math.min(2, z.door.width);
+  const width = rules.gurney || rules.wheels ? 2 : Math.min(2, z.door.width);
   // вторая клетка двойной — правее, у угла — левее; у образца шире двери — посередине его проёма
   const from = width > z.door.width ? (z.door.x + 1 > z.w - 2 ? z.door.x - 1 : z.door.x) : z.door.x + Math.floor((z.door.width - width) / 2);
   const door = Array.from({ length: width }, (_, k): Cell => {

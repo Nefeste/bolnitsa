@@ -28,7 +28,7 @@ import { nightHospital, presetStaff, salaryOf, withNightShift } from '../../src/
 import { apply, capacityOf, newFlowShift } from '../../src/engine/shift/engine';
 import { ambulancePerHour, walkPerHour } from '../../src/engine/shift/inflow';
 import { cashNow, startCash } from '../../src/engine/shift/money';
-import type { ShiftState } from '../../src/engine/shift/types';
+import type { Ride, ShiftState } from '../../src/engine/shift/types';
 import { buildDb } from '../content/load';
 
 const arg = (name: string, def: string) => {
@@ -146,6 +146,8 @@ interface Run {
   sick: { day: number; role: Id }[];
   /** `--raise`: сколько раз игрок поднял зарплату */
   raised: number;
+  /** каталка (spec docs/specs/2026-10-orderlies.md): перевозки — зачем, сколько ждали (минут), везла ли медсестра */
+  rides: { why: Ride['why']; wait: number; nurse: boolean }[];
   moods: { n: number; low: number; min: number; mean: number; why: Record<string, number> };
 }
 
@@ -181,6 +183,8 @@ function run(name: string, seed: number): Run {
   const grew: Run['grew'] = [];
   const sick: Run['sick'] = [];
   let raised = 0;
+  const rides: Run['rides'] = [];
+  const seen = new Set<string>();
   const end = (DAYS * 24 + 8) * 3600;
   while (s.t < end) {
     for (const n of apply(db, s, { kind: 'advance', seconds: 300 })) {
@@ -194,6 +198,13 @@ function run(name: string, seed: number): Run {
       for (const id of ask) if (apply(db, s, { kind: 'site', cmd: { kind: 'raise', id } }).some(x => x.kind === 'site' && x.ok)) raised++;
     }
     minCash = Math.min(minCash, cashNow(s)!);
+    // каталка: новые записанные перевозки
+    for (const r of s.rides ?? []) {
+      const key = `${r.id}:${r.by}:${r.pick}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rides.push({ why: r.why, wait: Math.round((r.pick - r.since) / 60), nurse: s.staff?.find(m => m.id === r.by)?.role !== 'role.orderly' });
+    }
   }
   // настроение в конце: у кого есть смена
   const vs = (s.staff ?? []).filter(m => m.shift !== undefined).map(m => s.moods?.[m.id]?.v ?? db.economy.staff.mood?.start ?? 70);
@@ -222,7 +233,7 @@ function run(name: string, seed: number): Run {
   }
   // прибыль — без стройки первых суток: сколько больница зарабатывает, когда построена
   const gain = (list: DayRow[]) => list.reduce((n, d, i) => n + d.income - d.expenses + (i === 0 ? d.works : 0), 0);
-  return { scenario: name, seed, start: first, value, minCash, profit: gain(days), week: gain(days.slice(0, 7)), days, lines, quits, leaves, moods, grew, sick, raised };
+  return { scenario: name, seed, start: first, value, minCash, profit: gain(days), week: gain(days.slice(0, 7)), days, lines, quits, leaves, moods, grew, sick, raised, rides };
 }
 
 const fmt = (n: number) => Math.round(n).toLocaleString('ru-RU');
@@ -253,6 +264,14 @@ if (asJson) {
       const up = r.grew.length ? ` (сутки ${Math.min(...r.grew.map(g => g.day))}–${Math.max(...r.grew.map(g => g.day))})` : '';
       const ill = r.sick.map(x => `${x.role.slice(5)} ${x.day}`).join(', ');
       console.log(`    выросли ${r.grew.length}${up}; смен пропущено по болезни ${r.sick.length}${ill ? ` — ${ill}` : ''}`);
+      if (r.rides.length > 0) {
+        const by = (w: Ride['why']) => r.rides.filter(x => x.why === w).length;
+        const waits = r.rides.map(x => x.wait).sort((a, b) => a - b);
+        const mean = waits.reduce((a, b) => a + b, 0) / waits.length;
+        console.log(
+          `    каталка: перевозок ${r.rides.length} (на койку ${by('bed')}, на операцию ${by('op')}, назад ${by('back')}, на обследование ${by('exam')}), ждали в среднем ${mean.toFixed(1)} мин, 9 из 10 — не дольше ${waits[Math.floor(waits.length * 0.9)]}, дольше всех ${waits[waits.length - 1]}; везла медсестра ${r.rides.filter(x => x.nurse).length}`,
+        );
+      }
       if (RAISE) {
         // зарплаты за сутки: первые и последние семь (или все, если суток меньше)
         const avg = (list: DayRow[]) => list.reduce((n, d) => n + d.salaries, 0) / Math.max(1, list.length);
