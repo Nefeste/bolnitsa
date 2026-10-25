@@ -33,7 +33,7 @@ import { Paths } from '../render/path';
 import { Places } from '../render/place';
 import { type PersonInfo, Population, YOU } from '../render/population';
 import { Stage } from '../render/stage';
-import type { Quality } from '../render/view';
+import type { Projection, Quality } from '../render/view';
 import type { WallMode } from '../render/world';
 import type { ErrorList, SeenList } from '../sim/doctor';
 import { H, KINDS } from '../sim/pack';
@@ -47,6 +47,7 @@ import { Doctor } from './doctor';
 import { chipShown, dur, medicLine, moodOf, pathCard, type PatientRow, patientRows, roomChip, roomLoads, tintOf, wheelLine } from './flow';
 import { type HintKey, hintOf } from './hints';
 import { DEFAULT_ROLE, type Role, startFor } from './roles';
+import { AutoQuality, type QualityMode, readSettings, type Settings, writeSettings } from './settings';
 import { HoverLabel } from './hover';
 import { Labels } from './labels';
 import { Money } from './money';
@@ -200,6 +201,10 @@ export class Game {
   start: Start = 'preset';
   /** кто вы на старте новой игры (spec docs/specs/2026-10-two-ways.md, F4): больница строится под роль */
   private role: Role = DEFAULT_ROLE;
+  /** настройки игрока (spec docs/specs/2026-10-settings.md; решение владельца #70): вид и качество — с этого компьютера */
+  private prefs: Settings = readSettings();
+  /** качество «авто»: по первым секундам игры — ступенью ниже, пока кадр медленный */
+  private auto: AutoQuality | undefined;
   private models = new Map<string, Model>();
   private staffed!: Staffing;
   private working = new Set<string>();
@@ -348,7 +353,11 @@ export class Game {
     void this.refreshSaves();
     this.bindInput();
     window.addEventListener('resize', () => this.stage.resize());
-    store.set({ ready: true, status: '', quality, walls: this.stage.wallMode, speed: this.speed });
+    // настройки (spec docs/specs/2026-10-settings.md): стены, камера, «Отладка»; качество задали снаружи — адрес или «авто»
+    const p = this.prefs;
+    this.showWalls();
+    this.showProjection();
+    store.set({ ready: true, status: '', quality, qualityMode: p.quality, debug: p.debug, speed: this.speed });
     requestAnimationFrame(this.loop);
   }
 
@@ -753,7 +762,7 @@ export class Game {
       this.stage.cam.target.set(c.x, 0, c.z);
       this.stage.cam.half = c.half;
       this.stage.cam.setYawNow(c.yaw);
-      if (c.projection === 'persp' || c.projection === 'ortho') this.actions.setProjection(c.projection);
+      // камера сохранения — где и как близко; перспектива или орто — настройка игрока (spec docs/specs/2026-10-settings.md)
     }
     if (typeof view.autopause === 'boolean') this.doctor.hud.autopause = view.autopause;
     if (typeof view.level === 'string') this.doctor.restoreLevel(view.level);
@@ -804,6 +813,15 @@ export class Game {
     requestAnimationFrame(this.loop);
     const dt = this.last ? Math.min(0.1, (ts - this.last) / 1000) : 0;
     if (this.last) this.push(this.frames.interval, ts - this.last);
+    // качество «авто» (spec docs/specs/2026-10-settings.md): медленный кадр — ступенью ниже
+    if (this.auto && this.last) {
+      const q = this.auto.push(ts - this.last);
+      if (q) this.applyQuality(q);
+      if (this.auto.done) {
+        this.store.set({ autoQuality: this.auto.quality });
+        this.auto = undefined;
+      }
+    }
     this.last = ts;
     this.onFrame?.(ts);
     if (!this.manual) {
@@ -854,6 +872,51 @@ export class Game {
       this.hud();
     }
   };
+
+  /** Настройки игрока поменялись — запомнить на этом компьютере (spec docs/specs/2026-10-settings.md). */
+  private remember(patch: Partial<Settings>) {
+    this.prefs = { ...this.prefs, ...patch };
+    writeSettings(this.prefs);
+  }
+
+  /** Качество на сцене и в полосе — без записи в настройки: так ставит его «авто». */
+  private applyQuality(q: Quality) {
+    this.stage.applyQuality(q);
+    this.store.set({ quality: q });
+  }
+
+  /** Стены без записи в настройки игрока — так их опускают стройка и бенч; без аргумента — как в настройках. */
+  showWalls(m: WallMode = this.prefs.walls) {
+    this.stage.setWalls(m);
+    this.store.set({ walls: m });
+  }
+
+  /** Камера без записи в настройки — бенч; без аргумента — как в настройках. */
+  showProjection(p: Projection = this.prefs.projection) {
+    this.stage.cam.projection = p;
+    this.store.set({ projection: p });
+  }
+
+  /** Качество без записи в настройки — бенч; «авто» перестаёт смотреть на кадр: качество задано. */
+  showQuality(q: Quality) {
+    this.auto = undefined;
+    this.applyQuality(q);
+  }
+
+  /**
+   * Качество «авто» (spec docs/specs/2026-10-settings.md): начать с высокого и смотреть на кадр. Адрес с `?q=`, бенч и
+   * снимки — без него: их качество задано.
+   */
+  startAuto() {
+    this.auto = new AutoQuality();
+    this.applyQuality(this.auto.quality);
+    this.store.set({ autoQuality: undefined });
+  }
+
+  /** Качество из настроек — «авто»: включить, когда игра началась (main.tsx; не в бенче, не в снимках, не с `?q=`). */
+  get autoWanted(): boolean {
+    return this.prefs.quality === 'auto';
+  }
 
   private push(a: number[], v: number) {
     a.push(v);
@@ -1120,22 +1183,30 @@ export class Game {
       this.hud();
     },
     setWalls: (m: WallMode) => {
-      this.stage.setWalls(m);
-      this.store.set({ walls: m });
+      this.showWalls(m);
+      this.remember({ walls: m });
     },
     setQuality: (q: Quality) => {
-      this.stage.applyQuality(q);
-      this.store.set({ quality: q });
+      this.showQuality(q);
+      this.store.set({ qualityMode: q });
+      this.remember({ quality: q });
+    },
+    setQualityMode: (m: QualityMode) => {
+      if (m === 'auto') {
+        this.startAuto();
+        this.store.set({ qualityMode: 'auto' });
+        this.remember({ quality: 'auto' });
+      } else this.actions.setQuality(m);
     },
     setProjection: p => {
-      this.stage.cam.projection = p;
-      this.store.set({ projection: p });
+      this.showProjection(p);
+      this.remember({ projection: p });
     },
+    toggleSettings: () => this.store.set({ settingsOpen: !this.store.get().settingsOpen }),
     overview: () => {
       this.following = undefined;
       this.stage.cam.overview();
     },
-    rotate: k => this.stage.cam.rotate(k),
     select: key => {
       // выбрали другого — камера его отпускает (spec 2026-10-owner-play-2)
       if (key !== this.selected) this.following = undefined;
@@ -1147,7 +1218,11 @@ export class Game {
       this.store.set({ tab: t });
       this.hud();
     },
-    toggleDebug: () => this.store.set({ debug: !this.store.get().debug }),
+    toggleDebug: () => {
+      const debug = !this.store.get().debug;
+      this.store.set({ debug });
+      this.remember({ debug });
+    },
     bench: uncapped => {
       if (uncapped && window.shell) window.shell.relaunch(['--bench', '--uncapped']);
       else void import('./bench').then(m => m.runBench(this, {}));
@@ -1255,13 +1330,12 @@ export class Game {
     },
     doctor: a => this.doctor.dispatch(a),
     money: a => this.money.dispatch(a),
-    // подсказки первых минут и панель вида (spec docs/specs/2026-10-aaa-polish.md)
+    // подсказки первых минут (spec docs/specs/2026-10-aaa-polish.md)
     dismissHint: () => {
       const h = this.store.get().hint;
       if (h) this.seenHints.add(h.key);
       this.hud();
     },
-    toggleView: () => this.store.set({ viewOpen: !this.store.get().viewOpen }),
   };
 
   /** Карточка помещения по клику на пол. */
@@ -1359,11 +1433,12 @@ export class Game {
     return c ? [c.x, c.z] : undefined;
   }
 
-  /** Esc и ПКМ без протяжки: в стройке — призрак, инструмент, стройка; иначе — снять выбор. */
+  /** Esc и ПКМ без протяжки: в стройке — призрак, инструмент, стройка; окно настроек, меню игры; иначе — снять выбор. */
   private cancel() {
     if (this.doctor.close()) return;
     if (this.money.open) return this.money.dispatch({ kind: 'close' });
     if (this.builder.cancel()) this.hud();
+    else if (this.store.get().settingsOpen) this.actions.toggleSettings();
     else if (this.store.get().menu.open) this.actions.toggleMenu();
     else if (this.following) this.unfollow();
     else this.actions.select(undefined);
@@ -1459,6 +1534,8 @@ export class Game {
       else if (k === 'Digit4') this.actions.untilMorning();
       else if (k === 'KeyQ') this.stage.cam.rotate(-1);
       else if (k === 'KeyE') this.stage.cam.rotate(1);
+      // «Вся больница» (spec docs/specs/2026-10-settings.md): кнопки вида на экране больше нет
+      else if (k === 'Home') this.actions.overview();
       else if (k === 'Escape') this.cancel();
       // часть 3: L — слой «Очереди и загрузка», Tab — вкладка «Пациенты» (геймдизайн §12)
       else if (k === 'KeyL') this.actions.toggleQueues();

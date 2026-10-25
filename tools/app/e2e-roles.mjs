@@ -12,11 +12,11 @@ export async function rolesPart({ page, port, out, ok, fail, q, shots }) {
   const flat = s => (s ?? '').replace(/\s+/g, ' ').trim();
   const shot = async name => {
     if (shots) {
-      await page.evaluate(x => window.__game.actions.setQuality(x), shots);
+      await page.evaluate(x => window.__game.showQuality(x), shots);
       await page.waitForTimeout(400);
     }
     const buf = await page.screenshot({ path: join(out, name), type: 'jpeg', quality: 72 });
-    if (shots) await page.evaluate(x => window.__game.actions.setQuality(x), q);
+    if (shots) await page.evaluate(x => window.__game.showQuality(x), q);
     return Math.round(buf.length / 1024);
   };
   /** Что ставит роль — как видит окно: роль, галочки движка, свой кабинет, автопауза, окно врача, бывший кабинет игрока. */

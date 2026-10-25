@@ -19,11 +19,11 @@ export async function doctorPart({ page, port, out, ok, fail, q, shots }) {
   /** Снимок карты: JPEG, в качестве `--shots` (для документов) или как есть. */
   const shot = async name => {
     if (shots) {
-      await page.evaluate(x => window.__game.actions.setQuality(x), shots);
+      await page.evaluate(x => window.__game.showQuality(x), shots);
       await page.waitForTimeout(400);
     }
     const buf = await page.screenshot({ path: join(out, name), type: 'jpeg', quality: 72 });
-    if (shots) await page.evaluate(x => window.__game.actions.setQuality(x), q);
+    if (shots) await page.evaluate(x => window.__game.showQuality(x), q);
     return Math.round(buf.length / 1024);
   };
   /** Ждать, пока вид карты станет новее `v` (поток ответил на действие). */

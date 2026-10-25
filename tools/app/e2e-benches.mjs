@@ -11,11 +11,11 @@ export async function benchesPart({ page, port, out, ok, fail, q, shots }) {
   /** Снимок: JPEG, в качестве `--shots` (для документов) или как есть. */
   const shot = async name => {
     if (shots) {
-      await page.evaluate(x => window.__game.actions.setQuality(x), shots);
+      await page.evaluate(x => window.__game.showQuality(x), shots);
       await page.waitForTimeout(400);
     }
     const buf = await page.screenshot({ path: join(out, name), type: 'jpeg', quality: 72 });
-    if (shots) await page.evaluate(x => window.__game.actions.setQuality(x), q);
+    if (shots) await page.evaluate(x => window.__game.showQuality(x), q);
     return Math.round(buf.length / 1024);
   };
   const flat = s => (s ?? '').replace(/\s+/g, ' ').trim();

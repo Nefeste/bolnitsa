@@ -1,6 +1,7 @@
 // Страница игры (spec docs/specs/2026-10-shell-3d.md): панели React и 3D-вид. Параметры адреса — для проверок и бенча:
-//   ?q=low|medium|high — пресет качества; ?bench=1 (&secs=15&warm=3&qualities=low,high&shots=0) — авто-бенч;
-//   ?shot=1 — только снимки; ?start=10.5 — сразу промотать смену до этого часа; ?lang=en — язык;
+//   ?q=low|medium|high — пресет качества поверх настроек игрока (spec docs/specs/2026-10-settings.md);
+//   ?bench=1 (&secs=15&warm=3&qualities=low,high&shots=0) — авто-бенч; ?shot=1 — только снимки;
+//   ?start=10.5 — сразу промотать смену до этого часа; ?lang=en — язык;
 //   ?hospital=empty|preset — с чего начать (spec docs/specs/2026-10-build.md, «Начало игры»; нет — окно спросит; бенч и
 //   снимки — всегда готовая больница). В Electron — те же ключи: --bench, --hospital empty.
 //   ?flow=6,1 — поток числами (сами в час, машин скорой в час), а не от больницы (spec docs/specs/2026-10-economy.md):
@@ -20,6 +21,7 @@ import type { SaveFile } from '../sim/packing';
 import { AUTO, diskOf, Game, SCENE, type Start } from './game';
 import { listSlots, readSlot } from './saves';
 import { DEFAULT_ROLE, type Role, roleOf } from './roles';
+import { readSettings } from './settings';
 
 declare const __VERSION__: string;
 
@@ -40,7 +42,6 @@ const actions: Actions = {
   setQuality: later('setQuality'),
   setProjection: later('setProjection'),
   overview: later('overview'),
-  rotate: later('rotate'),
   select: later('select'),
   setTab: later('setTab'),
   toggleDebug: later('toggleDebug'),
@@ -70,7 +71,8 @@ const actions: Actions = {
   doctor: later('doctor'),
   money: later('money'),
   dismissHint: later('dismissHint'),
-  toggleView: later('toggleView'),
+  toggleSettings: later('toggleSettings'),
+  setQualityMode: later('setQualityMode'),
   toggleMenu: later('toggleMenu'),
   saveGame: later('saveGame'),
   loadGame: later('loadGame'),
@@ -94,7 +96,10 @@ const names: Names = {
 installEncyclopediaKeys();
 createRoot(document.getElementById('ui')!).render(<App store={store} actions={actions} names={names} />);
 
-const quality = (['low', 'medium', 'high'] as Quality[]).find(x => x === q.get('q')) ?? 'high';
+// качество: `?q=` — задано; иначе из настроек игрока (spec docs/specs/2026-10-settings.md), «авто» начинает с высокого
+const fixed = (['low', 'medium', 'high'] as Quality[]).find(x => x === q.get('q'));
+const prefs = readSettings().quality;
+const quality: Quality = fixed ?? (prefs === 'auto' ? 'high' : prefs);
 
 /** С чего начать: ключ адреса или Electron; бенч и снимки — готовая больница, «Врач»; иначе спросить игрока. */
 async function startOf(): Promise<Begin> {
@@ -177,7 +182,9 @@ begin()
       const { takeShots } = await import('./bench');
       await takeShots(g, 'shot');
       (window as unknown as { __shotsDone: boolean }).__shotsDone = true;
-    }
+    } else if (!fixed && g.autoWanted) g.startAuto();
+    // качество задано адресом — его и отметить в «Настройках»; записано будет, только если игрок выберет сам
+    if (fixed) store.set({ qualityMode: fixed });
   })
   .catch(e => {
     window.__benchError = String((e as Error)?.stack ?? e);

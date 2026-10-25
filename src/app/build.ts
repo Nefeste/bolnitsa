@@ -12,7 +12,6 @@ import { money, named, T } from '../i18n';
 import { GHOST_BAD, GHOST_DOOR, GHOST_OK } from '../render/ghost';
 import { type Thing, yawOf } from '../render/layout';
 import { objectTurns } from '../render/orient';
-import type { WallMode } from '../render/world';
 import type { BuildHud, Tool } from '../ui/store';
 import type { Game } from './game';
 
@@ -110,7 +109,6 @@ export class Builder {
   hover?: Cell;
   ghost?: { ok: boolean; text: string };
   result?: { ok: boolean; text: string };
-  private walls?: WallMode;
 
   constructor(private g: Game) {}
 
@@ -145,12 +143,12 @@ export class Builder {
     this.tool = undefined;
     this.result = undefined;
     if (this.on) {
-      // стены — вниз: план виден целиком
-      this.walls = this.g.stage.wallMode;
-      this.g.actions.setWalls('down');
+      // стены — вниз: план виден целиком; настройки игрока это не меняет (spec docs/specs/2026-10-settings.md)
+      this.g.showWalls('down');
     } else {
       this.g.command({ kind: 'done' });
-      if (this.walls) this.g.actions.setWalls(this.walls);
+      // стены — как в настройках
+      this.g.showWalls();
     }
     this.update();
   }
