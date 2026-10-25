@@ -19,11 +19,13 @@
 // Часть 14 — энциклопедия: экран начала, поиск, ссылки, «Назад», F1 над названием, «Подробнее» в «Что это?»,
 // tools/app/e2e-encyclopedia.mjs. Часть 15 — скамейки у дверей кабинетов: у двери сидят на скамье, в пути — «на скамье у
 // кабинета»; инструмент «Скамья», призрак, Ctrl+Z, снос, tools/app/e2e-benches.mjs. Часть 16 — место под стройку у
-// городской больницы: восточное крыло, палата в нём работает, tools/app/e2e-land.mjs.
+// городской больницы: восточное крыло, палата в нём работает, tools/app/e2e-land.mjs. Часть 17 — настроение персонала:
+// «собирается уйти» на планёрке, карточка, «Поднять зарплату», «В другую смену», выплата при увольнении,
+// tools/app/e2e-mood.mjs.
 // Ошибок в консоли и запросов наружу нет.
 // Снимки — tools/app/out/e2e.png, e2e-build-*.png и e2e-flow-*.png; `--shots high` — снимки частей 2 и 3 в этом качестве
 // (на время снимка).
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16] [--shots low|medium|high] [--port 8093]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17] [--shots low|medium|high] [--port 8093]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -33,6 +35,7 @@ import { economyPart } from './e2e-economy.mjs';
 import { encyclopediaPart } from './e2e-encyclopedia.mjs';
 import { fatiguePart } from './e2e-fatigue.mjs';
 import { landPart } from './e2e-land.mjs';
+import { moodPart } from './e2e-mood.mjs';
 import { findChromium } from './e2e-lib.mjs';
 import { ownerTwoPart } from './e2e-owner2.mjs';
 import { polyPart } from './e2e-poly.mjs';
@@ -131,6 +134,8 @@ try {
   if (run(15)) await benchesPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   // часть 16 — место под стройку у городской больницы (spec docs/specs/2026-10-city-land.md)
   if (run(16)) await landPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  // часть 17 — настроение персонала (spec docs/specs/2026-10-staff-mood.md)
+  if (run(17)) await moodPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);

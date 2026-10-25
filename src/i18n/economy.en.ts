@@ -60,7 +60,7 @@ export const economyEn: EconomyStrings = {
     expenses: (rub: string) => `Expenses: ${rub}`,
     expense: {
       salaries: 'salaries', rooms: 'room upkeep', equipment: 'equipment upkeep', consumables: 'consumables', ward: 'bed-days',
-      repairs: 'repairs', works: 'building', interest: 'interest on debt', loan: 'loan',
+      repairs: 'repairs', works: 'building', interest: 'interest on debt', loan: 'loan', severance: 'severance pay',
     } as Record<string, string>,
     net: (rub: string) => `Day’s result: ${rub}`,
     cashAt: (rub: string) => `Cash at 08:00: ${rub}`,
@@ -96,6 +96,10 @@ export const economyEn: EconomyStrings = {
     brokenRow: (eq: string, room: string, rub: string) => `${eq} (${lowerFirst(room)}) — until tomorrow, repair ${rub}`,
     worse: 'Round: worse',
     worseRow: (who: string, state: string) => `${who} — ${lowerFirst(state)}`,
+    staff: 'Staff',
+    staffLow: (who: string) => `${who}: mood below 30`,
+    staffQuit: (who: string, day: number) => `${who} is about to quit: answer before the morning of day ${day} — raise their pay or move them to the other shift`,
+    staffLeave: (who: string, why: string) => `${who} leaves after their shift${why ? ` — ${why}` : ''}`,
     tip: 'Tip',
     tips: {
       below: 'Cash is below the limit: building waits for money. Take the bank’s loan or cut costs — dismiss extra staff, demolish what you do not need (half the price comes back).',

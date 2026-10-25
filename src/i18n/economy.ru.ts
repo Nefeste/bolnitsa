@@ -62,7 +62,7 @@ export const economyRu = {
     expenses: (rub: string) => `Расходы: ${rub}`,
     expense: {
       salaries: 'зарплаты', rooms: 'содержание помещений', equipment: 'обслуживание аппаратов', consumables: 'расходники', ward: 'койко-дни',
-      repairs: 'ремонт аппаратов', works: 'стройка', interest: 'проценты по долгу', loan: 'кредит',
+      repairs: 'ремонт аппаратов', works: 'стройка', interest: 'проценты по долгу', loan: 'кредит', severance: 'выплаты уволенным',
     } as Record<string, string>,
     net: (rub: string) => `Итог суток: ${rub}`,
     cashAt: (rub: string) => `В кассе на 08:00: ${rub}`,
@@ -98,6 +98,11 @@ export const economyRu = {
     brokenRow: (eq: string, room: string, rub: string) => `${eq} (${lowerFirst(room)}) — до завтра, ремонт ${rub}`,
     worse: 'Обход: стало хуже',
     worseRow: (who: string, state: string) => `${who} — ${lowerFirst(state)}`,
+    /** персонал (spec docs/specs/2026-10-staff-mood.md): упало настроение, собирается уйти, уходит */
+    staff: 'Персонал',
+    staffLow: (who: string) => `${who}: настроение ниже 30`,
+    staffQuit: (who: string, day: number) => `${who} собирается уйти: ответьте до утра дня ${day} — поднимите зарплату или переведите в другую смену`,
+    staffLeave: (who: string, why: string) => `${who} уходит после своей смены${why ? ` — ${why}` : ''}`,
     tip: 'Подсказка',
     tips: {
       below: 'Касса ниже предела: стройка ждёт денег. Возьмите кредит банка или сократите расходы — уволить лишних, снести ненужное (половина цены вернётся).',

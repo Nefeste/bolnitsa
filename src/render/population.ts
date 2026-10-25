@@ -31,6 +31,17 @@ export type PersonInfo =
        * пока он идёт: идёт туда, там, идёт назад (там же, часть 2)
        */
       fatigue?: number; worn?: 'slow' | 'blur'; rest?: { kind: Rest['kind']; until: number; phase: 'go' | 'there' | 'back' };
+      /**
+       * настроение и действия с человеком (spec docs/specs/2026-10-staff-mood.md) — дописывает окно (`staffCard` в
+       * src/app/game.ts): имя из словаря игры; настроение, на сколько и почему изменилось, «собирается уйти» до каких суток,
+       * уходит с какого часа; зарплата, рынок его навыка и до скольки её поднимут; в какую смену перевести и с кем поменяется;
+       * что ответил движок на последнее действие с ним
+       */
+      name?: string;
+      mood?: { v: number; d?: number; why?: string[]; quit?: number; go?: number };
+      pay?: { now: number; market: number; raise?: number };
+      reshift?: { to: 'day' | 'night'; with?: string };
+      said?: { ok: boolean; text: string };
     }
   | {
       kind: 'patient'; id: string; name?: string; sex: 'm' | 'f'; age: number; complaint?: Id; triage: Triage; doing: Doing; room?: string; by?: Id; visit: string; gone?: true;

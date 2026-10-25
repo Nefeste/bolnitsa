@@ -1,4 +1,4 @@
-// из anamnez: src/engine/shift/engine.ts @ 96503ac, изменено: разбор приёма нанятого врача — по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults); стройка ПК — команда `site`, событие `siteFree`, приход в закрытую больницу, аппараты коек ПИТ из плана (spec 2026-10-build); сутки целиком в потоке для ПК — часы приёма, поток по часам, планёрка в 08:00, обход нанятых врачей, ночь по часам (spec 2026-10-day); путь пациента — однострочные вызовы `journey.*` (spec 2026-10-flow-ui); фибрилляция желудочков после полуночи — в ночь суток поступления и в сменах «Анамнеза» (`hospitalDay`; так же в anamnez 0.6.4, Nefeste/anamnez#152); касса и поток от больницы, планёрка с узкими местами, «стало хуже», долгий случай нанятого врача (spec 2026-10-economy); ходьба в потоке для ПК — свой врач, свой зал, следующие у двери, приём, когда дошёл (spec 2026-10-walk); приём вашего — когда он дошёл, `meet` и событие `reach` (spec 2026-10-owner-play-2); карты ушедших — `s.past` (spec 2026-10-discharged-card); скамьи у дверей кабинетов — `bench` (spec 2026-10-door-benches)
+// из anamnez: src/engine/shift/engine.ts @ 96503ac, изменено: разбор приёма нанятого врача — по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults); стройка ПК — команда `site`, событие `siteFree`, приход в закрытую больницу, аппараты коек ПИТ из плана (spec 2026-10-build); сутки целиком в потоке для ПК — часы приёма, поток по часам, планёрка в 08:00, обход нанятых врачей, ночь по часам (spec 2026-10-day); путь пациента — однострочные вызовы `journey.*` (spec 2026-10-flow-ui); фибрилляция желудочков после полуночи — в ночь суток поступления и в сменах «Анамнеза» (`hospitalDay`; так же в anamnez 0.6.4, Nefeste/anamnez#152); касса и поток от больницы, планёрка с узкими местами, «стало хуже», долгий случай нанятого врача (spec 2026-10-economy); ходьба в потоке для ПК — свой врач, свой зал, следующие у двери, приём, когда дошёл (spec 2026-10-walk); приём вашего — когда он дошёл, `meet` и событие `reach` (spec 2026-10-owner-play-2); карты ушедших — `s.past` (spec 2026-10-discharged-card); скамьи у дверей кабинетов — `bench` (spec 2026-10-door-benches); настроение нанятых на планёрке и уход сам в пересменку (spec 2026-10-staff-mood)
 // Движок смены: приход пациентов, сортировка, очередь, терпение, обследования со своими
 // сроками, закрытие случая и дня (spec 2026-09-first-shift, «Движок»; ADR 0005).
 //
@@ -34,17 +34,18 @@ import {
   SHIFT_START, type ShiftEvent, type ShiftPatient, type ShiftState, TRIAGE, type Triage, type VisitKind, type WardDay, type AmbulanceDay, type SurgeryDay,
 } from './types';
 import { type Ask, askFor, askLong } from './consult';
-import { backAt, beginRest, blurredOf, dropCrew, dueOf, restLeft, slowedOf, startRest, tiredOf, wakeOf, worked } from './crew';
+import { backAt, beginRest, blurredOf, dropCrew, dueOf, restLeft, shiftEnded, slowedOf, startRest, tiredOf, wakeOf, worked } from './crew';
 import * as journey from './journey';
 import { AT_DOOR, doorBenches, fromDesk, hallNear, moveTo, PER_QUEUED, readyAt, route, toDoctor, toDoor, WALK_SPEED_PC, waitsAt, walkPc } from './walking';
 import { COMPLICATION_DAYS, complicationAt, complicationsOf, deathsOf, onsetHours, operationFor } from './surgery';
 import { dueIn, type TargetPlace, targetResults } from './targets';
-import { siteCommand, siteFree } from './site';
+import { occupied, siteCommand, siteFree } from './site';
 import { arrivalAfter, dayOf, hospitalDay, hoursOf, returnWindow, roundsAt, validHours } from './day';
 import { type Bed, daysIn, type StayEnd, stayNorm, wardCourse, wardState } from './ward';
 import { accrue, offerOf, openEconomy, payWorks, repay, shortOf, takeLoan } from './money';
 import { ambulancePerHour, bookedPerHour, type Capacity, walkPerHour } from './inflow';
 import * as meeting from './meeting';
+import { depart, leaversDue, moodMorning } from './mood';
 
 const MIN = 60;
 const TRIAGE_RANK: Record<Triage, number> = { red: 0, yellow: 1, green: 2 };
@@ -869,6 +870,13 @@ export function scheduleDuty(db: ContentDb, s: ShiftState) {
  */
 function duty(db: ContentDb, s: ShiftState) {
   const was = s.flow?.auto ? capacityOf(db, s, s.t - 1) : undefined;
+  // настроение (spec 2026-10-staff-mood): дошёл ли ушедший со сменой до предела к её концу; уходящие сами — прочь, их
+  // зарплата — по эту минуту
+  shiftEnded(db, s);
+  if (leaversDue(s)) {
+    accrue(db, s);
+    depart(s, occupied(db, s).staff);
+  }
   // усталость (spec 2026-10-staff-shifts, часть 2): ушедшие со сменой отдохнут дома, пришедшие — отдохнувшие
   dropCrew(db, s);
   const list = colleaguesOf(db, s);
@@ -1160,7 +1168,9 @@ function wardLying(db: ContentDb, s: ShiftState) {
  * Планёрка (spec 2026-10-day): в 08:00 сутки потока для ПК кончаются, а часы идут дальше. Что «Анамнез» делает, закрывая
  * день (`closeDay`) и открывая следующий (`nextDay`), — здесь, кроме того, что на ПК идёт само по часам: кто в больнице, тот
  * на месте, очередь и события — те же, операционная работала ночью. Итог суток — ровно за 24 часа: каждый счётчик
- * прибавлялся в час события. Роста навыка и новых кандидатов нет: на ПК нанимают на месте, рост — персонал этапа Б.
+ * прибавлялся в час события. Роста навыка и новых кандидатов нет: на ПК нанимают на месте, рост — персонал этапа Б. Настроение
+ * нанятых — по прошедшим суткам (spec 2026-10-staff-mood): кто собирается уйти и кто уходит — в извещение планёрки; ночной,
+ * что уходит, — сразу.
  */
 function morning(db: ContentDb, s: ShiftState, notices: Notice[]) {
   // команды суток — с планёрки; время команды, на которой она пришлась, после 08:00 — первой строкой, чтобы повтор от снимка в
@@ -1186,6 +1196,12 @@ function morning(db: ContentDb, s: ShiftState, notices: Notice[]) {
     setSkills(s, s.meta.skillsNext);
     delete s.meta.skillsNext;
   }
+  // настроение (spec 2026-10-staff-mood): ночная смена кончилась — дошёл ли до предела; санузел — как у репутации, сейчас;
+  // ночной, что не дождался ответа, уходит сейчас (дневной — в 20:00, в пересменку)
+  shiftEnded(db, s);
+  const plan = hospitalCtx(db, s).plan;
+  const news = moodMorning(db, s, plan.rooms.some(r => r.type === 'room.toilet' && plan.connected[r.id]));
+  if (news?.leave) depart(s, occupied(db, s).staff);
   // аппараты, сломавшиеся с утра (FR-EQ-3): до следующего утра их нет
   const broken = breakdowns(db, s);
   if (broken.length > 0) s.broken = broken;
@@ -1195,7 +1211,7 @@ function morning(db: ContentDb, s: ShiftState, notices: Notice[]) {
   s.events = s.events.filter(e => e.event.kind !== 'flow' || e.event.stream === 'ret');
   planFlow(db, s);
   prune(s);
-  notices.push({ kind: 'morning', summary, ...(broken.length > 0 ? { broken } : {}) });
+  notices.push({ kind: 'morning', summary, ...(broken.length > 0 ? { broken } : {}), ...(news ? { staff: news } : {}) });
   // «стало хуже» (spec 2026-10-economy, «Обход»): ваши лежащие — для автопаузы
   for (const id of meeting.turnedWorse(s)) notices.push({ kind: 'worse', id });
 }

@@ -1,7 +1,8 @@
 // Стройка ПК во время смены (spec docs/specs/2026-10-build.md, «Стройка в любой момент», «Снос и отмена») — своё.
 // Команда движка `{ kind: 'site', cmd }`: помещение, предмет, дверь, «Обставить», готовое помещение
 // (spec docs/specs/2026-10-ready-rooms.md), скамья в коридоре (spec docs/specs/2026-10-door-benches.md), снос, найм, отмена,
-// «Готово» — пока идут часы. Действие — новая больница (`s.hospital` — новый объект): план, требования и то, что работает, движок
+// «Готово» — пока идут часы; с людьми (spec docs/specs/2026-10-staff-mood.md) — увольнение с выплатой, «Поднять зарплату» и
+// «В другую смену». Действие — новая больница (`s.hospital` — новый объект): план, требования и то, что работает, движок
 // считает заново, свободные нанятые врачи зовут ждущих. Занятое (на койке лежат, аппаратом обследуют, в помещении
 // кто-то есть) убирается, когда освободится: проверка — событием очереди `siteFree`, поэтому итог не зависит от того,
 // каким шагом идут часы. Койка лежащего — номер в помещении; после стройки номер переносится на тот же предмет. С кассой
@@ -9,11 +10,12 @@
 import { Rng } from '../core/rng';
 import { DOCTOR, standInOf } from '../hospital/requirements';
 import {
-  addBench, addItem, addReady, addRoom, bedOrder, demolish, type Done, FREE_CHECK, furnish, hospitalOf, moveItem, removeDecor, removeDoor, removedBetween, removeItem,
-  removeRoom, setDoor, setOffice, type Site, type SiteCommand, type SiteError, type SiteRoom, SITE_UNDO, type Works,
+  addBench, addItem, addReady, addRoom, bedOrder, demolish, type Done, FREE_CHECK, furnish, hospitalOf, type MoodStep, moveItem, removeDecor, removeDoor, removedBetween,
+  removeItem, removeRoom, setDoor, setOffice, type Site, type SiteCommand, type SiteError, type SiteRoom, SITE_UNDO, type Works,
 } from '../hospital/site';
 import { covers, nightHospital, salaryOf, type Shift, type StaffMember } from '../hospital/staff';
-import { payWorks, shortOf } from './money';
+import { paySeverance, payWorks, shortOf } from './money';
+import { cheer, leavingOf, moodBack, moodOut, raisedOf, severanceOf } from './mood';
 import type { ContentDb, Id } from '../../content/types';
 import type { Notice, ShiftEvent, ShiftPatient, ShiftState } from './types';
 
@@ -138,9 +140,15 @@ function commit(db: ContentDb, s: ShiftState, before: Site, after: Site) {
   if (leavingIn(after)) scheduleFree(s);
 }
 
-/** Снимок для отмены: до действия. */
-function remember(s: ShiftState, works: Works, site: Site, room?: string) {
-  works.undo.push({ site, staff: s.staff ?? [], ...(s.nextStaff !== undefined ? { nextStaff: s.nextStaff } : {}), spent: works.spent, ...(room ? { room } : {}) });
+/**
+ * Снимок для отмены: до действия. С людьми (spec docs/specs/2026-10-staff-mood.md) — и выплата уволенному (`paid`), и что
+ * вернуть настроению (`mood`).
+ */
+function remember(s: ShiftState, works: Works, site: Site, room?: string, more: { paid?: number; mood?: MoodStep } = {}) {
+  works.undo.push({
+    site, staff: s.staff ?? [], ...(s.nextStaff !== undefined ? { nextStaff: s.nextStaff } : {}), spent: works.spent, ...(room ? { room } : {}),
+    ...(more.paid ? { paid: more.paid } : {}), ...(more.mood ? { mood: more.mood } : {}),
+  });
   if (works.undo.length > SITE_UNDO) works.undo.splice(0, works.undo.length - SITE_UNDO);
 }
 
@@ -167,11 +175,18 @@ export function siteCommand(db: ContentDb, s: ShiftState, cmd: SiteCommand): Not
       const m = s.staff?.find(x => x.id === cmd.id);
       if (!m) return no(cmd.kind, { kind: 'nothing' });
       if (occupied(db, s).staff.has(m.id)) return no(cmd.kind, { kind: 'busy' });
-      remember(s, works, site, m.room);
+      // выплата за смены (spec 2026-10-staff-mood; геймдизайн §7) — и ниже предела минуса: уволить можно всегда
+      const paid = severanceOf(db, m);
+      remember(s, works, site, m.room, { paid, mood: moodOut(s, m.id) });
       s.staff = s.staff!.filter(x => x.id !== m.id);
+      paySeverance(s, paid);
       nudge(s);
-      return [{ kind: 'site', cmd: cmd.kind, ok: true, cost: 0 }];
+      return [{ kind: 'site', cmd: cmd.kind, ok: true, cost: paid }];
     }
+    case 'raise':
+      return raise(db, s, works, site, cmd.id);
+    case 'reshift':
+      return reshift(db, s, works, site, cmd.id);
   }
   const busy = occupied(db, s);
   let later = false;
@@ -254,10 +269,49 @@ function undo(db: ContentDb, s: ShiftState, works: Works, site: Site): Notice[] 
   if (step.nextStaff !== undefined) s.nextStaff = step.nextStaff;
   else delete s.nextStaff;
   works.spent = step.spent;
-  // касса (spec 2026-10-economy): цена действия — назад целиком
+  // касса (spec 2026-10-economy): цена действия — назад целиком; выплата уволенному — тоже (spec 2026-10-staff-mood)
   payWorks(s, cost);
+  if (step.paid) paySeverance(s, -step.paid);
+  if (step.mood) moodBack(s, step.mood);
   commit(db, s, site, restored);
-  return [{ kind: 'site', cmd: 'undo', ok: true, cost, ...(step.room ? { room: step.room } : {}) }];
+  return [{ kind: 'site', cmd: 'undo', ok: true, cost: cost - (step.paid ?? 0), ...(step.room ? { room: step.room } : {}) }];
+}
+
+/**
+ * «Поднять зарплату» (spec docs/specs/2026-10-staff-mood.md, 2): до рынка его навыка или на шаг выше; настроение — прибавка
+ * сразу, выше порога — «собирается уйти» снято. Уходящему сам — поздно. Зарплата — со следующего часа кассы.
+ */
+function raise(db: ContentDb, s: ShiftState, works: Works, site: Site, id: string): Notice[] {
+  const m = s.staff?.find(x => x.id === id);
+  if (!m) return no('raise', { kind: 'nothing' });
+  if (leavingOf(s, id)) return no('raise', { kind: 'leaving' });
+  const salary = raisedOf(db, m);
+  remember(s, works, site, undefined, { mood: cheer(db, s, m, 'raise') });
+  s.staff = s.staff!.map(x => (x.id === id ? { ...x, salary } : x));
+  return [{ kind: 'site', cmd: 'raise', ok: true, cost: 0 }];
+}
+
+/**
+ * «В другую смену» (spec docs/specs/2026-10-staff-mood.md, 2): дневной — в ночную и назад, сразу; на его месте в той смене
+ * кто-то есть — тот меняется с ним. Собиравшемуся уйти — прибавка настроения. Нельзя, пока он или тот ведёт пациента; без
+ * смены (круглые сутки) и на месте, которое в той смене держит человек без смены, — нечего.
+ */
+function reshift(db: ContentDb, s: ShiftState, works: Works, site: Site, id: string): Notice[] {
+  const m = s.staff?.find(x => x.id === id);
+  if (!m?.shift) return no('reshift', { kind: 'nothing' });
+  if (leavingOf(s, id)) return no('reshift', { kind: 'leaving' });
+  const was = m.shift;
+  const to: Shift = was === 'day' ? 'night' : 'day';
+  const post = (x: StaffMember) => db.roles[x.role]?.stands ?? x.role;
+  const there = m.room === undefined ? [] : s.staff!.filter(x => x !== m && x.room === m.room && post(x) === post(m) && covers(x, to));
+  const other = there.find(x => x.shift === to);
+  if (there.some(x => x.shift === undefined)) return no('reshift', { kind: 'nothing' });
+  const busy = occupied(db, s).staff;
+  if (busy.has(m.id) || (other && busy.has(other.id))) return no('reshift', { kind: 'busy' });
+  remember(s, works, site, undefined, { mood: cheer(db, s, m, 'moved') });
+  s.staff = s.staff!.map(x => (x === m ? { ...x, shift: to } : x === other ? { ...x, shift: was } : x));
+  nudge(s);
+  return [{ kind: 'site', cmd: 'reshift', ok: true, cost: 0 }];
 }
 
 /**

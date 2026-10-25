@@ -389,7 +389,7 @@ function RightTabs({ hud, actions }: P) {
             .filter(p => !onDuty || p.on)
             .map(p => (
               <li key={p.key}>
-                <button type="button" className={p.on ? 'row' : 'row muted'} onClick={() => actions.select(p.key)}>
+                <button type="button" className={`${p.on ? 'row' : 'row muted'}${p.bad ? ' bad' : ''}`} onClick={() => actions.select(p.key)}>
                   {p.text}
                 </button>
               </li>
@@ -454,7 +454,7 @@ function Posts({ r, actions }: { r: RoomCard; actions: Actions }) {
                   ) : p.who ? (
                     <>
                       <span>{p.who}</span>
-                      <button type="button" className="small" id={`dismiss-${id}`} onClick={() => actions.dismiss(p.staffId!)}>
+                      <button type="button" className="small" id={`dismiss-${id}`} title={p.fire} onClick={() => actions.dismiss(p.staffId!)}>
                         {T.card.dismiss}
                       </button>
                     </>
@@ -520,8 +520,11 @@ function personLines(info: PersonInfo, names: Names): [string, string][] {
     const h = info.hours;
     return [
       [T.card.staff, names.role(info.role)],
+      // имя и зарплата против рынка (spec docs/specs/2026-10-staff-mood.md)
+      ...(info.name ? [[T.card.name, info.name] as [string, string]] : []),
       [T.card.where, info.home && h ? T.card.home(clock(h[0] * 3600)) : names.room(info.room)],
       ...(info.shift && h ? [[T.card.shift, T.card.shiftLine(info.shift, clock(h[0] * 3600), clock(h[1] * 3600))] as [string, string]] : []),
+      ...(info.pay ? [[T.card.salary, T.card.salaryLine(money(info.pay.now), money(info.pay.market))] as [string, string]] : []),
       ...(info.rest ? [[T.card.doing, restLine(info.rest)] as [string, string]] : []),
     ];
   }
@@ -553,6 +556,52 @@ function Fatigue({ value, worn }: { value: number; worn?: 'slow' | 'blur' }) {
         {value}
         {worn ? <span className="muted"> — {T.card.worn[worn]}</span> : null}
       </span>
+    </div>
+  );
+}
+
+/**
+ * Настроение человека штата (spec docs/specs/2026-10-staff-mood.md): число, стрелка за сутки и две главные причины;
+ * «собирается уйти» — до каких суток ответить, «уходит» — в котором часу; «Поднять зарплату» и «В другую смену».
+ */
+function Mood({ info, actions }: { info: Extract<PersonInfo, { kind: 'staff' }>; actions: Actions }) {
+  const m = info.mood;
+  const id = info.id;
+  if (!m || id === undefined) return null;
+  const why = (m.why ?? []).slice(0, 2).join(', ');
+  return (
+    <div className="mood" id="card-mood" data-value={m.v}>
+      <div className={m.v < 30 ? 'bad' : undefined}>
+        <span className="label">{T.card.mood}</span> <b>{m.v}</b>
+        {m.d ? <span className="muted"> {T.card.moodDelta(m.d)}</span> : null}
+        {why ? <span className="muted"> — {why}</span> : null}
+      </div>
+      {m.go !== undefined ? (
+        <div className="bad" id="card-leaving">
+          {T.card.leavingAt(clock(m.go))}
+        </div>
+      ) : m.quit !== undefined ? (
+        <div className="bad" id="card-quit">
+          {T.card.quitting(m.quit)}
+        </div>
+      ) : null}
+      <div className="row">
+        {info.pay?.raise !== undefined ? (
+          <button type="button" className="small" id="card-raise" title={T.card.raiseHint} onClick={() => actions.raise(id)}>
+            {T.card.raise(money(info.pay.now), money(info.pay.raise))}
+          </button>
+        ) : null}
+        {info.reshift ? (
+          <button type="button" className="small" id="card-reshift" title={T.card.reshiftHint(info.reshift.with)} onClick={() => actions.reshift(id)}>
+            {T.card.reshift(info.reshift.to)}
+          </button>
+        ) : null}
+      </div>
+      {info.said ? (
+        <div className={info.said.ok ? 'ok' : 'bad'} id="card-mood-said">
+          {info.said.text}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -601,6 +650,7 @@ function BottomCard({ hud, actions, names }: P) {
           ))}
         </dl>
         {info.kind === 'staff' && info.fatigue !== undefined ? <Fatigue value={info.fatigue} worn={info.worn} /> : null}
+        {info.kind === 'staff' ? <Mood info={info} actions={actions} /> : null}
         {/* ушедший — только карта, сутки (spec docs/specs/2026-10-discharged-card.md) */}
         {info.kind === 'patient' ? <TakeCase info={info} said={hud.doctor?.said} actions={actions} /> : null}
         {info.kind === 'patient' ? <PathSection hud={hud} /> : null}

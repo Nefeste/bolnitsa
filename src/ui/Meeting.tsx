@@ -1,6 +1,6 @@
 // Экран планёрки в 08:00 и вкладка «Отчёты» (spec docs/specs/2026-10-economy.md, «Планёрка»; геймдизайн §12): сутки в цифрах,
-// нанятые врачи, касса по статьям, репутация и её причины, узкие места, что сломалось, кому из ваших лежащих хуже, подсказка,
-// часы приёма, кредит. Данные — из окна (src/app/money.ts), слова — здесь, при отрисовке.
+// нанятые врачи, касса по статьям, репутация и её причины, узкие места, что сломалось, кому из ваших лежащих хуже, персонал —
+// кто собирается уйти и кто уходит (spec docs/specs/2026-10-staff-mood.md), подсказка, часы приёма, кредит. Данные — из окна (src/app/money.ts), слова — здесь, при отрисовке.
 import type { ReactNode } from 'react';
 import { PAYERS } from '../engine/economy/economy';
 import type { RepChange } from '../engine/economy/economy';
@@ -95,7 +95,7 @@ export function MeetingBody({ m, e, actions }: { m: MeetingView; e: EconomyHud; 
               .filter(([, v]) => (v ?? 0) !== 0)
               .map(([k, v]) => (
                 <li key={k}>
-                  {t.expense[k] ?? k}: {k === 'works' && (v ?? 0) < 0 ? signed(-(v ?? 0)) : money(v ?? 0)}
+                  {t.expense[k] ?? k}: {(k === 'works' || k === 'severance') && (v ?? 0) < 0 ? signed(-(v ?? 0)) : money(v ?? 0)}
                 </li>
               ))}
           </ul>
@@ -156,6 +156,25 @@ export function MeetingBody({ m, e, actions }: { m: MeetingView; e: EconomyHud; 
               <li key={w.id} className="bad">
                 {t.worseRow(w.who, w.state)}
               </li>
+            ))}
+          </ul>
+        </Section>
+      ) : null}
+      {m.staff ? (
+        <Section title={t.staff} id="meet-staff">
+          <ul>
+            {m.staff.leave.map((x, i) => (
+              <li key={`l${i}`} className="bad">
+                {t.staffLeave(x.who, x.why.slice(0, 2).map(w => T.card.moodWhy[w] ?? w).join(', '))}
+              </li>
+            ))}
+            {m.staff.quit.map((x, i) => (
+              <li key={`q${i}`} className="bad">
+                {t.staffQuit(x.who, x.until)}
+              </li>
+            ))}
+            {m.staff.low.map((x, i) => (
+              <li key={`w${i}`}>{t.staffLow(x)}</li>
             ))}
           </ul>
         </Section>

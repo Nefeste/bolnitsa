@@ -1,4 +1,4 @@
-// из anamnez: src/engine/shift/types.ts @ 96503ac, изменено: ClosedCase.review — разбор по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults); стройка ПК — команда, событие, извещение и счётчики (spec 2026-10-build); сутки целиком — часы приёма, планёрка и обход (spec 2026-10-day); путь пациента — поле `journeys` (spec 2026-10-flow-ui); касса и поток от больницы, планёрка, обход, долгий случай (spec 2026-10-economy); скамья у двери — `ShiftPatient.bench` (spec 2026-10-door-benches)
+// из anamnez: src/engine/shift/types.ts @ 96503ac, изменено: ClosedCase.review — разбор по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults); стройка ПК — команда, событие, извещение и счётчики (spec 2026-10-build); сутки целиком — часы приёма, планёрка и обход (spec 2026-10-day); путь пациента — поле `journeys` (spec 2026-10-flow-ui); касса и поток от больницы, планёрка, обход, долгий случай (spec 2026-10-economy); скамья у двери — `ShiftPatient.bench` (spec 2026-10-door-benches); настроение нанятых — `moods`, персонал на планёрке — `StaffNews` (spec 2026-10-staff-mood)
 // Смена в амбулатории (spec 2026-09-first-shift, «Движок»; `04-data-model.md` §2).
 //
 // Состояние — обычный сериализуемый объект: сохранение — снимок (ADR 0010). Случайность
@@ -11,7 +11,7 @@ import type { BuildCommand, Built, HospitalState } from '../hospital/build';
 import type { SiteCommand, SiteResult, Works } from '../hospital/site';
 import type { CampaignProgress } from '../campaign/campaign';
 import type { CaseIncome, Ledger, Payer, RepChange } from '../economy/economy';
-import type { StaffMember } from '../hospital/staff';
+import type { Mood, MoodWhy, StaffMember } from '../hospital/staff';
 import type { DoctorPhase } from '../med/policy';
 import type { Grade, ScoreNote } from '../med/score';
 import type { Observation, Patient } from '../med/types';
@@ -456,11 +456,30 @@ export type Notice =
    * поток для ПК (spec 2026-10-day): планёрка в 08:00 — итог прошедших суток и что сломалось с утра («помещение:место»);
    * для экрана планёрки и автопаузы
    */
-  | { kind: 'morning'; summary: DaySummary; broken?: string[] }
+  | { kind: 'morning'; summary: DaySummary; broken?: string[]; staff?: StaffNews }
   /** поток для ПК (spec 2026-10-economy, «Обход»): ваш лежащий в 08:00 стал хуже или реагирует на лечение — автопауза */
   | { kind: 'worse'; id: string }
   /** поток для ПК (spec 2026-10-owner-play-2): ваш пациент у вас — вошёл или вернулся с обследования; карта и пауза */
   | { kind: 'reached'; id: string };
+
+/**
+ * Персонал на планёрке (spec docs/specs/2026-10-staff-mood.md): у кого настроение этим утром упало ниже порога ухода; кто
+ * «собирается уйти» — до утра каких суток; кто не дождался ответа и уходит после своей смены — с тем, что нужно строке
+ * планёрки, когда его уже нет в штате, и с главными причинами.
+ */
+export interface StaffNews {
+  low?: string[];
+  quit?: { id: string; until: number }[];
+  leave?: Leaver[];
+}
+
+export interface Leaver {
+  id: string;
+  role: Id;
+  sex: 'm' | 'f';
+  seed: number;
+  why: MoodWhy[];
+}
 
 export interface DaySummary {
   day: number;
@@ -716,6 +735,11 @@ export interface ShiftState {
    * записи — с начала смены не уставал и не отдыхал
    */
   crew?: Record<string, Crew>;
+  /**
+   * поток для ПК: настроение нанятых со сменой, по номеру человека (spec docs/specs/2026-10-staff-mood.md); нет записи —
+   * новый, настроение — начальное
+   */
+  moods?: Record<string, Mood>;
 }
 
 /**

@@ -4,12 +4,13 @@
 // командами движка. Пока открыта карта пациента, планёрка ждёт её закрытия.
 import type { Id } from '../content/types';
 import { REPAIR_PCT } from '../engine/shift/engine';
-import type { DayLoad, DaySummary, Notice } from '../engine/shift/types';
+import type { DayLoad, DaySummary, Notice, StaffNews } from '../engine/shift/types';
 import { named } from '../i18n';
 import { H, NO_CASH } from '../sim/pack';
 import type { Slice } from '../sim/client';
 import type { Speed } from '../ui/store';
 import type { Game } from './game';
+import { staffName } from './people';
 
 /** Нанятый врач на планёрке: должность, навык, приёмы за сутки. */
 export interface DoctorDay {
@@ -45,6 +46,11 @@ export interface MeetingView {
   tip: Tip;
   /** кредит взят с этой планёрки: сколько */
   loanTaken?: number;
+  /**
+   * персонал (spec docs/specs/2026-10-staff-mood.md): у кого настроение упало ниже порога, кто собирается уйти — до планёрки
+   * каких суток, кто уходит после своей смены и почему (причины — ключи, слова — при отрисовке); нечего сказать — нет
+   */
+  staff?: { low: string[]; quit: { who: string; until: number }[]; leave: { who: string; why: string[] }[] };
 }
 
 export interface EconomyHud {
@@ -114,12 +120,14 @@ export class Money {
     const morning = s.notices.find((n): n is Extract<Notice, { kind: 'morning' }> => n.kind === 'morning');
     if (!morning) return;
     const worse = s.notices.filter((n): n is Extract<Notice, { kind: 'worse' }> => n.kind === 'worse').map(n => n.id);
-    this.hud.meeting = this.viewOf(morning.summary, morning.broken ?? [], worse);
-    if (this.hud.autopause) this.show(was);
+    this.hud.meeting = this.viewOf(morning.summary, morning.broken ?? [], worse, morning.staff);
+    // «собирается уйти» и «уходит» (spec docs/specs/2026-10-staff-mood.md) — решение игрока: планёрка открывается и без
+    // автопаузы
+    if (this.hud.autopause || morning.staff?.quit || morning.staff?.leave) this.show(was);
   }
 
   /** Планёрка для экрана: врачи, кабинеты узких мест, сломанное с ценой ремонта, кому хуже, подсказка. */
-  private viewOf(summary: DaySummary, broken: readonly string[], worseIds: readonly string[]): MeetingView {
+  private viewOf(summary: DaySummary, broken: readonly string[], worseIds: readonly string[], news?: StaffNews): MeetingView {
     const { db, plan, staff } = this.g;
     const doctors: DoctorDay[] = Object.entries(summary.colleagues ?? {}).map(([id, c]) => {
       const m = staff.find(x => x.id === id);
@@ -151,7 +159,20 @@ export class Money {
       const w = ward.find(x => x.id === id);
       return { id, who: w?.who ?? id, state: w?.stateText ?? '' };
     });
-    return { summary, doctors, rooms, broken: out, worse, tip: tipOf(summary, rooms, worse.length > 0, doctors.some(d => d.idle), this.hud.limit) };
+    // персонал (spec docs/specs/2026-10-staff-mood.md): уходящий ночной уже не в штате — кто он, сказано в извещении
+    const who = (m: { role: Id; sex: 'm' | 'f'; seed: number }) => `${named(db.roles[m.role]?.name, m.role)} ${staffName(m)}`;
+    const member = (id: string) => staff.find(x => x.id === id);
+    const people = news
+      ? {
+          low: (news.low ?? []).flatMap(id => (member(id) ? [who(member(id)!)] : [])),
+          quit: (news.quit ?? []).flatMap(q => (member(q.id) ? [{ who: who(member(q.id)!), until: q.until }] : [])),
+          leave: (news.leave ?? []).map(l => ({ who: who(l), why: l.why })),
+        }
+      : undefined;
+    return {
+      summary, doctors, rooms, broken: out, worse, tip: tipOf(summary, rooms, worse.length > 0, doctors.some(d => d.idle), this.hud.limit),
+      ...(people ? { staff: people } : {}),
+    };
   }
 
   // ---------------------------------------------------------------- экран

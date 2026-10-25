@@ -11,7 +11,7 @@ import type { Cell, ContentDb, Id, ObjectKind, RoomSize, RoomSizeId, Rot } from 
 import type { Decor, HospitalState, PlacedRoom, Plan, RoomInstance } from './build';
 import { CELL } from './grid';
 import { OFFICE, type Problem } from './requirements';
-import type { Shift, StaffMember } from './staff';
+import type { Mood, Shift, StaffMember } from './staff';
 
 // --- состояние ------------------------------------------------------------------------------------------------------
 
@@ -84,13 +84,28 @@ export interface Works {
   undo: WorksStep[];
 }
 
-/** Снимок до действия стройки: больница, штат, счётчик; `room` — помещение, которое действие меняло. */
+/**
+ * Снимок до действия стройки: больница, штат, счётчик; `room` — помещение, которое действие меняло. Действия с людьми (spec
+ * docs/specs/2026-10-staff-mood.md): `paid` — выплата уволенному, ₽, отмена возвращает её в кассу; `mood` — настроение:
+ * уволенного — запись целиком (`was`), поднятому и переведённому — прибавка (`d`) и снятое «собирается уйти» (`quit`, `low`).
+ */
 export interface WorksStep {
   site: Site;
   staff: StaffMember[];
   nextStaff?: number;
   spent: number;
   room?: string;
+  paid?: number;
+  mood?: MoodStep;
+}
+
+/** Настроение в шаге отмены (spec docs/specs/2026-10-staff-mood.md): чьё и что вернуть. */
+export interface MoodStep {
+  id: string;
+  d?: number;
+  quit?: number;
+  low?: number;
+  was?: Mood;
 }
 
 // --- числа (гипотезы; spec «Деньги», «Помещение») ---------------------------------------------------------------
@@ -514,7 +529,9 @@ export type SiteError =
   /** готовое помещение (spec docs/specs/2026-10-ready-rooms.md): дверь образца — не в коридор от главного входа */
   | { kind: 'doorTo' }
   /** касса ПК (spec docs/specs/2026-10-economy.md): действие увело бы кассу ниже предела — не хватает `need` ₽ */
-  | { kind: 'money'; need: number };
+  | { kind: 'money'; need: number }
+  /** уже уходит сам (spec docs/specs/2026-10-staff-mood.md): поднимать зарплату и переводить поздно */
+  | { kind: 'leaving' };
 
 export type Check = { ok: true; cost: number } | { ok: false; error: SiteError };
 const fail = (error: SiteError): { ok: false; error: SiteError } => ({ ok: false, error });
@@ -1432,7 +1449,11 @@ export type SiteCommand =
    * docs/specs/2026-10-staff-shifts.md), нет — на дневную
    */
   | { kind: 'hire'; room: string; role: Id; as?: Id; shift?: Shift }
+  /** уволить — с выплатой за `staff.mood.severance` его смен (spec docs/specs/2026-10-staff-mood.md) */
   | { kind: 'dismiss'; id: string }
+  /** поднять зарплату — до рынка его навыка или на шаг выше; перевести в другую смену — с тем, кто в ней на его месте */
+  | { kind: 'raise'; id: string }
+  | { kind: 'reshift'; id: string }
   | { kind: 'undo' }
   /** стройка закончена: перестраиваемое помещение открыто */
   | { kind: 'done' }

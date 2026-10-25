@@ -11,7 +11,9 @@
 //   polyspec — та же поликлиника, где два терапевта заменены гастроэнтерологом и эндокринологом (spec
 //              2026-10-specialists): у специалистов своя запись, пришедших сами берёт один терапевт.
 // Критерии: касса ни разу не ниже предела минуса (кредит не нужен); за 7 суток больница не окупается целиком — не богатеет
-// нелепо; поток за сутки — в ориентирах геймдизайна §5.
+// нелепо; поток за сутки — в ориентирах геймдизайна §5. Персонал (spec docs/specs/2026-10-staff-mood.md): кто собирался уйти
+// и кто ушёл сам, настроение в конце; с `--days 14` и больше — критерий: игрок ничего не делает, а уходят сами не больше двух
+// за две недели.
 // `--hall N` — сидя или стоя по своему залу не дальше N м (content/hospital/inflow.yaml, `hall`); `--hall 0` — по всей больнице.
 // `--bench N` — скамьи у дверей кабинетов не дальше N шагов (`bench`, spec docs/specs/2026-10-door-benches.md); `--bench 0` — без них.
 //   bun tools/sim/economy.ts [--days 7] [--seeds 1,2,3] [--only clinic,district,city,poly,polyspec] [--hall N] [--bench N] [--json]
@@ -128,8 +130,13 @@ interface DayRow {
   arrived: number; ambulance: number; seen: number; left: number; died: number; lying: number; flowWalk: number; flowAmb: number;
 }
 interface Run {
-  scenario: string; seed: number; start: number; value: number; minCash: number; profit: number; days: DayRow[];
+  /** `week` — прибыль за первые 7 суток без стройки: критерий «не окупается за 7 суток» и при `--days` больше 7 */
+  scenario: string; seed: number; start: number; value: number; minCash: number; profit: number; week: number; days: DayRow[];
   lines: Record<string, number>;
+  /** персонал (spec 2026-10-staff-mood): собирались уйти и ушли сами — сутки, должность, причины; настроение в конце */
+  quits: { day: number; role: Id }[];
+  leaves: { day: number; role: Id; why: string[] }[];
+  moods: { n: number; low: number; min: number; mean: number; why: Record<string, number> };
 }
 
 function start(name: string, seed: number): ShiftState {
@@ -159,11 +166,22 @@ function run(name: string, seed: number): Run {
   const value = valueOf(s.hospital!.site!);
   let minCash = cashNow(s)!;
   const lines: Record<string, number> = {};
+  const quits: Run['quits'] = [];
+  const leaves: Run['leaves'] = [];
   const end = (DAYS * 24 + 8) * 3600;
   while (s.t < end) {
-    apply(db, s, { kind: 'advance', seconds: 300 });
+    for (const n of apply(db, s, { kind: 'advance', seconds: 300 })) {
+      if (n.kind !== 'morning' || !n.staff) continue;
+      for (const q of n.staff.quit ?? []) quits.push({ day: s.day, role: s.staff!.find(m => m.id === q.id)?.role ?? '' });
+      for (const l of n.staff.leave ?? []) leaves.push({ day: s.day, role: l.role, why: l.why });
+    }
     minCash = Math.min(minCash, cashNow(s)!);
   }
+  // настроение в конце: у кого есть смена
+  const vs = (s.staff ?? []).filter(m => m.shift !== undefined).map(m => s.moods?.[m.id]?.v ?? db.economy.staff.mood?.start ?? 70);
+  const why: Record<string, number> = {};
+  for (const r of Object.values(s.moods ?? {})) for (const w of r.why ?? []) why[w] = (why[w] ?? 0) + 1;
+  const moods = { n: vs.length, low: vs.filter(v => v < (db.economy.staff.mood?.quit ?? 30)).length, min: vs.length ? Math.min(...vs) : 0, mean: vs.length ? vs.reduce((a, b) => a + b, 0) / vs.length : 0, why };
   const days = s.history.map((d): DayRow => {
     const e = d.economy!;
     const col = Object.values(d.colleagues ?? {});
@@ -185,8 +203,8 @@ function run(name: string, seed: number): Run {
     d.flowAmb = Math.round(ambulancePerHour(db, c) * 24);
   }
   // прибыль — без стройки первых суток: сколько больница зарабатывает, когда построена
-  const profit = days.reduce((n, d, i) => n + d.income - d.expenses + (i === 0 ? d.works : 0), 0);
-  return { scenario: name, seed, start: first, value, minCash, profit, days, lines };
+  const gain = (list: DayRow[]) => list.reduce((n, d, i) => n + d.income - d.expenses + (i === 0 ? d.works : 0), 0);
+  return { scenario: name, seed, start: first, value, minCash, profit: gain(days), week: gain(days.slice(0, 7)), days, lines, quits, leaves, moods };
 }
 
 const fmt = (n: number) => Math.round(n).toLocaleString('ru-RU');
@@ -209,14 +227,27 @@ if (asJson) {
       }
       const lines = Object.entries(r.lines).filter(([, v]) => v !== 0).map(([k, v]) => `${k} ${fmt(v)}`).join(', ');
       console.log(`    за ${DAYS} сут.: ${lines}`);
+      // персонал (spec 2026-10-staff-mood)
+      const m = r.moods;
+      const why = Object.entries(m.why).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ');
+      const gone = r.leaves.map(l => `сутки ${l.day}: ${l.role.slice(5)} (${l.why.join(', ') || 'без причин'})`).join('; ');
+      console.log(`    персонал: со сменой ${m.n}, настроение в конце ${m.min}–${Math.round(m.mean)} (ниже 30 — ${m.low}); причины ${why || 'нет'}; собирались уйти ${r.quits.length}, ушли сами ${r.leaves.length}${gone ? ` — ${gone}` : ''}`);
     }
     const low = rs.filter(r => r.minCash < -limit);
-    const rich = rs.filter(r => r.profit > r.value);
+    const rich = rs.filter(r => r.week > r.value);
     if (low.length) console.log(`  ✗ касса ниже предела (−${fmt(limit)}): зёрна ${low.map(r => r.seed).join(', ')}`);
     else console.log(`  ✓ касса ни разу не ниже предела −${fmt(limit)} ₽`);
-    if (rich.length) console.log(`  ✗ окупилась за ${DAYS} суток: зёрна ${rich.map(r => r.seed).join(', ')}`);
-    else console.log(`  ✓ за ${DAYS} суток не окупается целиком: прибыль ${rs.map(r => fmt(r.profit)).join(' / ')} при цене ${fmt(rs[0].value)}`);
+    const week = Math.min(DAYS, 7);
+    if (rich.length) console.log(`  ✗ окупилась за ${week} суток: зёрна ${rich.map(r => r.seed).join(', ')}`);
+    else console.log(`  ✓ за ${week} суток не окупается целиком: прибыль ${rs.map(r => fmt(r.week)).join(' / ')} при цене ${fmt(rs[0].value)}`);
     fails += low.length + rich.length;
+    // персонал (spec 2026-10-staff-mood): за две недели, если игрок ничего не делает, уходят сами не больше двух
+    if (DAYS >= 14) {
+      const many = rs.filter(r => r.leaves.length > Math.floor((2 * DAYS) / 14));
+      if (many.length) console.log(`  ✗ ушли сами больше ${Math.floor((2 * DAYS) / 14)} за ${DAYS} суток: зёрна ${many.map(r => `${r.seed} (${r.leaves.length})`).join(', ')}`);
+      else console.log(`  ✓ ушли сами: ${rs.map(r => r.leaves.length).join(' / ')} за ${DAYS} суток — не больше ${Math.floor((2 * DAYS) / 14)}`);
+      fails += many.length;
+    }
   }
   if (fails) process.exitCode = 1;
 }

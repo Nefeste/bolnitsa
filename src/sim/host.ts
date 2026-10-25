@@ -6,6 +6,7 @@
 import type { ContentDb } from '../content/types';
 import { apply, catchUp, crewList, lateOf, newFlowShift, prepareFinish } from '../engine/shift/engine';
 import { crewOf, type CrewView } from '../engine/shift/crew';
+import { moodsOf, type MoodView } from '../engine/shift/mood';
 import { sliceOf } from '../engine/shift/slice';
 import type { Command, Notice, ShiftState } from '../engine/shift/types';
 import { patientName } from './caseView';
@@ -43,6 +44,8 @@ export function createSim(db: ContentDb): SimHost {
   let sentLate = '';
   /** усталость и перерывы врачей в смене — как окно уже получило */
   let sentCrew = '';
+  /** настроение нанятых со сменой (spec docs/specs/2026-10-staff-mood.md) — как окно уже получило */
+  let sentMoods = '';
   /** чей путь показывает окно и каким он был отправлен */
   let watch: string | null = null;
   let sentPath: string | undefined;
@@ -91,9 +94,17 @@ export function createSim(db: ContentDb): SimHost {
       sentCrew = crewSig;
       crew = crewNow;
     }
+    // настроение (spec docs/specs/2026-10-staff-mood.md): меняется на планёрке и от действий с людьми — тогда и заново
+    let moods: MoodView[] | undefined;
+    const moodsNow = s!.flow ? moodsOf(db, s!) : [];
+    const moodSig = JSON.stringify(moodsNow);
+    if (moodSig !== sentMoods || world) {
+      sentMoods = moodSig;
+      moods = moodsNow;
+    }
     const lag = owed + (s!.until !== undefined ? s!.until - s!.t : 0);
     const { buf, names } = packSlice(s!, sliceOf(s!, officeOf(db, s!)), lag, handles, rooms, staff, patientName);
-    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...(late ? { late } : {}), ...(crew ? { crew } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
+    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...(late ? { late } : {}), ...(crew ? { crew } : {}), ...(moods ? { moods } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
   };
   const fresh = () => {
     owed = 0;
@@ -102,6 +113,7 @@ export function createSim(db: ContentDb): SimHost {
     sentBroken = null;
     sentLate = '';
     sentCrew = '';
+    sentMoods = '';
     sentPath = undefined;
     desk.reset();
   };
