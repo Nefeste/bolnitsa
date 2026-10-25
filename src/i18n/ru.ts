@@ -2,6 +2,7 @@
 import { doctorRu } from './doctor.ru';
 import { economyRu } from './economy.ru';
 import { encyclopediaRu } from './encyclopedia.ru';
+import { pluralRu } from './plural';
 
 export const ru = {
   // часть 5б (spec docs/specs/2026-10-economy.md): касса, планёрка, часы приёма, кредит, обход — `money`, `meeting`, `round`
@@ -91,9 +92,11 @@ export const ru = {
     undone: 'Отменено',
     hired: 'Нанят',
     /** с людьми (spec docs/specs/2026-10-staff-mood.md): уволен с выплатой; зарплата поднята; в другую смену */
-    dismissed: (paid: string) => `Уволен — выплата ${paid}`,
+    dismissed: (paid: string) => `Увольнение — выплата ${paid}`,
     raised: 'Зарплата поднята',
-    reshifted: 'Переведён в другую смену',
+    reshifted: 'Теперь — в другой смене',
+    /** учёба (spec docs/specs/2026-10-staff-mood.md, раздел 4) */
+    studied: (cost: string) => `Учёба оплачена — ${cost}`,
     failed: (why: string) => `Нельзя: ${why}`,
   },
   site: {
@@ -302,7 +305,7 @@ export const ru = {
     mood: 'Настроение',
     moodDelta: (d: number) => (d > 0 ? `↑${d}` : `↓${-d}`),
     moodWhy: {
-      below: 'зарплата ниже рынка', above: 'зарплата выше рынка', limit: 'предел усталости', here: 'нет ординаторской', toilet: 'нет санузла',
+      below: 'зарплата ниже рынка', belowFar: 'зарплата сильно ниже рынка', above: 'зарплата выше рынка', limit: 'предел усталости', here: 'нет ординаторской', toilet: 'нет санузла',
       nights: 'ночные смены подряд',
     } as Record<string, string>,
     moodShort: (v: number) => `настроение ${v}`,
@@ -315,8 +318,19 @@ export const ru = {
     raise: (from: string, to: string) => `Поднять зарплату: ${from} → ${to}`,
     raiseHint: 'Настроение +10 сразу. Зарплата выше рынка его навыка на 10 % и больше — ещё +3 в сутки.',
     reshift: (to: 'day' | 'night'): string => (to === 'day' ? 'В дневную смену' : 'В ночную смену'),
-    reshiftHint: (who: string | undefined) => (who ? `Сменами поменяется с: ${who}` : 'Его место в той смене свободно'),
+    reshiftHint: (who: string | undefined) => (who ? `Сменами поменяется с: ${who}` : 'Место в той смене свободно'),
     dismissHint: (paid: string) => `Уволить — выплата за три смены: ${paid}`,
+    /** рост, наставник, учёба, болезнь (spec docs/specs/2026-10-staff-mood.md, разделы 3–5) */
+    skill: 'Навык',
+    skillLine: (skill: number, steps: number | undefined, mentor: string | undefined) =>
+      `${skill}${steps !== undefined ? ` — до навыка ${skill + 1}: ${steps} ${pluralRu(steps, 'смена', 'смены', 'смен')}` : ''}${mentor ? ` · наставник — ${mentor}` : ''}`,
+    awayStudy: (day: number) => `на учёбе — вернётся утром дня ${day}`,
+    awaySick: (sex: 'm' | 'f') => `болеет — сегодня не ${sex === 'f' ? 'вышла' : 'вышел'} на смену`,
+    studyShort: 'учится',
+    sickShort: 'болеет',
+    skillShort: (n: number) => `навык ${n}`,
+    study: (days: number, cost: string) => `Отправить учиться: ${days} ${pluralRu(days, 'сутки', 'суток', 'суток')}, ${cost}`,
+    studyHint: 'После учёбы — навык на ступень выше и настроение +20. Пока идёт учёба, место в смене пустует.',
     demolish: (back: string) => `Снести — вернётся ${back}`,
     furnish: (cost: string) => `Обставить — ${cost}`,
     reserve: (n: number) => `в резерве: ${n}`,
@@ -359,6 +373,9 @@ export const ru = {
     /** персонал (spec docs/specs/2026-10-staff-mood.md) */
     quit: (who: string) => `собирается уйти: ${who}`,
     leave: (who: string) => `уходит после смены: ${who}`,
+    grew: (who: string, skill: number, sex: 'm' | 'f') => `${sex === 'f' ? 'выросла' : 'вырос'} до навыка ${skill}: ${who}`,
+    back: (who: string, skill: number, sex: 'm' | 'f') => `${sex === 'f' ? 'вернулась' : 'вернулся'} с учёбы, навык ${skill}: ${who}`,
+    sick: (who: string) => `болеет, на смену не выйдет: ${who}`,
     shiftEnd: 'приём закончен',
   },
   debug: {

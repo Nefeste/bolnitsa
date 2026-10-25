@@ -520,12 +520,15 @@ function personLines(info: PersonInfo, names: Names): [string, string][] {
     const h = info.hours;
     return [
       [T.card.staff, names.role(info.role)],
-      // имя и зарплата против рынка (spec docs/specs/2026-10-staff-mood.md)
+      // имя и зарплата против рынка (spec docs/specs/2026-10-staff-mood.md); навык, до следующего и наставник (раздел 3)
       ...(info.name ? [[T.card.name, info.name] as [string, string]] : []),
+      ...(info.skill !== undefined ? [[T.card.skill, T.card.skillLine(info.skill, info.steps, info.mentor)] as [string, string]] : []),
       [T.card.where, info.home && h ? T.card.home(clock(h[0] * 3600)) : names.room(info.room)],
       ...(info.shift && h ? [[T.card.shift, T.card.shiftLine(info.shift, clock(h[0] * 3600), clock(h[1] * 3600))] as [string, string]] : []),
       ...(info.pay ? [[T.card.salary, T.card.salaryLine(money(info.pay.now), money(info.pay.market))] as [string, string]] : []),
       ...(info.rest ? [[T.card.doing, restLine(info.rest)] as [string, string]] : []),
+      // учится или болеет (разделы 4–5)
+      ...(info.away ? [[T.card.doing, info.away.why === 'study' ? T.card.awayStudy(Math.floor(info.away.until / 86400) + 1) : T.card.awaySick(info.sex)] as [string, string]] : []),
     ];
   }
   // ушёл — на карте его нет: кто и как пришёл, остальное — в пути (spec 2026-10-flow-ui)
@@ -594,6 +597,11 @@ function Mood({ info, actions }: { info: Extract<PersonInfo, { kind: 'staff' }>;
         {info.reshift ? (
           <button type="button" className="small" id="card-reshift" title={T.card.reshiftHint(info.reshift.with)} onClick={() => actions.reshift(id)}>
             {T.card.reshift(info.reshift.to)}
+          </button>
+        ) : null}
+        {info.study ? (
+          <button type="button" className="small" id="card-study" title={T.card.studyHint} onClick={() => actions.study(id)}>
+            {T.card.study(info.study.days, money(info.study.cost))}
           </button>
         ) : null}
       </div>

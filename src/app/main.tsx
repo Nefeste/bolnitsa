@@ -58,6 +58,7 @@ const actions: Actions = {
   dismiss: later('dismiss'),
   raise: later('raise'),
   reshift: later('reshift'),
+  study: later('study'),
   filterPatients: later('filterPatients'),
   focus: later('focus'),
   find: later('find'),

@@ -21,11 +21,12 @@
 // кабинета»; инструмент «Скамья», призрак, Ctrl+Z, снос, tools/app/e2e-benches.mjs. Часть 16 — место под стройку у
 // городской больницы: восточное крыло, палата в нём работает, tools/app/e2e-land.mjs. Часть 17 — настроение персонала:
 // «собирается уйти» на планёрке, карточка, «Поднять зарплату», «В другую смену», выплата при увольнении,
-// tools/app/e2e-mood.mjs.
+// tools/app/e2e-mood.mjs. Часть 18 — рост, учёба и болезнь: «вырос до навыка 4» и «Поднять зарплату» на планёрке, вернулся с
+// учёбы, сцена не пересобирается, «до навыка 5: 20 смен», «Отправить учиться», tools/app/e2e-growth.mjs.
 // Ошибок в консоли и запросов наружу нет.
 // Снимки — tools/app/out/e2e.png, e2e-build-*.png и e2e-flow-*.png; `--shots high` — снимки частей 2 и 3 в этом качестве
 // (на время снимка).
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17] [--shots low|medium|high] [--port 8093]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18] [--shots low|medium|high] [--port 8093]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -36,6 +37,7 @@ import { encyclopediaPart } from './e2e-encyclopedia.mjs';
 import { fatiguePart } from './e2e-fatigue.mjs';
 import { landPart } from './e2e-land.mjs';
 import { moodPart } from './e2e-mood.mjs';
+import { growthPart } from './e2e-growth.mjs';
 import { findChromium } from './e2e-lib.mjs';
 import { ownerTwoPart } from './e2e-owner2.mjs';
 import { polyPart } from './e2e-poly.mjs';
@@ -136,6 +138,8 @@ try {
   if (run(16)) await landPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   // часть 17 — настроение персонала (spec docs/specs/2026-10-staff-mood.md)
   if (run(17)) await moodPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  // часть 18 — рост, учёба и болезнь персонала (spec docs/specs/2026-10-staff-mood.md, разделы 3–5)
+  if (run(18)) await growthPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);

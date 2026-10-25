@@ -70,23 +70,23 @@ export async function moodPart({ page, port, out, ok, fail, q, shots }) {
     raise: document.getElementById('card-raise')?.textContent ?? '',
     all: (document.getElementById('card')?.textContent ?? '').replace(/\s+/g, ' '),
   }));
-  // 29 − 5 ниже рынка + 4 тяги к 70
-  if (card.mood === 28 && card.text.includes('зарплата ниже рынка') && card.quit.includes('собирается уйти') && /Имя/.test(card.all)) ok(`карточка: «${card.text.slice(0, 120)}»`);
+  // 29 − 6 «сильно ниже рынка» (на две ступени навыка) + 4 тяги к 70
+  if (card.mood === 27 && card.text.includes('зарплата сильно ниже рынка') && card.quit.includes('собирается уйти') && /Имя/.test(card.all)) ok(`карточка: «${card.text.slice(0, 120)}»`);
   else fail(`карточка: ${JSON.stringify(card)}`);
   ok(`снимок карточки: ${join(out, 'e2e-mood-2-card.jpg')} (${await shot('e2e-mood-2-card.jpg')} КБ)`);
 
   // ---------------------------------------------------------------- «Поднять зарплату»: до рынка, +10, остаётся
   await page.click('#card-raise');
-  await until(id => window.__game.moods.get(id)?.v === 38, who.id);
+  await until(id => window.__game.moods.get(id)?.v === 37, who.id);
   await until(() => !document.getElementById('card-quit') && !!document.getElementById('card-mood-said'));
   const after = await page.evaluate(id => ({ salary: window.__game.staff.find(m => m.id === id)?.salary, said: document.getElementById('card-mood-said')?.textContent ?? '', quit: window.__game.moods.get(id)?.quit }), who.id);
-  if (after.salary === who.market && after.quit === undefined && after.said === 'Зарплата поднята') ok(`«${card.raise}» — зарплата ${after.salary}, настроение 38, «собирается уйти» снято`);
+  if (after.salary === who.market && after.quit === undefined && after.said === 'Зарплата поднята') ok(`«${card.raise}» — зарплата ${after.salary}, настроение 37, «собирается уйти» снято`);
   else fail(`«Поднять зарплату»: ${JSON.stringify(after)}`);
   await page.evaluate(() => window.__game.actions.setTab('staff'));
   await page.waitForSelector('#staff-on-duty');
-  const row = await page.$$eval('#right .tabbody li', els => els.map(e => (e.textContent ?? '').replace(/\s+/g, ' ').trim()).find(x => x.includes('настроение 38')) ?? '');
-  // стрелка — с настроения до планёрки: 29 → 38
-  if (row.startsWith('Медсестра') && row.includes('настроение 38 ↑9')) ok(`«Персонал»: «${row}»`);
+  const row = await page.$$eval('#right .tabbody li', els => els.map(e => (e.textContent ?? '').replace(/\s+/g, ' ').trim()).find(x => x.includes('настроение 37')) ?? '');
+  // стрелка — с настроения до планёрки: 29 → 37
+  if (row.startsWith('Медсестра') && row.includes('настроение 37 ↑8')) ok(`«Персонал»: «${row}»`);
   else fail(`«Персонал»: «${row}»`);
   await page.evaluate(() => window.__game.actions.setTab(null));
 
@@ -101,7 +101,7 @@ export async function moodPart({ page, port, out, ok, fail, q, shots }) {
   await page.click('#card-reshift');
   await until(id => window.__game.staff.find(m => m.id === id)?.shift === 'night', who.id);
   const swapped = pair ? await page.evaluate(o => window.__game.staff.find(m => m.id === o)?.shift, pair.other) : 'day';
-  if (swapped === 'day' && (!pair || /поменяется с: Медсестра/.test(hint ?? ''))) ok(`«В ночную смену» — сменами поменялась${pair ? ` с ${pair.other}` : ''}: «${hint}»`);
+  if (swapped === 'day' && (!pair || /поменяется с: Медсестра/.test(hint ?? ''))) ok(`«В ночную смену» — поменялись сменами${pair ? ` с ${pair.other}` : ''}: «${hint}»`);
   else fail(`«В другую смену»: ${JSON.stringify({ pair, swapped, hint })}`);
   await page.keyboard.press('Escape');
 

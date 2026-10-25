@@ -13,8 +13,9 @@ import {
   addBench, addItem, addReady, addRoom, bedOrder, demolish, type Done, FREE_CHECK, furnish, hospitalOf, type MoodStep, moveItem, removeDecor, removeDoor, removedBetween,
   removeItem, removeRoom, setDoor, setOffice, type Site, type SiteCommand, type SiteError, type SiteRoom, SITE_UNDO, type Works,
 } from '../hospital/site';
-import { covers, nightHospital, salaryOf, type Shift, type StaffMember } from '../hospital/staff';
-import { paySeverance, payWorks, shortOf } from './money';
+import { covers, nightHospital, salaryOf, type Shift, type StaffMember, wageOf } from '../hospital/staff';
+import { growthNumbers, studyUntil } from './growth';
+import { payStudy, paySeverance, payWorks, shortOf } from './money';
 import { cheer, leavingOf, moodBack, moodOut, raisedOf, severanceOf } from './mood';
 import type { ContentDb, Id } from '../../content/types';
 import type { Notice, ShiftEvent, ShiftPatient, ShiftState } from './types';
@@ -187,6 +188,8 @@ export function siteCommand(db: ContentDb, s: ShiftState, cmd: SiteCommand): Not
       return raise(db, s, works, site, cmd.id);
     case 'reshift':
       return reshift(db, s, works, site, cmd.id);
+    case 'study':
+      return study(db, s, cmd.id);
   }
   const busy = occupied(db, s);
   let later = false;
@@ -265,7 +268,7 @@ function undo(db: ContentDb, s: ShiftState, works: Works, site: Site): Notice[] 
   if (step.room && restored.rooms.some(r => r.id === step.room)) restored.editing = step.room;
   else delete restored.editing;
   const cost = step.spent - works.spent;
-  s.staff = step.staff;
+  s.staff = mergeStaff(s.staff ?? [], step.staff);
   if (step.nextStaff !== undefined) s.nextStaff = step.nextStaff;
   else delete s.nextStaff;
   works.spent = step.spent;
@@ -275,6 +278,45 @@ function undo(db: ContentDb, s: ShiftState, works: Works, site: Site): Notice[] 
   if (step.mood) moodBack(s, step.mood);
   commit(db, s, site, restored);
   return [{ kind: 'site', cmd: 'undo', ok: true, cost: cost - (step.paid ?? 0), ...(step.room ? { room: step.room } : {}) }];
+}
+
+/**
+ * Штат после отмены (spec docs/specs/2026-10-staff-mood.md): кто был до действия, на тех же местах, в тех же сменах и с той же
+ * зарплатой, — но с тем, что случилось с ним после: навык и смены до следующего (рост), учёба и болезнь — из нынешнего штата.
+ */
+function mergeStaff(now: readonly StaffMember[], was: readonly StaffMember[]): StaffMember[] {
+  const cur = new Map(now.map(m => [m.id, m]));
+  return was.map(m => {
+    const c = cur.get(m.id);
+    if (!c || c === m) return m;
+    const out: StaffMember = { ...c, salary: m.salary };
+    if (m.room !== undefined) out.room = m.room;
+    else delete out.room;
+    if (m.shift !== undefined) out.shift = m.shift;
+    else delete out.shift;
+    return out;
+  });
+}
+
+/**
+ * «Отправить учиться» (spec docs/specs/2026-10-staff-mood.md, раздел 4; решение владельца, #84): до планёрки через
+ * `studyDays` суток его нет — место за ним, а в смене пусто; цена — `studyCost` его смен, из кассы сразу и не ниже предела
+ * минуса. Вернётся — навык +1 и настроение (`backMorning`). Отмены нет: учёба оплачена и идёт. Нельзя без смены, на навыке 5,
+ * в отлучке, пока ведёт пациента и когда уходит сам.
+ */
+function study(db: ContentDb, s: ShiftState, id: string): Notice[] {
+  const m = s.staff?.find(x => x.id === id);
+  const g = m ? growthNumbers(db, s, m) : undefined;
+  if (!m || !g || m.skill >= 5 || m.away) return no('study', { kind: 'nothing' });
+  if (leavingOf(s, id)) return no('study', { kind: 'leaving' });
+  if (occupied(db, s).staff.has(id)) return no('study', { kind: 'busy' });
+  const cost = g.studyCost * wageOf(db, m);
+  const need = shortOf(db, s, cost);
+  if (need > 0) return no('study', { kind: 'money', need });
+  payStudy(s, cost);
+  s.staff = s.staff!.map(x => (x.id === id ? { ...x, away: { why: 'study' as const, until: studyUntil(g, s.t) } } : x));
+  nudge(s);
+  return [{ kind: 'site', cmd: 'study', ok: true, cost }];
 }
 
 /**

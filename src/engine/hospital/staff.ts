@@ -1,4 +1,4 @@
-// из anamnez: src/engine/hospital/staff.ts @ 96503ac, изменено: мест в ординаторской больницы ПК — из плана (spec 2026-10-build); смены дня и ночи — `shift`, кто в смене, зарплата за сутки, ночная смена готовой больницы (spec 2026-10-staff-shifts); настроение нанятого — `Mood` (spec 2026-10-staff-mood)
+// из anamnez: src/engine/hospital/staff.ts @ 96503ac, изменено: мест в ординаторской больницы ПК — из плана (spec 2026-10-build); смены дня и ночи — `shift`, кто в смене, зарплата за сутки, ночная смена готовой больницы (spec 2026-10-staff-shifts); настроение нанятого — `Mood`, нет на смене — `away`: учится или болеет (spec 2026-10-staff-mood)
 // Персонал своей больницы (spec 2026-09-own-hospital, часть 8): кандидаты дня, найм, навык 1–5,
 // черта, зарплата за смену, скорость и точность работы, рост навыка с отработанными сменами.
 // Числа — баланс игры (content/hospital/economy.yaml, `staff`). Имя человека — из словаря игры,
@@ -34,6 +34,11 @@ export interface StaffMember {
    * «Анамнеза»)
    */
   shift?: Shift;
+  /**
+   * нет на смене (spec 2026-10-staff-mood, разделы 4–5): на учёбе или болеет — до планёрки в `until`; место за ним, но в
+   * смене его нет (`onDuty`, `dutyOf`)
+   */
+  away?: { why: 'study' | 'sick'; until: number };
 }
 
 /**
@@ -56,8 +61,11 @@ export interface Mood {
   here?: number;
 }
 
-/** Причины настроения: зарплата ниже и выше рынка, предел усталости, отдых на месте, нет санузла, ночные подряд. */
-export type MoodWhy = 'below' | 'above' | 'limit' | 'here' | 'toilet' | 'nights';
+/**
+ * Причины настроения: зарплата ниже рынка на ступень и на две и больше, выше рынка, предел усталости, отдых на месте, нет
+ * санузла, ночные подряд.
+ */
+export type MoodWhy = 'below' | 'belowFar' | 'above' | 'limit' | 'here' | 'toilet' | 'nights';
 
 /**
  * Во сколько раз болезни профиля вероятнее у записанного к специалисту (spec 2026-10-chapter-4, часть 60а): к нему
@@ -168,8 +176,8 @@ export function shiftStartOf(db: ContentDb, t: number): number {
   return h >= day[1] * 3600 ? base + day[1] * 3600 : base - 86400 + day[1] * 3600;
 }
 
-/** В смене ли человек в `t`: без смены — всегда. */
-export const onDuty = (db: ContentDb, m: StaffMember, t: number): boolean => m.shift === undefined || m.shift === shiftAt(db, t);
+/** В смене ли человек в `t`: без смены — всегда; на учёбе или болеет (`away`) — нет. */
+export const onDuty = (db: ContentDb, m: StaffMember, t: number): boolean => !m.away && (m.shift === undefined || m.shift === shiftAt(db, t));
 
 /** Работает ли человек в смене `shift`: без смены — в обеих (круглые сутки). */
 export const covers = (m: StaffMember, shift: Shift): boolean => m.shift === undefined || m.shift === shift;
@@ -189,13 +197,13 @@ const duties = new WeakMap<readonly StaffMember[], Record<Shift, StaffMember[]>>
 
 /**
  * Кто в смене в `t` — один и тот же массив на штат и смену: больница и «кто на месте» считаются раз на пересменку. Без
- * смен — сам штат.
+ * смен — сам штат. На учёбе и больные (`away`) — не в смене: уходят и возвращаются они на планёрке, новым штатом.
  */
 export function dutyOf(db: ContentDb, staff: readonly StaffMember[], t: number): readonly StaffMember[] {
   if (!staff.some(m => m.shift !== undefined)) return staff;
   let d = duties.get(staff);
   if (!d) {
-    d = { day: staff.filter(m => m.shift !== 'night'), night: staff.filter(m => m.shift !== 'day') };
+    d = { day: staff.filter(m => m.shift !== 'night' && !m.away), night: staff.filter(m => m.shift !== 'day' && !m.away) };
     duties.set(staff, d);
   }
   return d[shiftAt(db, t)];

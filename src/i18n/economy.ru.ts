@@ -62,7 +62,7 @@ export const economyRu = {
     expenses: (rub: string) => `Расходы: ${rub}`,
     expense: {
       salaries: 'зарплаты', rooms: 'содержание помещений', equipment: 'обслуживание аппаратов', consumables: 'расходники', ward: 'койко-дни',
-      repairs: 'ремонт аппаратов', works: 'стройка', interest: 'проценты по долгу', loan: 'кредит', severance: 'выплаты уволенным',
+      repairs: 'ремонт аппаратов', works: 'стройка', interest: 'проценты по долгу', loan: 'кредит', severance: 'выплаты уволенным', study: 'учёба персонала',
     } as Record<string, string>,
     net: (rub: string) => `Итог суток: ${rub}`,
     cashAt: (rub: string) => `В кассе на 08:00: ${rub}`,
@@ -103,6 +103,9 @@ export const economyRu = {
     staffLow: (who: string) => `${who}: настроение ниже 30`,
     staffQuit: (who: string, day: number) => `${who} собирается уйти: ответьте до утра дня ${day} — поднимите зарплату или переведите в другую смену`,
     staffLeave: (who: string, why: string) => `${who} уходит после своей смены${why ? ` — ${why}` : ''}`,
+    staffGrew: (who: string, skill: number, sex: 'm' | 'f') => `${who} ${sex === 'f' ? 'выросла' : 'вырос'} до навыка ${skill} — зарплата прежняя, ниже рынка: поднимите`,
+    staffBack: (who: string, skill: number, sex: 'm' | 'f') => `${who} ${sex === 'f' ? 'вернулась' : 'вернулся'} с учёбы — навык ${skill}`,
+    staffSick: (who: string) => `${who} болеет — сегодня на смену не выйдет`,
     tip: 'Подсказка',
     tips: {
       below: 'Касса ниже предела: стройка ждёт денег. Возьмите кредит банка или сократите расходы — уволить лишних, снести ненужное (половина цены вернётся).',

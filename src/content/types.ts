@@ -943,9 +943,11 @@ export interface Economy {
      * до), на `wc` минут. Нет — врачи не устают.
      */
     fatigue?: { hour: number; case: number; exam: number; night: number; slow: number; slower: number; tired: number; blur: number; rest: number; relief: number; toilet: [number, number]; wc: number };
+    /** рост, наставник, учёба, болезнь нанятых в смене (spec 2026-10-staff-mood, разделы 3–5); нет — ничего этого нет */
+    growth?: { mentor: number; studyDays: number; studyCost: number; studyMood: number; sick: number };
     /** настроение нанятых в смене (spec 2026-10-staff-mood); нет — настроения нет */
     mood?: {
-      start: number; drift: number; market: number; below: number; above: number; limit: number; here: number; toilet: number; nights: [number, number];
+      start: number; drift: number; market: number; below: [number, number]; above: number; limit: number; here: number; toilet: number; nights: [number, number];
       quit: number; days: number; respond: number; raise: number; moved: number; step: number; severance: number;
     };
   };
