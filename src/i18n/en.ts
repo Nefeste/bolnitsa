@@ -283,7 +283,7 @@ export const en: Strings = {
       nights: 'night shifts in a row',
     } as Record<string, string>,
     moodShort: (v: number) => `mood ${v}`,
-    quitting: (day: number) => `about to quit — answer before the meeting of day ${day}`,
+    quitting: (day: number) => `about to quit — answer before the morning of day ${day}`,
     quitShort: 'about to quit',
     leavingAt: (at: string) => `quitting — leaves after the shift, at ${at}`,
     leavingShort: 'leaving',
