@@ -4,8 +4,9 @@
 // терапевт, как если бы вы принимали сами; `--yours` — ваш кабинет пустует, как в симуляторе экономики. Что меряем: от зала
 // до двери кабинета, ушедших за сутки, от прихода до вызова к врачу.
 // `--hall N` — сидя или стоя по своему залу: зал не дальше N м от кабинета (content/hospital/inflow.yaml, `hall`); `--hall 0` —
-// по местам всей больницы, как прежде.
-//   bun tools/sim/halls.ts [--days 3] [--seeds 1,2,3] [--flow 14] [--yours] [--hall N]
+// по местам всей больницы, как прежде. `--bench N` — скамьи у дверей кабинетов не дальше N шагов (`bench`); `--bench 0` — без
+// них.
+//   bun tools/sim/halls.ts [--days 3] [--seeds 1,2,3] [--flow 14] [--yours] [--hall N] [--bench N]
 import type { SitePlan } from '../../src/content/types';
 import { hospitalOf, planOfSite } from '../../src/engine/hospital/site';
 import { siteOfPlan } from '../../src/engine/hospital/site-plan';
@@ -34,20 +35,27 @@ if (HALL !== '' && db.inflow) {
   if (Number(HALL) > 0) db.inflow.hall = Number(HALL);
   else delete db.inflow.hall;
 }
+// скамьи у дверей кабинетов (spec docs/specs/2026-10-door-benches.md): `--bench 0` — у дверей стоят, как до них
+const BENCH = arg('bench', '');
+if (BENCH !== '' && db.inflow) {
+  if (Number(BENCH) > 0) db.inflow.bench = Number(BENCH);
+  else delete db.inflow.bench;
+}
 
 const rec = db.sites!['site.polyclinic'];
 // без отметки «ваш» терапевта нанимают во все кабинеты
-const base: SitePlan = YOURS ? rec : { id: rec.id, rooms: rec.rooms.map(({ mine: _, ...r }) => r) };
+const base: SitePlan = YOURS ? rec : { ...rec, rooms: rec.rooms.map(({ mine: _, ...r }) => r) };
 const rest = base.rooms.filter(r => r.type !== 'room.waiting');
+// скамьи у дверей кабинетов (spec docs/specs/2026-10-door-benches.md) — те же во всех вариантах: они у кабинетов, а не у залов
 const VARIANTS: [string, SitePlan][] = [
   ['залы у кабинетов (два M, 20 мест)', base],
-  ['один зал у входа (L, 18 мест)', { id: base.id, rooms: [...rest, { type: 'room.waiting', size: 'L', x: 9, y: 26, rot: 2 }] }],
-  ['два зала у входа (два M, 20 мест)', { id: base.id, rooms: [...rest, { type: 'room.waiting', size: 'M', x: 10, y: 26, rot: 2 }, { type: 'room.waiting', size: 'M', x: 39, y: 26, rot: 2 }] }],
+  ['один зал у входа (L, 18 мест)', { ...base, rooms: [...rest, { type: 'room.waiting', size: 'L', x: 9, y: 26, rot: 2 }] }],
+  ['два зала у входа (два M, 20 мест)', { ...base, rooms: [...rest, { type: 'room.waiting', size: 'M', x: 10, y: 26, rot: 2 }, { type: 'room.waiting', size: 'M', x: 39, y: 26, rot: 2 }] }],
 ];
 
 const flow: Flow = PER_HOUR > 0 ? { perHour: PER_HOUR, ambulancePerHour: 0 } : { perHour: 0, auto: true };
 const avg = (a: number[]) => (a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length) : 0);
-console.log(`поток: ${PER_HOUR > 0 ? `${PER_HOUR} в час` : 'от больницы'}; ${DAYS} сут.; зёрна ${SEEDS.join(', ')}; ${YOURS ? 'ваш кабинет пустует' : 'терапевт в каждом кабинете'}; ${db.inflow?.hall ? `сидя — в своём зале не дальше ${db.inflow.hall} м` : 'сидя — по местам всей больницы'}`);
+console.log(`поток: ${PER_HOUR > 0 ? `${PER_HOUR} в час` : 'от больницы'}; ${DAYS} сут.; зёрна ${SEEDS.join(', ')}; ${YOURS ? 'ваш кабинет пустует' : 'терапевт в каждом кабинете'}; ${db.inflow?.hall ? `сидя — в своём зале не дальше ${db.inflow.hall} м` : 'сидя — по местам всей больницы'}; ${db.inflow?.bench !== undefined ? `скамьи у дверей — не дальше ${db.inflow.bench} шагов` : 'без скамей у дверей'}`);
 for (const [name, p] of VARIANTS) {
   const built = siteOfPlan(db, p);
   if (!built.ok) throw new Error(`${name}: помещение ${built.room} — ${built.error.kind}`);

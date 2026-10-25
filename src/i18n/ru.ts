@@ -54,6 +54,8 @@ export const ru = {
     item: 'Предмет',
     door: 'Дверь',
     door2: 'Двойная дверь',
+    /** скамья в коридоре (spec docs/specs/2026-10-door-benches.md) */
+    bench: 'Скамья',
     demolish: 'Снос',
     undo: 'Отменить',
     done: 'Готово',
@@ -70,7 +72,9 @@ export const ru = {
     hintNoRoom: 'Выберите тип помещения',
     hintItem: 'Выберите предмет в каталоге или возьмите поставленный, чтобы переставить',
     hintDoor: 'Наведите на стену помещения, выходящую в коридор',
-    hintDemolish: 'Наведите на помещение, предмет или дверь',
+    hintDemolish: 'Наведите на помещение, предмет, дверь или скамью в коридоре',
+    hintBench: 'Наведите на коридор: у двери кабинета на скамье ждут сидя',
+    benchHint: 'у двери кабинета на ней ждут сидя',
     keys: 'ЛКМ — поставить · R — повернуть · Esc, ПКМ — отменить · Ctrl+Z — отменить действие · B — выйти',
     ghostRoom: (name: string, w: number, h: number, cost: string) => `${name} ${w} × ${h} — ${cost}`,
     ghostBad: (what: string, why: string) => `${what}: ${why}`,
@@ -79,6 +83,8 @@ export const ru = {
     ghostDoor: (two: boolean, cost: string) => `${two ? 'Двойная дверь' : 'Дверь'} — ${cost}`,
     ghostDemolish: (what: string, back: string) => `Снести ${what} — вернётся ${back}`,
     doorWhat: 'дверь',
+    /** что сносится в коридоре (spec docs/specs/2026-10-door-benches.md): «Снести скамью» */
+    decorWhat: { bench: 'скамью', plant: 'растение' } as Partial<Record<string, string>>,
     spentOk: (cost: string) => `Потрачено ${cost}`,
     backOk: (cost: string) => `Вернулось ${cost}`,
     later: 'Занято — уберут, когда освободится',
@@ -105,6 +111,7 @@ export const ru = {
     badWall: 'только на прямой стене помещения, не на углу',
     shared: 'стена общая с соседом',
     notCorridor: 'за стеной не коридор',
+    corridorOnly: 'только в коридоре',
     notEmpty: 'уже обставлено — сначала уберите предметы',
     noFit: 'образец каталога сюда не помещается',
     nothing: 'нечего менять',
@@ -386,6 +393,9 @@ export const ru = {
     /** сидя или стоя — по своему залу (spec docs/specs/2026-10-own-hall.md) */
     full: 'стоя у кабинета: в своём зале мест не было — терпения вдвое меньше',
     far: (m: number) => `стоя у кабинета: зала не дальше ${m} м от двери нет — терпения вдвое меньше`,
+    /** на скамье у двери (spec docs/specs/2026-10-door-benches.md) */
+    benchFull: 'на скамье у кабинета: в своём зале мест не было',
+    benchFar: (m: number) => `на скамье у кабинета: зала не дальше ${m} м от двери нет`,
     doctor: (who: string, d: string) => `у ${who} — ${d}`,
     atYou: (d: string) => `у вас — ${d}`,
     doctorAny: 'врача',

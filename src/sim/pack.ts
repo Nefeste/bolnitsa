@@ -3,21 +3,22 @@
 // пациентов, пол, возраст, жалоба — уходят отдельной таблицей и только у новых: у каждого человека в больнице свой номер
 // в срезе (`handle`), он не меняется, пока человек в больнице. Формат 2 (spec docs/specs/2026-10-flow-ui.md): у человека —
 // с какого момента он делает то, что делает, до какого часа ждёт в общей очереди и просьба нанятого врача о нём. Имя —
-// в строке, его даёт поток расчёта (spec docs/specs/2026-10-owner-play.md): окно не знает словарей имён.
+// в строке, его даёт поток расчёта (spec docs/specs/2026-10-owner-play.md): окно не знает словарей имён. Формат 4 (spec
+// docs/specs/2026-10-door-benches.md): скамья, на которой он ждёт у двери кабинета.
 import type { Patient } from '../engine/med/types';
 import type { Doing, PersonSlice, ShiftSlice } from '../engine/shift/slice';
 import type { ShiftState, Triage, VisitKind } from '../engine/shift/types';
 
 /** Заголовок: чисел (с частью 5б — касса за сутки и репутация, spec docs/specs/2026-10-economy.md). */
 export const HEADER = 14;
-/** На человека: чисел (формат 3, spec docs/specs/2026-10-walk.md: когда дойдёт). */
-export const STRIDE = 13;
-export const FORMAT = 3;
+/** На человека: чисел (формат 3, spec docs/specs/2026-10-walk.md: когда дойдёт; формат 4 — скамья у двери). */
+export const STRIDE = 14;
+export const FORMAT = 4;
 
 /** Поля заголовка. */
 export const H = { format: 0, t: 1, day: 2, dayOpen: 3, count: 4, arrived: 5, seen: 6, left: 7, cash: 8, lag: 9, queue: 10, reserved: 11, today: 12, reputation: 13 } as const;
 /** Поля человека. */
-export const P = { handle: 0, status: 1, triage: 2, room: 3, by: 4, doing: 5, bed: 6, flags: 7, since: 8, limit: 9, askAt: 10, askUntil: 11, arrive: 12 } as const;
+export const P = { handle: 0, status: 1, triage: 2, room: 3, by: 4, doing: 5, bed: 6, flags: 7, since: 8, limit: 9, askAt: 10, askUntil: 11, arrive: 12, bench: 13 } as const;
 /** Нет времени: срока терпения, просьбы. */
 export const NO_TIME = -1;
 /** Кассы нет — в этом режиме движка нет экономики. */
@@ -130,6 +131,8 @@ export function packSlice(
     buf[o + P.askUntil] = p.asks ? p.asks.until : NO_TIME;
     // поток для ПК (spec 2026-10-walk): идёт — к какому часу дойдёт
     buf[o + P.arrive] = p.arrive ?? NO_TIME;
+    // у двери на скамье (spec docs/specs/2026-10-door-benches.md): её клетка; нет — -1
+    buf[o + P.bench] = p.bench ?? -1;
   });
   handles.keep(present);
   return { buf, names };
@@ -155,6 +158,8 @@ export interface PersonView {
   ask?: { at: number; until: number };
   /** идёт туда, где делает то, что делает, — дойдёт к этому часу (spec 2026-10-walk) */
   arrive?: number;
+  /** ждёт у двери кабинета на скамье: её клетка (spec docs/specs/2026-10-door-benches.md) */
+  bench?: number;
 }
 
 export function personAt(buf: Int32Array, i: number): PersonView {
@@ -172,6 +177,7 @@ export function personAt(buf: Int32Array, i: number): PersonView {
     limit: buf[o + P.limit],
     ...(buf[o + P.askUntil] !== NO_TIME ? { ask: { at: buf[o + P.askAt], until: buf[o + P.askUntil] } } : {}),
     ...(buf[o + P.arrive] !== NO_TIME ? { arrive: buf[o + P.arrive] } : {}),
+    ...(buf[o + P.bench] >= 0 ? { bench: buf[o + P.bench] } : {}),
   };
 }
 

@@ -339,7 +339,8 @@ export class Game {
     const open = new Uint8Array(walk.length);
     for (let i = 0; i < open.length; i++) open[i] = plan.grid.cells[i] === 1 || plan.grid.cells[i] === 2 || plan.grid.cells[i] === 4 ? 1 : 0;
     const paths = new Paths(layout.w, layout.h, walk, open);
-    const places = new Places(layout, furnished);
+    // скамьи у дверей кабинетов (spec docs/specs/2026-10-door-benches.md) — по числу базы, как в движке
+    const places = new Places(layout, furnished, db.inflow?.bench);
     if (first) {
       this.crowd = new Crowd(layout, paths, this.people.looks);
       this.layout = layout;

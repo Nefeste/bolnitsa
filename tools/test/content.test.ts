@@ -837,3 +837,15 @@ describe('глава 4 (spec 2026-10-chapter-4, часть 60а)', () => {
     has(broken(d => edit(d, 'campaign/chapters/hospital.yaml', 'missions:\n', `missions:\n${isolation}`)), 'chapter.hospital: задание contacts: заразные в общей палате, а бокса в главе не построить');
   });
 });
+
+describe('скамейки у дверей кабинетов (spec 2026-10-door-benches)', () => {
+  const has = (errors: string[], text: string) => expect({ text, found: errors.some(e => e.includes(text)) }).toEqual({ text, found: true });
+
+  test('скамьи готовых больниц ставятся, как ставит игрок: не перед дверью, не в помещении, не на другой скамье', () => {
+    // перед дверью вашего кабинета (13, 6) — в городской; перед дверью первого кабинета (9, 12) — в поликлинике
+    has(broken(d => edit(d, 'hospital/presets/city.yaml', '  - [11, 7]\n', '  - [13, 7]\n')), 'preset.city: скамья (13, 7) не ставится: doorway');
+    has(broken(d => edit(d, 'hospital/presets/city.yaml', '  - [11, 7]\n', '  - [11, 3]\n')), 'preset.city: скамья (11, 3) не ставится: corridorOnly');
+    has(broken(d => edit(d, 'hospital/presets/city.yaml', '  - [11, 7]\n', '  - [12, 7]\n')), 'preset.city: скамья (12, 7) не ставится: occupied');
+    has(broken(d => edit(d, 'hospital/sites/polyclinic.yaml', '  - [10, 13]\n', '  - [9, 13]\n')), 'site.polyclinic: скамья 0 (9, 13) не ставится: doorway');
+  });
+});

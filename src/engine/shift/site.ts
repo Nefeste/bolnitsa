@@ -1,6 +1,7 @@
 // Стройка ПК во время смены (spec docs/specs/2026-10-build.md, «Стройка в любой момент», «Снос и отмена») — своё.
 // Команда движка `{ kind: 'site', cmd }`: помещение, предмет, дверь, «Обставить», готовое помещение
-// (spec docs/specs/2026-10-ready-rooms.md), снос, найм, отмена, «Готово» — пока идут часы. Действие — новая больница (`s.hospital` — новый объект): план, требования и то, что работает, движок
+// (spec docs/specs/2026-10-ready-rooms.md), скамья в коридоре (spec docs/specs/2026-10-door-benches.md), снос, найм, отмена,
+// «Готово» — пока идут часы. Действие — новая больница (`s.hospital` — новый объект): план, требования и то, что работает, движок
 // считает заново, свободные нанятые врачи зовут ждущих. Занятое (на койке лежат, аппаратом обследуют, в помещении
 // кто-то есть) убирается, когда освободится: проверка — событием очереди `siteFree`, поэтому итог не зависит от того,
 // каким шагом идут часы. Койка лежащего — номер в помещении; после стройки номер переносится на тот же предмет. С кассой
@@ -8,8 +9,8 @@
 import { Rng } from '../core/rng';
 import { DOCTOR, standInOf } from '../hospital/requirements';
 import {
-  addItem, addReady, addRoom, bedOrder, demolish, type Done, FREE_CHECK, furnish, hospitalOf, moveItem, removeDoor, removedBetween, removeItem, removeRoom,
-  setDoor, setOffice, type Site, type SiteCommand, type SiteError, type SiteRoom, SITE_UNDO, type Works,
+  addBench, addItem, addReady, addRoom, bedOrder, demolish, type Done, FREE_CHECK, furnish, hospitalOf, moveItem, removeDecor, removeDoor, removedBetween, removeItem,
+  removeRoom, setDoor, setOffice, type Site, type SiteCommand, type SiteError, type SiteRoom, SITE_UNDO, type Works,
 } from '../hospital/site';
 import { covers, nightHospital, salaryOf, type Shift, type StaffMember } from '../hospital/staff';
 import { payWorks, shortOf } from './money';
@@ -113,10 +114,17 @@ function rebind(s: ShiftState, before: Site, after: Site) {
   }
 }
 
-/** Новая больница: койки — на тех же предметах, люди снесённых помещений — в резерве, врачи зовут ждущих. */
+/**
+ * Новая больница: койки — на тех же предметах, люди снесённых помещений — в резерве, врачи зовут ждущих; сидевший на
+ * снесённой скамье ждёт у двери стоя (spec docs/specs/2026-10-door-benches.md).
+ */
 function commit(db: ContentDb, s: ShiftState, before: Site, after: Site) {
   rebind(s, before, after);
   s.hospital = hospitalOf(db, after);
+  if (after.decor !== before.decor) {
+    const benches = new Set(after.decor.filter(d => d.kind === 'bench').map(d => d.y * after.w + d.x));
+    for (const p of Object.values(s.patients)) if (p.bench !== undefined && !benches.has(p.bench)) delete p.bench;
+  }
   const gone = new Set(before.rooms.filter(r => !after.rooms.some(x => x.id === r.id)).map(r => r.id));
   if (gone.size && s.staff?.some(m => m.room !== undefined && gone.has(m.room))) {
     s.staff = s.staff.map(m => {
@@ -197,6 +205,12 @@ export function siteCommand(db: ContentDb, s: ShiftState, cmd: SiteCommand): Not
     case 'demolish':
       later = busy.rooms.has(cmd.room);
       r = demolish(db, site, cmd.room, later);
+      break;
+    case 'bench':
+      r = addBench(db, site, cmd.x, cmd.y);
+      break;
+    case 'undecor':
+      r = removeDecor(db, site, cmd.x, cmd.y);
       break;
   }
   if (!r.ok) return no(cmd.kind, r.error);

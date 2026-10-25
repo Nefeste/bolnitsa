@@ -13,7 +13,8 @@
 // Критерии: касса ни разу не ниже предела минуса (кредит не нужен); за 7 суток больница не окупается целиком — не богатеет
 // нелепо; поток за сутки — в ориентирах геймдизайна §5.
 // `--hall N` — сидя или стоя по своему залу не дальше N м (content/hospital/inflow.yaml, `hall`); `--hall 0` — по всей больнице.
-//   bun tools/sim/economy.ts [--days 7] [--seeds 1,2,3] [--only clinic,district,city,poly,polyspec] [--hall N] [--json]
+// `--bench N` — скамьи у дверей кабинетов не дальше N шагов (`bench`, spec docs/specs/2026-10-door-benches.md); `--bench 0` — без них.
+//   bun tools/sim/economy.ts [--days 7] [--seeds 1,2,3] [--only clinic,district,city,poly,polyspec] [--hall N] [--bench N] [--json]
 import type { ContentDb, Id } from '../../src/content/types';
 import { expensesOf, incomeOf } from '../../src/engine/economy/economy';
 import { DOOR_PRICE, emptySite, hospitalOf, priceOf, roomPrice, type Site, type SiteCommand } from '../../src/engine/hospital/site';
@@ -44,6 +45,12 @@ const HALL = arg('hall', '');
 if (HALL !== '' && db.inflow) {
   if (Number(HALL) > 0) db.inflow.hall = Number(HALL);
   else delete db.inflow.hall;
+}
+// скамьи у дверей кабинетов (spec docs/specs/2026-10-door-benches.md): `--bench 0` — у дверей стоят, как до них
+const BENCH = arg('bench', '');
+if (BENCH !== '' && db.inflow) {
+  if (Number(BENCH) > 0) db.inflow.bench = Number(BENCH);
+  else delete db.inflow.bench;
 }
 
 /** Помещение по плану: тип, прямоугольник со стенами, дверь — `door` клеток посередине верхней (`top`) или нижней стены. */

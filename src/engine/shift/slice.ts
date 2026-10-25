@@ -37,6 +37,8 @@ export interface PersonSlice {
   limit?: number;
   /** поток для ПК (spec 2026-10-walk): идёт туда, где делает то, что делает, — дойдёт к этому часу */
   arrive?: number;
+  /** ждёт у двери кабинета на скамейке (spec 2026-10-door-benches): клетка скамейки, y·w + x */
+  bench?: number;
 }
 
 export interface ShiftSlice {
@@ -64,7 +66,7 @@ const ROOM_OF_STAFF = new WeakMap<object, Map<string, string>>();
  * Что делает пациент и где; `rooms` — кабинет нанятого врача по номеру человека; `yours` — ваш кабинет (spec
  * 2026-10-doctor-mode): у вашего больного на приёме — он.
  */
-function doingOf(s: ShiftState, p: ShiftPatient, rooms: Map<string, string> | undefined, yours?: string): { doing: Doing; room?: string; bed?: number; arrive?: number } {
+function doingOf(s: ShiftState, p: ShiftPatient, rooms: Map<string, string> | undefined, yours?: string): { doing: Doing; room?: string; bed?: number; arrive?: number; bench?: number } {
   const office = p.by ? rooms?.get(p.by) : yours;
   if (p.kind === 'ambulance' && (p.status === 'waiting' || p.status === 'inRoom')) {
     return { doing: 'ambulance', ...(p.bay ? { room: p.bay.room, bed: p.bay.bed } : {}) };
@@ -83,7 +85,9 @@ function doingOf(s: ShiftState, p: ShiftPatient, rooms: Map<string, string> | un
     if (p.step === 0 && s.t < p.regAt + REGISTRATION) return { doing: 'registration', ...(p.regAt > s.t ? { arrive: p.regAt } : {}) };
     if (p.step === 0 && p.triAt !== undefined && s.t < p.triAt + TRIAGE) return { doing: 'triage', ...(p.triAt > s.t ? { arrive: p.triAt } : {}) };
     const w = waitsAt(p);
-    return { doing: 'waiting', ...(w.at ? { room: w.at } : {}), ...(w.t !== undefined && w.t > s.t ? { arrive: w.t } : {}) };
+    // у двери на скамейке (spec 2026-10-door-benches)
+    const bench = p.next !== undefined && p.bench !== undefined ? { bench: p.bench } : {};
+    return { doing: 'waiting', ...(w.at ? { room: w.at } : {}), ...(w.t !== undefined && w.t > s.t ? { arrive: w.t } : {}), ...bench };
   }
   if (p.status === 'waiting') {
     // только что пришедший — у регистратора и у медсестры; вернувшийся с обследований — сразу в зал
@@ -126,7 +130,7 @@ export function sliceOf(s: ShiftState, office?: string): ShiftSlice {
     people.push({
       id: p.id, status: p.status, triage: p.triage, ...(d.room ? { room: d.room } : {}), ...(p.by ? { by: p.by } : {}), doing: d.doing,
       ...(d.bed !== undefined ? { bed: d.bed } : {}), kind: p.kind, since: ph.since, ...(ph.limit !== undefined ? { limit: ph.limit } : {}),
-      ...(d.arrive !== undefined ? { arrive: d.arrive } : {}),
+      ...(d.arrive !== undefined ? { arrive: d.arrive } : {}), ...(d.bench !== undefined ? { bench: d.bench } : {}),
     });
   }
   // «Просят посмотреть» (spec 2026-10-consults): у кого нанятый врач ждёт вашего ответа

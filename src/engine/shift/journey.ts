@@ -16,10 +16,10 @@ export type Step =
    * ждёт врача в общей очереди: почему, сколько впереди; сколько нанятых врачей принимало и сколько из них ждало вашего
    * ответа; `door` — скорая без места в смотровой, ждёт у входа; стоял у кабинета, терпения вдвое меньше (spec
    * 2026-10-own-hall): `full` — в своём зале мест не было, `far` — зала не дальше стольких метров от двери кабинета нет;
-   * `sat` — пришедший сам сел в зале ожидания или встал у двери (spec 2026-10-walk): до того его оформляли и он шёл,
-   * терпение — с этого часа
+   * `bench` — при этом сел на скамейку у двери, и терпение как есть (spec 2026-10-door-benches); `sat` — пришедший сам сел в
+   * зале ожидания или встал у двери (spec 2026-10-walk): до того его оформляли и он шёл, терпение — с этого часа
    */
-  | { t: number; k: 'queue'; why: QueueWhy; ahead: number; docs?: number; asks?: number; door?: true; full?: true; far?: number; sat?: number }
+  | { t: number; k: 'queue'; why: QueueWhy; ahead: number; docs?: number; asks?: number; door?: true; full?: true; far?: number; bench?: true; sat?: number }
   /** у врача: нанятого (`by` — номер в штате, `room` — его кабинет) или у вас */
   | { t: number; k: 'doctor'; by?: string; room?: string }
   /**
@@ -125,9 +125,10 @@ function finish(j: Journey, end: End) {
 /**
  * Пришёл (`flowArrive` — после того, как свободный врач мог позвать его сразу). Не позвали — ждёт врача в общей очереди:
  * `docs` — сколько нанятых врачей принимает, `mine` — он «свой» (ждёт вас), `stood` — стоит у кабинета и почему (spec
- * 2026-10-own-hall). Здесь же раз в игровой час — уборка старых путей.
+ * 2026-10-own-hall) и сел ли на скамейку у двери (spec 2026-10-door-benches). Здесь же раз в игровой час — уборка старых
+ * путей.
  */
-export function arrived(s: ShiftState, p: ShiftPatient, docs: () => number, mine: () => boolean, stood: { full?: true; far?: number }) {
+export function arrived(s: ShiftState, p: ShiftPatient, docs: () => number, mine: () => boolean, stood: { full?: true; far?: number; bench?: true }) {
   const j = journeyOf(s, p);
   if (!j) return;
   sweep(s);
@@ -139,6 +140,7 @@ export function arrived(s: ShiftState, p: ShiftPatient, docs: () => number, mine
     t: s.t, k: 'queue', why, ahead: Math.max(0, s.queue.indexOf(p.id)), ...(n > 0 ? { docs: n } : {}), ...(why === 'busy' && asks > 0 ? { asks } : {}),
     ...(p.kind === 'ambulance' && !p.bay ? { door: true as const } : {}),
     ...(stood.full && p.patience > 0 ? { full: true as const } : {}), ...(stood.far !== undefined && p.patience > 0 ? { far: stood.far } : {}),
+    ...(stood.bench && p.patience > 0 ? { bench: true as const } : {}),
     ...(p.seatAt !== undefined && p.seatAt > s.t ? { sat: p.seatAt } : {}),
   });
 }

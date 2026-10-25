@@ -1,4 +1,4 @@
-// из anamnez: src/content/types.ts @ 96503ac, изменено: ContentDb.consults — «Просят посмотреть» (spec 2026-10-consults); ContentDb.day — сутки целиком (spec 2026-10-day); ContentDb.inflow и ContentDb.money, Consults.long — поток от больницы, касса ПК, долгий случай (spec 2026-10-economy); ContentDb.sites и SitePlan — готовые больницы из готовых помещений (spec 2026-10-real-hospital)
+// из anamnez: src/content/types.ts @ 96503ac, изменено: ContentDb.consults — «Просят посмотреть» (spec 2026-10-consults); ContentDb.day — сутки целиком (spec 2026-10-day); ContentDb.inflow и ContentDb.money, Consults.long — поток от больницы, касса ПК, долгий случай (spec 2026-10-economy); ContentDb.sites и SitePlan — готовые больницы из готовых помещений (spec 2026-10-real-hospital); Inflow.bench, Preset.benches и SitePlan.benches — скамьи у дверей кабинетов (spec 2026-10-door-benches)
 // Типы собранной медицинской базы (`docs/04-data-model.md` §1).
 //
 // Исходник — YAML в content/, собирает tools/content/build.ts. Здесь — то, что получает
@@ -872,6 +872,11 @@ export interface Preset {
   rooms: { type: Id; size: RoomSizeId; x: number; y: number; rot: Rot; door?: number; equipment: Id[]; later?: true }[];
   /** предметы коридора: скамьи */
   decor: { kind: ObjectKind; x: number; y: number }[];
+  /**
+   * скамьи у дверей кабинетов — только в больнице ПК (spec 2026-10-door-benches): клетки (x, y), ставятся, как ставит игрок
+   * (`siteOfPreset`); в режимах «Анамнеза» их нет
+   */
+  benches?: [number, number][];
   /** кто где работает: должность и номер помещения в списке; `later` — нанимают в главе (часть 60а) */
   staff: { role: Id; room: number; later?: true }[];
 }
@@ -884,6 +889,8 @@ export interface Preset {
 export interface SitePlan {
   id: Id;
   rooms: { type: Id; size: RoomSizeId; x: number; y: number; rot: Rot; mine?: true }[];
+  /** скамьи коридора (spec 2026-10-door-benches): клетки (x, y), ставятся после помещений, как ставит игрок */
+  benches?: [number, number][];
 }
 
 /** Баланс своей больницы (content/hospital/economy.yaml); числа — игровые. */
@@ -1339,6 +1346,11 @@ export interface Inflow {
    * врача; нет числа — по местам всей больницы
    */
   hall?: number;
+  /**
+   * скамейки у дверей кабинетов (spec 2026-10-door-benches): скамейка коридора не дальше стольких шагов от клетки перед
+   * дверью — у двери; ждущий у двери без места в своём зале садится на свободную. Нет числа — у двери стоят
+   */
+  bench?: number;
   /** ориентиры геймдизайна §5: больница с этими кабинетами и местами — сколько в сутки (проверяет сборка) */
   targets: { name: string; offices: number; bays: number; day: [number, number]; ambulance: [number, number] }[];
 }

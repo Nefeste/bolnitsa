@@ -2,6 +2,8 @@
 // потоками»): Int32Array туда и обратно — то же, что срез объектами; строки — только у новых; номер человека не меняется,
 // пока он в больнице; что делает — по правилам карты «Анамнеза»; детерминизм — тот же хэш, что без упаковки.
 import { describe, expect, test } from 'bun:test';
+import { hospitalOf } from '../../src/engine/hospital/site';
+import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { apply, newFlowShift } from '../../src/engine/shift/engine';
 import { sliceOf } from '../../src/engine/shift/slice';
 import { createSim } from '../../src/sim/host';
@@ -53,12 +55,34 @@ describe('упакованный срез', () => {
         expect(v.by).toBe(p.by === undefined ? -1 : team.get(p.by)!);
         expect(v.bed).toBe(p.bed ?? -1);
         expect(v.kind).toBe(p.kind);
+        expect(v.bench).toBe(p.bench);
         doing.add(p.doing);
       });
     }
     // за шесть часов люди и регистрируются, и ждут, и у врача, и на обследовании, и лежат
     for (const d of ['registration', 'waiting', 'office', 'ward']) expect(doing.has(d)).toBe(true);
     expect([...doing].every(d => DOINGS.includes(d as never))).toBe(true);
+  }, 60_000);
+
+  test('формат 4: скамья у двери кабинета — та же, что в срезе (spec docs/specs/2026-10-door-benches.md)', () => {
+    // городская больница ПК: у дверей кабинетов нанятых врачей — скамьи
+    const pc = siteOfPreset(db, db.presets['preset.city']);
+    const h = hospitalOf(db, pc);
+    const s = newFlowShift(db, { seed: 3, season: 'winter', hospital: h, staff, flow });
+    const rooms = new Map(h.rooms.map((r, i) => [r.id, i]));
+    const team = new Map(staff.map((m, i) => [m.id, i]));
+    const handles = new Handles();
+    let benched = 0;
+    for (let m = 0; m < 4 * 60; m += 2) {
+      apply(db, s, { kind: 'advance', seconds: 120 });
+      const slice = sliceOf(s);
+      const back = peopleOf(packSlice(s, slice, 0, handles, rooms, team).buf);
+      slice.people.forEach((p, i) => {
+        expect(back[i].bench).toBe(p.bench);
+        if (p.bench !== undefined) benched++;
+      });
+    }
+    expect(benched).toBeGreaterThan(0);
   }, 60_000);
 
   test('поток с упаковкой: тот же хэш состояния, что в основном потоке минутами', () => {

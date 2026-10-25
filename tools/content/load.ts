@@ -1,4 +1,4 @@
-// из anamnez: tools/content/load.ts @ 96503ac, изменено: hospital/consults.yaml — «Просят посмотреть» (spec 2026-10-consults); hospital/day.yaml — сутки целиком (spec 2026-10-day); hospital/inflow.yaml и hospital/money.yaml — поток от больницы и касса ПК (spec 2026-10-economy); hospital/sites — готовые больницы из готовых помещений (spec 2026-10-real-hospital)
+// из anamnez: tools/content/load.ts @ 96503ac, изменено: hospital/consults.yaml — «Просят посмотреть» (spec 2026-10-consults); hospital/day.yaml — сутки целиком (spec 2026-10-day); hospital/inflow.yaml и hospital/money.yaml — поток от больницы и касса ПК (spec 2026-10-economy); hospital/sites — готовые больницы из готовых помещений (spec 2026-10-real-hospital); `benches` у готовых больниц и больниц из готовых помещений — скамьи у дверей кабинетов (spec 2026-10-door-benches)
 // Сборка медицинской базы из YAML в память: схема, ссылки, полосы → числа
 // (`docs/11-content.md` §6, `docs/04-data-model.md` §1). Используют build.ts, тесты и
 // «виртуальный врач» — все читают одну и ту же базу.
@@ -10,8 +10,9 @@ import { type AttrSpec, beyond, byParams, type Cell, type Condition, type Conten
 import { planOf, presetHospital } from '../../src/engine/hospital/build';
 import { presetStaff, staffingOf } from '../../src/engine/hospital/staff';
 import { openBlocks, problemsOf, workingRooms } from '../../src/engine/hospital/requirements';
-import { planOfSite } from '../../src/engine/hospital/site';
+import { addBench, planOfSite } from '../../src/engine/hospital/site';
 import { siteOfPlan } from '../../src/engine/hospital/site-plan';
+import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { ALLERGY_EXAM } from '../../src/engine/career/achievements';
 import { fingerprint } from '../../src/engine/core/hash';
 import { P_ONE } from '../../src/engine/core/rng';
@@ -960,7 +961,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     ...(inflow ? { inflow } : {}),
     ...(money ? { money } : {}),
     // готовые больницы из готовых помещений (spec 2026-10-real-hospital); проверка — checkSites ниже
-    ...(Object.keys(sites).length ? { sites: Object.fromEntries(Object.values(sites).sort((a, b) => (a.id < b.id ? -1 : 1)).map(p => [p.id, { id: p.id, rooms: p.rooms.map(r => ({ ...r })) }])) } : {}),
+    ...(Object.keys(sites).length ? { sites: Object.fromEntries(Object.values(sites).sort((a, b) => (a.id < b.id ? -1 : 1)).map(p => [p.id, { id: p.id, rooms: p.rooms.map(r => ({ ...r })), ...(p.benches.length ? { benches: p.benches.map(([x, y]) => [x, y] as [number, number]) } : {}) }])) } : {}),
     revealedBy,
   };
   for (const c of Object.values(conditions).sort((a, b) => (a.id < b.id ? -1 : 1))) {
@@ -1160,7 +1161,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
         type: r.type, size: r.size, x: r.x, y: r.y, rot: r.rot, ...(r.door !== undefined ? { door: r.door } : {}), equipment: r.equipment,
         ...(r.later ? { later: r.later } : {}),
       })),
-      decor: p.decor.map(([kind, x, y]) => ({ kind, x, y })), staff: p.staff.map(x => ({ role: x.role, room: x.room, ...(x.later ? { later: x.later } : {}) })),
+      decor: p.decor.map(([kind, x, y]) => ({ kind, x, y })), ...(p.benches.length ? { benches: p.benches.map(([x, y]) => [x, y] as [number, number]) } : {}),
+      staff: p.staff.map(x => ({ role: x.role, room: x.room, ...(x.later ? { later: x.later } : {}) })),
     };
     db.presets[p.id] = out;
   }
@@ -1386,6 +1388,13 @@ function checkPresets(db: ContentDb, errors: string[]) {
     for (const r of plan.rooms) {
       for (const pr of problemsOf(db, plan, r, staffed)) errors.push(`${p.id}: ${r.type} (${r.id}) не работает: ${pr.kind}${pr.kind === 'noStaff' ? ` ${pr.role}` : ''}`);
     }
+    // скамьи у дверей кабинетов больницы ПК (spec 2026-10-door-benches) — по правилам игрока
+    let site = siteOfPreset(db, { ...p, benches: [] });
+    for (const [x, y] of p.benches ?? []) {
+      const c = addBench(db, site, x, y);
+      if (c.ok) site = c.site;
+      else errors.push(`${p.id}: скамья (${x}, ${y}) не ставится: ${c.error.kind}`);
+    }
   }
 }
 
@@ -1402,7 +1411,8 @@ function checkSites(db: ContentDb, errors: string[]) {
     if (mine.length > 1 || mine.some(r => r.type !== 'room.office')) errors.push(`${p.id}: ваш кабинет — один, и это кабинет врача`);
     const built = siteOfPlan(db, p);
     if (!built.ok) {
-      errors.push(`${p.id}: помещение ${built.room} (${p.rooms[built.room].type}) не ставится: ${built.error.kind}`);
+      if (built.bench !== undefined) errors.push(`${p.id}: скамья ${built.bench} (${p.benches![built.bench].join(', ')}) не ставится: ${built.error.kind}`);
+      else errors.push(`${p.id}: помещение ${built.room} (${p.rooms[built.room].type}) не ставится: ${built.error.kind}`);
       continue;
     }
     const plan = planOfSite(db, built.site);

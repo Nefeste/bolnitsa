@@ -1,14 +1,15 @@
 // Готовая больница из готовых помещений (spec docs/specs/2026-10-real-hospital.md) — своё «Больницы». Запись базы
 // (`content/hospital/sites/`) строится в пустом здании игры той же функцией, что команда стройки `ready` (`addReady`): те же
-// правила, что у игрока, и перестраивается больница так же. Ваш кабинет — отмеченный; люди — на всех должностях, кроме
-// вашей, как в готовой больнице (`presetStaff`): навык 3, зарплата каталога, облик по номеру.
+// правила, что у игрока, и перестраивается больница так же; скамьи коридора — как команда `bench` (`addBench`, spec
+// docs/specs/2026-10-door-benches.md). Ваш кабинет — отмеченный; люди — на всех должностях, кроме вашей, как в готовой
+// больнице (`presetStaff`): навык 3, зарплата каталога, облик по номеру.
 import type { ContentDb, SitePlan } from '../../content/types';
 import { DOCTOR, standInOf } from './requirements';
-import { addReady, emptySite, setOffice, type Site, type SiteError } from './site';
+import { addBench, addReady, emptySite, setOffice, type Site, type SiteError } from './site';
 import { salaryOf, type StaffMember } from './staff';
 
-/** Больница по плану и её люди; не построилась — номер помещения в плане и причина. */
-export type Planned = { ok: true; site: Site; staff: StaffMember[] } | { ok: false; room: number; error: SiteError };
+/** Больница по плану и её люди; не построилась — номер помещения (или скамьи) в плане и причина. */
+export type Planned = { ok: true; site: Site; staff: StaffMember[] } | { ok: false; room: number; bench?: number; error: SiteError };
 
 export function siteOfPlan(db: ContentDb, p: SitePlan): Planned {
   let site = emptySite();
@@ -23,6 +24,11 @@ export function siteOfPlan(db: ContentDb, p: SitePlan): Planned {
   if (mine >= 0) {
     const out = setOffice(db, site, ids[mine]);
     if (!out.ok) return { ok: false, room: mine, error: out.error };
+    site = out.site;
+  }
+  for (const [i, [x, y]] of (p.benches ?? []).entries()) {
+    const out = addBench(db, site, x, y);
+    if (!out.ok) return { ok: false, room: -1, bench: i, error: out.error };
     site = out.site;
   }
   const staff: StaffMember[] = [];
