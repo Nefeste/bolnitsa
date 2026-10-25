@@ -4,7 +4,9 @@
 // командами окна: регистратура без двери — письмо о двери, без мебели — об обстановке, без людей — о найме, каждое один раз;
 // первый кабинет врача — ваш. Больница открыта, часы стоят — письмо «пустите часы»; пришёл первый — «щёлкните по нему»; ждёт
 // вас — «Позвать». Первые трое у вас — ОРВИ, фарингит и цистит. «Без обучения» во вкладке «Цели» — писем к состояниям больше
-// нет. «До утра» — на планёрке раздел «Письма» и выполненная цель; закрыли планёрку — её письма прочитаны.
+// нет. «До утра» — на планёрке раздел «Письма» и выполненная цель; закрыли планёрку — её письма прочитаны. Часть 2в (решения
+// владельца #114, #115): в каталоге стройки — порядок стройки, шаги с номером, у следующего — «зачем»; «Порядок стройки»
+// выключается и включается; во «Целях» — построенное с галочкой, следующий шаг — санузел; строки «Кто вы» в окне врача нет.
 // Снимки — `e2e-scenario-*.jpg`.
 import { join } from 'node:path';
 
@@ -93,6 +95,33 @@ export async function scenarioPart({ page, port, out, ok, fail, q, shots }) {
   if (!(await state()).hospital.site.rooms.some(r => r.type === 'room.emergency')) ok('смотровую приёмного — не из списка — движок не строит');
   else fail('смотровая приёмного построена в сценарии');
 
+  // ---------------------------------------------------------------- порядок стройки (решение владельца #114)
+  const order = await page.evaluate(x => window.__game.db.scenarios[x].guide.map(g => g.room), SC);
+  /** Готовые помещения в каталоге: тип, номер шага, «зачем» у следующего. */
+  const readyRows = () =>
+    page.$$eval('#ready-types > li', els =>
+      els.map(e => ({ id: e.querySelector('button')?.id ?? '', step: e.querySelector('.gstep')?.textContent ?? '', why: e.querySelector('.gwhy')?.textContent ?? '' })),
+    );
+  await page.click('#build');
+  await page.waitForSelector('#tool-ready', { timeout: 5000 });
+  await page.click('#tool-ready');
+  await page.waitForSelector('#ready-types', { timeout: 5000 });
+  let rows = await readyRows();
+  const head = rows.slice(0, order.length).map(r => r.id.replace('ready-', 'room.'));
+  if (JSON.stringify(head) === JSON.stringify(order) && rows[0].step === '1' && /^дальше: без неё никто не войдёт/.test(rows[0].why) && rows.filter(r => r.why).length === 1) {
+    ok(`каталог стройки по порядку: ${rows.map(r => `${r.step} ${r.id.slice(6)}`).join(', ')}; у первого — «${rows[0].why}» (снимок ${await shot('e2e-scenario-1b-guide.jpg')} КБ)`);
+  } else fail(`порядок в каталоге: ${JSON.stringify(rows)}`);
+  await page.click('#guide-toggle');
+  await until(() => window.__game.scenario.view?.guideOff === true, null, 5000).catch(() => {});
+  rows = await readyRows();
+  const names = await page.$$eval('#ready-types > li button span', els => els.map(e => e.textContent ?? ''));
+  const sorted = [...names].sort((a, b) => a.localeCompare(b, 'ru'));
+  if (rows.every(r => !r.step && !r.why) && JSON.stringify(names) === JSON.stringify(sorted)) ok('«Порядок стройки» выключен — каталог по алфавиту, без номеров');
+  else fail(`порядок выключен: ${JSON.stringify({ rows, names })}`);
+  await page.click('#guide-toggle');
+  await until(() => window.__game.scenario.view && !window.__game.scenario.view.guideOff, null, 5000).catch(() => fail('«Порядок стройки» не включился'));
+  await page.click('#build');
+
   // ---------------------------------------------------------------- стройка по подсказкам: письма к состояниям
   const [rt, rx, ry, rw, rh] = ROOMS[0];
   await site({ kind: 'room', type: rt, x: rx, y: ry, w: rw, h: rh });
@@ -147,6 +176,17 @@ export async function scenarioPart({ page, port, out, ok, fail, q, shots }) {
   await page.evaluate(() => window.__game.actions.setSpeed(0));
   await page.click('#tab-goals');
   await page.waitForSelector('#goals', { timeout: 5000 });
+  // порядок стройки во «Целях»: построенное — с галочкой, следующий шаг — санузел (его в амбулатории сценария ещё нет)
+  const guide = await page.$$eval('#guide-list li', els => els.map(e => ({ room: e.dataset.room, cls: e.className, step: e.querySelector('.gstep')?.textContent ?? '' })));
+  const built = guide.filter(g => g.cls === 'done').map(g => g.room);
+  const next = guide.find(g => g.cls === 'next');
+  if (built.length === ROOMS.length && ROOMS.every(([t]) => built.includes(t)) && next?.room === 'room.toilet' && next.step === '5') {
+    ok(`«Цели» — порядок стройки: построено ${built.length} из ${guide.length}, дальше — шаг ${next.step}, санузел`);
+  } else fail(`порядок стройки во «Целях»: ${JSON.stringify(guide)}`);
+  // роль в сценарии — «Врач», без смены (решение владельца #115)
+  const roles = await page.evaluate(() => ({ row: !!document.getElementById('dock-roles'), role: window.__game.doctor.hud.role }));
+  if (!roles.row && roles.role === 'doctor') ok('роль в сценарии — «Врач»: строки «Кто вы» в окне врача нет');
+  else fail(`роль в сценарии: ${JSON.stringify(roles)}`);
   const goals = await page.$$eval('#goals ul.goals li', els => els.map(e => ({ id: e.id, ok: e.classList.contains('ok'), text: e.textContent ?? '' })));
   if (goals.length === 5 && goals.find(g => g.id === 'goal-lab')?.ok && goals.find(g => g.id === 'goal-seen')?.text.includes('из 100')) {
     ok(`«Цели»: ${goals.length}, «Открыть лабораторию» — выполнена, «Принять 100…» — «${flat(goals.find(g => g.id === 'goal-seen').text).slice(-24)}» (снимок ${await shot('e2e-scenario-3-goals.jpg')} КБ)`);

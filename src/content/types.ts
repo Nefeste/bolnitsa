@@ -1174,6 +1174,11 @@ export interface Scenario {
   tutorialGap?: number;
   missions: Mission[];
   letters: Letter[];
+  /**
+   * Порядок стройки (spec docs/specs/2026-10-scenario-1.md, «Порядок стройки»; решение владельца #114): помещения в том
+   * порядке, в каком их лучше строить, и зачем каждое — одной строкой. Пусто — порядка нет.
+   */
+  guide: { room: Id; why: Text }[];
 }
 
 /** Группа достижения в профиле. */

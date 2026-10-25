@@ -14,6 +14,31 @@ budget: 600000
 department: dept.therapy
 build: [room.reception, room.waiting, room.office, room.triage, room.procedure, room.lab, room.ecg, room.toilet, room.staff]
 tutorial: [cond.arvi, cond.strep_pharyngitis, cond.cystitis]
+# Порядок стройки (решение владельца #114: «гайд что в каком порядке лучше строить, гайд можно отключить»): помещения в том
+# порядке, в каком их лучше строить, и зачем каждое — строкой. Порядок и слова — предложение агента на одобрение владельца.
+guide:
+  - room: room.reception
+    why: { ru: "без неё никто не войдёт", en: "nobody gets in without it" }
+  - room: room.waiting
+    why: { ru: "где ждать приёма: стоя терпения вдвое меньше", en: "a place to wait: standing, patience runs out twice as fast" }
+  - room: room.office
+    why: { ru: "ваш кабинет: здесь принимаете вы", en: "your office: this is where you see patients" }
+  - room: room.procedure
+    why:
+      ru: "кровь и моча на анализ — без него лаборатории не с чем работать"
+      en: "blood and urine samples: without it the laboratory has nothing to work with"
+  - room: room.toilet
+    why: { ru: "людям в смене: без него им некуда отойти, и они недовольны", en: "for the staff on shift: without it they have nowhere to go and grow unhappy" }
+  - room: room.staff
+    why:
+      ru: "отдых между приёмами: без неё отдыхают на месте, и это тоже недовольство"
+      en: "rest between patients: without it they rest on the spot, which makes them unhappy too"
+  - room: room.lab
+    why: { ru: "без неё анализы ждут долго: нужны анализатор и лаборант", en: "without it tests take long: it needs an analyzer and a lab technician" }
+  - room: room.triage
+    why: { ru: "медсестра меряет давление и решает, кого принять первым", en: "a nurse checks blood pressure and decides who is seen first" }
+  - room: room.ecg
+    why: { ru: "при боли в груди и одышке", en: "for chest pain and shortness of breath" }
 missions:
   - id: seen
     main: true

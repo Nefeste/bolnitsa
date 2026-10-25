@@ -1122,6 +1122,8 @@ export const scenarioSchema = z.strictObject({
   tutorial: tutorialSchema,
   missions: z.array(missionSchema).min(1),
   letters: z.array(scenarioLetterSchema).default([]),
+  /** порядок стройки (решение владельца #114): помещения по порядку и зачем каждое — строкой */
+  guide: z.array(z.strictObject({ room: roomId, why: text })).default([]),
 });
 
 /**

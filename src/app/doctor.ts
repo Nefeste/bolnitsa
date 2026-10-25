@@ -405,6 +405,8 @@ export class Doctor {
         for (const exam of a.exams) client.command({ kind: 'order', id: a.id, exam });
         break;
       case 'role':
+        // сценарий кампании — в роли «Врач», без смены (решение владельца #115)
+        if (this.g.scenario.view) return;
         this.setRole(a.role);
         return;
       case 'asks':

@@ -1050,6 +1050,11 @@ function mark(db: ContentDb, s: ShiftState, cmd: Extract<Command, { kind: 'mark'
     else delete tips.off;
     return;
   }
+  if (cmd.what === 'guide') {
+    if (cmd.on) delete c.guideOff;
+    else c.guideOff = true;
+    return;
+  }
   const id = cmd.id;
   switch (cmd.what) {
     case 'hint': {
