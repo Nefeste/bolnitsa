@@ -177,7 +177,7 @@ export async function runBench(g: Game, opts: BenchOpts) {
       cores: navigator.hardwareConcurrency,
       viewport: { w: g.host.clientWidth, h: g.host.clientHeight, dpr: window.devicePixelRatio || 1 },
       settings: {
-        secs, warm, qualities, cameras: cams, seed: SCENE.seed, preset: SCENE.preset, flow: SCENE.flow, walls: 'cut',
+        secs, warm, qualities, cameras: cams, seed: SCENE.seed, preset: SCENE.preset, flow: g.flow, walls: 'cut',
         camera: 'perspective 20°, pitch 52°; overview and a close pass (half-height 5 m)',
       },
       scene: {

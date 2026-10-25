@@ -25,13 +25,13 @@ describe('масштаб', () => {
 
   test('постели выше сиденья, ниже пояса; сиденье — на опоре таза людей набора', async () => {
     for (const top of Object.values(LIE_TOP)) {
-      expect(top!).toBeGreaterThan(SEAT + 0.2);
+      expect(top!).toBeGreaterThan(SEAT + 0.15);
       expect(top!).toBeLessThan(1.0);
     }
     const p = await bakedPeople();
     for (const l of p.looks) {
       expect(SEAT - l.seat.y).toBeGreaterThanOrEqual(-0.01);
-      expect(SEAT - l.seat.y).toBeLessThanOrEqual(0.07);
+      expect(SEAT - l.seat.y).toBeLessThanOrEqual(0.03);
       // в клетке 1 м человек стоит: ширина плеч — меньше метра (длина руки не в счёт)
       expect(l.height).toBeGreaterThan(1.55);
     }

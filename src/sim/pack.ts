@@ -46,6 +46,8 @@ export interface NameRow {
   name?: string;
   /** записан к специалисту — его должность (spec docs/specs/2026-10-specialists.md) */
   to?: string;
+  /** профессия — облик на экране: каска и спецодежда только своим профессиям (spec docs/specs/2026-10-people.md, «Состав») */
+  job?: string;
 }
 
 /** Номера в срезе: свой у каждого, пока он в больнице. */
@@ -113,7 +115,7 @@ export function packSlice(
       const role = to !== undefined ? s.staff?.find(m => m.id === to)?.role : undefined;
       names.push({
         h, id: p.id, sex: pt?.sex ?? 'm', age: pt?.age ?? 40, ...(pt?.complaints[0] ? { complaint: pt.complaints[0] } : {}), seed: pt?.seed ?? 0,
-        ...(pt && nameOf ? { name: nameOf(pt) } : {}), ...(role ? { to: role } : {}),
+        ...(pt && nameOf ? { name: nameOf(pt) } : {}), ...(role ? { to: role } : {}), ...(pt?.job ? { job: pt.job } : {}),
       });
     }
     const o = HEADER + i * STRIDE;

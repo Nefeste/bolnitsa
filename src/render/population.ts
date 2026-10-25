@@ -12,10 +12,11 @@ import type { Doing } from '../engine/shift/slice';
 import type { Rest, Ride, Triage } from '../engine/shift/types';
 import { DOINGS, H, HEADER, KINDS, type NameRow, NO_TIME, P, STATUSES, STRIDE, TRIAGES } from '../sim/pack';
 import type { Look } from './bake';
-import { CLOTHES, COAT, GOWN, lookSpec, OLD_AGE, PARAMEDIC, roleColor, SKIN } from './cast';
+import { COAT, OLD_AGE, PARAMEDIC, roleColor, WORKWEAR } from './cast';
 import { type Crowd, GURNEY_AHEAD, type Walker } from './crowd';
 import type { GurneyAt } from './gurney';
 import type { Layout } from './layout';
+import type { Paint } from './people';
 import { doorInside, gurneyStop, gurneyYaw, nearestWalk, type Places, type Spot, standAt } from './place';
 import { carrierGoal, riderAt, type RidePhase, ridesNow } from './rides';
 
@@ -105,8 +106,6 @@ export interface PatientNow {
 /** Сколько строк пришедших помнить (для «Ушли» и карточки ушедшего). */
 const ROWS = 2000;
 
-const LYING: ReadonlySet<Doing> = new Set(['ward', 'surgery', 'ambulance']);
-
 /** Места перевозки на экране (spec docs/specs/2026-10-orderlies.md): откуда взять больного, куда довезти — и где встать у них с каталкой. */
 interface Leg {
   from?: Spot;
@@ -120,7 +119,9 @@ export class Population {
   private byUse = new Map<string, number[]>();
   /** виды «своей» должности (Rocketbox: хирург, медсестра — cast.ts, `roles`): ключ — должность и пол */
   private byRole = new Map<string, number[]>();
-  private paints = new Map<string, { clothes: THREE.Color; skin: THREE.Color }>();
+  /** спецодежда (cast.ts, `jobs`): ключ — профессия пациента и пол */
+  private byJob = new Map<string, number[]>();
+  private paints = new Map<string, Paint>();
   /** последнее о пациенте из среза — для панели, цвета и значков */
   private last = new Map<string, PatientNow>();
   readonly names = new Map<number, NameRow>();
@@ -185,8 +186,9 @@ export class Population {
       m.get(k)!.push(i);
     };
     looks.forEach((l, i) => {
-      const s = lookSpec(l.name)!;
+      const s = l.spec;
       if (s.roles) for (const r of s.roles) add(this.byRole, `${r}:${s.sex}`, i);
+      else if (s.jobs) for (const j of s.jobs) add(this.byJob, `${j}:${s.sex}`, i);
       else add(this.byUse, `${s.use}:${s.sex}:${s.age}`, i);
     });
     this.roomIndex = rooms.map(r => layout.plan.rooms.findIndex(p => p.id === r.id));
@@ -194,12 +196,13 @@ export class Population {
 
   /**
    * Вид человека: своя должность (есть такие виды — из них), пол, возраст, кому годится; нет такого — любой того же
-   * назначения, затем персонал того же пола.
+   * назначения, затем персонал того же пола. Пациент своей профессии — по зерну, у доли `WORKWEAR` — в спецодежде.
    */
-  private pick(use: string, sex: 'm' | 'f', old: boolean, seed: number, role?: Id): number {
+  private pick(use: string, sex: 'm' | 'f', old: boolean, seed: number, role?: Id, job?: Id): number {
+    const work = job && ((seed >>> 11) % 100) / 100 < WORKWEAR ? this.byJob.get(`${job}:${sex}`) : undefined;
     const own = role ? this.byRole.get(`${role}:${sex}`) : undefined;
     const list =
-      own ?? this.byUse.get(`${use}:${sex}:${old ? 'old' : 'adult'}`) ?? this.byUse.get(`${use}:${sex}:adult`) ?? this.byUse.get(`${use}:${sex}:old`) ?? this.byUse.get(`staff:${sex}:adult`) ?? [0];
+      work ?? own ?? this.byUse.get(`${use}:${sex}:${old ? 'old' : 'adult'}`) ?? this.byUse.get(`${use}:${sex}:adult`) ?? this.byUse.get(`${use}:${sex}:old`) ?? this.byUse.get(`staff:${sex}:adult`) ?? [0];
     return list[Math.abs(seed) % list.length];
   }
 
@@ -330,7 +333,7 @@ export class Population {
       const use = m.role === 'role.registrar' ? 'registrar' : 'staff';
       const look = this.pick(use, m.sex, m.seed % 3 === 0, m.seed, m.role);
       this.crowd.add(key, look, spot, true, false, NaN, shift);
-      this.paints.set(key, { clothes: new THREE.Color(roleColor(m.role)), skin: new THREE.Color(SKIN[m.seed % SKIN.length]) });
+      this.paints.set(key, { clothes: new THREE.Color(roleColor(m.role)) });
     }
     for (const [key, w] of [...this.crowd.walkers]) {
       // фельдшеры скорой (`m:`) — не штат: уходят сами
@@ -363,7 +366,7 @@ export class Population {
       return;
     }
     this.crowd.add(YOU, this.pick('staff', 'm', false, 7), spot, true);
-    this.paints.set(YOU, { clothes: new THREE.Color(COAT), skin: new THREE.Color(SKIN[2]) });
+    this.paints.set(YOU, { clothes: new THREE.Color(COAT) });
   }
 
   /**
@@ -455,8 +458,9 @@ export class Population {
       this.spots.set(key, spot);
       const w = this.crowd.walkers.get(key);
       if (!w) {
-        const look = this.pick('patient', row.sex, row.age >= OLD_AGE, row.seed);
-        this.paints.set(key, { clothes: new THREE.Color(CLOTHES[row.seed % CLOTHES.length]), skin: new THREE.Color(SKIN[(row.seed >>> 3) % SKIN.length]) });
+        const look = this.pick('patient', row.sex, row.age >= OLD_AGE, row.seed, undefined, row.job);
+        // своя одежда пациента — в атласе вида: маски одежды у пациентов нет, цвет экземпляра ни на что не ложится
+        this.paints.set(key, OWN);
         // привезённый скорой — через вход для скорой, на каталке бригады: её везёт фельдшер (spec 2026-10-orderlies)
         const ambulance = KINDS[buf[o + P.flags]] === 'ambulance';
         const pw = this.crowd.add(key, look, spot, false, ambulance, due);
@@ -582,11 +586,12 @@ export class Population {
   private medic(key: string, pw: Walker, seed: number, spot: Spot, taken: ReadonlySet<number>) {
     const mk = `m:${key.slice(2)}`;
     const sex = seed % 2 === 0 ? 'm' : 'f';
-    const look = this.pick('staff', sex, false, seed >>> 2);
+    // фельдшер — свой вид (Rocketbox: синяя форма); нет — фигура персонала в синем
+    const look = this.pick('paramedic', sex, false, seed >>> 2);
     const stop = gurneyStop(this.layout, spot, taken);
     this.medicStops.set(key, { at: spot.key, stop });
     this.crowd.add(mk, look, stop, true, true, NaN, true);
-    this.paints.set(mk, { clothes: new THREE.Color(PARAMEDIC), skin: new THREE.Color(SKIN[(seed >>> 5) % SKIN.length]) });
+    this.paints.set(mk, { clothes: new THREE.Color(PARAMEDIC) });
     this.crowd.carry(pw, mk, true);
     this.medics.set(key, mk);
   }
@@ -690,14 +695,8 @@ export class Population {
     return this.byId.get(id);
   }
 
-  /** Цвет экземпляра: лежащим — больничная рубашка. */
-  paint = (w: Walker) => {
-    const p = this.paints.get(w.key)!;
-    if (!w.staff && w.lie > 0.5) return { clothes: GOWN_COLOR, skin: p.skin };
-    const l = this.last.get(w.key);
-    if (l && LYING.has(l.doing) && w.state !== 'walk') return { clothes: GOWN_COLOR, skin: p.skin };
-    return p;
-  };
+  /** Цвет экземпляра: одежда в цвет должности. */
+  paint = (w: Walker): Paint => this.paints.get(w.key)!;
 
   /** Что о человеке сказать в панели. */
   info(key: string): PersonInfo | undefined {
@@ -770,4 +769,5 @@ export class Population {
   }
 }
 
-const GOWN_COLOR = new THREE.Color(GOWN);
+/** Пациенты — в своей одежде из атласа. */
+const OWN: Paint = { clothes: new THREE.Color(1, 1, 1) };
