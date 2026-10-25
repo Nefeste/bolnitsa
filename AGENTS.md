@@ -105,8 +105,11 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # in its row, «Отправить учиться» in the card; then orderlies: a patient on the gurney in
                                    # front of the orderly, their cards, «Следить», the path, «Персонал», paramedics; then the
                                    # chief approves: rule checkboxes, a decision in the list and on the map, its card with the
-                                   # «Ещё обследование» form, the path, Enter — «Согласен»);
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|20` for one part
+                                   # «Ещё обследование» form, the path, Enter — «Согласен»; then roles: «Кто вы» on the start
+                                   # screen, «Управляющий» sees no medicine for three hours, «Врач» and «Главврач» in the doctor
+                                   # window, hints by role, the chief's line and the doctors' errors at the meeting, «Итог» in
+                                   # an error's card);
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|21` for one part
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -204,7 +207,13 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   (`closePatient(…, at)`), so silence changes nothing. «Ещё обследование» — the `order` command: `ShiftPatient.orders` the
   doctor does first at his next step (`examStep`) and his next decision comes back to the chief (`chief`). Discharge is
   asked at the morning round. Day totals — `DaySummary.chief`. In the window: `decisions` rows in the doctor state, the
-  «Просят посмотреть» tab (checkboxes, list, Enter / Shift+Enter), a read card with `order` gets the order form.
+  «Просят посмотреть» tab (checkboxes, list, Enter / Shift+Enter), a read card with `order` gets the order form. Part 3:
+  roles — `src/app/roles.ts` («Врач», «Главврач», «Управляющий»: office, checkboxes, autopause, the folded doctor window; a
+  ready hospital for a role without an office starts with a hired therapist in it, `startFor`); the role is chosen on the
+  start screen (second step, `?role=`) and in the doctor window, kept in the save's window view; the engine has no role.
+  A hired doctor's closed case shows `verdict` in its card (right or not, the truth, the main note — owner's decision #66);
+  the meeting shows the chief's line (`DaySummary.chief`, `better`/`worse` from `ShiftPatient.chiefFrom`) and the doctors'
+  errors of the day (`errorsList` in `src/sim/doctor.ts`, sent when changed).
 - Saves (`docs/specs/2026-10-saves.md`): `src/engine/shift/migrate.ts` — the save schema number and the migration chain;
   `src/sim/packing.ts` — the file (header, engine snapshot, window view; JSON + gzip), written by the worker;
   `src/app/saves.ts` — slots (`auto-1…3` shifted each morning, `exit`, `manual-<n>`) over a disk: `electron/saves.cjs`
