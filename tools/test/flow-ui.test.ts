@@ -155,6 +155,11 @@ describe('путь пациента в карточке', () => {
     // пришли сразу — ожидания нет
     const quick: Journey = { ...bed, bed: { t: H(18, 30), from: 'r2', to: 'r5', pick: H(18, 30), off: H(18, 32), done: H(18, 40) } };
     expect(pathCard(quick, true, H(19), names).lines.slice(-2).map(l => l.text)).toEqual(['положена в палату интенсивной терапии', 'на каталке: смотровая приёмного → палата — 10 мин']);
+    // не срочного медсестра не везёт (решение владельца #99): ждёт санитара
+    const orderly: Journey = { ...bed, bed: { ...bed.bed!, orderly: true } };
+    expect(pathCard(orderly, true, H(19), names).lines.at(-1)?.why).toBe('в смене нет санитара, а медсестра везёт только срочных — до пересменки в 20:00');
+    const waited: Journey = { ...going, bed: { ...going.bed!, orderly: true } };
+    expect(pathCard(waited, true, H(20, 10), names).lines.at(-2)?.why).toBe('в смене не было санитара, а медсестра везёт только срочных — повезли с пересменки или после найма');
   });
 
   test('каталка в карточках: что делает тот, кто везёт, и что с тем, кого везут', () => {

@@ -322,9 +322,10 @@ export function pathCard(j: Journey, female: boolean, now: number, names: PathNa
     const stop = Math.min(now, pick);
     if (stop - b.t >= 60 || now < pick) {
       const why =
-        b.pick === undefined ? T.flow.gurneyNone(clock(names.nextShift(now)))
+        // не срочного медсестра не везёт (решение владельца #99): ждёт санитара
+        b.pick === undefined ? (b.orderly ? T.flow.gurneyNoOrderly : T.flow.gurneyNone)(clock(names.nextShift(now)))
         : now < pick ? (b.busy ? T.flow.gurneyBusy(who, clock(pick)) : T.flow.gurneyComing(who, clock(pick)))
-        : b.none ? T.flow.gurneyNoneWas
+        : b.none ? (b.orderly ? T.flow.gurneyNoOrderlyWas : T.flow.gurneyNoneWas)
         : b.busy ? T.flow.gurneyWas(who, !!b.nurse, clock(pick))
         : undefined;
       lines.push({ at: clock(b.t), text: T.flow.gurneyQueue(dur(stop - b.t)), ...(why ? { why } : {}), kind: 'wait', ...(now < pick ? { now: true as const } : {}) });

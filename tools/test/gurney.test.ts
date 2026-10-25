@@ -11,6 +11,7 @@ import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { ORDERLY, presetStaff, type StaffMember, withNightShift } from '../../src/engine/hospital/staff';
 import { apply, freeBays, hospitalCtx, newFlowShift, onTableIn, readyIn } from '../../src/engine/shift/engine';
 import { carriersOf, pickupOf, planRide } from '../../src/engine/shift/gurney';
+import { bedRide } from '../../src/engine/shift/journey';
 import { sliceOf } from '../../src/engine/shift/slice';
 import { migrate } from '../../src/engine/shift/migrate';
 import type { Ride, ShiftState } from '../../src/engine/shift/types';
@@ -209,6 +210,33 @@ describe('санитары и каталки', () => {
     // санитар в смене — везёт он, срочного и не срочного
     expect(planRide(db, s, ctx.plan, ctx.staff, 'x', 'bed', er, ward)!.by).toBe(planRide(db, s, ctx.plan, ctx.staff, 'x', 'bed', er, ward, { urgent: true })!.by);
   });
+
+  test('городская без санитаров (#99): медсестра везёт только срочных, на операцию и назад со стола; в пути — «ждёт санитара»', () => {
+    const s = city(8, shifts.filter(m => m.role !== ORDERLY), { perHour: 4, ambulancePerHour: 6 });
+    // кого и зачем везёт медсестра — срочный ли он в ту минуту, когда перевозку записали
+    const rides: { why: Ride['why']; urgent: boolean }[] = [];
+    const seen = new Set<string>();
+    live(s, 30 * H, 300, x => {
+      for (const r of x.rides ?? []) {
+        const key = `${r.id}:${r.by}:${r.pick}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const p = x.patients[r.id];
+        rides.push({ why: r.why, urgent: p?.triage === 'red' || p?.stay?.plan.setting === 'icu' || p?.stay?.plan.setting === 'ricu' });
+      }
+    });
+    expect(rides.length).toBeGreaterThan(0);
+    for (const r of rides) expect(r.why === 'op' || r.why === 'back' || r.urgent).toBe(true);
+    // путь не срочного: ждал санитара — так и записано, и когда его повезли, почему ждал — тоже
+    const p = Object.values(s.patients).find(x => s.journeys?.of[x.id]);
+    expect(p).toBeDefined();
+    const c = structuredClone(s);
+    const q = c.patients[p!.id];
+    bedRide(c, q, { since: c.t, from: 'r1', to: 'r2' }, false, true);
+    expect(c.journeys!.of[q.id].bed).toEqual({ t: c.t, from: 'r1', to: 'r2', orderly: true });
+    bedRide(c, q, { since: c.t, from: 'r1', to: 'r2', go: c.t + H, pick: c.t + H + 60, off: c.t + H + 180, done: c.t + H + 600 });
+    expect(c.journeys!.of[q.id].bed).toMatchObject({ none: true, orderly: true, pick: c.t + H + 60 });
+  }, 120_000);
 
   test('два санитара — везёт тот, кто раньше будет у больного; занят — тот, кто освободится раньше', () => {
     const s = city(5);
