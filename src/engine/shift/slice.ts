@@ -82,8 +82,9 @@ function doingOf(s: ShiftState, p: ShiftPatient, rooms: Map<string, string> | un
     // ушёл от врача на обследование: в том кабинете — до `until`, потом идёт назад; у кабинета очередь — ждёт её
     // (spec 2026-10-flow-ui), а не стоит у аппарата вместе с тем, кого обследуют
     if (p.out && p.out.until > s.t) return { doing: examQueued(s, p, p.out.until) ? 'examQueue' : 'exam', room: p.out.room };
-    // поток для ПК (spec 2026-10-walk): позвали — идёт, приём начнётся, когда дойдёт
-    const going = p.walk && p.walk.to === office && p.walk.at > s.t ? { arrive: p.walk.at } : {};
+    // поток для ПК (spec 2026-10-walk): позвали — идёт, приём начнётся, когда дойдёт; с обследования в другом кабинете
+    // идёт назад к часу `out.back` (замечание владельца 25.10.2026: без срока фигура шла обычным шагом и опаздывала)
+    const going = p.walk && p.walk.to === office && p.walk.at > s.t ? { arrive: p.walk.at } : p.out && p.out.back > s.t ? { arrive: p.out.back } : {};
     return { doing: 'office', ...(office ? { room: office } : {}), ...going };
   }
   if (p.status === 'waiting' && p.regAt !== undefined) {

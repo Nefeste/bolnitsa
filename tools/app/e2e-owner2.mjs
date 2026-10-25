@@ -2,7 +2,8 @@
 // больница, зерно 11, поток 6 в час. «Открыть карту» во вкладке «Пациенты» у больного нанятого врача — карта для чтения:
 // кто ведёт, «Ход приёма» — вопрос и ответ, назначенное; часы идут. «Следить» за идущим пациентом — камера идёт за ним,
 // сдвиг мышью отпускает; у сотрудника — тоже. «Позвать» в окне врача — карты нет, часы идут, «Идёт к вам»; вошёл — карта
-// и пауза. Снимки — `e2e-owner2-*.jpg`.
+// и пауза, и его фигура уже в кабинете. ЭКГ в другом кабинете — ушёл; вернулся — карта, когда фигура вошла (замечание
+// владельца 25.10.2026: карта открывалась, пока больной шёл по коридору). Снимки — `e2e-owner2-*.jpg`.
 import { join } from 'node:path';
 
 /** @param {{ page: import('playwright-core').Page, port: number, out: string, ok: (m: string) => void, fail: (m: string) => void, q: string, shots: string }} x */
@@ -144,8 +145,51 @@ export async function ownerTwoPart({ page, port, out, ok, fail, q, shots }) {
   const inn = await page.evaluate(() => ({ speed: window.__game.speed, active: window.__game.store.get().doctor?.card?.active }));
   if (inn.active && inn.speed === 0) ok('вошёл к вам — карта и пауза');
   else fail(`вошёл: ${JSON.stringify(inn)}`);
+  /** Где фигура больного: в помещении, где вы принимаете, и уже не идёт. */
+  const figure = x =>
+    page.evaluate(id => {
+      const g = window.__game;
+      const k = g.pop.keyOf(id);
+      const w = k ? g.crowd.walkers.get(k) : undefined;
+      const r = g.plan.rooms.find(y => y.id === g.store.get().doctor?.state?.at);
+      const inside = !!(w && r && w.x >= r.x && w.x <= r.x + r.w && w.z >= r.y && w.z <= r.y + r.h);
+      return { inside, still: !!w && w.state !== 'walk' && w.goals.length === 0, state: w?.state };
+    }, x);
+  const first = await figure(who);
+  if (first.inside && first.still) ok(`карта открылась, когда фигура больного уже в кабинете (${first.state})`);
+  else fail(`карта открылась, а фигура: ${JSON.stringify(first)}`);
   ok(`снимок: ${join(out, 'e2e-owner2-3-in.jpg')} (${await shot('e2e-owner2-3-in.jpg')} КБ)`);
   await page.keyboard.press('Escape');
   await until(() => !document.getElementById('dcard') && window.__game.speed === 3);
   ok('карта закрыта — часы идут с прежней скоростью');
+
+  // ---------------------------------------------------------------- вернулся с ЭКГ — карта, когда вошёл
+  await page.evaluate(x => window.__game.actions.doctor({ kind: 'open', id: x }), who);
+  await page.waitForSelector('#dcard:not(.read)', { timeout: 10000 });
+  await page.evaluate(() => window.__game.actions.doctor({ kind: 'act', cmd: { kind: 'exam', exam: 'exam.ecg' } }));
+  await page.waitForTimeout(300);
+  if (await page.$('#dcard')) await page.keyboard.press('Escape');
+  await page.evaluate(() => window.__game.actions.setSpeed(3));
+  // ушёл из кабинета — потом карта; пока его нет, автопауза на просьбы — снова скорость
+  let away = false;
+  let back = null;
+  const tb = Date.now();
+  while (Date.now() - tb < 180000) {
+    const h = await page.evaluate(x => {
+      const d = window.__game.store.get().doctor;
+      return { card: !!(d?.card?.active && d.card.id === x), speed: window.__game.speed };
+    }, who);
+    const f = await figure(who);
+    if (!f.inside) away = true;
+    if (away && h.card) {
+      back = f;
+      break;
+    }
+    if (h.speed === 0 && !h.card) await page.evaluate(() => window.__game.actions.setSpeed(3));
+    await page.waitForTimeout(50);
+  }
+  if (away && back?.inside && back.still) ok(`вернулся с ЭКГ — карта, когда фигура вошла в кабинет (${back.state}), а не в коридоре`);
+  else fail(`вернулся с ЭКГ: ${JSON.stringify({ away, back })}`);
+  ok(`снимок: ${join(out, 'e2e-owner2-4-back.jpg')} (${await shot('e2e-owner2-4-back.jpg')} КБ)`);
+  await page.keyboard.press('Escape');
 }
