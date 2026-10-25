@@ -11,6 +11,7 @@ import type { DoctorAction, DoctorHud } from './doctor/types';
 import type { EconomyHud, MoneyAction } from '../app/money';
 import type { HintKey } from '../app/hints';
 import type { SaveRow } from '../app/saves';
+import type { Role } from '../app/roles';
 
 /** Скорость игры (spec docs/specs/2026-10-walk.md): ×1, ×3, ×12; 0 — пауза. */
 export type Speed = 0 | 1 | 3 | 12;
@@ -253,8 +254,11 @@ export interface Actions {
   reshift(id: string): void;
   /** «Отправить учиться» (spec docs/specs/2026-10-staff-mood.md, раздел 4) */
   study(id: string): void;
-  /** начало игры: пустое здание, готовая больница или поликлиника; `{ load }` — сохранение (spec 2026-10-saves) */
-  startGame(kind: 'empty' | 'preset' | 'poly' | { load: string }): void;
+  /**
+   * начало игры: пустое здание, готовая больница или поликлиника и роль (spec docs/specs/2026-10-two-ways.md, F4); `{ load }`
+   * — сохранение (spec 2026-10-saves)
+   */
+  startGame(kind: 'empty' | 'preset' | 'poly' | { load: string }, role?: Role): void;
   /** часть 3 (spec docs/specs/2026-10-flow-ui.md): фильтры «Пациентов», камера к человеку и выбор, слои карты */
   filterPatients(patch: Partial<PatientFilter>): void;
   focus(key: string): void;

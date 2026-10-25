@@ -35,7 +35,7 @@ import { type PersonInfo, Population, YOU } from '../render/population';
 import { Stage } from '../render/stage';
 import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
-import type { SeenList } from '../sim/doctor';
+import type { ErrorList, SeenList } from '../sim/doctor';
 import { H, KINDS } from '../sim/pack';
 import { type Slice, SimClient } from '../sim/client';
 import type { PathView, World } from '../sim/protocol';
@@ -46,6 +46,7 @@ import { loadContent } from './content';
 import { Doctor } from './doctor';
 import { chipShown, dur, medicLine, moodOf, pathCard, type PatientRow, patientRows, roomChip, roomLoads, tintOf, wheelLine } from './flow';
 import { type HintKey, hintOf } from './hints';
+import { DEFAULT_ROLE, type Role, startFor } from './roles';
 import { HoverLabel } from './hover';
 import { Labels } from './labels';
 import { Money } from './money';
@@ -75,17 +76,19 @@ export type Start = 'empty' | 'preset' | 'poly';
  * Больница начала и её люди: поликлиника — по записи базы, той же функцией, что команда стройки `ready`. Со сменами (spec
  * docs/specs/2026-10-staff-shifts.md): все — дневная смена; городская работает и ночью — и с ночной сменой.
  */
-function hospitalAt(db: ContentDb, start: Start): { site: Site; staff: StaffMember[] } {
+function hospitalAt(db: ContentDb, start: Start, role: Role): { site: Site; staff: StaffMember[] } {
   if (start === 'empty') return { site: emptySite(), staff: [] };
   if (start === 'poly') {
     const p = siteOfPlan(db, db.sites![SCENE.poly]);
     // сборка базы проверяет, что план строится и всё в нём работает (tools/content/load.ts, checkSites)
     if (!p.ok) throw new Error(`${SCENE.poly}: room ${p.room} — ${p.error.kind}`);
-    return { site: p.site, staff: withNightShift(db, p.site.rooms, p.staff) };
+    // роль без своего кабинета (spec docs/specs/2026-10-two-ways.md, F4): в кабинете игрока — нанятый врач
+    const r = startFor(db, p.site, p.staff, role);
+    return { site: r.site, staff: withNightShift(db, r.site.rooms, r.staff) };
   }
   const rec = db.presets[SCENE.preset];
-  const site = siteOfPreset(db, rec);
-  return { site, staff: withNightShift(db, site.rooms, presetStaff(db, rec)) };
+  const r = startFor(db, siteOfPreset(db, rec), presetStaff(db, rec), role);
+  return { site: r.site, staff: withNightShift(db, r.site.rooms, r.staff) };
 }
 
 /**
@@ -116,6 +119,8 @@ export interface SavedView {
   camera?: { x: number; z: number; half: number; yaw: number; projection: 'persp' | 'ortho' };
   level?: string;
   autopause?: boolean;
+  /** кто вы (spec docs/specs/2026-10-two-ways.md, F4); нет — «Врач» */
+  role?: string;
 }
 
 /** Где лежат сохранения: папка игры в Electron, хранилище страницы в браузере. */
@@ -160,7 +165,7 @@ function sameSpots(a: readonly StaffMember[], b: readonly StaffMember[]): boolea
  */
 function reopen(extra: Record<string, string>) {
   const q = new URLSearchParams(location.search);
-  for (const k of ['load', 'hospital', 'seed', 'flow', 'start']) q.delete(k);
+  for (const k of ['load', 'hospital', 'seed', 'flow', 'start', 'role']) q.delete(k);
   for (const [k, v] of Object.entries(extra)) q.set(k, v);
   location.search = q.toString();
 }
@@ -193,6 +198,8 @@ export class Game {
   /** стройка: потрачено и сколько действий можно отменить */
   works = { spent: 0, undo: 0 };
   start: Start = 'preset';
+  /** кто вы на старте новой игры (spec docs/specs/2026-10-two-ways.md, F4): больница строится под роль */
+  private role: Role = DEFAULT_ROLE;
   private models = new Map<string, Model>();
   private staffed!: Staffing;
   private working = new Set<string>();
@@ -217,6 +224,8 @@ export class Game {
   private left: { id: string; t: number }[] = [];
   /** «Приняты» (spec docs/specs/2026-10-discharged-card.md): приняты и ушли за сутки — как прислал поток расчёта */
   private seen: SeenList = { rows: [], total: 0 };
+  /** ошибки нанятых врачей за сутки (spec docs/specs/2026-10-two-ways.md, F5) — как прислал поток расчёта; планёрка их снимает */
+  errors: ErrorList = { rows: [], total: 0 };
   private problems: ({ kind: Problem['kind'] | 'broken' | 'offShift'; text: string } | undefined)[] = [];
   private broken = new Set<string>();
   /** усталость и перерывы врачей в смене — как прислал поток расчёта (spec docs/specs/2026-10-staff-shifts.md, часть 2) */
@@ -269,12 +278,15 @@ export class Game {
 
   /** База, модели, больница, поток — и первый кадр. */
   /** `loaded` — открыть сохранение (spec docs/specs/2026-10-saves.md): больница, поток и вид — из него, часы на паузе. */
-  static async create(host: HTMLElement, store: Store, version: string, quality: Quality, start: Start = 'preset', flow: Flow = AUTO, loaded?: SaveFile): Promise<Game> {
+  static async create(
+    host: HTMLElement, store: Store, version: string, quality: Quality, start: Start = 'preset', flow: Flow = AUTO, loaded?: SaveFile, role: Role = DEFAULT_ROLE,
+  ): Promise<Game> {
     const t0 = performance.now();
     store.set({ status: T.app.loading, version });
     const db = await loadContent();
     const g = new Game(db, store, host, version);
     g.start = start;
+    g.role = role;
     g.flow = loaded?.state.flow ?? flow;
     g.loaded = loaded;
     g.load.content = Math.round(performance.now() - t0);
@@ -310,7 +322,7 @@ export class Game {
       this.staff = saved.staff ?? [];
       this.hospital = saved.hospital;
     } else {
-      const { site, staff } = hospitalAt(db, this.start);
+      const { site, staff } = hospitalAt(db, this.start, this.role);
       this.staff = staff;
       this.hospital = hospitalOf(db, site);
     }
@@ -327,6 +339,8 @@ export class Game {
     else this.client.start({ kind: 'start', seed, season: SCENE.season, hospital: this.hospital, staff: this.staff, flow: this.flow, economy: { cash: startCash(this.db, this.start) } });
     this.applyView(this.loaded?.view);
     this.doctor.start();
+    // роль (F4): у сохранения — из его вида окна, у новой игры — настройки роли
+    if (!saved) this.doctor.setRole(this.role, true);
     this.money.start();
     // пустое здание — часы стоят, пока игрок не пустит их; сохранение — тоже: осмотреться
     if (this.start === 'empty' || saved) this.speed = 0;
@@ -645,6 +659,7 @@ export class Game {
     else if (s.broken) this.texts();
     if (s.path && s.path.id === this.watching) this.path = s.path;
     if (s.seen) this.seen = s.seen;
+    if (s.errors) this.errors = s.errors;
     // смены (spec docs/specs/2026-10-staff-shifts.md): кто не в смене, а доводит приёмы, — ещё на месте
     if (s.late) this.pop.setLate(s.late);
     // усталость и перерывы (spec docs/specs/2026-10-staff-shifts.md, часть 2): люди идут отдыхать и назад, «Персонал» — заново
@@ -721,10 +736,13 @@ export class Game {
 
   // ---------------------------------------------------------------- сохранения (spec docs/specs/2026-10-saves.md)
 
-  /** Вид окна в сохранение: камера, уровень медицины, автопауза. */
+  /** Вид окна в сохранение: камера, уровень медицины, автопауза, роль. */
   private viewOf(): SavedView {
     const c = this.stage.cam;
-    return { camera: { x: c.target.x, z: c.target.z, half: c.half, yaw: c.yaw, projection: c.projection }, level: this.doctor.hud.level, autopause: this.doctor.hud.autopause };
+    return {
+      camera: { x: c.target.x, z: c.target.z, half: c.half, yaw: c.yaw, projection: c.projection }, level: this.doctor.hud.level, autopause: this.doctor.hud.autopause,
+      role: this.doctor.hud.role,
+    };
   }
 
   /** Вид из сохранения; чего нет или не то — остаётся как есть. */
@@ -739,6 +757,7 @@ export class Game {
     }
     if (typeof view.autopause === 'boolean') this.doctor.hud.autopause = view.autopause;
     if (typeof view.level === 'string') this.doctor.restoreLevel(view.level);
+    this.doctor.restoreRole(view.role);
   }
 
   /**
@@ -1057,10 +1076,14 @@ export class Game {
     // ночью без ночной смены больница закрыта для пришедших сами — так и задумано, «Нанять» не подсказываем
     const block = first && !this.offShiftBlock(first) ? first : undefined;
     const b = this.builder;
+    const st = this.doctor.hud.state;
     const key = hintOf(
       {
         ...(block ? { block } : {}), buildOn: b.on, drawing: (b.tool === 'room' && !!b.roomType) || (b.tool === 'ready' && !!b.ready), paused: this.speed === 0 && !this.ff,
-        arrived: this.lastSlice?.buf[H.arrived] ?? 0, asks: this.doctor.hud.state?.asks.length ?? 0, looked: this.looked,
+        arrived: this.lastSlice?.buf[H.arrived] ?? 0, asks: st?.asks.length ?? 0, looked: this.looked,
+        // по роли (spec docs/specs/2026-10-two-ways.md, F4)
+        role: this.doctor.hud.role, decisions: st?.decisions.length ?? 0, answered: this.doctor.answered, met: this.money.hud.meeting !== undefined,
+        callable: !this.doctor.called && !!st?.office && !st.current && st.yours.length + st.others.length > 0,
       },
       this.seenHints,
     );

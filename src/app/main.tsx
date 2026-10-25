@@ -6,7 +6,8 @@
 //   ?flow=6,1 — поток числами (сами в час, машин скорой в час), а не от больницы (spec docs/specs/2026-10-economy.md):
 //   сценарий режима врача в браузере; авто-бенч и снимки — всегда числа сцены, та же толпа, что прежде.
 //   ?load=<ячейка> — открыть сохранение (spec docs/specs/2026-10-saves.md): так меню игры загружает и экран начала
-//   продолжает.
+//   продолжает. ?role=doctor|chief|manager — кто вы (spec docs/specs/2026-10-two-ways.md, F4); с ?hospital= без роли —
+//   «Врач», как играли до ролей. В Electron — --role chief.
 import { createRoot } from 'react-dom/client';
 import { setLang, systemLang, T, type Lang } from '../i18n';
 import type { Quality } from '../render/view';
@@ -18,6 +19,7 @@ import { SaveError } from '../engine/shift/migrate';
 import type { SaveFile } from '../sim/packing';
 import { AUTO, diskOf, Game, SCENE, type Start } from './game';
 import { listSlots, readSlot } from './saves';
+import { DEFAULT_ROLE, type Role, roleOf } from './roles';
 
 declare const __VERSION__: string;
 
@@ -74,13 +76,13 @@ const actions: Actions = {
   loadGame: later('loadGame'),
   deleteGame: later('deleteGame'),
   newGame: later('newGame'),
-  startGame: kind => {
+  startGame: (kind, role) => {
     store.set({ choose: false });
-    chosen?.(kind);
+    chosen?.(typeof kind === 'string' ? { start: kind, role: role ?? DEFAULT_ROLE } : kind);
   },
 };
-/** С чего начать: новая больница или сохранение (ячейка). */
-type Begin = Start | { load: string };
+/** С чего начать: новая больница и кто вы (spec docs/specs/2026-10-two-ways.md, F4) — или сохранение (ячейка). */
+type Begin = { start: Start; role: Role } | { load: string };
 let chosen: ((kind: Begin) => void) | undefined;
 const names: Names = {
   room: id => game?.names().room(id) ?? id ?? '—',
@@ -94,14 +96,15 @@ createRoot(document.getElementById('ui')!).render(<App store={store} actions={ac
 
 const quality = (['low', 'medium', 'high'] as Quality[]).find(x => x === q.get('q')) ?? 'high';
 
-/** С чего начать: ключ адреса или Electron; бенч и снимки — готовая больница; иначе спросить игрока. */
+/** С чего начать: ключ адреса или Electron; бенч и снимки — готовая больница, «Врач»; иначе спросить игрока. */
 async function startOf(): Promise<Begin> {
   const args = window.shell ? await window.shell.args() : [];
   const has = (k: string) => q.get(k) === '1' || args.includes(`--${k}`);
-  const val = q.get('hospital') ?? (args.includes('--hospital') ? args[args.indexOf('--hospital') + 1] : null);
-  if (has('bench') || has('shot')) return 'preset';
+  const arg = (k: string) => q.get(k) ?? (args.includes(`--${k}`) ? args[args.indexOf(`--${k}`) + 1] : null);
+  const val = arg('hospital');
+  if (has('bench') || has('shot')) return { start: 'preset', role: DEFAULT_ROLE };
   if (q.get('load')) return { load: q.get('load')! };
-  if (val === 'empty' || val === 'preset' || val === 'poly') return val;
+  if (val === 'empty' || val === 'preset' || val === 'poly') return { start: val, role: roleOf(arg('role')) ?? DEFAULT_ROLE };
   return choose();
 }
 
@@ -118,14 +121,15 @@ async function choose(problem?: string): Promise<Begin> {
  * Что открыть: новая больница — как есть; сохранение — прочитать и пройти миграции. Не открылось — снова экран начала,
  * со словом почему.
  */
-async function begin(): Promise<{ start: Start; loaded?: SaveFile }> {
+async function begin(): Promise<{ start: Start; role: Role; loaded?: SaveFile }> {
   let b = await startOf();
   for (;;) {
-    if (typeof b === 'string') return { start: b };
+    if ('start' in b) return b;
     try {
       const loaded = await readSlot(diskOf(), b.load);
       const start = (['empty', 'preset', 'poly'] as const).find(x => x === loaded.meta.start) ?? 'preset';
-      return { start, loaded };
+      // роль сохранения — в его виде окна (`SavedView.role`)
+      return { start, role: DEFAULT_ROLE, loaded };
     } catch (e) {
       b = await choose(T.saves.problem[e instanceof SaveError ? e.problem : 'broken']);
     }
@@ -152,7 +156,7 @@ async function flowOf(): Promise<Flow> {
 }
 
 begin()
-  .then(async ({ start, loaded }) => Game.create(document.getElementById('view')!, store, __VERSION__, quality, start, await flowOf(), loaded))
+  .then(async ({ start, role, loaded }) => Game.create(document.getElementById('view')!, store, __VERSION__, quality, start, await flowOf(), loaded, role))
   .then(async g => {
     game = g;
     window.__game = g;

@@ -13,6 +13,7 @@ import type { Game } from './game';
 import { staffName } from './people';
 import { raisedOf } from '../engine/shift/mood';
 import type { StaffMember } from '../engine/hospital/staff';
+import type { ErrorList } from '../sim/doctor';
 
 /** Нанятый врач на планёрке: должность, навык, приёмы за сутки. */
 export interface DoctorDay {
@@ -61,6 +62,11 @@ export interface MeetingView {
     back: { who: string; sex: 'm' | 'f'; skill: number }[];
     sick: string[];
   };
+  /**
+   * ошибки нанятых врачей за сутки (spec docs/specs/2026-10-two-ways.md, F5; решение владельца #66) — снимок утра; итог главврача —
+   * в `summary.chief`
+   */
+  errors?: ErrorList;
 }
 
 /** «Поднять зарплату» прямо в строке планёрки: с какой и до какой, ₽ за смену. */
@@ -197,9 +203,11 @@ export class Money {
           sick: (news.sick ?? []).flatMap(id => (member(id) ? [who(member(id)!)] : [])),
         }
       : undefined;
+    // ошибки нанятых врачей (F5): поток расчёта присылает их вместе со срезом планёрки — за сутки до 08:00
+    const errors = this.g.errors;
     return {
       summary, doctors, rooms, broken: out, worse, tip: tipOf(summary, rooms, worse.length > 0, doctors.some(d => d.idle), this.hud.limit),
-      ...(people ? { staff: people } : {}),
+      ...(people ? { staff: people } : {}), ...(errors.total > 0 ? { errors } : {}),
     };
   }
 

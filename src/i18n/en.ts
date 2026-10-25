@@ -161,6 +161,9 @@ export const en: Strings = {
     preset: 'City hospital',
     presetHint: '28 rooms with wards and an operating room, and staff. You can rebuild it too.',
     version: (v: string) => `prototype · version ${v}`,
+    roleTitle: 'Who are you',
+    roleIntro: 'How much medicine you want today. A role sets the options at once; change any of them, or the role itself, in the doctor window.',
+    back: 'Back',
   },
   saves: {
     menu: 'Game',
@@ -196,6 +199,9 @@ export const en: Strings = {
     run: 'The hospital is open. Space runs the clock; 1, 2, 3 — speed; 4 — until morning.',
     look: 'Click a person or a room — a card. Tab — patients, L — the queues overlay, Q and E — rotate the camera.',
     asks: 'A hired doctor is unsure and asks you to look: «Look» opens the patient card, «Let them decide» — they decide by their skill.',
+    call: 'You are the doctor: «Call» in the doctor window at the bottom left — the patient comes into your office and their card opens.',
+    decisions: "Hired doctors' decisions are in the «Asking for a look» tab: Enter — «Agree», Shift+Enter — the card; with no answer by the deadline the doctor's decision stands.",
+    manage: "You are the manager: doctors decide on their own. Build, hire, watch the cash; the day and the doctors' errors — at the 08:00 meeting.",
   },
   tabs: {
     patients: 'Patients',

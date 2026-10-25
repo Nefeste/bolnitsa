@@ -14,7 +14,7 @@ import { clock, money, T } from '../../i18n';
 import {
   conditionTerm, examInfo, examsByAction, examTerm, findingInfo, lifeHistory, type Line, type ResultGroup, type TermInfo, treatmentTerm,
 } from '../../sim/caseView';
-import { type CardView, LEVELS } from '../../sim/doctor';
+import { type CardView, type CaseVerdict, LEVELS } from '../../sim/doctor';
 import { openEncyclopedia } from '../Encyclopedia';
 import type { Actions } from '../store';
 import { BODY_PLACES, type ExamPlace, placeOf, SHELVES } from './places';
@@ -114,6 +114,8 @@ function CardWindow({ v, level, meanwhile, next, actions }: P) {
       {v.approve ? <Approve v={v} actions={actions} /> : null}
       {/* решение нанятого врача (spec docs/specs/2026-10-discharged-card.md): диагноз, лечение, где лечить */}
       {v.decided ? <Decided d={v.decided} explain={setTerm} /> : null}
+      {/* «верно или нет» у закрытого случая нанятого врача (spec docs/specs/2026-10-two-ways.md, F1; решение владельца #66) */}
+      {v.verdict ? <Verdict x={v.verdict} explain={setTerm} /> : null}
       {v.hints.length > 0 && !v.decision && !read ? (
         <div className="dlikely" id="dcard-likely">
           <b>{t.likelyShort}:</b> {v.hints.map(h => `${h.name} — ${h.word ?? t.outOf10(h.outOf10)}`).join(' · ')}
@@ -255,6 +257,33 @@ function Decided({ d, explain }: { d: NonNullable<CardView['decided']>; explain:
         <span className="label">{p.settingLabel}</span>
         <span id="decided-setting">{d.setting}</span>
       </div>
+    </div>
+  );
+}
+
+/**
+ * «Верно или нет» закрытого случая нанятого врача (#66): слово, правда — с «Что это?», главное замечание. Разбора A–D нет: он
+ * только для ваших.
+ */
+function Verdict({ x, explain }: { x: CaseVerdict; explain: (x: TermInfo) => void }) {
+  const p = T.case.patient;
+  const c = T.doctor.card;
+  return (
+    <div className="dverdict" id="dcard-verdict">
+      <b>{c.verdict}:</b>{' '}
+      <span className={`word ${x.verdict}`} id="verdict-word">
+        {x.verdict === 'correct' ? p.correct : x.verdict === 'partly' ? p.partly : p.wrong}
+      </span>
+      {x.truth ? (
+        <span id="verdict-truth">
+          {' · '}
+          {c.truthIs}{' '}
+          <button type="button" className="said" data-enc={x.truth.id} onClick={() => explain(conditionTerm(x.truth!.id))}>
+            {x.truth.name}
+          </button>
+        </span>
+      ) : null}
+      {x.note ? <div id="verdict-note">{x.note}</div> : null}
     </div>
   );
 }

@@ -11,6 +11,7 @@ import { type AskRule, DAY, type Notice, type ShiftPatient, type ShiftState } fr
 import { generatePatient } from '../../src/engine/med/generate';
 import { complaintObservations, examFits } from '../../src/engine/med/exams';
 import { contextOf, posterior } from '../../src/engine/med/infer';
+import { verdictOf } from '../../src/engine/med/plan';
 import { hospitalOf } from '../../src/engine/hospital/site';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { presetStaff } from '../../src/engine/hospital/staff';
@@ -197,6 +198,39 @@ describe('решение — на утверждение', () => {
     // позвал и решил другой врач
     while (!closedOf(s, m.id) && !s.patients[m.id]?.approve) apply(db, s, { kind: 'advance', seconds: 60 });
     expect((closedOf(s, m.id) ?? s.patients[m.id].approve)!.by).toBe(other.id);
+  }, 120_000);
+});
+
+describe('итог главврача: изменённое решение — к лучшему или к худшему (spec docs/specs/2026-10-two-ways.md, F5)', () => {
+  test('«Взять» неверное и поставить правду — к лучшему; «Взять» верное и ошибиться — к худшему; согласие — не в счёт', () => {
+    const s = start(31, ['every']);
+    /** Вы решаете взятый случай: дождаться больного в кабинете, поставить диагноз, завершить. */
+    const decide = (id: string, dx: Id) => {
+      while (s.meet !== undefined) apply(db, s, { kind: 'advance', seconds: 15 });
+      expect(s.current).toBe(id);
+      apply(db, s, { kind: 'diagnose', id: dx });
+      apply(db, s, { kind: 'finish' });
+    };
+    const verdict = (n: Ap) => s.patients[n.id].approve?.verdict;
+    const a = untilApprove(s, 20, x => verdict(x) === 'wrong')!;
+    apply(db, s, { kind: 'approve', id: a.id, answer: 'take' });
+    decide(a.id, s.patients[a.id].patient.truth.conditions[0].id);
+    expect(s.patients[a.id].closed?.verdict).toBe('correct');
+    expect(s.summary.chief).toMatchObject({ changed: 1, better: 1 });
+    expect(s.summary.chief?.worse).toBeUndefined();
+    expect(s.patients[a.id].chiefFrom).toBeUndefined();
+    // согласие — не изменение: ни к лучшему, ни к худшему
+    const b = untilApprove(s)!;
+    apply(db, s, { kind: 'approve', id: b.id, answer: 'agree' });
+    expect(s.summary.chief).toMatchObject({ agreed: 1, changed: 1, better: 1 });
+    // верное решение взяли и поставили неверный диагноз — к худшему
+    const c = untilApprove(s, 20, x => verdict(x) === 'correct' && s.current === undefined)!;
+    apply(db, s, { kind: 'approve', id: c.id, answer: 'take' });
+    const p = s.patients[c.id];
+    const off = candidatesOf(db, p.departments ?? s.meta.department).find(id => verdictOf(db, id, p.patient) === 'wrong')!;
+    decide(c.id, off);
+    expect(p.closed?.verdict).toBe('wrong');
+    expect(s.summary.chief).toMatchObject({ changed: 2, better: 1, worse: 1 });
   }, 120_000);
 });
 

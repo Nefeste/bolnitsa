@@ -52,6 +52,8 @@ export async function encyclopediaPart({ page, port, out, ok, fail, q }) {
 
   // ---------------------------------------------------------------- поликлиника: F1 над названием в карточке
   await page.click('#start-poly');
+  // второй шаг — роль (spec docs/specs/2026-10-two-ways.md, F4)
+  await page.click('#start-role-doctor');
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
   const lab = await page.evaluate(() => {
     const g = window.__game;

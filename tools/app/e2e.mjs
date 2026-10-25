@@ -25,15 +25,18 @@
 // учёбы, сцена не пересобирается, «до навыка 5: 20 смен», «Отправить учиться», tools/app/e2e-growth.mjs. Часть 19 — санитары
 // и каталки: санитар везёт больного на каталке, карточки, «Следить», путь, «Персонал», фельдшер скорой,
 // tools/app/e2e-gurney.mjs. Часть 20 — «Главврач утверждает»: галочки «О чём спрашивать», решение врача списком и на карте,
-// «Карта» с бланком «Ещё обследование», путь, Enter — «Согласен», tools/app/e2e-approve.mjs.
+// «Карта» с бланком «Ещё обследование», путь, Enter — «Согласен», tools/app/e2e-approve.mjs. Часть 21 — роли и итог
+// главврача: «Кто вы» на экране начала, «Управляющий», «Врач» и «Главврач» в окне врача, подсказки по роли, на планёрке —
+// «Главврач» и «Ошибки нанятых врачей», «Итог» в карте ошибки, tools/app/e2e-roles.mjs.
 // Ошибок в консоли и запросов наружу нет.
 // Снимки — tools/app/out/e2e.png, e2e-build-*.png и e2e-flow-*.png; `--shots high` — снимки частей 2 и 3 в этом качестве
 // (на время снимка).
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|…|20] [--shots low|medium|high] [--port 8093]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|…|21] [--shots low|medium|high] [--port 8093]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { approvePart } from './e2e-approve.mjs';
+import { rolesPart } from './e2e-roles.mjs';
 import { benchesPart } from './e2e-benches.mjs';
 import { doctorPart } from './e2e-doctor.mjs';
 import { economyPart } from './e2e-economy.mjs';
@@ -149,6 +152,8 @@ try {
   if (run(19)) await gurneyPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   // часть 20 — «Главврач утверждает» (spec docs/specs/2026-10-two-ways.md, часть 2)
   if (run(20)) await approvePart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  // часть 21 — роли и итог главврача (spec docs/specs/2026-10-two-ways.md, часть 3): tools/app/e2e-roles.mjs
+  if (run(21)) await rolesPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);

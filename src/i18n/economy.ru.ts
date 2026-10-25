@@ -108,6 +108,21 @@ export const economyRu = {
     staffGrew: (who: string, skill: number, sex: 'm' | 'f') => `${who} ${sex === 'f' ? 'выросла' : 'вырос'} до навыка ${skill} — зарплата прежняя, ниже рынка: поднимите`,
     staffBack: (who: string, skill: number, sex: 'm' | 'f') => `${who} ${sex === 'f' ? 'вернулась' : 'вернулся'} с учёбы — навык ${skill}`,
     staffSick: (who: string) => `${who} болеет — сегодня на смену не выйдет`,
+    /** итог главврача (spec docs/specs/2026-10-two-ways.md, F5): решения на утверждении за сутки и что из них вышло */
+    chief: 'Главврач',
+    chiefAsked: (n: number, discharges: number) =>
+      `на утверждение пришло ${n} ${pluralRu(n, 'решение', 'решения', 'решений')} врачей${discharges > 0 ? ` (выписок — ${discharges})` : ''}`,
+    chiefAnswers: (agreed: number, silent: number, changed: number) => `вы согласились — ${agreed}, ответа не было — ${silent}, изменили — ${changed}`,
+    chiefChanged: (better: number, worse: number) => `из изменённых: к лучшему — ${better}, к худшему — ${worse}`,
+    chiefMissed: (agreed: number, silent: number) =>
+      `прошли ошибки врачей: ${[agreed > 0 ? `с вашим «Согласен» — ${agreed}` : '', silent > 0 ? `без ответа — ${silent}` : ''].filter(Boolean).join(', ')}`,
+    chiefNoMiss: 'среди утверждённых неверных решений нет',
+    /** ошибки нанятых врачей (F5; решение владельца #66): одной строкой — диагноз, верно ли, правда, главное замечание */
+    errors: 'Ошибки нанятых врачей',
+    errorsHint: 'Закрытые за сутки случаи нанятых врачей с неверным диагнозом или замечанием безопасности. «Карта» — что врач знал и решил',
+    errorRow: (diagnosis: string, verdict: string, truth?: string) => `${diagnosis} — ${lowerFirst(verdict)}${truth ? `; на самом деле — ${truth}` : ''}`,
+    errorChief: { agreed: 'вы согласились', silent: 'ответа не было' } as Record<string, string>,
+    errorsMore: (n: number) => `и ещё ${n}`,
     tip: 'Подсказка',
     tips: {
       below: 'Касса ниже предела: стройка ждёт денег. Возьмите кредит банка или сократите расходы — уволить лишних, снести ненужное (половина цены вернётся).',

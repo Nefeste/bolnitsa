@@ -11,7 +11,7 @@ import type { StaffMember } from '../engine/hospital/staff';
 import type { Season } from '../content/types';
 import type { Lang } from '../i18n';
 import type { Difficulty } from '../engine/shift/types';
-import type { CardView, DoctorState, Refusal, SeenList } from './doctor';
+import type { CardView, DoctorState, ErrorList, Refusal, SeenList } from './doctor';
 import type { NameRow } from './pack';
 import type { SaveMeta } from './packing';
 
@@ -99,5 +99,7 @@ export interface DoctorOut {
   doctor?: DoctorState;
   card?: CardView | null;
   seen?: SeenList;
+  /** ошибки нанятых врачей за сутки (spec docs/specs/2026-10-two-ways.md, F5), когда изменились — для планёрки */
+  errors?: ErrorList;
   refused?: { act: 'take' | 'case'; id: string; why: Refusal };
 }

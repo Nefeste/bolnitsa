@@ -3,6 +3,7 @@
 import type { BodySystem, Id } from '../../content/types';
 import type { AskRule, Command, Difficulty } from '../../engine/shift/types';
 import type { CardView, DoctorState } from '../../sim/doctor';
+import { DEFAULT_ROLE, type Role } from '../../app/roles';
 
 export interface DoctorHud {
   /** из потока: где вы, кто у вас, кто ждёт, просьбы */
@@ -26,6 +27,8 @@ export interface DoctorHud {
   worse?: string[];
   /** раскрыт список лежащих у нанятых врачей (spec 2026-10-two-ways, F2) */
   theirsOpen?: boolean;
+  /** кто вы (spec docs/specs/2026-10-two-ways.md, F4): роль, которую выбрали последней; настройки игрок мог поправить */
+  role: Role;
 }
 
 export type DoctorAction =
@@ -63,6 +66,8 @@ export type DoctorAction =
   | { kind: 'replan'; id: string; treatments: Id[] }
   | { kind: 'fold'; folded: boolean }
   /** позвать первого из ждущих вас */
-  | { kind: 'next' };
+  | { kind: 'next' }
+  /** «Кто вы» (F4): роль ставит настройки разом */
+  | { kind: 'role'; role: Role };
 
-export const initialDoctor: DoctorHud = { level: 'student', autopause: true, meanwhile: [], mineOpen: false, folded: false };
+export const initialDoctor: DoctorHud = { level: 'student', autopause: true, meanwhile: [], mineOpen: false, folded: false, role: DEFAULT_ROLE };

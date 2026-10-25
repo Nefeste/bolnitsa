@@ -9,7 +9,7 @@ import type { BodySystem, ContentDb, Id, Setting } from '../content/types';
 import { askMinutes } from '../engine/career/skills';
 import { complaintObservations } from '../engine/med/exams';
 import { evaluatePlan, primaryOf } from '../engine/med/plan';
-import type { Grade } from '../engine/med/score';
+import type { Grade, ScoreNote } from '../engine/med/score';
 import { complaintText } from '../engine/med/text';
 import { type Block, doctorRoom, examWhere, type Problem } from '../engine/hospital/requirements';
 import {
@@ -26,7 +26,7 @@ import { genitive, type Lang, lang as currentLang, named, setLang, T } from '../
 import {
   type Arrival, type CaseTarget, type Decision, decisionOf, hhmm, makeCaseView, patientName, type SettingOption, useDb, type VisitView,
 } from './caseView';
-import { confidenceWord, suggestedTreatments, treatmentGroupsFor } from './caseView';
+import { confidenceWord, noteText, riskName, suggestedTreatments, treatmentGroupsFor } from './caseView';
 import { lowerFirst } from '../i18n/case';
 
 /** Уровни медицины (геймдизайн §10) — от лёгкого к трудному; по умолчанию — «Студент» (spec «Сложность»). */
@@ -210,6 +210,18 @@ export interface CardView extends VisitView {
   order?: true;
   /** решение ждёт главврача (F3): до какого часа, игровые секунды; `discharge` — врач предлагает выписать */
   approve?: { until: number; discharge?: true };
+  /** «верно или нет» у закрытого случая нанятого врача (решение владельца #66) — и у лежащего */
+  verdict?: CaseVerdict;
+}
+
+/**
+ * «Верно или нет» закрытого случая нанятого врача (spec docs/specs/2026-10-two-ways.md, F1 и F5; решение владельца #66): правда —
+ * только у закрытого и только если диагноз не верен; главное замечание разбора словами. Разбора A–D нет: он — для ваших.
+ */
+export interface CaseVerdict {
+  verdict: ClosedCase['verdict'];
+  truth?: { id: Id; name: string };
+  note?: string;
 }
 
 /** «Приняты» (spec docs/specs/2026-10-discharged-card.md): принят и ушёл — домой или в другую больницу; без правды о болезни. */
@@ -236,6 +248,37 @@ export interface SeenList {
 
 /** Строк «Приняты» — не больше: новые сверху. */
 export const SEEN = 50;
+
+/**
+ * Ошибка нанятого врача за сутки (spec docs/specs/2026-10-two-ways.md, F5; решение владельца #66): случай закрыт, диагноз
+ * неверен или с замечанием безопасности. Правда — только у закрытого случая.
+ */
+export interface ErrorRow {
+  id: string;
+  /** больной: «Иванов Пётр, 54 года, м» */
+  who: string;
+  /** кто вёл: «Терапевт, навык 2» */
+  by: string;
+  /** его диагноз */
+  diagnosis: string;
+  /** верно или нет, правда и главное замечание — как в карте */
+  verdict: CaseVerdict;
+  /** замечание безопасности — такие сверху */
+  unsafe?: true;
+  /** решение ждало главврача: вы согласились или промолчали */
+  chief?: 'agreed' | 'silent';
+  /** когда закрыт приём, игровые секунды */
+  at: number;
+}
+
+/** Ошибки нанятых врачей за последние сутки: строки — новые сверху, не больше `ERRORS`; `total` — всех. */
+export interface ErrorList {
+  rows: ErrorRow[];
+  total: number;
+}
+
+/** Строк ошибок — не больше. */
+export const ERRORS = 30;
 
 /** Сколько строк общей очереди показывать. */
 export const OTHERS = 5;
@@ -748,12 +791,15 @@ export function cardView(db: ContentDb, s: ShiftState, id: string, level: Diffic
       setting: T.case.patient.setting[c.plan.setting] ?? c.plan.setting,
     }
     : undefined;
+  // «верно или нет» (spec 2026-10-two-ways, F1; решение владельца #66): правда — только у закрытого
+  const verdict = c?.by ? verdictOf(db, p, c) : undefined;
   const take = !mine && !p.closed && yours === undefined && takeCommand(db, s, id).cmd !== undefined;
   return {
     ...view, id, active: mine && !p.closed && coming === undefined, ...(where ? { where } : {}), ...(coming !== undefined ? { coming } : {}), ...(where === 'waiting' && !s.current ? { callable: true } : {}), ...(round ? { round } : {}),
     ...(lead ? { lead } : {}), ...(decided ? { decided } : {}), ...(take ? { take: true as const } : {}),
     ...(order ? { order: true as const } : {}),
     ...(p.approve && here ? { approve: { until: p.approve.until, ...(p.approve.plan ? {} : { discharge: true as const }) } } : {}),
+    ...(verdict ? { verdict } : {}),
   };
 }
 
@@ -782,6 +828,84 @@ function seenKey(s: ShiftState): string {
   let n = s.summary.seen;
   for (const c of Object.values(s.summary.colleagues ?? {})) n += c.seen;
   return `${s.day}:${n}:${s.past?.length ?? 0}:${s.past?.at(-1)?.p.id ?? ''}:${currentLang}`;
+}
+
+/** Замечания о лечении, которые снижают и безопасность (`score.ts`): вредное, обязательное не назначено. */
+const UNSAFE_TX: readonly ScoreNote['code'][] = ['tx.harmful', 'tx.requireMissing', 'tx.beforeTransferMissing', 'tx.preventMissing'];
+
+/**
+ * Главное замечание закрытого случая (F5): о безопасности — первым, и о лечении, которое её снизило; потом прочее о лечении,
+ * потом о месте. «Не сказал о противопоказании» — не ошибка врача: расспрос ошибается; «допустимая замена» — не ошибка.
+ */
+function mainNote(c: ClosedCase): ScoreNote | undefined {
+  const find = (ok: (code: ScoreNote['code']) => boolean) => c.notes.find(n => ok(n.code));
+  return (
+    find(x => x.startsWith('safety.') && x !== 'safety.deniedViolation') ?? find(x => UNSAFE_TX.includes(x)) ??
+    find(x => x.startsWith('tx.') && x !== 'tx.acceptable') ?? find(x => x.startsWith('setting.'))
+  );
+}
+
+/** Замечание разбора о нанятом враче: строки разбора обращаются к вам («вы не спросили») — здесь без «вы». */
+function doctorNote(db: ContentDb, n: ScoreNote): string {
+  const t = T.doctor.card.verdictNote;
+  const tx = (id: Id) => named(db.treatments[id]?.name, id);
+  switch (n.code) {
+    case 'safety.knownViolation': return t.knownViolation(tx(n.tx), riskName(n.by));
+    case 'safety.unaskedViolation': return t.unaskedViolation(tx(n.tx), riskName(n.by));
+    case 'safety.examHarmKnown':
+    case 'safety.examHarmUnchecked': {
+      const by = n.by.map(f => lowerFirst(named(db.findings[f]?.name, f))).join(', ');
+      const exam = named(db.exams[n.exam]?.name, n.exam);
+      return n.code === 'safety.examHarmKnown' ? t.examHarmKnown(exam, by) : t.examHarmUnchecked(exam, by);
+    }
+    default: return noteText(n);
+  }
+}
+
+/** «Верно или нет» закрытого случая (#66): правда — если диагноз не верен; главное замечание. */
+function verdictOf(db: ContentDb, p: ShiftPatient, c: ClosedCase): CaseVerdict {
+  const truth = p.patient.truth.conditions[0].id;
+  const note = mainNote(c);
+  return {
+    verdict: c.verdict, ...(c.verdict !== 'correct' ? { truth: { id: truth, name: named(db.conditions[truth]?.name, truth) } } : {}),
+    ...(note ? { note: doctorNote(db, note) } : {}),
+  };
+}
+
+/** Ошибка закрытого случая нанятого врача — или нет её: диагноз неверен или безопасность ниже A. */
+function errorOf(db: ContentDb, s: ShiftState, p: ShiftPatient): ErrorRow | undefined {
+  const c = p.closed;
+  if (!c?.by || (c.verdict !== 'wrong' && c.grades.safety === 'A')) return undefined;
+  const chief = s.journeys?.of[p.id]?.end?.chief;
+  return {
+    id: p.id, who: T.doctor.who(patientName(p.patient), p.patient.sex, p.patient.age), by: staffName(db, s, c.by),
+    diagnosis: named(db.conditions[c.diagnosis]?.name, c.diagnosis), verdict: verdictOf(db, p, c),
+    ...(c.grades.safety !== 'A' ? { unsafe: true as const } : {}), ...(chief ? { chief } : {}), at: c.at,
+  };
+}
+
+/**
+ * Ошибки нанятых врачей за последние сутки (F5): из карт ушедших и лежащих — к планёрке в 08:00 это прошедшие сутки.
+ * Сначала с замечанием безопасности, потом новые.
+ */
+export function errorsList(db: ContentDb, s: ShiftState): ErrorList {
+  const from = s.t - KEEP;
+  const all: ErrorRow[] = [];
+  const add = (p: ShiftPatient) => {
+    const r = p.closed && p.closed.at > from ? errorOf(db, s, p) : undefined;
+    if (r) all.push(r);
+  };
+  for (const x of s.past ?? []) add(x.p);
+  for (const p of Object.values(s.patients)) add(p);
+  all.sort((a, b) => (a.unsafe ? 0 : 1) - (b.unsafe ? 0 : 1) || b.at - a.at || (a.id < b.id ? -1 : 1));
+  return { rows: all.slice(0, ERRORS), total: all.length };
+}
+
+/** Подпись ошибок: закрыли приём нанятые врачи, кто-то ушёл из состояния, сменились сутки или язык. */
+function errorsKey(s: ShiftState): string {
+  let n = 0;
+  for (const c of Object.values(s.summary.colleagues ?? {})) n += c.seen;
+  return `${s.day}:${n}:${s.past?.length ?? 0}:${Math.floor(s.t / 3600)}:${currentLang}`;
 }
 
 /**
@@ -815,6 +939,7 @@ export class DoctorDesk {
   private sent = '';
   private cardSent = '';
   private seenSent = '';
+  private errorsSent = '';
   private version = 0;
 
   constructor(private db: ContentDb) {
@@ -829,6 +954,7 @@ export class DoctorDesk {
     this.sent = '';
     this.cardSent = '';
     this.seenSent = '';
+    this.errorsSent = '';
   }
 
   /** Новая смена или сохранение — окну всё заново. */
@@ -837,11 +963,12 @@ export class DoctorDesk {
     this.sent = '';
     this.cardSent = '';
     this.seenSent = '';
+    this.errorsSent = '';
   }
 
   /** Что добавить к срезу: состояние врача, вид карты и «Приняты» — если изменились. */
-  out(s: ShiftState): { doctor?: DoctorState; card?: CardView | null; seen?: SeenList } {
-    const out: { doctor?: DoctorState; card?: CardView | null; seen?: SeenList } = {};
+  out(s: ShiftState): { doctor?: DoctorState; card?: CardView | null; seen?: SeenList; errors?: ErrorList } {
+    const out: { doctor?: DoctorState; card?: CardView | null; seen?: SeenList; errors?: ErrorList } = {};
     const state = doctorState(this.db, s);
     const json = JSON.stringify(state);
     if (json !== this.sent) {
@@ -857,6 +984,12 @@ export class DoctorDesk {
     if (seen !== this.seenSent) {
       this.seenSent = seen;
       out.seen = seenList(this.db, s);
+    }
+    // ошибки нанятых врачей за сутки (spec docs/specs/2026-10-two-ways.md, F5) — для планёрки; только в потоке для ПК
+    const errors = s.flow ? errorsKey(s) : '';
+    if (errors !== this.errorsSent) {
+      this.errorsSent = errors;
+      if (s.flow) out.errors = errorsList(this.db, s);
     }
     return out;
   }

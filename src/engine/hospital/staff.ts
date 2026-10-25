@@ -225,7 +225,7 @@ export const wagesOf = (db: ContentDb, staff: readonly StaffMember[]): number =>
 export const ORDERLY: Id = 'role.orderly';
 
 /** Наибольший номер готовой больницы (`p<n>`) в штате; нет — 0. */
-const lastPreset = (staff: readonly StaffMember[]): number => staff.reduce((k, m) => (m.id.startsWith('p') ? Math.max(k, Number(m.id.slice(1)) || 0) : k), 0);
+export const lastPreset = (staff: readonly StaffMember[]): number => staff.reduce((k, m) => (m.id.startsWith('p') ? Math.max(k, Number(m.id.slice(1)) || 0) : k), 0);
 
 /**
  * Санитары готовой больницы ПК (spec docs/specs/2026-10-orderlies.md, «Санитар»): в каждом помещении, где есть место санитара
