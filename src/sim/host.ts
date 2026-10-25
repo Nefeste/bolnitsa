@@ -8,7 +8,7 @@ import { apply, catchUp, crewList, lateOf, newFlowShift, prepareFinish } from '.
 import { crewOf, type CrewView } from '../engine/shift/crew';
 import { moodsOf, type MoodView } from '../engine/shift/mood';
 import { sliceOf } from '../engine/shift/slice';
-import type { Command, Notice, ShiftState } from '../engine/shift/types';
+import type { Command, Notice, Ride, ShiftState } from '../engine/shift/types';
 import { patientName } from './caseView';
 import { comingAt, DoctorDesk, officeOf, takeCommand } from './doctor';
 import { Handles, packSlice } from './pack';
@@ -46,6 +46,8 @@ export function createSim(db: ContentDb): SimHost {
   let sentCrew = '';
   /** настроение нанятых со сменой (spec docs/specs/2026-10-staff-mood.md) — как окно уже получило */
   let sentMoods = '';
+  /** перевозки на каталке (spec docs/specs/2026-10-orderlies.md) — как окно уже получило */
+  let sentRides = '';
   /** чей путь показывает окно и каким он был отправлен */
   let watch: string | null = null;
   let sentPath: string | undefined;
@@ -77,7 +79,7 @@ export function createSim(db: ContentDb): SimHost {
     let path: PathView | undefined;
     if (watch !== null) {
       const j = s!.journeys?.of[watch] ?? null;
-      const sig = j ? `${j.steps.length}:${j.end?.t ?? ''}:${j.steps[j.steps.length - 1]?.t ?? ''}` : '';
+      const sig = j ? `${j.steps.length}:${j.end?.t ?? ''}:${j.steps[j.steps.length - 1]?.t ?? ''}:${j.bed?.t ?? ''}:${j.bed?.pick ?? ''}` : '';
       if (sig !== sentPath) {
         sentPath = sig;
         path = { id: watch, journey: j ? structuredClone(j) : null };
@@ -108,9 +110,17 @@ export function createSim(db: ContentDb): SimHost {
       sentMoods = moodSig;
       moods = moodsNow;
     }
+    // перевозки на каталке (spec docs/specs/2026-10-orderlies.md): записываются и кончаются событиями — тогда и заново
+    let rides: Ride[] | undefined;
+    const ridesNow = s!.flow ? (s!.rides ?? []) : [];
+    const rideSig = JSON.stringify(ridesNow);
+    if (rideSig !== sentRides || world) {
+      sentRides = rideSig;
+      rides = structuredClone(ridesNow);
+    }
     const lag = owed + (s!.until !== undefined ? s!.until - s!.t : 0);
     const { buf, names } = packSlice(s!, sliceOf(s!, officeOf(db, s!)), lag, handles, rooms, staff, patientName);
-    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...(late ? { late } : {}), ...(crew ? { crew } : {}), ...(moods ? { moods } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
+    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...(late ? { late } : {}), ...(crew ? { crew } : {}), ...(moods ? { moods } : {}), ...(rides ? { rides } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
   };
   const fresh = () => {
     owed = 0;
@@ -120,6 +130,7 @@ export function createSim(db: ContentDb): SimHost {
     sentLate = '';
     sentCrew = '';
     sentMoods = '';
+    sentRides = '';
     sentPath = undefined;
     desk.reset();
   };

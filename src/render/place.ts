@@ -362,6 +362,13 @@ export class Places {
       case 'examQueue':
       case 'results':
         return this.benchSpot(w.key, taken);
+      case 'gurney': {
+        // ждёт каталку (spec docs/specs/2026-10-orderlies.md): привезённый скорой — на своём месте в смотровой, кого кладут в
+        // ПИТ или реанимацию от врача — у двери кабинета
+        const bed = room && w.bed >= 0 ? room.beds[w.bed] : undefined;
+        if (bed) return spotAtCell(l, a, bed, 'wait', 0, taken);
+        return room ? this.doorSpot(w.room, taken) : this.waitSpot(w.key, taken);
+      }
     }
   }
 
@@ -419,6 +426,73 @@ export class Places {
     if (!c) return undefined;
     return spotAtCell(this.l, this.a, c, 'wait', 0, taken);
   }
+}
+
+const DIRS: readonly Cell[] = [
+  [0, 1],
+  [1, 0],
+  [0, -1],
+  [-1, 0],
+];
+
+/**
+ * Где встать тому, кто везёт каталку, у места `s` (spec docs/specs/2026-10-orderlies.md, «Что видно»): каталка — перед ним, её
+ * середина в `ahead` м. Клетка рядом с местом, откуда каталка встанет вдоль кровати (стола, аппарата) — рядом с ней, — или к
+ * стоящему; не упрётся в стену и, по возможности, в предметы. Чем ближе к месту, тем лучше. Нет такой клетки — у самого места,
+ * лицом как шёл. `taken` — клетки, где стоят другие.
+ */
+export function gurneyStop(l: Layout, s: Spot, taken: ReadonlySet<number> = new Set()): Spot {
+  const free = (x: number, y: number) => x >= 0 && y >= 0 && x < l.w && y < l.h && l.walk[y * l.w + x] === 1;
+  const solid = (x: number, y: number) => x < 0 || y < 0 || x >= l.w || y >= l.h || l.plan.grid.cells[y * l.w + x] === 3 || l.plan.grid.cells[y * l.w + x] === 0;
+  // к чему подвезти: клетки кровати (стола, аппарата) или клетка, где человек стоит
+  const target = new Set<number>(s.thing !== undefined && s.pose === 'lie' ? l.things[s.thing].cells.map(([x, y]) => y * l.w + x) : [s.cell]);
+  const near = (x: number, y: number) => {
+    if (target.has(y * l.w + x)) return s.pose !== 'lie';
+    return DIRS.some(([dx, dy]) => target.has((y + dy) * l.w + x + dx));
+  };
+  // вдоль кровати: ось от изголовья к ногам — по клеткам
+  const ax = Math.round(Math.sin(s.yaw));
+  const az = Math.round(Math.cos(s.yaw));
+  const sx = s.cell % l.w;
+  const sy = (s.cell / l.w) | 0;
+  const home = l.region[s.cell];
+  let best: { cell: number; d: Cell; score: number } | undefined;
+  for (let y = sy - 3; y <= sy + 3; y++) {
+    for (let x = sx - 3; x <= sx + 3; x++) {
+      const far = Math.abs(x - sx) + Math.abs(y - sy);
+      if (far > 3 || !free(x, y) || target.has(y * l.w + x)) continue;
+      const c = y * l.w + x;
+      if (home && l.region[c] !== home) continue;
+      for (const d of DIRS) {
+        const [x1, y1] = [x + d[0], y + d[1]];
+        const [x2, y2] = [x + 2 * d[0], y + 2 * d[1]];
+        if (!free(x1, y1) && !(s.pose !== 'lie' && target.has(y1 * l.w + x1))) continue;
+        if (solid(x2, y2)) continue;
+        const along = s.pose === 'lie' && !Number.isNaN(s.yaw) && Math.abs(d[0]) === Math.abs(ax) && Math.abs(d[1]) === Math.abs(az);
+        const score = (near(x1, y1) ? 0 : 4) + (along || s.pose !== 'lie' ? 0 : 2) + (free(x2, y2) ? 0 : 1) + (taken.has(c) ? 3 : 0) + far * 0.5;
+        if (!best || score < best.score) best = { cell: c, d, score };
+      }
+    }
+  }
+  if (!best) return { ...standAt(l, s.cell, 'go', 0), key: `gurney:${s.cell}`, yaw: NaN };
+  return { ...standAt(l, best.cell, 'go', 0), key: `gurney:${best.cell}:${best.d[0]},${best.d[1]}`, yaw: yawOf(best.d[0], best.d[1]) };
+}
+
+/**
+ * Куда смотрит санитар на своём месте (spec docs/specs/2026-10-orderlies.md, «Каталка стоит у места санитара»): так, чтобы его
+ * каталка перед ним не упиралась в стену и предметы; нет такого — как есть.
+ */
+export function gurneyYaw(l: Layout, cell: number, yaw: number): number {
+  const x = cell % l.w;
+  const y = (cell / l.w) | 0;
+  const free = (cx: number, cy: number) => cx >= 0 && cy >= 0 && cx < l.w && cy < l.h && l.walk[cy * l.w + cx] === 1;
+  let best: { d: Cell; score: number } | undefined;
+  for (const d of DIRS) {
+    if (!free(x + d[0], y + d[1])) continue;
+    const score = (free(x + 2 * d[0], y + 2 * d[1]) ? 0 : 1) + (Math.abs(yawOf(d[0], d[1]) - yaw) < 0.01 ? 0 : 0.5);
+    if (!best || score < best.score) best = { d, score };
+  }
+  return best ? yawOf(best.d[0], best.d[1]) : yaw;
 }
 
 /** Клетка сразу за дверью помещения изнутри. */

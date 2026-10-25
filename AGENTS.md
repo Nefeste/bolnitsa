@@ -102,8 +102,9 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # east wing works; then staff mood: «собирается уйти» at the meeting, the person card,
                                    # «Поднять зарплату», «В другую смену», severance in «Уволить»; then growth: «вырос до
                                    # навыка 4» and back from study at the meeting with no scene rebuild, «Поднять зарплату»
-                                   # in its row, «Отправить учиться» in the card);
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|18` for one part
+                                   # in its row, «Отправить учиться» in the card; then orderlies: a patient on the gurney in
+                                   # front of the orderly, their cards, «Следить», the path, «Персонал», paramedics);
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|19` for one part
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -186,6 +187,12 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   emergency bay until pickup, starts an operation when the patient is delivered and frees the table when they are taken
   off (`Operation.carried`, `off`), wheels lying patients to imaging only through a double door. Only with shift staff in
   the PC flow; the orderly role is `optional` (a room works without it) and never among Anamnez's daily candidates.
+  The window (part 2): the engine sends `rides` with the slice; `src/render/rides.ts` turns a ride's times into phases,
+  `Population.ridesStep` walks the carrier and lays the patient on the gurney in front of them (`Crowd.carry`, `release`),
+  `gurneyStop` in `place.ts` picks where to stand by a bed, `src/render/gurney.ts` draws code-made gurneys; a paramedic in
+  blue (window only, `m:` walkers) wheels each ambulance arrival in and leaves. The slice's `gurney` doing — admitted and
+  still waiting for pickup (`pickupOf`); the path keeps the bed ride in `Journey.bed` and an exam ride in `gurney` of its
+  exam step.
 - Saves (`docs/specs/2026-10-saves.md`): `src/engine/shift/migrate.ts` — the save schema number and the migration chain;
   `src/sim/packing.ts` — the file (header, engine snapshot, window view; JSON + gzip), written by the worker;
   `src/app/saves.ts` — slots (`auto-1…3` shifted each morning, `exit`, `manual-<n>`) over a disk: `electron/saves.cjs`

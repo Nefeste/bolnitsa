@@ -25,9 +25,11 @@ export type Step =
   /**
    * на обследование в другой кабинет: вышел `t`, дошёл `at`, начали `start` (раньше — очередь: кабинет был занят), кончили
    * `end`, у врача снова — к `back`; результат — к `ready`; `rest` — ждал, пока с перерыва вернётся тот, кто делает (его
-   * должность, spec 2026-10-staff-shifts, часть 2б)
+   * должность, spec 2026-10-staff-shifts, часть 2б). `gurney` — лежачего везли на каталке (spec
+   * docs/specs/2026-10-orderlies.md): с `t` ждал её, в `pick` за ним пришли, к `at` переложили к аппарату, к `back` он снова на
+   * своём месте; `busy` — тот, кто вёз, сначала довозил других; `nurse` — везла медсестра: санитара в смене не было
    */
-  | { t: number; k: 'exam'; exam: Id; room: string; at: number; start: number; end: number; back: number; ready: number; rest?: Id }
+  | { t: number; k: 'exam'; exam: Id; room: string; at: number; start: number; end: number; back: number; ready: number; rest?: Id; gurney?: Gurney }
   /** ждёт результатов: врач отпустил его и позвал другого; с конца последней процедуры; результаты — к `ready` */
   | { t: number; k: 'results'; ready: number }
   /** ждёт своего врача: вернулся с результатами, а врач занят; `refer` — направлен к другому нанятому врачу */
@@ -63,6 +65,31 @@ export interface End {
   patience?: number;
 }
 
+/** Каталка на обследование (spec docs/specs/2026-10-orderlies.md): за ним пришли в `pick`; `busy` — тот, кто везёт, сначала довозил других; `nurse` — везла медсестра. */
+export interface Gurney {
+  pick: number;
+  busy?: true;
+  nurse?: true;
+}
+
+/**
+ * Лежачего везут на койку после решения (spec docs/specs/2026-10-orderlies.md, «Что видно»): каталку ждёт с `t`, откуда и куда
+ * (номера помещений плана). Записали перевозку — за ним придут в `pick`, повезут в `off`, на койке он в `done`; `busy` — тот,
+ * кто везёт, сначала довезёт других; `none` — сначала везти было некому; `nurse` — везёт медсестра. Не записали — везти
+ * некому, ждёт.
+ */
+export interface BedRide {
+  t: number;
+  from: string;
+  to: string;
+  pick?: number;
+  off?: number;
+  done?: number;
+  busy?: true;
+  none?: true;
+  nurse?: true;
+}
+
 export interface Journey {
   kind: VisitKind;
   /** когда пришёл */
@@ -71,6 +98,8 @@ export interface Journey {
   end?: End;
   /** шагов набралось `MAX_STEPS` — дальше не пишутся */
   cut?: true;
+  /** на койку — на каталке: пишется и после конца пути (он кончился решением положить) */
+  bed?: BedRide;
 }
 
 /** Пути потока для ПК по номеру пациента, в порядке прихода; `sweep` — когда убирать старые. */
@@ -154,15 +183,37 @@ export function called(s: ShiftState, p: ShiftPatient, room?: string) {
 
 /**
  * Ушёл на обследование в другой кабинет (`orderExam`, сразу после `goOut`): выйдет в `leave`, дойдёт к `at`; где, когда
- * начнут и кончат, когда вернётся и будет результат — из `p.out` и только что назначенного.
+ * начнут и кончат, когда вернётся и будет результат — из `p.out` и только что назначенного. Лежачего везут на каталке
+ * (`gurney`, spec docs/specs/2026-10-orderlies.md): `leave` — с какого часа ждёт её, `at` — когда переложили к аппарату.
  */
-export function examOut(s: ShiftState, p: ShiftPatient, leave: number, at: number, rest?: Id) {
+export function examOut(s: ShiftState, p: ShiftPatient, leave: number, at: number, rest?: Id, gurney?: Gurney) {
   const out = p.out;
   const x = p.pending[p.pending.length - 1];
   if (!out || !x) return;
   const j = journeyOf(s, p);
   if (!j) return;
-  push(j, { t: leave, k: 'exam', exam: out.exam, room: out.room, at, start: Math.max(at, x.start ?? at), end: out.until, back: out.back, ready: x.readyAt, ...(rest ? { rest } : {}) });
+  push(j, {
+    t: leave, k: 'exam', exam: out.exam, room: out.room, at, start: Math.max(at, x.start ?? at), end: out.until, back: out.back, ready: x.readyAt, ...(rest ? { rest } : {}),
+    ...(gurney ? { gurney } : {}),
+  });
+}
+
+/**
+ * Лежачего везут на койку (spec docs/specs/2026-10-orderlies.md): записали перевозку (`startRide`) — кто когда придёт,
+ * повезёт и довезёт; везти некому (`carry`) — только откуда, куда и с какого часа ждёт. Путь к этому часу уже кончился
+ * решением положить — перевозка пишется рядом с ним.
+ */
+export function bedRide(s: ShiftState, p: ShiftPatient, r: { since: number; from: string; to: string; go?: number; pick?: number; off?: number; done?: number }, nurse = false) {
+  const j = s.journeys?.of[p.id];
+  if (!j) return;
+  // ждал, что везти некому, а теперь везут: почему ждал — тоже
+  const none = j.bed !== undefined && j.bed.pick === undefined;
+  j.bed = {
+    t: r.since, from: r.from, to: r.to,
+    ...(r.pick !== undefined && r.off !== undefined && r.done !== undefined ? { pick: r.pick, off: r.off, done: r.done } : {}),
+    ...(r.go !== undefined && r.go > r.since && !none ? { busy: true as const } : {}), ...(none ? { none: true as const } : {}),
+    ...(nurse ? { nurse: true as const } : {}),
+  };
 }
 
 /** Врач отпустил ждать результатов и зовёт другого: ждёт с конца последней процедуры до готовности всех результатов. */
@@ -292,7 +343,7 @@ export function phaseOf(s: ShiftState, p: ShiftPatient, doing: Doing): { since: 
   if (!j || !last) return { since: p.arriveT };
   // шаг, записанный вперёд (врач назначил обследование — выйдет через пару минут), ещё не начался: до него — прежний
   const now = (t: number) => Math.min(t, s.t);
-  if (doing === 'ward' || doing === 'surgery') return { since: now(j.end?.t ?? last.t) };
+  if (doing === 'ward' || doing === 'surgery' || doing === 'gurney') return { since: now(j.end?.t ?? last.t) };
   if (doing === 'exam' || doing === 'examQueue') {
     const x = lastOf(j.steps, 'exam');
     // на процедуре — с её начала; ждёт у кабинета — с того, как дошёл; идёт туда — с выхода

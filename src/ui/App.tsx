@@ -2,8 +2,10 @@
 // репутация, стройка, извещения; слева — стройка (spec docs/specs/2026-10-build.md) и слои; справа — вкладки; снизу —
 // карточка выбранного. Панели тонкие: читают хранилище (store.ts) и просят игру (Actions); 3D-кадр живёт вне React.
 import { type ReactNode, useState } from 'react';
+import { rideLine, wheelLine } from '../app/flow';
 import type { SaveRow } from '../app/saves';
 import { clock, type Lang, lang, money, T } from '../i18n';
+import { lowerFirst } from '../i18n/case';
 import type { PersonInfo } from '../render/population';
 import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
@@ -347,7 +349,14 @@ function SiteCard({ r, actions, hud }: { r: RoomCard; actions: Actions; hud: Hud
         </div>
         <div className="posts">
           <dt>{T.card.posts}</dt>
-          <dd>{r.posts?.length ? <Posts r={r} actions={actions} /> : '—'}</dd>
+          <dd>
+            {r.posts?.length ? <Posts r={r} actions={actions} /> : '—'}
+            {r.note ? (
+              <div className="muted" id="card-note">
+                {r.note}
+              </div>
+            ) : null}
+          </dd>
         </div>
       </dl>
       <div className="row">
@@ -439,8 +448,9 @@ function Posts({ r, actions }: { r: RoomCard; actions: Actions }) {
         const rows = posts.filter(p => p.role === role);
         return (
           <div key={role} className="post">
-            <span className="prole" data-enc={role}>
+            <span className="prole" data-enc={role} title={rows[0].optional}>
               {rows[0].name}
+              {rows[0].optional ? <span className="muted optional"> — {rows[0].optional}</span> : null}
             </span>
             {rows.map(p => {
               // смены: строка ночной смены — свои номера кнопок
@@ -498,8 +508,9 @@ function HirePick({ room, role, id, shift, options, actions }: { room: string; r
   );
 }
 
-/** Что делает пациент — для карточки: идёт — куда и к какому часу дойдёт. */
-function doingLine(info: Extract<PersonInfo, { kind: 'patient' }>): string {
+/** Что делает пациент — для карточки: идёт — куда и к какому часу дойдёт; везут на каталке — откуда и куда. */
+function doingLine(info: Extract<PersonInfo, { kind: 'patient' }>, names: Names): string {
+  if (info.gurney) return wheelLine(info.gurney, id => lowerFirst(names.room(id)));
   const what = info.door ? (info.walking ? T.card.toDoor : T.card.atDoor) : info.walking ? T.going[info.doing] : T.doing[info.doing];
   return info.arrive !== undefined ? `${what} · ${T.card.arrives(clock(info.arrive))}` : what;
 }
@@ -527,6 +538,9 @@ function personLines(info: PersonInfo, names: Names): [string, string][] {
       ...(info.shift && h ? [[T.card.shift, T.card.shiftLine(info.shift, clock(h[0] * 3600), clock(h[1] * 3600))] as [string, string]] : []),
       ...(info.pay ? [[T.card.salary, T.card.salaryLine(money(info.pay.now), money(info.pay.market))] as [string, string]] : []),
       ...(info.rest ? [[T.card.doing, restLine(info.rest)] as [string, string]] : []),
+      // везёт каталку или свободен у каталки (spec docs/specs/2026-10-orderlies.md, «Что видно»)
+      ...(info.ride ? [[T.card.doing, rideLine(info.ride, id => lowerFirst(names.room(id)))] as [string, string]] : []),
+      ...(info.free ? [[T.card.doing, T.card.ride.free(info.sex === 'f')] as [string, string]] : []),
       // учится или болеет (разделы 4–5)
       ...(info.away ? [[T.card.doing, info.away.why === 'study' ? T.card.awayStudy(Math.floor(info.away.until / 86400) + 1) : T.card.awaySick(info.sex)] as [string, string]] : []),
     ];
@@ -540,7 +554,7 @@ function personLines(info: PersonInfo, names: Names): [string, string][] {
     // ещё идёт (spec docs/specs/2026-10-owner-play.md): куда, а не «у врача», и к какому часу дойдёт (spec 2026-10-walk);
     // следующий к врачу — у двери его кабинета
     [info.walking ? T.card.whereTo : T.card.where, info.room ? names.room(info.room) : T.card.corridor],
-    [T.card.doing, doingLine(info)],
+    [T.card.doing, doingLine(info, names)],
     [T.card.triage, T.triage[info.triage]],
     [T.card.by, info.by ? names.role(info.by) : T.card.byNobody],
     [T.card.visit, visit],

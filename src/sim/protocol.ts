@@ -2,7 +2,7 @@
 // владельца 16.10.2026; docs/specs/2026-10-shell-3d.md, «Обмен между потоками»): больница считается в отдельном потоке
 // (Web Worker в окне Electron), отрисовка — в основном. Туда — команды и ход часов, обратно — упакованный срез
 // (src/sim/pack.ts), строки новых людей и извещения. Сообщения — structured clone; массив среза передаётся без копии.
-import type { Flow, Notice, ShiftState, Command } from '../engine/shift/types';
+import type { Flow, Notice, Ride, ShiftState, Command } from '../engine/shift/types';
 import type { Journey } from '../engine/shift/journey';
 import type { CrewView } from '../engine/shift/crew';
 import type { MoodView } from '../engine/shift/mood';
@@ -78,9 +78,12 @@ export type FromSim =
    * в 08:00 — без пересборки сцены); `late` — кто из штата (номера в его списке) уже не в смене, а ещё в больнице: доводит
    * приёмы (spec docs/specs/2026-10-staff-shifts.md), — когда список изменился; `crew` — усталость и перерывы врачей в смене
    * (там же, часть 2), когда изменились; `moods` — настроение нанятых со сменой (spec docs/specs/2026-10-staff-mood.md),
-   * когда изменилось
+   * когда изменилось; `rides` — перевозки на каталке (spec docs/specs/2026-10-orderlies.md), когда изменились
    */
-  | ({ kind: 'slice'; buf: Int32Array; names: NameRow[]; notices: Notice[]; lag: number; world?: World; path?: PathView; broken?: string[]; late?: number[]; crew?: CrewView[]; moods?: MoodView[] } & DoctorOut)
+  | ({
+      kind: 'slice'; buf: Int32Array; names: NameRow[]; notices: Notice[]; lag: number; world?: World; path?: PathView; broken?: string[]; late?: number[]; crew?: CrewView[];
+      moods?: MoodView[]; rides?: Ride[];
+    } & DoctorOut)
   | { kind: 'state'; state: ShiftState }
   /** файл сохранения: сжатые байты (без копии) и его шапка; не вышло — `packFailed` */
   | { kind: 'packed'; bytes: Uint8Array; meta: SaveMeta }

@@ -26,7 +26,7 @@ export const NO_CASH = -2147483648;
 
 export const STATUSES: PersonSlice['status'][] = ['waiting', 'inRoom', 'away', 'admitted'];
 export const TRIAGES: Triage[] = ['green', 'yellow', 'red'];
-export const DOINGS: Doing[] = ['registration', 'triage', 'waiting', 'office', 'exam', 'examQueue', 'results', 'ward', 'surgery', 'ambulance'];
+export const DOINGS: Doing[] = ['registration', 'triage', 'waiting', 'office', 'exam', 'examQueue', 'results', 'ward', 'surgery', 'ambulance', 'gurney'];
 export const KINDS: VisitKind[] = ['appointment', 'walkIn', 'return', 'ambulance'];
 
 /** Новый человек в срезе: строки — один раз. */

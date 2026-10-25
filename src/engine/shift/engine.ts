@@ -1,4 +1,4 @@
-// из anamnez: src/engine/shift/engine.ts @ 96503ac, изменено: разбор приёма нанятого врача — по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults); стройка ПК — команда `site`, событие `siteFree`, приход в закрытую больницу, аппараты коек ПИТ из плана (spec 2026-10-build); сутки целиком в потоке для ПК — часы приёма, поток по часам, планёрка в 08:00, обход нанятых врачей, ночь по часам (spec 2026-10-day); путь пациента — однострочные вызовы `journey.*` (spec 2026-10-flow-ui); фибрилляция желудочков после полуночи — в ночь суток поступления и в сменах «Анамнеза» (`hospitalDay`; так же в anamnez 0.6.4, Nefeste/anamnez#152); касса и поток от больницы, планёрка с узкими местами, «стало хуже», долгий случай нанятого врача (spec 2026-10-economy); ходьба в потоке для ПК — свой врач, свой зал, следующие у двери, приём, когда дошёл (spec 2026-10-walk); приём вашего — когда он дошёл, `meet` и событие `reach` (spec 2026-10-owner-play-2); карты ушедших — `s.past` (spec 2026-10-discharged-card); скамьи у дверей кабинетов — `bench` (spec 2026-10-door-benches); настроение нанятых на планёрке и уход сам в пересменку (spec 2026-10-staff-mood)
+// из anamnez: src/engine/shift/engine.ts @ 96503ac, изменено: разбор приёма нанятого врача — по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults); стройка ПК — команда `site`, событие `siteFree`, приход в закрытую больницу, аппараты коек ПИТ из плана (spec 2026-10-build); сутки целиком в потоке для ПК — часы приёма, поток по часам, планёрка в 08:00, обход нанятых врачей, ночь по часам (spec 2026-10-day); путь пациента — однострочные вызовы `journey.*` (spec 2026-10-flow-ui); фибрилляция желудочков после полуночи — в ночь суток поступления и в сменах «Анамнеза» (`hospitalDay`; так же в anamnez 0.6.4, Nefeste/anamnez#152); касса и поток от больницы, планёрка с узкими местами, «стало хуже», долгий случай нанятого врача (spec 2026-10-economy); ходьба в потоке для ПК — свой врач, свой зал, следующие у двери, приём, когда дошёл (spec 2026-10-walk); приём вашего — когда он дошёл, `meet` и событие `reach` (spec 2026-10-owner-play-2); карты ушедших — `s.past` (spec 2026-10-discharged-card); скамьи у дверей кабинетов — `bench` (spec 2026-10-door-benches); настроение нанятых на планёрке и уход сам в пересменку (spec 2026-10-staff-mood); рост, учёба и болезнь нанятых (spec 2026-10-staff-mood, части 3–5); каталка — перевозки лежачих, операция и снимки на каталке (spec 2026-10-orderlies)
 // Движок смены: приход пациентов, сортировка, очередь, терпение, обследования со своими
 // сроками, закрытие случая и дня (spec 2026-09-first-shift, «Движок»; ADR 0005).
 //
@@ -1638,6 +1638,8 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
       addPending(s, p, examId, end + after * MIN, obs, { room: room.id, start, end });
       p.out = { exam: examId, room: room.id, until: end, back: ride.exam.done };
       if (s.flow && !p.by) schedule(s, p.out.back, { kind: 'reach', id: p.id });
+      const nurse = s.staff?.find(x => x.id === ride.by)?.role !== ORDERLY;
+      journey.examOut(s, p, ride.since, ride.done, undefined, { pick: ride.pick, ...(ride.go > ride.since ? { busy: true as const } : {}), ...(nurse ? { nurse: true as const } : {}) });
       const doer = examDoerOf(db, ctx, room.id);
       if (doer) worked(db, s, doer, 'exam');
       return order;
@@ -2923,6 +2925,7 @@ function carry(db: ContentDb, s: ShiftState, p: ShiftPatient, why: 'bed' | 'op' 
   const ride = planRide(db, s, ctx.plan, ctx.staff, p.id, why, from, to, { since });
   if (!ride) {
     if (why !== 'op') (s.rideWait ??= []).push({ id: p.id, why, from, to, since, ...(urgentRide(p) ? { urgent: true as const } : {}) });
+    if (why === 'bed') journey.bedRide(s, p, { since, from, to });
     return undefined;
   }
   startRide(db, s, ride);
@@ -2935,6 +2938,7 @@ function carry(db: ContentDb, s: ShiftState, p: ShiftPatient, why: 'bed' | 'op' 
  */
 function startRide(db: ContentDb, s: ShiftState, ride: Ride) {
   book(s, ride);
+  if (ride.why === 'bed' && s.patients[ride.id]) journey.bedRide(s, s.patients[ride.id], ride, s.staff?.find(x => x.id === ride.by)?.role !== ORDERLY);
   const m = s.staff?.find(x => x.id === ride.by);
   if (m) worked(db, s, m, 'ride');
   if (ride.why === 'back' || (ride.why === 'bed' && s.patients[ride.id]?.bay)) schedule(s, ride.off, { kind: 'ride', id: ride.id, at: 'off', by: ride.by });

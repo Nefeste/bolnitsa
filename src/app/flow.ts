@@ -51,7 +51,8 @@ export const waits = (p: Pick<Seen, 'status' | 'doing'>) => p.status === 'waitin
 export function moodOf(p: Pick<Seen, 'status' | 'doing' | 'since' | 'limit' | 'ask'>, t: number): Mood | undefined {
   if (p.ask) return 'ask';
   if (p.limit >= 0 && t - p.since >= (p.limit - p.since) * UNHAPPY) return 'unhappy';
-  if ((waits(p) || p.doing === 'ambulance') && p.status !== 'inRoom' && t - p.since >= LONG_WAIT) return 'long';
+  // ждёт каталку (spec docs/specs/2026-10-orderlies.md) — тоже ожидание
+  if ((waits(p) || p.doing === 'ambulance' || p.doing === 'gurney') && p.status !== 'inRoom' && t - p.since >= LONG_WAIT) return 'long';
   return undefined;
 }
 
@@ -61,7 +62,7 @@ export type Where = 'reg' | 'wait' | 'doctor' | 'exams' | 'ward';
 
 export function whereOf(p: Pick<Seen, 'status' | 'doing'>): Where {
   if (p.doing === 'registration' || p.doing === 'triage') return 'reg';
-  if (p.doing === 'ward' || p.doing === 'surgery') return 'ward';
+  if (p.doing === 'ward' || p.doing === 'surgery' || p.doing === 'gurney') return 'ward';
   if (p.doing === 'exam' || p.doing === 'examQueue' || p.doing === 'results') return 'exams';
   if (p.status === 'inRoom') return 'doctor';
   return 'wait';
@@ -137,6 +138,10 @@ export interface PathNames {
   exam(id: Id): { name: string; kind: string };
   /** должность — для «… на перерыве» (spec docs/specs/2026-10-staff-shifts.md, часть 2б) */
   role(id: Id): string;
+  /** помещение посреди фразы — «на каталке: смотровая приёмного → палата» (spec docs/specs/2026-10-orderlies.md) */
+  room(id: string): string;
+  /** когда следующая пересменка после часа `t` — до неё лежачего некому везти */
+  nextShift(t: number): number;
 }
 
 const queueWhy = (x: Extract<Step, { k: 'queue' }>): string => {
@@ -183,21 +188,38 @@ export function pathCard(j: Journey, female: boolean, now: number, names: PathNa
         const away = steps[i + 1]?.k === 'results';
         const stop = Math.min(next, now);
         const parts: string[] = [];
-        if (stop < x.at) parts.push(T.flow.goes);
-        else {
-          parts.push(T.flow.walk(dur(x.at - x.t)));
-          if (x.start > x.at) {
-            const q = Math.min(x.start, stop) - x.at;
-            waited += q;
-            parts.push(T.flow.examQueue(dur(q)));
+        // лежачего везут на каталке (spec docs/specs/2026-10-orderlies.md, «Что видно»): сначала он ждёт её
+        const g = x.gurney;
+        if (g && stop < g.pick) {
+          waited += stop - from;
+          parts.push(T.flow.gurneyWait(dur(stop - from)));
+        } else {
+          if (g && g.pick - from >= 60) {
+            waited += g.pick - from;
+            parts.push(T.flow.gurneyWait(dur(g.pick - from)));
           }
-          if (stop >= x.start) parts.push(T.flow.procedure(dur(Math.min(x.end, stop) - x.start)));
-          if (!away && stop >= x.end) parts.push(T.flow.back(dur(Math.min(x.back, stop) - x.end)));
+          if (stop < x.at) parts.push(g ? T.flow.wheeling : T.flow.goes);
+          else {
+            parts.push(g ? T.flow.wheeled(dur(x.at - g.pick)) : T.flow.walk(dur(x.at - x.t)));
+            if (x.start > x.at) {
+              const q = Math.min(x.start, stop) - x.at;
+              waited += q;
+              parts.push(T.flow.examQueue(dur(q)));
+            }
+            if (stop >= x.start) parts.push(T.flow.procedure(dur(Math.min(x.end, stop) - x.start)));
+            if (!away && stop >= x.end) parts.push((g ? T.flow.wheeledBack : T.flow.back)(dur(Math.min(x.back, stop) - x.end)));
+          }
         }
         if (e.kind === 'lab') parts.push(T.flow.ready(clock(x.ready)));
         const busy = x.start > x.at && stop >= x.at;
-        // ждал, пока тот, кто делает, вернётся с перерыва (spec docs/specs/2026-10-staff-shifts.md, часть 2б)
-        const why = busy ? (x.rest ? T.flow.examRest(names.role(x.rest), clock(x.start)) : T.flow.roomBusy(clock(x.start))) : undefined;
+        // ждал, пока тот, кто делает, вернётся с перерыва (spec docs/specs/2026-10-staff-shifts.md, часть 2б); ждёт каталку —
+        // кто за ним придёт и когда
+        const who = g ? T.flow.carrier(!!g.nurse) : '';
+        const why = busy
+          ? x.rest ? T.flow.examRest(names.role(x.rest), clock(x.start)) : T.flow.roomBusy(clock(x.start))
+          : g && stop < g.pick ? (g.busy ? T.flow.gurneyBusy(who, clock(g.pick)) : T.flow.gurneyComing(who, clock(g.pick)))
+          : g?.busy && g.pick - from >= 60 ? T.flow.gurneyWas(who, !!g.nurse, clock(g.pick))
+          : undefined;
         lines.push({ at: clock(from), text: T.flow.exam(e.name, parts.join(', ')), ...(why ? { why } : {}), kind: 'do', ...(open && now < x.back ? mark : {}) });
         // вернулся к врачу — снова у него до следующего шага
         const back = away ? x.end : x.back;
@@ -273,9 +295,81 @@ export function pathCard(j: Journey, female: boolean, now: number, names: PathNa
     }
     lines.push({ at: clock(e.t), text, ...(why ? { why } : {}), kind: 'end' });
   }
+  // на койку — на каталке (spec docs/specs/2026-10-orderlies.md, «Что видно»): сколько ждал её и почему, откуда и куда везли
+  const b = j.bed;
+  if (b) {
+    const who = T.flow.carrier(!!b.nurse);
+    const pick = b.pick ?? Number.POSITIVE_INFINITY;
+    const stop = Math.min(now, pick);
+    if (stop - b.t >= 60 || now < pick) {
+      const why =
+        b.pick === undefined ? T.flow.gurneyNone(clock(names.nextShift(now)))
+        : now < pick ? (b.busy ? T.flow.gurneyBusy(who, clock(pick)) : T.flow.gurneyComing(who, clock(pick)))
+        : b.none ? T.flow.gurneyNoneWas
+        : b.busy ? T.flow.gurneyWas(who, !!b.nurse, clock(pick))
+        : undefined;
+      lines.push({ at: clock(b.t), text: T.flow.gurneyQueue(dur(stop - b.t)), ...(why ? { why } : {}), kind: 'wait', ...(now < pick ? { now: true as const } : {}) });
+    }
+    if (b.pick !== undefined && b.done !== undefined && now >= b.pick) {
+      const d = now >= b.done ? dur(b.done - b.pick) : undefined;
+      lines.push({ at: clock(b.pick), text: T.flow.gurneyRide(names.room(b.from), names.room(b.to), d), kind: 'do', ...(now < b.done ? { now: true as const } : {}) });
+    }
+  }
   const total = Math.max(0, end - j.at);
   const pct = total > 0 ? Math.round((100 * waited) / total) : 0;
   return { lines, summary: T.flow.inside(female, dur(total), dur(waited), pct), ...(left ? { left } : {}) };
+}
+
+// ---------------------------------------------------------------- каталка
+
+/** Что с перевозкой сейчас (src/render/rides.ts): фаза, откуда и куда — номера помещений плана. */
+export interface RideNow {
+  phase: 'go' | 'load' | 'carry' | 'unload' | 'wait' | 'loadBack' | 'carryBack' | 'unloadBack' | 'home';
+  from: string;
+  to: string;
+}
+
+/**
+ * Что делает тот, кто везёт каталку (spec docs/specs/2026-10-orderlies.md, «Что видно»): «идёт с каталкой за больным: …»,
+ * «везёт на каталке: …, смотровая приёмного → палата», «ждёт у аппарата: …», «возвращается с каталкой на место».
+ */
+export function rideLine(r: RideNow & { who?: string }, room: (id: string) => string): string {
+  const who = r.who ?? T.card.ride.someone;
+  switch (r.phase) {
+    case 'go':
+      return T.card.ride.go(who);
+    case 'load':
+    case 'loadBack':
+      return T.card.ride.load(who);
+    case 'carry':
+      return T.card.ride.carry(who, room(r.from), room(r.to));
+    case 'carryBack':
+      return T.card.ride.carry(who, room(r.to), room(r.from));
+    case 'unload':
+    case 'unloadBack':
+      return T.card.ride.unload(who);
+    case 'wait':
+      return T.card.ride.wait(who, room(r.to));
+    case 'home':
+      return T.card.ride.home;
+  }
+}
+
+/** Что с тем, кого везут: перекладывают, везут откуда и куда, на обследовании у аппарата. */
+export function wheelLine(r: RideNow, room: (id: string) => string): string {
+  switch (r.phase) {
+    case 'carry':
+      return T.card.wheeled.carry(room(r.from), room(r.to));
+    case 'carryBack':
+      return T.card.wheeled.carry(room(r.to), room(r.from));
+    case 'unload':
+    case 'unloadBack':
+      return T.card.wheeled.unload;
+    case 'wait':
+      return T.card.wheeled.wait(room(r.to));
+    default:
+      return T.card.wheeled.load;
+  }
 }
 
 // ---------------------------------------------------------------- помещения
@@ -308,8 +402,8 @@ export function roomLoads(people: Iterable<Pick<Seen, 'status' | 'doing' | 'room
       const o = out[officeOf(p.by)];
       if (o) o.ask = true;
     }
-    // койки: лежит в палате или привезён скорой и лежит в смотровой
-    if (l?.beds && (p.doing === 'ward' || (p.doing === 'ambulance' && p.bed >= 0))) l.beds[0]++;
+    // койки: лежит в палате или привезён скорой и лежит в смотровой — и тогда, когда его положили, а каталки ещё нет
+    if (l?.beds && (p.doing === 'ward' || ((p.doing === 'ambulance' || p.doing === 'gurney') && p.bed >= 0))) l.beds[0]++;
     if (p.doing === 'office' || p.doing === 'exam' || p.doing === 'surgery' || p.doing === 'registration' || p.doing === 'triage' || (p.doing === 'ambulance' && p.status === 'inRoom')) {
       if (l) l.busy = true;
       continue;

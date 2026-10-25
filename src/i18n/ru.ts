@@ -296,6 +296,27 @@ export const ru = {
     restShort: (until: string) => `перерыв до ${until}`,
     wcShort: 'в туалете',
     fatigueShort: (n: number) => `усталость ${n}`,
+    /** санитар и каталка (spec docs/specs/2026-10-orderlies.md, «Что видно»): что делает тот, кто везёт, и что с тем, кого везут */
+    ride: {
+      go: (who: string) => `идёт с каталкой за больным: ${who}`,
+      load: (who: string) => `перекладывает на каталку: ${who}`,
+      carry: (who: string, from: string, to: string) => `везёт на каталке: ${who}, ${from} → ${to}`,
+      unload: (who: string) => `перекладывает с каталки: ${who}`,
+      wait: (who: string, to: string) => `ждёт у аппарата: ${who}, ${to}`,
+      home: 'возвращается с каталкой на место',
+      free: (f: boolean): string => (f ? 'свободна — ждёт у каталки' : 'свободен — ждёт у каталки'),
+      someone: 'больной',
+    },
+    rideShort: (until: string) => `везёт больного до ${until}`,
+    wheeled: {
+      load: 'перекладывают на каталку',
+      carry: (from: string, to: string) => `везут на каталке: ${from} → ${to}`,
+      unload: 'перекладывают с каталки',
+      wait: (to: string) => `на обследовании: ${to}`,
+    },
+    /** должность, без которой помещение работает (spec docs/specs/2026-10-orderlies.md): санитар */
+    optional: 'без него помещение работает, но лежачие ждут',
+    nightCarrier: 'в ночную смену санитара нет — лежачих повезут медсёстры',
     dismiss: 'Уволить',
     /**
      * настроение (spec docs/specs/2026-10-staff-mood.md): «Настроение 45 ↓5 — зарплата ниже рынка, нет ординаторской»;
@@ -347,6 +368,7 @@ export const ru = {
     ward: 'лежит в палате',
     surgery: 'на операции',
     ambulance: 'привезла скорая',
+    gurney: 'ждёт каталку',
   },
   /** пока идёт туда, где с ним это делают (spec docs/specs/2026-10-owner-play.md) */
   going: {
@@ -360,6 +382,7 @@ export const ru = {
     ward: 'идёт в палату',
     surgery: 'идёт в операционную',
     ambulance: 'привезла скорая',
+    gurney: 'выходит ждать каталку',
   },
   visit: { appointment: 'по записи', walkIn: 'сам', return: 'вернулся', ambulance: 'скорая' },
   notices: {
@@ -484,6 +507,19 @@ export const ru = {
     unseen: 'день кончился — не успели принять',
     lost: 'путь оборвался',
     cut: 'дальше путь не записан',
+    /** каталка (spec docs/specs/2026-10-orderlies.md, «Что видно»): кто везёт, ожидание, перевозка */
+    carrier: (nurse: boolean): string => (nurse ? 'медсестра' : 'санитар'),
+    gurneyWait: (d: string) => `ожидание каталки ${d}`,
+    gurneyQueue: (d: string) => `ожидание каталки — ${d}`,
+    wheeling: 'везут туда на каталке',
+    wheeled: (d: string) => `на каталке ${d}`,
+    wheeledBack: (d: string) => `на каталке обратно ${d}`,
+    gurneyComing: (who: string, at: string) => `${who} уже идёт — будет к ${at}`,
+    gurneyBusy: (who: string, at: string) => `${who} везёт другого — будет к ${at}`,
+    gurneyWas: (who: string, nurse: boolean, at: string) => `${who} ${nurse ? 'везла' : 'вёз'} другого — ${nurse ? 'пришла' : 'пришёл'} в ${at}`,
+    gurneyNone: (at: string) => `в смене нет ни санитара, ни медсестры — до пересменки в ${at}`,
+    gurneyNoneWas: 'в смене не было ни санитара, ни медсестры — повезли с пересменки или после найма',
+    gurneyRide: (from: string, to: string, d?: string) => `на каталке: ${from} → ${to}${d ? ` — ${d}` : ''}`,
     whyLeft: 'Причина ухода',
     room: {
       works: 'работает', busy: 'занято', queue: (n: number) => `очередь ${n}`, noStaff: 'нет персонала', closed: 'закрыто',

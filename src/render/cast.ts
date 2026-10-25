@@ -67,6 +67,8 @@ export const ROLE_COLOR: Record<string, number> = {
   // санитар (spec docs/specs/2026-10-orderlies.md) — в сером, как в геймдизайне (§13)
   'role.orderly': 0x8c8f93,
 };
+/** Фельдшер скорой — в синей форме (spec docs/specs/2026-10-orderlies.md, «Что видно»): ввозит привезённого и уходит. */
+export const PARAMEDIC = 0x2f5d9e;
 /** Белый халат — врачам и всем, кого нет в ROLE_COLOR. */
 export const COAT = 0xf2f4f4;
 

@@ -3,7 +3,7 @@
 // поток не захлёбывается кадрами, если не успевает.
 // Исправлено, как в копии «Фармзавода» (pharma: src/sim/client.ts @ b9696c0, Nefeste/pharma#53): счёт `roundTripsTaken`
 // — память времён обрезана, и отметка начала прогона бенча длиной массива давала пустую выборку.
-import type { Command, Notice, ShiftState } from '../engine/shift/types';
+import type { Command, Notice, Ride, ShiftState } from '../engine/shift/types';
 import type { CrewView } from '../engine/shift/crew';
 import type { MoodView } from '../engine/shift/mood';
 import type { NameRow } from './pack';
@@ -27,6 +27,8 @@ export interface Slice extends DoctorOut {
   crew?: CrewView[];
   /** настроение нанятых со сменой (spec 2026-10-staff-mood); когда изменилось */
   moods?: MoodView[];
+  /** перевозки на каталке (spec 2026-10-orderlies); когда изменились */
+  rides?: Ride[];
 }
 
 export class SimClient {
@@ -79,7 +81,7 @@ export class SimClient {
       buf: msg.buf, names: msg.names, notices: msg.notices, lag: msg.lag, ...(msg.world ? { world: msg.world } : {}),
       ...(msg.doctor ? { doctor: msg.doctor } : {}), ...(msg.card !== undefined ? { card: msg.card } : {}), ...(msg.seen ? { seen: msg.seen } : {}), ...(msg.refused ? { refused: msg.refused } : {}),
       ...(msg.path ? { path: msg.path } : {}), ...(msg.broken ? { broken: msg.broken } : {}), ...(msg.late ? { late: msg.late } : {}), ...(msg.crew ? { crew: msg.crew } : {}),
-      ...(msg.moods ? { moods: msg.moods } : {}),
+      ...(msg.moods ? { moods: msg.moods } : {}), ...(msg.rides ? { rides: msg.rides } : {}),
     });
   }
 

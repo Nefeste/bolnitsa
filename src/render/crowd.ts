@@ -37,7 +37,8 @@ export const KEEP_RIGHT = 0.2;
 /** Сколько секунд ложатся и встают с постели. */
 const LIE_TIME = 0.7;
 
-type State = 'idle' | 'walk' | 'sitDown' | 'sit' | 'standUp' | 'lieDown' | 'lie' | 'getUp' | 'gone';
+/** `slide` — лёжа перекладывают: с каталки на кровать, стол, аппарат (spec docs/specs/2026-10-orderlies.md) */
+type State = 'idle' | 'walk' | 'sitDown' | 'sit' | 'standUp' | 'lieDown' | 'lie' | 'getUp' | 'slide' | 'gone';
 
 export interface Walker {
   key: string;
@@ -81,6 +82,13 @@ export interface Walker {
   v: number;
   /** темп покоя, 0,85–1,15 по ключу: стоящие и ждущие не дышат в такт (spec 2026-10-aaa-polish, «Жизнь») */
   idle: number;
+  /**
+   * везут на каталке (spec docs/specs/2026-10-orderlies.md): ключ того, кто везёт; лежит на ней перед ним, пока не отпустят
+   * (`release`); перекладывают на неё — `t` и (fx, fy, fz), как у других переходов
+   */
+  carry?: string;
+  /** уходит через вход для скорой: фельдшер — к машине (spec docs/specs/2026-10-orderlies.md) */
+  out?: 'ambulance';
 }
 
 /** Темп покоя по ключу: ровный разброс 0,85–1,15, один и тот же у одного человека (хэш FNV-1a — перемешивает все знаки). */
@@ -89,6 +97,11 @@ export function idleRate(key: string): number {
   for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 0x01000193) >>> 0;
   return 0.85 + (h % 31) / 100;
 }
+
+/** Каталка (spec docs/specs/2026-10-orderlies.md): верх матраса — на этой высоте лежит пациент, м. */
+export const GURNEY_TOP = 0.66;
+/** На сколько середина каталки впереди ступней того, кто её везёт, м. */
+export const GURNEY_AHEAD = 1.3;
 
 const ease = (k: number) => k * k * (3 - 2 * k);
 
@@ -223,9 +236,10 @@ export class Crowd {
    * врача), он сначала проходит (spec docs/specs/2026-10-owner-play.md): приём в движке короче дороги на экране, и без
    * неё человек уходил домой, не дойдя до врача. Персонал и лежащие исчезают сразу, если выход не нужен.
    */
-  leave(w: Walker) {
+  leave(w: Walker, ambulance = false) {
     if (w.leaving) return;
     w.leaving = true;
+    if (ambulance) w.out = 'ambulance';
     // к выходу — обычным шагом: срока у движка нет
     w.due = NaN;
     w.goals = w.goals.filter(g => g.kind === 'act' && g.key !== w.at?.key).slice(-1);
@@ -242,6 +256,47 @@ export class Crowd {
     w.due = NaN;
     w.goals = [spot];
     if (w.state === 'walk') this.startWalk(w, spot);
+  }
+
+  /**
+   * Везут на каталке (spec docs/specs/2026-10-orderlies.md): перекладывают на неё — с кровати или стоя (тогда и ложится), — и
+   * дальше он лежит на ней перед тем, кто везёт (`by` — его ключ), где бы тот ни был, пока не отпустят (`release`). `at` — уже
+   * лежит на ней (привезла скорая).
+   */
+  carry(w: Walker, by: string, at = false) {
+    w.carry = by;
+    w.goals = [];
+    w.pts = null;
+    w.cum = null;
+    w.at = undefined;
+    w.leaving = false;
+    w.fx = w.x;
+    w.fz = w.z;
+    w.fy = w.y;
+    w.t = at ? LIE_TIME : 0;
+    if (at) w.lie = 1;
+    w.state = 'lie';
+    this.setClip(w, IDLE, true);
+  }
+
+  /** Довезли: с каталки — на место (на койку, на стол, на место в смотровой); лёжа — перекладывают, стоя — встаёт сразу. */
+  release(w: Walker, spot: Spot) {
+    delete w.carry;
+    if (spot.pose !== 'lie') {
+      this.settle(w, spot);
+      return;
+    }
+    w.at = spot;
+    w.goals = [];
+    w.pts = null;
+    w.cum = null;
+    w.fx = w.x;
+    w.fz = w.z;
+    w.fy = w.y;
+    w.t = 0;
+    w.lie = 1;
+    w.state = 'slide';
+    this.setClip(w, IDLE, true);
   }
 
   remove(key: string) {
@@ -267,7 +322,8 @@ export class Crowd {
     // с улицы — через ближний вход
     const near = (e: { x: number; z: number }) => (e.x - w.x) ** 2 + (e.z - w.z) ** 2;
     const start = outside ? (near(this.ambulance) < near(this.exit) ? this.ambulance.cell : this.exit.cell) : fromCell;
-    const to = goal ? goal.cell : this.exit.cell;
+    const exit = w.out === 'ambulance' ? this.ambulance : this.exit;
+    const to = goal ? goal.cell : exit.cell;
     const cells = this.paths.find(start, to) ?? Int32Array.of(start, to);
     const n = cells.length + 1 + (goal ? 0 : 1);
     const pts = new Float32Array(n * 2);
@@ -278,8 +334,8 @@ export class Crowd {
       pts[(i + 1) * 2 + 1] = ((cells[i] / l.w) | 0) + 0.5;
     }
     if (!goal) {
-      pts[(n - 1) * 2] = this.exit.x;
-      pts[(n - 1) * 2 + 1] = this.exit.z;
+      pts[(n - 1) * 2] = exit.x;
+      pts[(n - 1) * 2 + 1] = exit.z;
     }
     // первая точка пути — где он стоит; если он уже у середины первой клетки — без лишнего шага назад
     const cum = new Float32Array(n);
@@ -310,10 +366,27 @@ export class Crowd {
   }
 
   private step(w: Walker, dt: number, v: number) {
-    const look = this.looks[w.look];
     // перемотка: сесть, встать и постоять у стойки — во столько же раз быстрее, во сколько идёт игра; покой — в своём
     // темпе, не в такт с соседями
     const fast = Math.max(1, this.speed);
+    // на каталке — перед тем, кто везёт, лёжа: сперва перекладывают (стоявший ложится); ушёл с карты — остаётся, где был
+    if (w.carry !== undefined) {
+      const c = this.walkers.get(w.carry);
+      if (v > 0) w.t += dt * fast;
+      const k = ease(Math.min(1, w.t / LIE_TIME));
+      if (c) {
+        const tx = c.x + Math.sin(c.heading) * GURNEY_AHEAD;
+        const tz = c.z + Math.cos(c.heading) * GURNEY_AHEAD;
+        w.x = w.fx + (tx - w.fx) * k;
+        w.z = w.fz + (tz - w.fz) * k;
+        w.y = w.fy + (GURNEY_TOP - w.fy) * k;
+        w.heading = k < 1 ? turnTo(w.heading, c.heading, dt * fast * 8) : c.heading;
+      }
+      w.lie = Math.max(w.lie, k);
+      w.v = 0;
+      return;
+    }
+    const look = this.looks[w.look];
     w.clipTime += dt * (w.clip === WALK || w.clip === RUN ? Math.max(0.2, w.v / (w.clip === RUN ? 3.2 : 1.25)) : w.clip === SITDOWN || w.clip === STANDUP ? fast : w.idle);
     w.v = 0;
     switch (w.state) {
@@ -393,6 +466,20 @@ export class Crowd {
         w.y = r.y * k;
         if (w.t >= dur) {
           w.state = 'sit';
+          w.heading = spot.yaw;
+        }
+        return;
+      }
+      case 'slide': {
+        const spot = w.at!;
+        if (v > 0) w.t += dt * fast;
+        const k = ease(Math.min(1, w.t / LIE_TIME));
+        w.heading = turnTo(w.heading, spot.yaw, dt * fast * 8);
+        w.x = w.fx + (spot.x - w.fx) * k;
+        w.z = w.fz + (spot.z - w.fz) * k;
+        w.y = w.fy + (spot.y - w.fy) * k;
+        if (w.t >= LIE_TIME) {
+          w.state = 'lie';
           w.heading = spot.yaw;
         }
         return;
@@ -575,7 +662,7 @@ export class Crowd {
   near(x: number, z: number, r: number): boolean {
     const r2 = r * r;
     for (const w of this.walkers.values()) {
-      if (w.state === 'sit' || w.state === 'lie') continue;
+      if (w.state === 'sit' || w.state === 'lie' || w.state === 'slide') continue;
       const dx = w.x - x;
       const dz = w.z - z;
       if (dx * dx + dz * dz < r2) return true;
@@ -603,7 +690,7 @@ export class Crowd {
     for (const w of this.walkers.values()) {
       if (w.state === 'walk') walking++;
       else if (w.state === 'sit' || w.state === 'sitDown') sitting++;
-      else if (w.state === 'lie' || w.state === 'lieDown') lying++;
+      else if (w.state === 'lie' || w.state === 'lieDown' || w.state === 'slide') lying++;
     }
     return { walking, sitting, lying };
   }
