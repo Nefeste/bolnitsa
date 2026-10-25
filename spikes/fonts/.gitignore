@@ -1,0 +1,4 @@
+# скачанные шрифты и лицензии (fetch.py), снимки (shots.mjs), окружение Python — в git не кладём
+files/
+shots/
+.venv/
