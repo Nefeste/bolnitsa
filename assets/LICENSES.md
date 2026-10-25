@@ -1,9 +1,9 @@
-# Лицензии моделей игры
+# Лицензии моделей и шрифта игры
 
 Правило студии: контент — только из названного источника с правовым основанием (устав, `docs/06-content.md`, ADR студии
 0012); графика ПК-игры может быть и из генераторов, но только по ADR студии 0020 — с журналом и одобрением владельца. **В
-этой части генераторов нет**: только модели под **CC0 1.0**, люди Microsoft Rocketbox под **MIT** (раздел 4) и своё
-(код).
+этой части генераторов нет**: только модели под **CC0 1.0**, люди Microsoft Rocketbox под **MIT** (раздел 4), шрифт IBM
+Plex Sans под **SIL Open Font License 1.1** (раздел 5) и своё (код).
 
 Модели — те же наборы, что у пробы 3D-вида (`spikes/render-3d/assets/LICENSES.md`), взятые 16.10.2026 из тех же
 репозиториев и тех же коммитов (ниже). Страницы авторов (kenney.nl, quaternius.com, itch.io) прочитаны в тот день —
@@ -203,7 +203,31 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## 5. Своё — код игры
+## 5. IBM Plex Sans — шрифт игры
+
+Решение владельца 25.10.2026 (#107, «вариант 1»; отчёт [`docs/reports/2026-10-fonts.md`](../docs/reports/2026-10-fonts.md)).
+
+- **Авторы:** Mike Abbink (IBM) и Bold Monday. «Copyright © 2017 IBM Corp. with Reserved Font Name "Plex"» — первая
+  строка `OFL.txt`.
+- **Лицензия:** SIL Open Font License 1.1, текст дословно — `assets/fonts/OFL.txt`, рядом со шрифтом; сборка кладёт его
+  туда же (`dist/assets/fonts/OFL.txt`), и он едет в каждой копии игры, как требует условие 2 лицензии. OFL разрешает
+  встраивать шрифт в программу и распространять вместе с ней, и в продаваемой игре тоже; нельзя продавать сам шрифт
+  отдельно (условие 1). Зарезервированное имя «Plex» запрещает его только у изменённых версий (условие 3) — файлы здесь
+  не изменены, имена файлов — те же.
+- **Откуда файлы:** хранилище Google Fonts на GitHub — https://github.com/google/fonts, ветка `main`, папка
+  `ofl/ibmplexsans/`; скачаны 25.10.2026 пробой `spikes/fonts/fetch.py` (адрес
+  `https://raw.githubusercontent.com/google/fonts/main/ofl/ibmplexsans/<файл>`). Это переменные шрифты: насыщенность
+  100–700 и ширина 75–100 % в одном файле, прямой и курсив. **Перед выпуском** — скачать заново и сверить по SHA-256.
+
+| Файл | SHA-256 |
+|---|---|
+| `assets/fonts/IBMPlexSans[wdth,wght].ttf` | `3b031aa4216174205bd8471f88a49b91f093169e9e87bd5262242bc5967fe2e3` |
+| `assets/fonts/IBMPlexSans-Italic[wdth,wght].ttf` | `0b94c5e981993764db32bf9c610ecc60cbd34ad77ec2f10ba03c64ab75124d8e` |
+| `assets/fonts/OFL.txt` | `7e6b2818edbd8f6a01ae80641cc8f16a51080d08fb4e532be3a0b6f74adb07da` |
+
+Тест `tools/test/fonts.test.ts` сверяет файлы с этой таблицей.
+
+## 6. Своё — код игры
 
 Без внешних файлов, нарисовано кодом:
 

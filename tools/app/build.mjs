@@ -30,5 +30,7 @@ await build({ ...common, entryPoints: [join(root, 'src/sim/worker.ts')], outfile
 copyFileSync(join(root, 'app/index.html'), join(out, 'index.html'));
 copyFileSync(bundle, join(out, 'content.json'));
 cpSync(join(root, 'assets/models'), join(out, 'assets/models'), { recursive: true });
+// шрифт игры (решение владельца #107): файлы IBM Plex Sans и текст лицензии OFL — рядом, в каждой копии
+cpSync(join(root, 'assets/fonts'), join(out, 'assets/fonts'), { recursive: true });
 copyFileSync(join(root, 'assets/LICENSES.md'), join(out, 'LICENSES.md'));
 console.log(`dist/ — версия ${version}`);

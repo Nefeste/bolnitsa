@@ -189,6 +189,13 @@ async function partOne() {
   await page.goto(`http://127.0.0.1:${port}/index.html?q=${arg('q', 'low')}&lang=ru&hospital=preset&flow=6,1`);
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
   ok('страница загрузилась, первый кадр нарисован');
+  // шрифт игры (решение владельца #107): IBM Plex Sans из своих файлов, а не системный
+  const font = await page.evaluate(async () => {
+    await document.fonts.ready;
+    return { family: getComputedStyle(document.body).fontFamily, loaded: document.fonts.check('13px "IBM Plex Sans"') };
+  });
+  if (font.loaded && font.family.startsWith('"IBM Plex Sans"')) ok(`шрифт игры — IBM Plex Sans из assets/fonts: ${font.family}`);
+  else fail(`шрифт игры: ${JSON.stringify(font)}`);
   // дать потоку расчёта и людям пожить: ×12 на несколько секунд — и до первого пациента (без видеокарты и при занятом
   // процессоре кадров мало, часы идут медленнее)
   await page.keyboard.press('Digit3');
