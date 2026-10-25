@@ -29,13 +29,15 @@ export type Step =
    * docs/specs/2026-10-orderlies.md): с `t` ждал её, в `pick` за ним пришли, к `at` переложили к аппарату, к `back` он снова на
    * своём месте; `busy` — тот, кто вёз, сначала довозил других; `nurse` — везла медсестра: санитара в смене не было
    */
-  | { t: number; k: 'exam'; exam: Id; room: string; at: number; start: number; end: number; back: number; ready: number; rest?: Id; gurney?: Gurney }
+  | { t: number; k: 'exam'; exam: Id; room: string; at: number; start: number; end: number; back: number; ready: number; rest?: Id; gurney?: Gurney; chief?: true }
   /** ждёт результатов: врач отпустил его и позвал другого; с конца последней процедуры; результаты — к `ready` */
   | { t: number; k: 'results'; ready: number }
   /** ждёт своего врача: вернулся с результатами, а врач занят; `refer` — направлен к другому нанятому врачу */
   | { t: number; k: 'own'; by: string; refer?: true }
   /** нанятый врач просит вас посмотреть его — ждёт ответа до `until` (spec 2026-10-consults) */
   | { t: number; k: 'ask'; by: string; until: number }
+  /** решение нанятого врача `by` ждёт главврача у двери кабинета — до `until` (spec 2026-10-two-ways, F3) */
+  | { t: number; k: 'approve'; by: string; until: number }
   /**
    * ждёт своего врача, а тот ушёл на перерыв до `until` (spec 2026-10-staff-shifts, часть 2): `wc` — в туалет, `here` —
    * отдыхает в кабинете, ординаторской нет
@@ -61,6 +63,8 @@ export interface End {
   full?: Place[];
   /** лёг: помещение */
   room?: string;
+  /** решение врача ждало главврача (spec 2026-10-two-ways, F3): тот согласился или не ответил до срока */
+  chief?: 'agreed' | 'silent';
   /** ушёл, не дождавшись: сколько был готов ждать, игровых секунд */
   patience?: number;
 }
@@ -118,7 +122,7 @@ export const MAX_STEPS = 40;
 export const SWEEP = 3600;
 
 /** Ожидания: такое без минуты (позвали в ту же секунду) — не ожидание, его заменяет следующий шаг. */
-const WAITS: ReadonlySet<Step['k']> = new Set(['queue', 'own', 'results', 'ask', 'rest']);
+const WAITS: ReadonlySet<Step['k']> = new Set(['queue', 'own', 'results', 'ask', 'rest', 'approve']);
 
 /** Пути смены; только в потоке для ПК — в режимах «Анамнеза» поля нет. */
 function book(s: ShiftState): Journeys | undefined {
@@ -263,6 +267,26 @@ export function asked(s: ShiftState, p: ShiftPatient, by: string, until: number)
   const j = journeyOf(s, p);
   if (!j) return;
   push(j, { t: s.t, k: 'ask', by, until });
+}
+
+/** Решение нанятого врача `by` ждёт главврача — до `until` (`openApproval`, spec 2026-10-two-ways, F3). */
+export function approve(s: ShiftState, p: ShiftPatient, by: string, until: number) {
+  const j = journeyOf(s, p);
+  if (!j) return;
+  push(j, { t: s.t, k: 'approve', by, until });
+}
+
+/** Решение, которое ждало главврача, в силе (`settleApproval`): путь кончился им — главврач согласился или промолчал. */
+export function approved(s: ShiftState, p: ShiftPatient, how: 'agreed' | 'silent') {
+  const end = s.journeys?.of[p.id]?.end;
+  if (end) end.chief = how;
+}
+
+/** Обследование назначил главврач (spec 2026-10-two-ways, F2): врач только что отправил на него — шаг пути помечен. */
+export function chief(s: ShiftState, p: ShiftPatient, exam: Id) {
+  const steps = s.journeys?.of[p.id]?.steps;
+  const last = steps?.[steps.length - 1];
+  if (last?.k === 'exam' && last.exam === exam) last.chief = true;
 }
 
 /**
