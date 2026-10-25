@@ -178,14 +178,21 @@ export class Money {
     // персонал (spec docs/specs/2026-10-staff-mood.md): уходящий ночной уже не в штате — кто он, сказано в извещении
     const who = (m: { role: Id; sex: 'm' | 'f'; seed: number }) => `${named(db.roles[m.role]?.name, m.role)} ${staffName(m)}`;
     const member = (id: string) => staff.find(x => x.id === id);
-    // поднять зарплату — с планёрки, как в карточке человека: в больнице ПК, кто не уходит сам
-    const raise = (m: StaffMember): { raise?: Raise } => (this.g.hospital.site && db.economy.staff.mood ? { raise: { from: m.salary, to: raisedOf(db, m) } } : {});
+    // поднять зарплату — с планёрки, как в карточке человека: в больнице ПК, кто не уходит сам; кто вырос и собирается уйти —
+    // одна кнопка, в строке «собирается уйти»
+    const going = new Set((news?.leave ?? []).map(l => l.id));
+    const asked = new Set((news?.quit ?? []).map(q => q.id));
+    const raise = (m: StaffMember): { raise?: Raise } =>
+      this.g.hospital.site && db.economy.staff.mood && !going.has(m.id) ? { raise: { from: m.salary, to: raisedOf(db, m) } } : {};
     const people = news
       ? {
           low: (news.low ?? []).flatMap(id => (member(id) ? [who(member(id)!)] : [])),
           quit: (news.quit ?? []).flatMap(q => (member(q.id) ? [{ id: q.id, who: who(member(q.id)!), until: q.until, ...raise(member(q.id)!) }] : [])),
           leave: (news.leave ?? []).map(l => ({ who: who(l), why: l.why })),
-          grew: (news.grew ?? []).flatMap(g => (member(g.id) ? [{ id: g.id, who: who(member(g.id)!), sex: member(g.id)!.sex, skill: g.skill, ...raise(member(g.id)!) }] : [])),
+          grew: (news.grew ?? []).flatMap(g => {
+            const m = member(g.id);
+            return m ? [{ id: g.id, who: who(m), sex: m.sex, skill: g.skill, ...(asked.has(g.id) ? {} : raise(m)) }] : [];
+          }),
           back: (news.back ?? []).flatMap(b => (member(b.id) ? [{ who: who(member(b.id)!), sex: member(b.id)!.sex, skill: b.skill }] : [])),
           sick: (news.sick ?? []).flatMap(id => (member(id) ? [who(member(id)!)] : [])),
         }
