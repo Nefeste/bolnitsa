@@ -210,6 +210,8 @@ export interface ShiftPatient {
   orders?: Id[];
   /** главврач назначил обследование: следующее решение врача — к нему на утверждение */
   chief?: true;
+  /** главврач изменил решение врача (F5): верен ли был диагноз первого врача — сравнить с тем, чем случай закроют */
+  chiefFrom?: 'correct' | 'partly' | 'wrong';
 }
 
 export interface ClosedCase {
@@ -612,6 +614,12 @@ export interface ChiefDay {
   silent: number;
   changed: number;
   wrong?: { agreed: number; silent: number; changed: number };
+  /**
+   * изменённые решения приёма (spec 2026-10-two-ways, F5), когда случай закрыли — врач после вашего обследования, другой
+   * врач или вы: диагноз вернее, чем был у врача, или хуже
+   */
+  better?: number;
+  worse?: number;
 }
 
 export interface SurgeryDay {

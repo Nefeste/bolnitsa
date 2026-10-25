@@ -10,6 +10,7 @@ import { ASK_RULES, DEFAULT_ASKS } from '../../engine/shift/approve';
 import type { AskRule } from '../../engine/shift/types';
 import type { Actions, Hud, RoomCard } from '../store';
 import { Levels } from './Card';
+import { type Role, ROLES } from '../../app/roles';
 
 const VERDICT: Record<string, string> = { correct: '✓', partly: '≈', wrong: '✗' };
 
@@ -47,7 +48,24 @@ function Find({ id, find, prefix = 'find' }: { id: string; find: (id: string) =>
   );
 }
 
-/** Окно врача — слева внизу: кто вы сейчас, уровень, «Свои больные», ваши больные списками. */
+/** «Кто вы» (spec docs/specs/2026-10-two-ways.md, F4; решение владельца #67): роль ставит настройки разом; выбранная — подсвечена. */
+function RoleRow({ role, actions }: { role: Role; actions: Actions }) {
+  const t = T.doctor.role;
+  return (
+    <div className="row roles" id="dock-roles" title={t.hint}>
+      <span className="label">{t.label}</span>
+      <span className="group">
+        {ROLES.map(r => (
+          <button key={r} type="button" className={r === role ? 'small on' : 'small'} id={`role-${r}`} title={t.line[r]} onClick={() => actions.doctor({ kind: 'role', role: r })}>
+            {t.name[r]}
+          </button>
+        ))}
+      </span>
+    </div>
+  );
+}
+
+/** Окно врача — слева внизу: кто вы сейчас, роль, уровень, «Свои больные», ваши больные списками. */
 export function Dock({ hud, actions }: { hud: Hud; actions: Actions }) {
   const d = hud.doctor;
   const st = d?.state;
@@ -62,7 +80,7 @@ export function Dock({ hud, actions }: { hud: Hud; actions: Actions }) {
     return (
       <div className="dock panel folded" id="dock">
         <button type="button" id="dock-unfold" onClick={() => actions.doctor({ kind: 'fold', folded: false })}>
-          ▸ {t.title} · {status}
+          ▸ {t.role.title[d.role]} · {status}
           {st.yours.length > 0 ? ` · ${t.lists.yours}: ${st.yours.length}` : ''}
         </button>
       </div>
@@ -70,7 +88,7 @@ export function Dock({ hud, actions }: { hud: Hud; actions: Actions }) {
   return (
     <div className="dock panel" id="dock">
       <div className="row">
-        <b>{t.title}</b>
+        <b id="dock-title">{t.role.title[d.role]}</b>
         <span className="muted" id="dock-status">
           {status}
         </span>
@@ -78,7 +96,9 @@ export function Dock({ hud, actions }: { hud: Hud; actions: Actions }) {
           ▾
         </button>
       </div>
-      {!st.office ? <p className="muted small">{t.noOfficeHint}</p> : null}
+      <RoleRow role={d.role} actions={actions} />
+      {/* отметить свой кабинет — совет «Врачу»; у «Главврача» и «Управляющего» своего кабинета и нет (F4) */}
+      {!st.office && d.role === 'doctor' ? <p className="muted small">{t.noOfficeHint}</p> : null}
       {d.said ? (
         <div className={`ghostline ${d.said.ok ? 'ok' : 'bad'}`} id="dock-said">
           {d.said.text}

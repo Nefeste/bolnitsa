@@ -104,6 +104,18 @@ export const economyEn: EconomyStrings = {
     staffGrew: (who: string, skill: number, _sex: 'm' | 'f') => `${who} grew to skill ${skill} — the pay is the same, below the market: raise it`,
     staffBack: (who: string, skill: number, _sex: 'm' | 'f') => `${who} is back from study — skill ${skill}`,
     staffSick: (who: string) => `${who} is sick — will not come to the shift today`,
+    chief: 'Chief doctor',
+    chiefAsked: (n: number, discharges: number) => `${n} doctors' ${pl(n, 'decision', 'decisions')} came for approval${discharges > 0 ? ` (discharges — ${discharges})` : ''}`,
+    chiefAnswers: (agreed: number, silent: number, changed: number) => `you agreed — ${agreed}, no answer — ${silent}, changed — ${changed}`,
+    chiefChanged: (better: number, worse: number) => `of the changed: for the better — ${better}, for the worse — ${worse}`,
+    chiefMissed: (agreed: number, silent: number) =>
+      `doctors' errors passed: ${[agreed > 0 ? `with your «Agree» — ${agreed}` : '', silent > 0 ? `with no answer — ${silent}` : ''].filter(Boolean).join(', ')}`,
+    chiefNoMiss: 'no wrong decisions among those approved',
+    errors: "Hired doctors' errors",
+    errorsHint: "Hired doctors' cases closed in the last day with a wrong diagnosis or a safety note. «Case» — what the doctor knew and decided",
+    errorRow: (diagnosis: string, verdict: string, truth?: string) => `${diagnosis} — ${lowerFirst(verdict)}${truth ? `; actually — ${truth}` : ''}`,
+    errorChief: { agreed: 'you agreed', silent: 'no answer' } as Record<string, string>,
+    errorsMore: (n: number) => `and ${n} more`,
     tip: 'Tip',
     tips: {
       below: 'Cash is below the limit: building waits for money. Take the bank’s loan or cut costs — dismiss extra staff, demolish what you do not need (half the price comes back).',

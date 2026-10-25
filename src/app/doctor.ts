@@ -16,6 +16,9 @@ import { type DoctorAction, type DoctorHud, initialDoctor } from '../ui/doctor/t
 import type { Speed } from '../ui/store';
 import { whyText } from './build';
 import type { Game } from './game';
+import { firstOffice, type Role, ROLE_SETS, roleOf } from './roles';
+import { DEFAULT_ASKS } from '../engine/shift/approve';
+import { DOCTOR, standInOf } from '../engine/hospital/requirements';
 
 /** Уровень медицины из адреса (`?level=`); нет — «Студент» (spec «Сложность»). */
 function levelOfUrl(): Difficulty {
@@ -39,6 +42,9 @@ export class Doctor {
   private taking: string | undefined;
   /** «Открыть карту» отправлено: карты нет — сказать (карта ушедшего хранится сутки, spec 2026-10-discharged-card) */
   private opening: string | undefined;
+  /** подсказки по роли (spec docs/specs/2026-10-two-ways.md, F4): вы уже звали больного, отвечали на решение врача */
+  called = false;
+  answered = false;
 
   constructor(private g: Game) {}
 
@@ -74,6 +80,7 @@ export class Doctor {
     if (s.doctor) {
       const st = s.doctor;
       this.hud.state = st;
+      if (st.current) this.called = true;
       // кого позвать после разбора — только свободному: тот же объект, пока список тот же
       const next = st.current ? undefined : (st.yours[0] ?? st.others[0]);
       if (next?.id !== this.hud.next?.id || next?.who !== this.hud.next?.who) this.hud.next = next ? { id: next.id, who: next.who } : undefined;
@@ -235,6 +242,54 @@ export class Doctor {
     return who ? T.doctor.notices.reached(who) : T.doctor.notices.reachedSomeone;
   }
 
+  /**
+   * Роль (spec docs/specs/2026-10-two-ways.md, F4; решение владельца #67): ставит разом «Мой кабинет», «Свои больные», галочки
+   * «О чём спрашивать главврача» и автопаузу; окно врача у «Управляющего» свёрнуто. На старте больница уже построена под роль
+   * (`startFor` в src/app/roles.ts): потоку — только галочки, если они не по умолчанию. В игре: «Врачу» — первый кабинет врача,
+   * если своего нет (врач того кабинета — в резерв); «Главврачу» и «Управляющему» — «Не принимаю», в бывший кабинет — врач из
+   * резерва, и без «Своих больных».
+   */
+  setRole(role: Role, start = false) {
+    const set = ROLE_SETS[role];
+    const client = this.g.client;
+    this.hud.role = role;
+    this.hud.autopause = set.autopause;
+    this.hud.folded = set.folded;
+    const asks = [...set.asks];
+    if (!start || asks.length !== DEFAULT_ASKS.length || asks.some(x => !DEFAULT_ASKS.includes(x))) client.command({ kind: 'asks', rules: asks });
+    if (start) return;
+    const st = this.hud.state;
+    const site = this.g.hospital.site;
+    let office = false;
+    if (!set.office) {
+      if (st?.office) {
+        client.command({ kind: 'site', cmd: { kind: 'office' } });
+        // в бывший ваш кабинет — врачи из резерва, если они есть (ушли туда, когда кабинет стал вашим), по одному на смену:
+        // кабинет не пустует; нового не нанимаем — это решение игрока. У вас пациент — «Не принимаю» нельзя, и их не зовём
+        const stand = standInOf(this.g.db, DOCTOR);
+        const shifts = new Set(this.g.staff.filter(m => m.room === undefined && m.role === stand).map(m => m.shift ?? 'day'));
+        if (!st.current) for (const shift of shifts) client.command({ kind: 'site', cmd: { kind: 'hire', room: st.office, role: DOCTOR, shift } });
+        office = true;
+      }
+      if (st?.mine.length) client.command({ kind: 'mine', systems: [] });
+    } else if (!st?.office && site) {
+      const room = firstOffice(site);
+      if (room) {
+        client.command({ kind: 'site', cmd: { kind: 'office', room } });
+        office = true;
+      }
+    }
+    // ответ на «Мой кабинет» и «Не принимаю» скажет сам (`onOffice`)
+    if (!office) this.say(true, T.doctor.role.done(T.doctor.role.name[role]));
+    this.g.refresh();
+  }
+
+  /** Роль из сохранения: только из списка; настройки уже в сохранении — их не трогать. */
+  restoreRole(role: unknown) {
+    const r = roleOf(role);
+    if (r) this.hud.role = r;
+  }
+
   /** Уровень медицины из сохранения (spec 2026-10-saves): только из списка уровней. */
   restoreLevel(level: string) {
     const l = LEVELS.find(x => x === level);
@@ -329,6 +384,7 @@ export class Doctor {
       // «Главврач утверждает» (spec docs/specs/2026-10-two-ways.md, F3): «Взять» — как «Взять случай»: поток проверит
       // кабинет и скажет, что вышло
       case 'approve':
+        this.answered = true;
         if (a.answer === 'take') {
           delete this.hud.said;
           this.taking = a.id;
@@ -336,11 +392,16 @@ export class Doctor {
         } else client.command({ kind: 'approve', id: a.id, answer: a.answer, ...(a.to ? { to: a.to } : {}) });
         break;
       case 'agreeAll':
+        this.answered = true;
         for (const d of this.hud.state?.decisions ?? []) if (d.p !== undefined && d.p >= AGREE_ALL) client.command({ kind: 'approve', id: d.id, answer: 'agree' });
         break;
       case 'order':
+        this.answered = true;
         for (const exam of a.exams) client.command({ kind: 'order', id: a.id, exam });
         break;
+      case 'role':
+        this.setRole(a.role);
+        return;
       case 'asks':
         client.command({ kind: 'asks', rules: a.rules });
         break;

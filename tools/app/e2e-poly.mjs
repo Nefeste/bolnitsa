@@ -26,7 +26,18 @@ export async function polyPart({ page, port, out, ok, fail, q, shots }) {
   const want = [['start-empty', 'Пустое здание'], ['start-poly', 'Поликлиника'], ['start-preset', 'Городская больница']];
   if (JSON.stringify(cards) === JSON.stringify(want)) ok(`экран начала — три карточки: ${cards.map(c => `«${c[1]}»`).join(', ')}`);
   else fail(`карточки начала: ${JSON.stringify(cards)}`);
+  // второй шаг — «Кто вы» (spec docs/specs/2026-10-two-ways.md, F4): три карточки ролей; «Назад» — к выбору больницы
+  await page.click('#start-preset');
+  await page.waitForSelector('#start-roles', { timeout: 10000 });
+  const roles = await page.$$eval('#start-roles button[id^="start-role-"]', els => els.map(e => [e.id, e.querySelector('b')?.textContent ?? '', !!e.querySelector('span')?.textContent]));
+  const wantRoles = [['start-role-doctor', 'Врач', true], ['start-role-chief', 'Главврач', true], ['start-role-manager', 'Управляющий', true]];
+  if (JSON.stringify(roles) === JSON.stringify(wantRoles)) ok(`второй шаг — «Кто вы»: ${roles.map(r => `«${r[1]}»`).join(', ')}, у каждой — строка`);
+  else fail(`карточки ролей: ${JSON.stringify(roles)}`);
+  await page.click('#start-back');
+  await page.waitForSelector('#start-poly', { timeout: 10000 });
+  ok('«Назад» — снова выбор больницы');
   await page.click('#start-poly');
+  await page.click('#start-role-doctor');
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
   const h = await page.evaluate(() => {
     const g = window.__game;

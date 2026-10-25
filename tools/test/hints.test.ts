@@ -48,6 +48,29 @@ describe('подсказки первых минут', () => {
     expect(hintOf({ ...base, asks: 1 }, seen)).toBe('run');
   });
 
+  test('по роли (spec docs/specs/2026-10-two-ways.md, F4): «Врачу» — позвать первого, «Главврачу» — где решения, «Управляющему» — что делать', () => {
+    const open = { ...base, paused: false };
+    // «Врач»: есть кого позвать — «Позвать»; позвал — дальше «щёлкните»
+    expect(hintOf({ ...open, callable: true }, none)).toBe('call');
+    expect(hintOf({ ...open, callable: false }, none)).toBe('look');
+    // «Главврач»: где решения — пока ни на одно не ответил
+    expect(hintOf({ ...open, role: 'chief' }, none)).toBe('decisions');
+    expect(hintOf({ ...open, role: 'chief', answered: true }, none)).toBe('look');
+    expect(hintOf({ ...open, role: 'chief', callable: true }, none)).toBe('decisions');
+    // «Управляющий»: что делать — до первой планёрки
+    expect(hintOf({ ...open, role: 'manager' }, none)).toBe('manage');
+    expect(hintOf({ ...open, role: 'manager', met: true }, none)).toBe('look');
+    // решение пришло — у любой роли, раньше закрытой больницы; просьба — ещё раньше
+    const block: Block = { kind: 'noRoom', room: 'room.reception' };
+    expect(hintOf({ ...base, block, decisions: 1 }, none)).toBe('decisions');
+    expect(hintOf({ ...base, block, decisions: 1, asks: 1 }, none)).toBe('asks');
+    expect(hintOf({ ...base, block, decisions: 1, answered: true }, none)).toBe('build');
+    // закрытая не возвращается
+    expect(hintOf({ ...open, role: 'manager' }, new Set<HintKey>(['manage']))).toBe('look');
+    // часы стоят — сначала «пробел»
+    expect(hintOf({ ...base, role: 'manager' }, none)).toBe('run');
+  });
+
   test('каждый ключ достижим и записан в списке', () => {
     const reached = new Set<HintKey>();
     const states: HintInput[] = [
@@ -61,6 +84,9 @@ describe('подсказки первых минут', () => {
       { ...base },
       { ...base, paused: false },
       { ...base, asks: 1 },
+      { ...base, paused: false, callable: true },
+      { ...base, paused: false, role: 'chief' },
+      { ...base, paused: false, role: 'manager' },
     ];
     for (const s of states) {
       const k = hintOf(s, none);

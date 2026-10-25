@@ -1,10 +1,13 @@
 // Экран планёрки в 08:00 и вкладка «Отчёты» (spec docs/specs/2026-10-economy.md, «Планёрка»; геймдизайн §12): сутки в цифрах,
 // нанятые врачи, касса по статьям, репутация и её причины, узкие места, что сломалось, кому из ваших лежащих хуже, персонал —
-// кто собирается уйти и кто уходит (spec docs/specs/2026-10-staff-mood.md), подсказка, часы приёма, кредит. Данные — из окна (src/app/money.ts), слова — здесь, при отрисовке.
+// кто собирается уйти и кто уходит (spec docs/specs/2026-10-staff-mood.md), итог главврача и ошибки нанятых врачей (spec
+// docs/specs/2026-10-two-ways.md, F5), подсказка, часы приёма, кредит. Данные — из окна (src/app/money.ts), слова — здесь, при отрисовке.
 import { type ReactNode, useState } from 'react';
 import { PAYERS } from '../engine/economy/economy';
 import { GURNEY_WAIT } from '../engine/shift/meeting';
 import type { RepChange } from '../engine/economy/economy';
+import type { ChiefDay } from '../engine/shift/types';
+import type { ErrorList, ErrorRow } from '../sim/doctor';
 import { money, T } from '../i18n';
 import { type EconomyHud, type MeetingView, type Raise, slowOf, type Tip } from '../app/money';
 import type { Actions } from './store';
@@ -60,6 +63,61 @@ function Section({ title, children, id }: { title: string; children: ReactNode; 
   );
 }
 
+/**
+ * Итог главврача (spec docs/specs/2026-10-two-ways.md, F5): сколько решений пришло на утверждение, что вы ответили, что вышло
+ * из изменённых и сколько ошибок врачей прошло с вашим «Согласен» или без ответа.
+ */
+function Chief({ c }: { c: ChiefDay }) {
+  const t = T.meeting;
+  const agreed = c.wrong?.agreed ?? 0;
+  const silent = c.wrong?.silent ?? 0;
+  return (
+    <Section title={t.chief} id="meet-chief">
+      <p>{t.chiefAsked(c.asked, c.discharges ?? 0)}</p>
+      <ul>
+        <li id="meet-chief-answers">{t.chiefAnswers(c.agreed, c.silent, c.changed)}</li>
+        {c.changed > 0 ? <li id="meet-chief-changed">{t.chiefChanged(c.better ?? 0, c.worse ?? 0)}</li> : null}
+        {agreed + silent > 0 ? (
+          <li className="bad" id="meet-chief-missed">
+            {t.chiefMissed(agreed, silent)}
+          </li>
+        ) : c.agreed + c.silent > 0 ? (
+          <li className="ok" id="meet-chief-missed">
+            {t.chiefNoMiss}
+          </li>
+        ) : null}
+      </ul>
+    </Section>
+  );
+}
+
+/** Ошибки нанятых врачей за сутки (F5; решение владельца #66): одной строкой каждая, «Карта» — карта закрытого случая. */
+function Errors({ x, actions }: { x: ErrorList; actions: Actions }) {
+  const t = T.meeting;
+  const p = T.case.patient;
+  const word = (v: ErrorRow['verdict']['verdict']) => (v === 'correct' ? p.correct : v === 'partly' ? p.partly : p.wrong);
+  return (
+    <Section title={t.errors} id="meet-errors">
+      <ul title={t.errorsHint}>
+        {x.rows.map(r => (
+          <li key={r.id} className={r.unsafe || r.verdict.verdict === 'wrong' ? 'bad' : undefined} id={`meet-err-${r.id}`}>
+            <span className="muted">
+              {r.by} · {r.who}:
+            </span>{' '}
+            {t.errorRow(r.diagnosis, word(r.verdict.verdict), r.verdict.truth?.name)}
+            {r.verdict.note ? <span> · {r.verdict.note}</span> : null}
+            {r.chief ? <span className="muted"> · {t.errorChief[r.chief]}</span> : null}{' '}
+            <button type="button" className="small" id={`meet-err-open-${r.id}`} title={T.doctor.viewHint} onClick={() => actions.doctor({ kind: 'open', id: r.id })}>
+              {T.doctor.view}
+            </button>
+          </li>
+        ))}
+        {x.total > x.rows.length ? <li className="muted">{t.errorsMore(x.total - x.rows.length)}</li> : null}
+      </ul>
+    </Section>
+  );
+}
+
 /** Сутки в цифрах, врачи, касса, репутация, узкие места, сломанное, обход, подсказка — для экрана и вкладки. */
 export function MeetingBody({ m, e, actions }: { m: MeetingView; e: EconomyHud; actions: Actions }) {
   const t = T.meeting;
@@ -94,6 +152,9 @@ export function MeetingBody({ m, e, actions }: { m: MeetingView; e: EconomyHud; 
           </ul>
         </Section>
       ) : null}
+      {/* итог главврача и ошибки нанятых врачей (spec docs/specs/2026-10-two-ways.md, F5; решение владельца #66) */}
+      {d.chief ? <Chief c={d.chief} /> : null}
+      {m.errors ? <Errors x={m.errors} actions={actions} /> : null}
       {ec && l ? (
         <Section title={t.cash} id="meet-cash">
           <p>

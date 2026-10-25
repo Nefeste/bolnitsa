@@ -237,6 +237,12 @@
     .ddecided { padding: 5px 8px; border-radius: 4px; margin: 2px 0; background: rgba(47,181,201,.12); display: flex; flex-direction: column; gap: 2px; }
     .ddecided > div { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; }
     .dcard .ddecided .label { display: inline-block; margin: 0; min-width: 96px; }
+    .dverdict { padding: 5px 8px; border-radius: 4px; margin: 2px 0; background: rgba(255,255,255,.06); }
+    .dverdict .word { font-weight: 700; }
+    .dverdict .word.correct { color: #8fe3b4; }
+    .dverdict .word.partly { color: #ffd27a; }
+    .dverdict .word.wrong { color: #ff9b86; }
+    .dverdict #verdict-note { color: #ffd2c4; margin-top: 2px; }
     .dcols { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1.15fr 1.1fr; gap: 10px; margin-top: 6px; }
     /* чужая карта — для чтения (spec docs/specs/2026-10-owner-play-2.md): уже, одна лента; часы идут, план виден по бокам */
     .dcard.read { left: max(1.5%, calc(50% - 330px)); right: max(1.5%, calc(50% - 330px)); }

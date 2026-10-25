@@ -12,6 +12,7 @@ import type { WallMode } from '../render/world';
 import { Card } from './doctor/Card';
 import { Encyclopedia, openEncyclopedia } from './Encyclopedia';
 import { Asks, Dock, OfficeRow, TakeCase } from './doctor/Dock';
+import { ROLES } from '../app/roles';
 import { Meeting, Reports, signed } from './Meeting';
 import { Layers, PathSection, PatientsTab } from './flow';
 import { type Actions, type Hud, type RoomCard, type Speed, type Store, type Tab, type Tool, useHud } from './store';
@@ -828,10 +829,37 @@ function GameMenu({ hud, actions }: P) {
   );
 }
 
+/**
+ * Второй шаг экрана начала (spec docs/specs/2026-10-two-ways.md, F4; решение владельца #67): «Кто вы» — три карточки, по
+ * строке о каждой; «Назад» — к выбору больницы.
+ */
+function RoleChooser({ start, actions, back }: { start: 'empty' | 'preset' | 'poly'; actions: Actions; back: () => void }) {
+  const t = T.doctor.role;
+  return (
+    <div className="start panel" id="start-roles">
+      <div className="game">{T.app.title}</div>
+      <h2>{T.start.roleTitle}</h2>
+      <p className="intro">{T.start.roleIntro}</p>
+      {ROLES.map(r => (
+        <button key={r} type="button" id={`start-role-${r}`} onClick={() => actions.startGame(start, r)}>
+          <b>{t.name[r]}</b>
+          <span>{t.line[r]}</span>
+        </button>
+      ))}
+      <button type="button" id="start-back" className="small" onClick={back}>
+        ← {T.start.back}
+      </button>
+    </div>
+  );
+}
+
 function StartChooser({ hud, actions }: P) {
   const saves = hud.startSaves ?? [];
   // «Продолжить» — самое новое сохранение с шапкой
   const last = saves.find(r => r.meta);
+  // больница выбрана — второй шаг: кто вы (F4)
+  const [pick, setPick] = useState<'empty' | 'preset' | 'poly' | null>(null);
+  if (pick) return <RoleChooser start={pick} actions={actions} back={() => setPick(null)} />;
   return (
     <div className="start panel" id="start">
       <div className="game">{T.app.title}</div>
@@ -850,15 +878,15 @@ function StartChooser({ hud, actions }: P) {
         </button>
       ) : null}
       <h2>{T.start.title}</h2>
-      <button type="button" id="start-empty" onClick={() => actions.startGame('empty')}>
+      <button type="button" id="start-empty" onClick={() => setPick('empty')}>
         <b>{T.start.empty}</b>
         <span>{T.start.emptyHint}</span>
       </button>
-      <button type="button" id="start-poly" onClick={() => actions.startGame('poly')}>
+      <button type="button" id="start-poly" onClick={() => setPick('poly')}>
         <b>{T.start.poly}</b>
         <span>{T.start.polyHint}</span>
       </button>
-      <button type="button" id="start-preset" onClick={() => actions.startGame('preset')}>
+      <button type="button" id="start-preset" onClick={() => setPick('preset')}>
         <b>{T.start.preset}</b>
         <span>{T.start.presetHint}</span>
       </button>

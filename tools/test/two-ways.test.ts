@@ -11,7 +11,7 @@ import { apply, newFlowShift } from '../../src/engine/shift/engine';
 import type { ShiftPatient, ShiftState } from '../../src/engine/shift/types';
 import { setLang, T } from '../../src/i18n';
 import { useDb } from '../../src/sim/caseView';
-import { cardView, doctorState } from '../../src/sim/doctor';
+import { cardView, doctorState, ERRORS, errorsList } from '../../src/sim/doctor';
 import { FLOW } from './site-kit';
 
 useDb(db);
@@ -41,6 +41,8 @@ describe('карта больного нанятого врача', () => {
     expect(v.lead?.by).toMatch(/навык \d/);
     expect(v.take).toBe(true);
     expect(v.decision).toBeUndefined();
+    // «верно или нет» — только у закрытого (решение владельца #66)
+    expect(v.verdict).toBeUndefined();
     // что спросил и что узнал врач — в карте
     expect(v.results.length).toBeGreaterThan(0);
     expect(v.done.length).toBeGreaterThan(0);
@@ -77,6 +79,10 @@ describe('карта больного нанятого врача', () => {
       treatments: c.plan.treatments.map(tx => ({ id: tx, name: db.treatments[tx].name.ru })),
       setting: T.case.patient.setting[c.plan.setting],
     });
+    // «верно или нет» (решение владельца #66): слово; правда — только если диагноз не верен
+    expect(done.verdict?.verdict).toBe(c.verdict);
+    if (c.verdict === 'correct') expect(done.verdict?.truth).toBeUndefined();
+    else expect(done.verdict?.truth?.id).toBe(p.patient.truth.conditions[0].id);
     // разбор A–D — только у ваших случаев (решение владельца 16.10.2026)
     expect(done.decision).toBeUndefined();
     expect(done.take).toBeUndefined();
@@ -146,4 +152,45 @@ describe('главврач утверждает: окно врача и карт
     expect(after.approve).toBeUndefined();
     expect(after.order).toBe(true);
   }, 60_000);
+});
+
+describe('итог главврача и ошибки врачей на планёрке (spec docs/specs/2026-10-two-ways.md, часть 3, F5; решение владельца #66)', () => {
+  test('ошибки за сутки — неверный диагноз или замечание безопасности; сначала безопасность, потом новые; правда и замечание — без «вы»', () => {
+    const s = preset(7);
+    apply(db, s, { kind: 'asks', rules: ['unsure', 'long', 'below90'] });
+    // решения на утверждении — «Согласен» сразу: ошибки проходят с вашим согласием
+    const end = 20 * 3600;
+    while (s.t < end) {
+      for (const n of apply(db, s, { kind: 'advance', seconds: 60 })) if (n.kind === 'approve' && s.patients[n.id]?.approve?.plan) apply(db, s, { kind: 'approve', id: n.id, answer: 'agree' });
+    }
+    const list = errorsList(db, s);
+    expect(list.total).toBeGreaterThan(0);
+    expect(list.rows.length).toBe(Math.min(list.total, ERRORS));
+    const all = [...(s.past ?? []).map(x => x.p), ...Object.values(s.patients)];
+    for (const r of list.rows) {
+      const p = all.find(x => x.id === r.id)!;
+      const c = p.closed!;
+      expect(c.by).toBeDefined();
+      expect(c.verdict === 'wrong' || c.grades.safety !== 'A').toBe(true);
+      expect(r.verdict.verdict).toBe(c.verdict);
+      expect(r.unsafe === true).toBe(c.grades.safety !== 'A');
+      if (c.verdict === 'correct') expect(r.verdict.truth).toBeUndefined();
+      else expect(r.verdict.truth?.id).toBe(p.patient.truth.conditions[0].id);
+      // замечания о нанятом враче — без «вы»: строки разбора обращаются к игроку
+      expect(r.verdict.note ?? '').not.toMatch(/(^|[\s(«])вы\s/i);
+      // в карте — то же «верно или нет»
+      expect(cardView(db, s, r.id, 'student', 1)!.verdict).toEqual(r.verdict);
+    }
+    // сначала с замечанием безопасности, потом новые
+    const unsafe = list.rows.findIndex(r => !r.unsafe);
+    if (unsafe >= 0) expect(list.rows.slice(unsafe).every(r => !r.unsafe)).toBe(true);
+    for (let i = 1; i < list.rows.length; i++) if (!!list.rows[i].unsafe === !!list.rows[i - 1].unsafe) expect(list.rows[i].at).toBeLessThanOrEqual(list.rows[i - 1].at);
+    // согласились — в строке; итог главврача: ошибки, прошедшие с «Согласен», — столько же, сколько строк с «вы согласились» и
+    // неверным диагнозом
+    const chief = s.summary.chief!;
+    expect(chief.asked).toBeGreaterThan(0);
+    expect(chief.agreed).toBeGreaterThan(0);
+    const agreedWrong = list.total <= ERRORS ? list.rows.filter(r => r.chief === 'agreed' && r.verdict.verdict === 'wrong').length : undefined;
+    if (agreedWrong !== undefined) expect(agreedWrong).toBe(chief.wrong?.agreed ?? 0);
+  }, 120_000);
 });

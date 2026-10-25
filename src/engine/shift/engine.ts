@@ -2000,6 +2000,8 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient, at = s.t): 
   if (p.draft.setting === 'box' && freeBoxBeds(db, s).length === 0) p.draft.setting = 'ambulance';
   const closed = closeCase(db, s, p, at);
   if (p.by) closed.by = p.by;
+  // главврач изменил решение врача (spec 2026-10-two-ways, F5) — к лучшему или нет
+  chiefOutcome(s, p, closed.verdict);
   if (p.from) closed.from = p.from;
   // нанятый врач выбрал диагноз уставшим (spec 2026-10-staff-shifts, часть 2); забрали — решали вы
   if (p.by && p.tired !== undefined) closed.tired = p.tired;
@@ -4308,6 +4310,25 @@ function closeApproval(s: ShiftState, p: ShiftPatient, how?: Settled) {
   const day = chiefDay(s);
   day[how]++;
   if (a.verdict === 'wrong') (day.wrong ??= { agreed: 0, silent: 0, changed: 0 })[how]++;
+  // изменили решение приёма (F5) — когда случай закроют, сравнить с диагнозом врача
+  if (how === 'changed' && a.verdict) p.chiefFrom ??= a.verdict;
+}
+
+/** Верность диагноза по возрастанию — для «к лучшему» (F5). */
+const VERDICT_RANK = { wrong: 0, partly: 1, correct: 2 } as const;
+
+/**
+ * Случай, решение по которому главврач изменил, закрыт (`closePatient`, spec 2026-10-two-ways, F5): диагноз вернее, чем был
+ * у врача, — «к лучшему», хуже — «к худшему».
+ */
+function chiefOutcome(s: ShiftState, p: ShiftPatient, verdict: ClosedCase['verdict']) {
+  const from = p.chiefFrom;
+  if (!from) return;
+  delete p.chiefFrom;
+  const d = VERDICT_RANK[verdict] - VERDICT_RANK[from];
+  const day = chiefDay(s);
+  if (d > 0) day.better = (day.better ?? 0) + 1;
+  else if (d < 0) day.worse = (day.worse ?? 0) + 1;
 }
 
 /**
