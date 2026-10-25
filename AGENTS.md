@@ -114,7 +114,8 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # suit colour by role — read from the picture, people sit down, stand up and lie; then
                                    # scenario 1: «Кампания» on the start screen, the mentor's letters at the start and to the
                                    # hint states while building, the scenario's build catalog, your own office, the first three
-                                   # patients set by the scenario, «Цели» and «Без обучения», «Письма» at the meeting; then the
+                                   # patients set by the scenario, «Цели» and «Без обучения», «Письма» at the meeting, the
+                                   # build order in the catalog and in «Цели» (on and off), no role row in the scenario; then the
                                    # «Показатели» layer: columns over the rooms from «Слои», taller where people are, numbers,
                                    # hover and click on a column, «Ожидание» with M, remembered after a reload);
                                    # screenshots in tools/app/out/; `-- --only 1|2|…|25` for one part
@@ -239,12 +240,15 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   hint state is `when: { hint }`), `scenarioOf`/`plotOf` in `campaign/campaign.ts`. `newFlowShift(…, { scenario })` and the
   sim's `start` message begin it; goals and letters are counted at the 08:00 meeting (`morning`); the first walk-ins are its
   tutorial patients while your office works (`tutorialNext`, `taught`); the `site` command builds only its rooms (error
-  `scenario`); the window's marks — a hint state reached, a hint closed, a letter read, a tip shown, «Без обучения» — are
-  the `mark` command, kept in `s.campaign` and so in the save. The window (part 2): the sim sends `ScenarioView` with the
+  `scenario`); the window's marks — a hint state reached, a hint closed, a letter read, a tip shown, «Без обучения», the
+  build order on or off — are the `mark` command, kept in `s.campaign` and so in the save. The window (part 2): the sim sends `ScenarioView` with the
   slice when it changed (`src/sim/campaign.ts`: letters, goals with progress, the end, marks); `src/app/scenario.ts` turns it
   into words and sends the marks (a hint state on first show, a closed hint, a read letter); `src/ui/Scenario.tsx` — the
   letter card over the hint line, the «Цели» tab, «Сценарий пройден»; the meeting's «Письма» section; `?scenario=<id>` /
-  `--scenario <id>` starts one; the build catalog shows only its rooms and the first office becomes «Врач»'s own.
+  `--scenario <id>` starts one; the build catalog shows only its rooms and the first office becomes «Врач»'s own. Part 2в
+  (owner's decisions #114, #115): the build order — `guide` in the record; a step is done when a room of its type works
+  (`ScenarioView.guide`); the build catalog lists the steps first with numbers and the next one's «why» (`byGuide` in
+  `src/ui/Scenario.tsx`), «Цели» lists them too, «Порядок стройки» turns it off; a scenario has no role row — you are «Врач».
 - `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`), Web Worker
   (`worker.ts`) and its client in the window (`client.ts`). The window never runs the engine. The doctor mode
   (`docs/specs/2026-10-doctor-mode.md`): `caseView.ts` (a copy of Anamnez's player view of a case) and `doctor.ts` build the

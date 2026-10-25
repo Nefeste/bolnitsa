@@ -15,7 +15,7 @@ import { ROLES } from '../app/roles';
 import type { QualityMode } from '../app/settings';
 import { Meeting, Reports, signed } from './Meeting';
 import { Layers, PathSection, PatientsTab } from './flow';
-import { GoalsTab, LetterCard, ScenarioDone } from './Scenario';
+import { byGuide, GoalsTab, GuideToggle, LetterCard, ScenarioDone, StepMark } from './Scenario';
 import { type Actions, type Hud, type RoomCard, type Speed, type Store, type Tab, type Tool, useHud } from './store';
 
 /** Названия из базы: помещения, должности, признаки. */
@@ -200,19 +200,25 @@ function LeftTools({ hud, actions }: P) {
     ['demolish', '✖', T.build.demolish],
   ];
   let body: ReactNode = null;
+  // порядок стройки сценария (решение владельца #114): шаги — первыми, с номером; у следующего — зачем он
+  const why = (step?: { next: boolean; why: string }) => (step?.next ? <div className="gwhy">{T.scenario.guideNext}: {step.why}</div> : null);
   // готовые помещения (spec docs/specs/2026-10-ready-rooms.md): тип, образцы S/M/L, «С персоналом»
   if (b.tool === 'ready')
     body = (
       <>
         <ul className="list" id="ready-types">
-          {hud.readyTypes.map(t => {
+          {byGuide(hud.readyTypes, hud.scenario).map(({ row: t, step }) => {
             const on = b.ready?.type === t.id;
             return (
-              <li key={t.id}>
+              <li key={t.id} className={step?.next ? 'gnext' : undefined}>
                 <button type="button" id={`ready-${t.id.slice(5)}`} className={on ? 'on' : undefined} onClick={() => actions.pickReady(t.id)}>
-                  <span>{t.name}</span>
+                  <span>
+                    <StepMark step={step} />
+                    {t.name}
+                  </span>
                   <small>{on ? (t.sizes.find(z => z.id === b.ready?.size)?.text ?? t.price) : t.price}</small>
                 </button>
+                {why(step)}
                 {on && t.sizes.length > 1 ? (
                   <div className="sizes">
                     {t.sizes.map(z => (
@@ -234,14 +240,18 @@ function LeftTools({ hud, actions }: P) {
   else if (b.tool === 'room')
     body = (
       <ul className="list" id="room-types">
-        {hud.roomTypes.map(t => (
-          <li key={t.id}>
+        {byGuide(hud.roomTypes, hud.scenario).map(({ row: t, step }) => (
+          <li key={t.id} className={step?.next ? 'gnext' : undefined}>
             <button type="button" id={`rt-${t.id.slice(5)}`} className={b.roomType === t.id ? 'on' : undefined} onClick={() => actions.pickRoomType(t.id)}>
-              <span>{t.name}</span>
+              <span>
+                <StepMark step={step} />
+                {t.name}
+              </span>
               <small>
                 {t.min} · {t.price}
               </small>
             </button>
+            {why(step)}
           </li>
         ))}
       </ul>
@@ -309,6 +319,7 @@ function LeftTools({ hud, actions }: P) {
         </div>
       ) : null}
       {body}
+      {hud.scenario?.guide && (b.tool === 'ready' || b.tool === 'room') ? <GuideToggle s={hud.scenario} actions={actions} id="guide-toggle" /> : null}
       <div className="hint">{T.build.keys}</div>
     </div>
   );

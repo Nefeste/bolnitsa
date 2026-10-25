@@ -37,6 +37,8 @@ export interface CampaignProgress {
    */
   taught?: number;
   hints?: string[];
+  /** порядок стройки выключен (решение владельца #114) — отметка окна, движок её не читает */
+  guideOff?: true;
 }
 
 /**

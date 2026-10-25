@@ -10,7 +10,8 @@ import { apply, newFlowShift } from '../../src/engine/shift/engine';
 import { SAVE_SCHEMA } from '../../src/engine/shift/migrate';
 import type { ShiftState } from '../../src/engine/shift/types';
 import type { Game } from '../../src/app/game';
-import { goalRow, initialsOf, letterRow, ScenarioDesk, scenarioTitle } from '../../src/app/scenario';
+import { goalRow, guideRows, initialsOf, letterRow, ScenarioDesk, scenarioTitle } from '../../src/app/scenario';
+import { byGuide } from '../../src/ui/Scenario';
 import { setLang } from '../../src/i18n';
 import { scenarioView, type ScenarioView } from '../../src/sim/campaign';
 import { createSim } from '../../src/sim/host';
@@ -260,5 +261,79 @@ describe('сценарий 1 «Амбулатория»: окно', () => {
     const before = sent.length;
     loaded.reach('door');
     expect(sent.length).toBe(before);
+  });
+});
+
+// часть 2в (решения владельца #114, #115): порядок стройки — шаги из записи, сделан ли — по больнице сейчас, выключить
+// отметкой `guide`; в каталоге стройки шаги — первыми, по номеру
+describe('сценарий 1 «Амбулатория»: порядок стройки', () => {
+  const ORDER = ['room.reception', 'room.waiting', 'room.office', 'room.procedure', 'room.toilet', 'room.staff', 'room.lab', 'room.triage', 'room.ecg'];
+
+  test('запись: девять шагов из того, что в сценарии строят, каждый — один раз, у каждого — «зачем» на двух языках', () => {
+    expect(sc.guide.map(g => g.room)).toEqual(ORDER);
+    for (const g of sc.guide) {
+      expect(sc.build).toContain(g.room);
+      expect(g.why.ru.length).toBeGreaterThan(0);
+      expect(g.why.en?.length ?? 0).toBeGreaterThan(0);
+    }
+  });
+
+  test('вид для окна: шаг сделан, когда помещение его типа работает; выключить и включить — отметкой, она в сохранении', async () => {
+    const s = start(5);
+    let v = scenarioView(db, s)!;
+    expect(v.guide!.map(x => x.room)).toEqual(ORDER);
+    expect(v.guide!.every(x => !x.done)).toBe(true);
+    expect(v.guideOff).toBeUndefined();
+    // амбулатория прототипа: регистратура, ожидание, ваш кабинет, ординаторская, процедурная, лаборатория — работают
+    buildClinic(s);
+    v = scenarioView(db, s)!;
+    expect(v.guide!.filter(x => x.done).map(x => x.room)).toEqual(['room.reception', 'room.waiting', 'room.office', 'room.procedure', 'room.staff', 'room.lab']);
+    apply(db, s, { kind: 'mark', what: 'guide', on: false });
+    expect(scenarioView(db, s)!.guideOff).toBe(true);
+    const saved = await unpack(await pack({ schema: SAVE_SCHEMA, meta: { kind: 'manual', savedAt: '2026-10-25T12:00:00.000Z', version: '0.24.0', start: 'empty', day: s.day, t: s.t }, state: s }));
+    expect(scenarioView(db, saved.state)!.guideOff).toBe(true);
+    apply(db, s, { kind: 'mark', what: 'guide', on: true });
+    expect(scenarioView(db, s)!.guideOff).toBeUndefined();
+  });
+
+  test('строки окна: номер, имя и «зачем» на языке окна; следующий — первый несделанный; выключен — `on: false`', () => {
+    setLang('ru');
+    const steps = ORDER.map((room, i) => ({ room, done: i < 4 }));
+    const rows = guideRows(db, sc, steps);
+    expect(rows.map(r => r.n)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(rows.filter(r => r.next).map(r => r.type)).toEqual(['room.toilet']);
+    expect(rows[0]).toMatchObject({ name: 'Регистратура', why: 'без неё никто не войдёт', done: true, next: false });
+    setLang('en');
+    expect(guideRows(db, sc, steps)[0].why).toBe('nobody gets in without it');
+    setLang('ru');
+    // всё построено — следующего нет
+    expect(guideRows(db, sc, ORDER.map(room => ({ room, done: true }))).some(r => r.next)).toBe(false);
+    const sent: unknown[] = [];
+    const g = { db, client: { command: (c: unknown) => sent.push(c) }, refresh: () => {} } as unknown as Game;
+    const desk = new ScenarioDesk(g);
+    desk.onView({ id: SC, letters: [], goals: [], hints: [], tips: [], guide: steps });
+    expect(desk.hud(false)!.guide!.on).toBe(true);
+    desk.dispatch({ kind: 'guide', on: false });
+    expect(sent).toEqual([{ kind: 'mark', what: 'guide', on: false }]);
+    desk.onView({ id: SC, letters: [], goals: [], hints: [], tips: [], guide: steps, guideOff: true });
+    expect(desk.hud(false)!.guide!.on).toBe(false);
+    // у сценария без порядка в виде шагов нет — и в окне тоже
+    desk.onView({ id: SC, letters: [], goals: [], hints: [], tips: [] });
+    expect(desk.hud(false)!.guide).toBeUndefined();
+  });
+
+  test('каталог стройки: шаги порядка — первыми, по номеру, остальные — как были; выключен — как было', () => {
+    setLang('ru');
+    const rows = ['room.ecg', 'room.lab', 'room.office', 'room.reception', 'room.box'].map(id => ({ id }));
+    const steps = guideRows(db, sc, ORDER.map(room => ({ room, done: room === 'room.reception' })));
+    const hud = { guide: { on: true, steps } } as Parameters<typeof byGuide>[1];
+    const out = byGuide(rows, hud);
+    expect(out.map(x => x.row.id)).toEqual(['room.reception', 'room.office', 'room.lab', 'room.ecg', 'room.box']);
+    expect(out.map(x => x.step?.n ?? 0)).toEqual([1, 3, 7, 9, 0]);
+    expect(out[0].step!.done).toBe(true);
+    const off = byGuide(rows, { guide: { on: false, steps } } as Parameters<typeof byGuide>[1]);
+    expect(off.map(x => x.row.id)).toEqual(rows.map(r => r.id));
+    expect(off.every(x => x.step === undefined)).toBe(true);
+    expect(byGuide(rows, undefined).map(x => x.row.id)).toEqual(rows.map(r => r.id));
   });
 });

@@ -2,8 +2,9 @@
 // и разделом планёрки, вкладка «Цели», «Без обучения», окно «Сценарий пройден». Ход хранит движок (`s.campaign`): окно получает
 // его видом потока расчёта (`ScenarioView`) и шлёт отметки командой `mark` — наступившее состояние подсказки, закрытая
 // подсказка, прочитанное письмо, «Без обучения». Слова писем и целей — из записи сценария в базе, на языке интерфейса. Письмо
-// приходит без паузы: часы идут, как шли (предложение агента; вопрос владельцу #116).
-import type { ContentDb, Scenario } from '../content/types';
+// приходит без паузы: часы идут, как шли (решение владельца #116). Порядок стройки (решение владельца #114): шаги из записи
+// сценария, сделан ли шаг — от потока; выключают его отметкой `guide`.
+import type { ContentDb, Id, Scenario } from '../content/types';
 import { named, T } from '../i18n';
 import type { GoalView, ScenarioView } from '../sim/campaign';
 import type { Game } from './game';
@@ -19,6 +20,17 @@ export interface LetterRow {
   text: string;
   day: number;
   read: boolean;
+}
+
+/** Шаг порядка стройки: номер, помещение, зачем, сделан ли, следующий ли. */
+export interface GuideRow {
+  n: number;
+  type: Id;
+  name: string;
+  why: string;
+  done: boolean;
+  /** первый несделанный */
+  next: boolean;
 }
 
 /** Цель на экране: текст и ход. */
@@ -46,6 +58,8 @@ export interface ScenarioHud {
   off: boolean;
   /** окно «Сценарий пройден» открыто */
   done: boolean;
+  /** порядок стройки: шаги и показан ли; у сценария без порядка — нет */
+  guide?: { on: boolean; steps: GuideRow[] };
 }
 
 export type ScenarioAction =
@@ -54,7 +68,9 @@ export type ScenarioAction =
   /** «Без обучения»: писем к состояниям и подсказок в карте больше нет; `on: false` — обучение снова */
   | { kind: 'off'; on: boolean }
   /** «Сценарий пройден» — «Продолжить здесь» */
-  | { kind: 'stay' };
+  | { kind: 'stay' }
+  /** «Порядок стройки»: показать или выключить */
+  | { kind: 'guide'; on: boolean };
 
 /** Инициалы для значка письма: «Мира Холм» — «МХ». */
 export const initialsOf = (name: string): string =>
@@ -81,6 +97,15 @@ export function letterRow(db: ContentDb, sc: Scenario, l: { id: string; day: num
 export function goalRow(sc: Scenario, g: GoalView): GoalRow {
   const m = sc.missions.find(x => x.id === g.id);
   return { id: g.id, main: g.main, text: named(m?.text, g.id), value: g.value, target: g.target, ...(g.accuracy !== undefined ? { accuracy: g.accuracy } : {}), done: g.done };
+}
+
+/** Шаги порядка стройки для экрана: слова — из записи и базы, сделан ли — от потока; следующий — первый несделанный. */
+export function guideRows(db: ContentDb, sc: Scenario, steps: readonly { room: Id; done: boolean }[]): GuideRow[] {
+  const next = steps.findIndex(x => !x.done);
+  return steps.map((x, i) => {
+    const g = sc.guide.find(y => y.room === x.room);
+    return { n: i + 1, type: x.room, name: named(db.rooms[x.room]?.name, x.room), why: named(g?.why), done: x.done, next: i === next };
+  });
 }
 
 /** Состояние подсказки, к которому у сценария есть письмо: такое письмо — ещё и знак, что состояние уже наступало. */
@@ -162,6 +187,9 @@ export class ScenarioDesk {
       case 'stay':
         this.doneOpen = false;
         break;
+      case 'guide':
+        if (this.view) this.g.client.command({ kind: 'mark', what: 'guide', on: a.on });
+        break;
     }
     this.g.refresh();
   }
@@ -191,6 +219,7 @@ export class ScenarioDesk {
       first: !!unread && rows[0]?.id === unread.id,
       off: !!v.off,
       done: this.doneOpen,
+      ...(v.guide ? { guide: { on: !v.guideOff, steps: guideRows(db, sc, v.guide) } } : {}),
     };
   }
 }

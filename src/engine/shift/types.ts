@@ -501,6 +501,8 @@ export type Command =
    */
   | { kind: 'mark'; what: 'hint' | 'closed' | 'read' | 'tip'; id: string }
   | { kind: 'mark'; what: 'off'; on: boolean }
+  /** порядок стройки сценария (решение владельца #114): `on` — показан; выключить можно, включить — снова */
+  | { kind: 'mark'; what: 'guide'; on: boolean }
   /** стройка ПК (spec 2026-10-build): в любой момент, в потоке для ПК */
   | { kind: 'site'; cmd: SiteCommand }
   /** поток для ПК (spec 2026-10-day): часы амбулаторного приёма — с `open` до `close`, целые часы; сразу */

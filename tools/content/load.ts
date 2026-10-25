@@ -1705,5 +1705,12 @@ function checkScenarios(db: ContentDb, errors: string[]) {
         hints.add(l.when.hint);
       }
     }
+    // порядок стройки (решение владельца #114): только то, что в сценарии строят, каждое помещение — один раз
+    const steps = new Set<string>();
+    for (const g of c.guide) {
+      if (steps.has(g.room)) at(`порядок стройки: ${g.room} повторяется`);
+      steps.add(g.room);
+      if (!c.build.includes(g.room)) at(`порядок стройки: ${g.room} в сценарии не построить`);
+    }
   }
 }
