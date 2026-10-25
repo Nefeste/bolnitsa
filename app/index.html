@@ -57,6 +57,24 @@
     .topcenter > * { pointer-events: auto; }
     .hintstrip { display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 14px; border-left: 3px solid var(--accent); max-width: 640px; }
     .hintstrip span { flex: 1; }
+    /* письмо наставницы над строкой подсказки и в списках (docs/specs/2026-10-scenario-1.md) */
+    .lettercard { position: relative; width: 520px; max-width: 100%; padding: 10px 14px; border-left: 3px solid var(--accent); display: flex; flex-direction: column; gap: 6px; }
+    .lettercard .close { position: absolute; right: 6px; top: 6px; }
+    .lettercard .row { display: flex; gap: 8px; }
+    .letter { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 8px; }
+    .lhead { display: flex; align-items: center; gap: 10px; }
+    .lhead div { display: flex; flex-direction: column; }
+    .lbadge { flex: none; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--accent); color: #0b1a1e; font-weight: 600; font-size: 13px; }
+    .ltext { margin: 0; line-height: 1.45; }
+    ul.goals { list-style: none; margin: 0 0 6px; padding: 0; }
+    ul.goals li { margin: 3px 0; }
+    ul.goals li.ok { color: #8fe3b4; }
+    .gmark { display: inline-block; width: 1.2em; }
+    #goals h3 { margin: 8px 0 2px; font-size: 12px; color: var(--accent); text-transform: uppercase; letter-spacing: .05em; }
+    #goals .check, .gamemenu .check { display: flex; gap: 6px; align-items: center; cursor: pointer; margin: 4px 0; }
+    .scenariodone { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); width: min(460px, 92%); z-index: 8; display: flex; flex-direction: column; gap: 8px; padding: 16px 20px; background: rgba(18, 25, 29, 0.98); }
+    .scenariodone h2 { margin: 0; }
+    .scenariodone .row { display: flex; gap: 8px; }
     /* подпись под курсором (src/app/hover.ts): под панелями, как значки помещений */
     .hoverlabel { position: absolute; left: 0; top: 0; pointer-events: none; padding: 4px 9px; border-radius: 5px; background: rgba(22,30,34,.92); border: 1px solid var(--line); font-size: 12px; line-height: 1.3; white-space: nowrap; max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
     .hoverlabel b { display: block; font-size: 13px; }

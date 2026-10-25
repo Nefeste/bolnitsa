@@ -10,6 +10,7 @@ import type { ChiefDay } from '../engine/shift/types';
 import type { ErrorList, ErrorRow } from '../sim/doctor';
 import { money, T } from '../i18n';
 import { type EconomyHud, type MeetingView, type Raise, slowOf, type Tip } from '../app/money';
+import { Letter } from './Scenario';
 import type { Actions } from './store';
 
 /** «+12 300 ₽», «−4 000 ₽». */
@@ -132,6 +133,19 @@ export function MeetingBody({ m, e, actions }: { m: MeetingView; e: EconomyHud; 
   const slow = slowOf(d.load);
   return (
     <div className="mbody">
+      {/* сценарий (spec docs/specs/2026-10-scenario-1.md): выполненные цели и письма утра — первыми */}
+      {m.scenario ? (
+        <Section title={T.scenario.meetingLetters} id="meet-letters">
+          {m.scenario.goals.map((g, i) => (
+            <p key={`g${i}`} className="ok">
+              {T.scenario.goalDone(g)}
+            </p>
+          ))}
+          {m.scenario.letters.map(l => (
+            <Letter key={l.id} l={l} />
+          ))}
+        </Section>
+      ) : null}
       <Section title={t.day} id="meet-day">
         <p>
           {t.arrived(d.arrived, d.ambulance?.arrived ?? 0)} · {t.seen(d.seen + hired, d.seen, hired)} · {t.left(d.left)}

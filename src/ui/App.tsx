@@ -15,6 +15,7 @@ import { ROLES } from '../app/roles';
 import type { QualityMode } from '../app/settings';
 import { Meeting, Reports, signed } from './Meeting';
 import { Layers, PathSection, PatientsTab } from './flow';
+import { GoalsTab, LetterCard, ScenarioDone } from './Scenario';
 import { type Actions, type Hud, type RoomCard, type Speed, type Store, type Tab, type Tool, useHud } from './store';
 
 /** Названия из базы: помещения, должности, признаки. */
@@ -420,6 +421,8 @@ function RightTabs({ hud, actions }: P) {
   else if (hud.tab === 'asks') body = <Asks hud={hud} actions={actions} />;
   // планёрка и часы приёма (spec docs/specs/2026-10-economy.md)
   else if (hud.tab === 'reports') body = <Reports e={hud.economy} actions={actions} />;
+  // цели сценария (spec docs/specs/2026-10-scenario-1.md); у песочницы целей нет
+  else if (hud.tab === 'goals' && hud.scenario) body = <GoalsTab s={hud.scenario} actions={actions} />;
   else if (hud.tab) body = <p>{T.tabs.soon}</p>;
   return (
     <div className="right" id="right">
@@ -765,6 +768,8 @@ function DebugMenu({ hud, actions }: P) {
  */
 /** С чего начинали — словами: пустое здание, поликлиника, городская больница. */
 const startName = (start: string): string => (start === 'empty' ? T.start.empty : start === 'poly' ? T.start.poly : T.start.preset);
+/** Названия сценариев для строк сохранений (spec docs/specs/2026-10-scenario-1.md): их кладёт экран начала и игра. */
+let scenarioNames: Record<string, string> = {};
 
 /** Когда записано — дата и время по часам компьютера. */
 const when = (iso: string): string => {
@@ -776,7 +781,8 @@ const when = (iso: string): string => {
 function saveText(r: SaveRow): { title: string; sub: string } {
   const m = r.meta;
   if (!m) return { title: r.slot, sub: T.saves.noMeta };
-  return { title: T.saves.row(m.day, clock(m.t)), sub: [startName(m.start), T.saves.kind[m.kind] ?? m.kind, T.saves.savedAt(when(m.savedAt))].join(' · ') };
+  const from = m.scenario ? (scenarioNames[m.scenario] ?? m.scenario) : startName(m.start);
+  return { title: T.saves.row(m.day, clock(m.t)), sub: [from, T.saves.kind[m.kind] ?? m.kind, T.saves.savedAt(when(m.savedAt))].join(' · ') };
 }
 
 /** Список сохранений (spec docs/specs/2026-10-saves.md): «Загрузить», в меню игры — и «Удалить». */
@@ -824,6 +830,13 @@ function GameMenu({ hud, actions }: P) {
       <button type="button" id="new-game" title={T.saves.newGameHint} onClick={actions.newGame}>
         {T.saves.newGame}
       </button>
+      {/* «Без обучения» (spec docs/specs/2026-10-scenario-1.md) — и в меню, не только в первом письме */}
+      {hud.scenario ? (
+        <label className="check" title={T.scenario.offHint}>
+          <input type="checkbox" id="menu-tutorial" checked={!hud.scenario.off} onChange={e => actions.scenario({ kind: 'off', on: !e.target.checked })} />
+          {T.scenario.tutorial}: {T.scenario.tutorialOn}
+        </label>
+      ) : null}
       {/* настройки (spec docs/specs/2026-10-settings.md): вид и качество — здесь, а не кнопкой на экране */}
       <button
         type="button" id="settings-open" title={T.settings.openHint}
@@ -868,6 +881,7 @@ function StartChooser({ hud, actions }: P) {
   const last = saves.find(r => r.meta);
   // больница выбрана — второй шаг: кто вы (F4)
   const [pick, setPick] = useState<'empty' | 'preset' | 'poly' | null>(null);
+  const campaign = hud.startScenarios ?? [];
   if (pick) return <RoleChooser start={pick} actions={actions} back={() => setPick(null)} />;
   return (
     <div className="start panel" id="start">
@@ -886,7 +900,19 @@ function StartChooser({ hud, actions }: P) {
           </span>
         </button>
       ) : null}
-      <h2>{T.start.title}</h2>
+      {/* «Кампания» (spec docs/specs/2026-10-scenario-1.md): сценарии первыми, под ними — песочница */}
+      {campaign.length > 0 ? (
+        <>
+          <h2>{T.scenario.campaign}</h2>
+          {campaign.map(c => (
+            <button key={c.id} type="button" id={`start-${c.id.replace(/\./g, '-')}`} onClick={() => actions.startGame({ scenario: c.id })}>
+              <b>{c.title}</b>
+              <span>{c.about}</span>
+            </button>
+          ))}
+        </>
+      ) : null}
+      <h2>{campaign.length > 0 ? T.scenario.sandbox : T.start.title}</h2>
       <button type="button" id="start-empty" onClick={() => setPick('empty')}>
         <b>{T.start.empty}</b>
         <span>{T.start.emptyHint}</span>
@@ -918,6 +944,7 @@ function StartChooser({ hud, actions }: P) {
 export function App({ store, actions, names }: { store: Store; actions: Actions; names: Names }) {
   // язык меняется на ходу: строки читаются при отрисовке, смена языка — новый снимок хранилища
   const hud = useHud(store);
+  if (hud.scenarioNames) scenarioNames = hud.scenarioNames;
   const p = { hud, actions, names };
   if (hud.choose)
     return (
@@ -940,6 +967,8 @@ export function App({ store, actions, names }: { store: Store; actions: Actions;
             {hud.night}
           </div>
         ) : null}
+        {/* письмо наставницы (spec docs/specs/2026-10-scenario-1.md) — над строкой подсказки: строка говорит как, письмо — зачем */}
+        {!hud.doctor?.card ? <LetterCard s={hud.scenario} actions={actions} /> : null}
         <HintStrip {...p} />
         <Notice {...p} />
       </div>
@@ -952,6 +981,8 @@ export function App({ store, actions, names }: { store: Store; actions: Actions;
       {hud.doctor?.card ? <Card key={hud.doctor.card.id} v={hud.doctor.card} level={hud.doctor.level} meanwhile={hud.doctor.meanwhile} next={hud.doctor.next} actions={actions} /> : null}
       {/* планёрка в 08:00 (spec docs/specs/2026-10-economy.md) — когда карта пациента закрыта */}
       {hud.economy?.open && !hud.doctor?.card ? <Meeting e={hud.economy} actions={actions} /> : null}
+      {/* «Сценарий пройден» (spec docs/specs/2026-10-scenario-1.md) — после планёрки, когда карта закрыта */}
+      {!hud.economy?.open && !hud.doctor?.card ? <ScenarioDone s={hud.scenario} actions={actions} /> : null}
       {hud.debug ? <DebugMenu {...p} /> : null}
       {/* энциклопедия (spec docs/specs/2026-10-encyclopedia.md) — поверх всего, и карты пациента */}
       <Encyclopedia />

@@ -1,6 +1,7 @@
 // Сценарий в браузере, часть 7 — поликлиника по нормам проектирования (spec docs/specs/2026-10-real-hospital.md,
-// «Проверки»). Без ключа в адресе — экран начала с тремя карточками; «Поликлиника» — тринадцать готовых помещений, люди на
-// местах, ваш кабинет — первый, больница открыта. Часы идут — пациенты приходят, их принимают. Снимок — `e2e-poly-1.jpg`.
+// «Проверки»). Без ключа в адресе — экран начала: «Кампания» (spec docs/specs/2026-10-scenario-1.md) и три карточки песочницы;
+// «Поликлиника» — тринадцать готовых помещений, люди на местах, ваш кабинет — первый, больница открыта. Часы идут — пациенты
+// приходят, их принимают. Снимок — `e2e-poly-1.jpg`.
 import { join } from 'node:path';
 
 /** @param {{ page: import('playwright-core').Page, port: number, out: string, ok: (m: string) => void, fail: (m: string) => void, q: string, shots: string }} x */
@@ -23,8 +24,9 @@ export async function polyPart({ page, port, out, ok, fail, q, shots }) {
   // карточки новой игры; «Продолжить» и список сохранений (spec 2026-10-saves) — от прошлых частей сценария, не в счёт;
   // «Энциклопедия» (spec 2026-10-encyclopedia) — не больница
   const cards = (await page.$$eval('#start button', els => els.map(e => [e.id, e.querySelector('b')?.textContent ?? '']))).filter(([id]) => !id.startsWith('start-continue') && !id.startsWith('start-save') && id !== 'start-enc');
-  const want = [['start-empty', 'Пустое здание'], ['start-poly', 'Поликлиника'], ['start-preset', 'Городская больница']];
-  if (JSON.stringify(cards) === JSON.stringify(want)) ok(`экран начала — три карточки: ${cards.map(c => `«${c[1]}»`).join(', ')}`);
+  // первой — «Кампания»: сценарий 1 (spec docs/specs/2026-10-scenario-1.md), под ней — песочница
+  const want = [['start-scenario-ambulatory', 'Сценарий 1. Амбулатория'], ['start-empty', 'Пустое здание'], ['start-poly', 'Поликлиника'], ['start-preset', 'Городская больница']];
+  if (JSON.stringify(cards) === JSON.stringify(want)) ok(`экран начала — «Кампания» и три карточки песочницы: ${cards.map(c => `«${c[1]}»`).join(', ')}`);
   else fail(`карточки начала: ${JSON.stringify(cards)}`);
   // второй шаг — «Кто вы» (spec docs/specs/2026-10-two-ways.md, F4): три карточки ролей; «Назад» — к выбору больницы
   await page.click('#start-preset');

@@ -11,6 +11,7 @@ import type { StaffMember } from '../engine/hospital/staff';
 import type { Id, Season } from '../content/types';
 import type { Lang } from '../i18n';
 import type { Difficulty } from '../engine/shift/types';
+import type { ScenarioView } from './campaign';
 import type { CardView, DoctorState, ErrorList, Refusal, SeenList } from './doctor';
 import type { NameRow } from './pack';
 import type { SaveMeta } from './packing';
@@ -79,11 +80,12 @@ export type FromSim =
    * в 08:00 — без пересборки сцены); `late` — кто из штата (номера в его списке) уже не в смене, а ещё в больнице: доводит
    * приёмы (spec docs/specs/2026-10-staff-shifts.md), — когда список изменился; `crew` — усталость и перерывы врачей в смене
    * (там же, часть 2), когда изменились; `moods` — настроение нанятых со сменой (spec docs/specs/2026-10-staff-mood.md),
-   * когда изменилось; `rides` — перевозки на каталке (spec docs/specs/2026-10-orderlies.md), когда изменились
+   * когда изменилось; `rides` — перевозки на каталке (spec docs/specs/2026-10-orderlies.md), когда изменились; `scenario` — ход
+   * сценария (spec docs/specs/2026-10-scenario-1.md): письма, цели и отметки, когда изменились
    */
   | ({
       kind: 'slice'; buf: Int32Array; names: NameRow[]; notices: Notice[]; lag: number; world?: World; path?: PathView; broken?: string[]; late?: number[]; crew?: CrewView[];
-      moods?: MoodView[]; rides?: Ride[];
+      moods?: MoodView[]; rides?: Ride[]; scenario?: ScenarioView;
     } & DoctorOut)
   | { kind: 'state'; state: ShiftState }
   /** файл сохранения: сжатые байты (без копии) и его шапка; не вышло — `packFailed` */

@@ -1,12 +1,15 @@
 // Строки игры по-русски (устав, docs/05-rules.md: все строки для игрока — здесь). Английский — en.ts, того же вида.
 import { doctorRu } from './doctor.ru';
 import { economyRu } from './economy.ru';
+import { scenarioRu } from './scenario.ru';
 import { encyclopediaRu } from './encyclopedia.ru';
 import { pluralRu } from './plural';
 
 export const ru = {
   // часть 5б (spec docs/specs/2026-10-economy.md): касса, планёрка, часы приёма, кредит, обход — `money`, `meeting`, `round`
   ...economyRu,
+  // сценарий кампании (spec docs/specs/2026-10-scenario-1.md, часть 2): письма, «Цели», «Сценарий пройден»
+  ...scenarioRu,
   app: {
     title: 'Больница',
     loading: 'Загрузка…',

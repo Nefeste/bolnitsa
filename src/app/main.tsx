@@ -8,9 +8,10 @@
 //   сценарий режима врача в браузере; авто-бенч и снимки — всегда числа сцены, та же толпа, что прежде.
 //   ?load=<ячейка> — открыть сохранение (spec docs/specs/2026-10-saves.md): так меню игры загружает и экран начала
 //   продолжает. ?role=doctor|chief|manager — кто вы (spec docs/specs/2026-10-two-ways.md, F4); с ?hospital= без роли —
-//   «Врач», как играли до ролей. В Electron — --role chief.
+//   «Врач», как играли до ролей. В Electron — --role chief. ?scenario=scenario.ambulatory — сценарий кампании (spec
+//   docs/specs/2026-10-scenario-1.md): его больница, «Врач»; в Electron — --scenario scenario.ambulatory.
 import { createRoot } from 'react-dom/client';
-import { setLang, systemLang, T, type Lang } from '../i18n';
+import { named, setLang, systemLang, T, type Lang } from '../i18n';
 import type { Quality } from '../render/view';
 import { App, type Names } from '../ui/App';
 import { installEncyclopediaKeys } from '../ui/Encyclopedia';
@@ -19,7 +20,9 @@ import type { Flow } from '../engine/shift/types';
 import { SaveError } from '../engine/shift/migrate';
 import type { SaveFile } from '../sim/packing';
 import { AUTO, diskOf, Game, SCENE, type Start } from './game';
+import { loadContent } from './content';
 import { listSlots, readSlot } from './saves';
+import { scenarioTitle } from './scenario';
 import { DEFAULT_ROLE, type Role, roleOf } from './roles';
 import { readSettings } from './settings';
 
@@ -71,6 +74,7 @@ const actions: Actions = {
   doctor: later('doctor'),
   money: later('money'),
   dismissHint: later('dismissHint'),
+  scenario: later('scenario'),
   toggleSettings: later('toggleSettings'),
   setQualityMode: later('setQualityMode'),
   toggleMenu: later('toggleMenu'),
@@ -80,11 +84,12 @@ const actions: Actions = {
   newGame: later('newGame'),
   startGame: (kind, role) => {
     store.set({ choose: false });
-    chosen?.(typeof kind === 'string' ? { start: kind, role: role ?? DEFAULT_ROLE } : kind);
+    // сценарий (spec docs/specs/2026-10-scenario-1.md): учит режиму врача — «Врач»; роль меняют в окне врача
+    chosen?.(typeof kind === 'string' ? { start: kind, role: role ?? DEFAULT_ROLE } : 'scenario' in kind ? { start: 'empty', role: DEFAULT_ROLE, scenario: kind.scenario } : kind);
   },
 };
 /** С чего начать: новая больница и кто вы (spec docs/specs/2026-10-two-ways.md, F4) — или сохранение (ячейка). */
-type Begin = { start: Start; role: Role } | { load: string };
+type Begin = { start: Start; role: Role; scenario?: string } | { load: string };
 let chosen: ((kind: Begin) => void) | undefined;
 const names: Names = {
   room: id => game?.names().room(id) ?? id ?? '—',
@@ -109,6 +114,8 @@ async function startOf(): Promise<Begin> {
   const val = arg('hospital');
   if (has('bench') || has('shot')) return { start: 'preset', role: DEFAULT_ROLE };
   if (q.get('load')) return { load: q.get('load')! };
+  const scenario = arg('scenario');
+  if (scenario) return { start: 'empty', role: roleOf(arg('role')) ?? DEFAULT_ROLE, scenario };
   if (val === 'empty' || val === 'preset' || val === 'poly') return { start: val, role: roleOf(arg('role')) ?? DEFAULT_ROLE };
   return choose();
 }
@@ -116,7 +123,14 @@ async function startOf(): Promise<Begin> {
 /** Экран начала: новая больница, «Продолжить» или «Загрузить» (spec docs/specs/2026-10-saves.md). */
 async function choose(problem?: string): Promise<Begin> {
   const saves = await listSlots(diskOf()).catch(() => []);
-  store.set({ choose: true, startSaves: saves, startProblem: problem });
+  // «Кампания» (spec docs/specs/2026-10-scenario-1.md): сценарии базы по порядку; база не прочиталась — карточек нет
+  const db = await loadContent().catch(() => undefined);
+  const scenarios = Object.values(db?.scenarios ?? {}).sort((a, b) => a.order - b.order);
+  store.set({
+    choose: true, startSaves: saves, startProblem: problem,
+    startScenarios: scenarios.map(sc => ({ id: sc.id, title: scenarioTitle(sc), about: named(sc.about) })),
+    scenarioNames: Object.fromEntries(scenarios.map(sc => [sc.id, scenarioTitle(sc)])),
+  });
   return new Promise<Begin>(resolve => {
     chosen = resolve;
   });
@@ -126,7 +140,7 @@ async function choose(problem?: string): Promise<Begin> {
  * Что открыть: новая больница — как есть; сохранение — прочитать и пройти миграции. Не открылось — снова экран начала,
  * со словом почему.
  */
-async function begin(): Promise<{ start: Start; role: Role; loaded?: SaveFile }> {
+async function begin(): Promise<{ start: Start; role: Role; scenario?: string; loaded?: SaveFile }> {
   let b = await startOf();
   for (;;) {
     if ('start' in b) return b;
@@ -161,7 +175,7 @@ async function flowOf(): Promise<Flow> {
 }
 
 begin()
-  .then(async ({ start, role, loaded }) => Game.create(document.getElementById('view')!, store, __VERSION__, quality, start, await flowOf(), loaded, role))
+  .then(async ({ start, role, scenario, loaded }) => Game.create(document.getElementById('view')!, store, __VERSION__, quality, start, await flowOf(), loaded, role, scenario))
   .then(async g => {
     game = g;
     window.__game = g;

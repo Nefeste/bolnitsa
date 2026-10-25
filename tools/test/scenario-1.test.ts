@@ -9,6 +9,10 @@ import { primaryOf } from '../../src/engine/med/plan';
 import { apply, newFlowShift } from '../../src/engine/shift/engine';
 import { SAVE_SCHEMA } from '../../src/engine/shift/migrate';
 import type { ShiftState } from '../../src/engine/shift/types';
+import type { Game } from '../../src/app/game';
+import { goalRow, initialsOf, letterRow, ScenarioDesk, scenarioTitle } from '../../src/app/scenario';
+import { setLang } from '../../src/i18n';
+import { scenarioView, type ScenarioView } from '../../src/sim/campaign';
 import { createSim } from '../../src/sim/host';
 import { pack, unpack } from '../../src/sim/packing';
 import { FLOW, hash, liveTo, PROTO, site } from './site-kit';
@@ -180,5 +184,81 @@ describe('сценарий 1 «Амбулатория»: движок', () => {
     if (saved.kind !== 'state') throw new Error(saved.kind);
     expect(saved.state.campaign?.chapter).toBe(SC);
     expect(saved.state.economy?.cash).toBe(sc.budget);
+  });
+});
+
+describe('сценарий 1 «Амбулатория»: окно', () => {
+  test('вид хода для окна: письма, цели с ходом, отметки; у песочницы — нет', () => {
+    const s = start(9);
+    let v = scenarioView(db, s)!;
+    expect(v.id).toBe(SC);
+    expect(v.letters.map(l => l.id)).toEqual(['hello', 'budget']);
+    expect(v.goals.map(g => [g.id, g.main, g.done])).toEqual(sc.missions.map(m => [m.id, m.main, false]));
+    expect(v.goals.find(g => g.id === 'seen')).toMatchObject({ value: 0, target: 100, accuracy: 0 });
+    mark(s, 'closed', 'door');
+    apply(db, s, { kind: 'mark', what: 'off', on: true });
+    v = scenarioView(db, s)!;
+    expect(v.hints).toEqual(['door']);
+    expect(v.off).toBe(true);
+    // лаборатория работает — цель «помещение работает» видна сразу, запишет её планёрка
+    buildClinic(s);
+    expect(scenarioView(db, s)!.goals.find(g => g.id === 'lab')!.done).toBe(true);
+    const plain = newFlowShift(db, { seed: 9, season: 'winter', hospital: hospitalOf(db, emptySite()), staff: [], flow: FLOW });
+    expect(scenarioView(db, plain)).toBeUndefined();
+  });
+
+  test('письмо и цель словами — на языке окна; значок — инициалы', () => {
+    setLang('ru');
+    expect(scenarioTitle(sc)).toBe('Сценарий 1. Амбулатория');
+    const hello = letterRow(db, sc, { id: 'hello', day: 0 })!;
+    expect(hello).toMatchObject({ from: 'Мира Холм', initials: 'МХ', read: false });
+    expect(hello.text.startsWith('Здравствуйте, коллега.')).toBe(true);
+    expect(letterRow(db, sc, { id: 'нет', day: 0 })).toBeUndefined();
+    expect(goalRow(sc, { id: 'seen', main: true, value: 34, target: 100, accuracy: 81, done: false })).toMatchObject({ text: 'Принять 100 пациентов с точностью от 75 %', value: 34 });
+    setLang('en');
+    expect(scenarioTitle(sc)).toBe('Scenario 1. Outpatient clinic');
+    expect(letterRow(db, sc, { id: 'budget', day: 0, read: true })).toMatchObject({ from: 'Jan Novak', initials: 'JN', read: true });
+    setLang('ru');
+    expect(initialsOf('Мира  Холм')).toBe('МХ');
+  });
+
+  test('окно сценария: карточка письма, отметки — по одному разу, «Сценарий пройден» — один раз и не после загрузки', () => {
+    setLang('ru');
+    const sent: unknown[] = [];
+    const g = { db, client: { command: (c: unknown) => sent.push(c) }, refresh: () => {} } as unknown as Game;
+    const view = (over: Partial<ScenarioView> = {}): ScenarioView => ({
+      id: SC, letters: [{ id: 'hello', day: 0 }, { id: 'budget', day: 0 }], goals: [], hints: [], tips: [], ...over,
+    });
+    const desk = new ScenarioDesk(g);
+    expect(desk.hud(false)).toBeUndefined();
+    desk.onView(view());
+    let h = desk.hud(false)!;
+    expect(h.letter?.id).toBe('hello');
+    expect(h.first).toBe(true);
+    // пока открыта планёрка — карточки нет
+    expect(desk.hud(true)!.letter).toBeUndefined();
+    // прочитано — следующее письмо сразу, ещё до вида от потока; отметка — одна
+    desk.dispatch({ kind: 'read', id: 'hello' });
+    desk.dispatch({ kind: 'read', id: 'hello' });
+    h = desk.hud(false)!;
+    expect(h.letter?.id).toBe('budget');
+    expect(h.first).toBe(false);
+    // состояние подсказки — отметка одна; к уже пришедшему письму — ни одной
+    desk.reach('furnish');
+    desk.reach('furnish');
+    expect(sent).toEqual([{ kind: 'mark', what: 'read', id: 'hello' }, { kind: 'mark', what: 'hint', id: 'furnish' }]);
+    // все основные выполнены — «Сценарий пройден», «Продолжить здесь» закрывает, второй раз не открывается
+    desk.onView(view({ complete: 3 }));
+    expect(desk.hud(false)!.done).toBe(true);
+    desk.dispatch({ kind: 'stay' });
+    desk.onView(view({ complete: 3 }));
+    expect(desk.hud(false)!.done).toBe(false);
+    // сохранение после конца: окна нет; письма к состояниям, уже пришедшие, — состояния уже наступали
+    const loaded = new ScenarioDesk(g);
+    loaded.onView(view({ complete: 3, letters: [{ id: 'hello', day: 0, read: true }, { id: 'door', day: 1, read: true }] }));
+    expect(loaded.hud(false)!.done).toBe(false);
+    const before = sent.length;
+    loaded.reach('door');
+    expect(sent.length).toBe(before);
   });
 });

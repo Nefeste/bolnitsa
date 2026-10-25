@@ -6,6 +6,7 @@
 import type { Command, Notice, Ride, ShiftState } from '../engine/shift/types';
 import type { CrewView } from '../engine/shift/crew';
 import type { MoodView } from '../engine/shift/mood';
+import type { ScenarioView } from './campaign';
 import type { NameRow } from './pack';
 import type { SaveMeta } from './packing';
 import type { DoctorAct, DoctorOut, FromSim, PathView, ToSim, World } from './protocol';
@@ -29,6 +30,8 @@ export interface Slice extends DoctorOut {
   moods?: MoodView[];
   /** перевозки на каталке (spec 2026-10-orderlies); когда изменились */
   rides?: Ride[];
+  /** ход сценария (spec docs/specs/2026-10-scenario-1.md): письма, цели и отметки; когда изменились */
+  scenario?: ScenarioView;
 }
 
 export class SimClient {
@@ -82,7 +85,7 @@ export class SimClient {
       ...(msg.doctor ? { doctor: msg.doctor } : {}), ...(msg.card !== undefined ? { card: msg.card } : {}), ...(msg.seen ? { seen: msg.seen } : {}), ...(msg.errors ? { errors: msg.errors } : {}),
       ...(msg.refused ? { refused: msg.refused } : {}),
       ...(msg.path ? { path: msg.path } : {}), ...(msg.broken ? { broken: msg.broken } : {}), ...(msg.late ? { late: msg.late } : {}), ...(msg.crew ? { crew: msg.crew } : {}),
-      ...(msg.moods ? { moods: msg.moods } : {}), ...(msg.rides ? { rides: msg.rides } : {}),
+      ...(msg.moods ? { moods: msg.moods } : {}), ...(msg.rides ? { rides: msg.rides } : {}), ...(msg.scenario ? { scenario: msg.scenario } : {}),
     });
   }
 

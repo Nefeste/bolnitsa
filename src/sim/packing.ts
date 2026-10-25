@@ -14,6 +14,8 @@ export interface SaveMeta {
   version: string;
   /** с чего начинали: пустое здание, поликлиника, городская больница */
   start: string;
+  /** сценарий кампании (spec docs/specs/2026-10-scenario-1.md); песочница — нет */
+  scenario?: string;
   day: number;
   /** игровые секунды */
   t: number;

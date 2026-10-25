@@ -9,6 +9,7 @@ import { crewOf, type CrewView } from '../engine/shift/crew';
 import { moodsOf, type MoodView } from '../engine/shift/mood';
 import { sliceOf } from '../engine/shift/slice';
 import type { Command, Notice, Ride, ShiftState } from '../engine/shift/types';
+import { scenarioKey, scenarioView, type ScenarioView } from './campaign';
 import { patientName } from './caseView';
 import { comingAt, DoctorDesk, officeOf, takeCommand } from './doctor';
 import { Handles, packSlice } from './pack';
@@ -48,6 +49,9 @@ export function createSim(db: ContentDb): SimHost {
   let sentMoods = '';
   /** перевозки на каталке (spec docs/specs/2026-10-orderlies.md) — как окно уже получило */
   let sentRides = '';
+  /** ход сценария (spec docs/specs/2026-10-scenario-1.md): по чему он посчитан и каким окно его уже получило */
+  let scenarioAt: unknown[] = [];
+  let sentScenario = '';
   /** чей путь показывает окно и каким он был отправлен */
   let watch: string | null = null;
   let sentPath: string | undefined;
@@ -118,9 +122,21 @@ export function createSim(db: ContentDb): SimHost {
       sentRides = rideSig;
       rides = structuredClone(ridesNow);
     }
+    // сценарий (spec docs/specs/2026-10-scenario-1.md): письма, цели и отметки — когда изменились; не сценарий — ничего
+    let scenario: ScenarioView | undefined;
+    const key = scenarioKey(s!);
+    if (key.some((x, i) => x !== scenarioAt[i])) {
+      scenarioAt = key;
+      const now = scenarioView(db, s!);
+      const sig = JSON.stringify(now ?? null);
+      if (now && sig !== sentScenario) {
+        sentScenario = sig;
+        scenario = now;
+      }
+    }
     const lag = owed + (s!.until !== undefined ? s!.until - s!.t : 0);
     const { buf, names } = packSlice(s!, sliceOf(s!, officeOf(db, s!)), lag, handles, rooms, staff, patientName);
-    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...(late ? { late } : {}), ...(crew ? { crew } : {}), ...(moods ? { moods } : {}), ...(rides ? { rides } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
+    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...(late ? { late } : {}), ...(crew ? { crew } : {}), ...(moods ? { moods } : {}), ...(rides ? { rides } : {}), ...(scenario ? { scenario } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
   };
   const fresh = () => {
     owed = 0;
@@ -131,6 +147,8 @@ export function createSim(db: ContentDb): SimHost {
     sentCrew = '';
     sentMoods = '';
     sentRides = '';
+    scenarioAt = [];
+    sentScenario = '';
     sentPath = undefined;
     desk.reset();
   };
