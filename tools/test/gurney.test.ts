@@ -12,6 +12,7 @@ import { ORDERLY, presetStaff, type StaffMember, withNightShift } from '../../sr
 import { apply, freeBays, hospitalCtx, newFlowShift, onTableIn, readyIn } from '../../src/engine/shift/engine';
 import { carriersOf, pickupOf, planRide } from '../../src/engine/shift/gurney';
 import { bedRide } from '../../src/engine/shift/journey';
+import { closeLoad } from '../../src/engine/shift/meeting';
 import { sliceOf } from '../../src/engine/shift/slice';
 import { migrate } from '../../src/engine/shift/migrate';
 import type { Ride, ShiftState } from '../../src/engine/shift/types';
@@ -237,6 +238,22 @@ describe('санитары и каталки', () => {
     bedRide(c, q, { since: c.t, from: 'r1', to: 'r2', go: c.t + H, pick: c.t + H + 60, off: c.t + H + 180, done: c.t + H + 600 });
     expect(c.journeys!.of[q.id].bed).toMatchObject({ none: true, orderly: true, pick: c.t + H + 60 });
   }, 120_000);
+
+  test('планёрка: кого некому везти и к утру — «ждут и сейчас», ожидание — до планёрки (решение владельца #99)', () => {
+    const s = city(9);
+    s.rideWait = [
+      { id: 'a', why: 'bed', from: 'r1', to: 'r2', since: s.t - 90 * MIN },
+      { id: 'b', why: 'bed', from: 'r1', to: 'r2', since: s.t - 5 * MIN },
+    ];
+    closeLoad(s, 0);
+    expect(s.summary.load?.gurney).toEqual({ n: 0, wait: 90, now: 1 });
+    // ждавших и повезённых считали раньше — к ним добавляются
+    const t = city(9);
+    t.summary.load = { queue: 0, wait: 0, gurney: { n: 2, wait: 120 } };
+    t.rideWait = [{ id: 'a', why: 'bed', from: 'r1', to: 'r2', since: t.t - 30 * MIN }];
+    closeLoad(t, 0);
+    expect(t.summary.load.gurney).toEqual({ n: 2, wait: 120, now: 1 });
+  });
 
   test('два санитара — везёт тот, кто раньше будет у больного; занят — тот, кто освободится раньше', () => {
     const s = city(5);
