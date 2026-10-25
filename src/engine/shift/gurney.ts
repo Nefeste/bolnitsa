@@ -39,11 +39,13 @@ export const lying = (p: ShiftPatient): boolean => p.kind === 'ambulance' && p.b
 
 /**
  * Кто может везти (spec «Как будет», 3): санитары смены; ни одного — медсестра помещения `from`, откуда везут; её нет в
- * смене — ближайшая медсестра смены. `staff` — кто сейчас в смене.
+ * смене — ближайшая медсестра смены. Медсестра везёт только срочного (`urgent`; решение владельца #99): остальных —
+ * только санитар. `staff` — кто сейчас в смене.
  */
-export function carriersOf(plan: Plan, staff: readonly StaffMember[], from: string): StaffMember[] {
+export function carriersOf(plan: Plan, staff: readonly StaffMember[], from: string, urgent: boolean): StaffMember[] {
   const orderlies = staff.filter(m => m.role === ORDERLY && m.room !== undefined);
   if (orderlies.length > 0) return orderlies;
+  if (!urgent) return [];
   const nurses = staff.filter(m => m.role === NURSE && m.room !== undefined);
   const here = nurses.find(m => m.room === from);
   if (here) return [here];
@@ -87,8 +89,8 @@ export interface ExamLeg {
 /**
  * Перевозка больного `id` из помещения `from` в `to` — на того, кто раньше будет у больного (при равном — кто раньше в
  * штате), ничего не меняя: `after` — раньше этого часа больного не взять (он ещё на другом обследовании); `since` — с какого
- * часа он ждёт каталку (нет — сейчас). Обследование (`exam`) — туда и назад: тот, кто везёт, ждёт у аппарата. Везти
- * некому — нет.
+ * часа он ждёт каталку (нет — сейчас); `urgent` — срочный: без санитара его везёт медсестра (`carriersOf`). Обследование
+ * (`exam`) — туда и назад: тот, кто везёт, ждёт у аппарата. Везти некому — нет.
  */
 export function planRide(
   db: ContentDb,
@@ -99,12 +101,12 @@ export function planRide(
   why: RideWhy,
   from: string,
   to: string,
-  opts: { exam?: ExamLeg; after?: number; since?: number } = {},
+  opts: { exam?: ExamLeg; after?: number; since?: number; urgent?: boolean } = {},
 ): Ride | undefined {
   const g = gurneyOf(db, s);
   if (!g) return undefined;
   let best: Ride | undefined;
-  for (const m of carriersOf(plan, staff, from)) {
+  for (const m of carriersOf(plan, staff, from, opts.urgent ?? false)) {
     const free = freeAt(s, m);
     // к тому часу его смена кончится — он ушёл
     if (!onDuty(db, m, free)) continue;

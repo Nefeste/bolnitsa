@@ -237,7 +237,7 @@ export function MeetingBody({ m, e, actions }: { m: MeetingView; e: EconomyHud; 
                   : x.kind === 'door'
                     ? t.door(x.n)
                     : x.kind === 'gurney'
-                      ? t.gurney(x.n, x.wait, GURNEY_WAIT)
+                      ? t.gurney(x.n, x.wait, GURNEY_WAIT, x.now)
                       : t.beds(x.peak, x.of)}
             </li>
           ))}

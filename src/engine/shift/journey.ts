@@ -79,8 +79,8 @@ export interface Gurney {
 /**
  * Лежачего везут на койку после решения (spec docs/specs/2026-10-orderlies.md, «Что видно»): каталку ждёт с `t`, откуда и куда
  * (номера помещений плана). Записали перевозку — за ним придут в `pick`, повезут в `off`, на койке он в `done`; `busy` — тот,
- * кто везёт, сначала довезёт других; `none` — сначала везти было некому; `nurse` — везёт медсестра. Не записали — везти
- * некому, ждёт.
+ * кто везёт, сначала довезёт других; `none` — сначала везти было некому; `orderly` — не срочного везёт только санитар, а его
+ * в смене не было (решение владельца #99); `nurse` — везёт медсестра. Не записали — везти некому, ждёт.
  */
 export interface BedRide {
   t: number;
@@ -91,6 +91,7 @@ export interface BedRide {
   done?: number;
   busy?: true;
   none?: true;
+  orderly?: true;
   nurse?: true;
 }
 
@@ -204,19 +205,22 @@ export function examOut(s: ShiftState, p: ShiftPatient, leave: number, at: numbe
 
 /**
  * Лежачего везут на койку (spec docs/specs/2026-10-orderlies.md): записали перевозку (`startRide`) — кто когда придёт,
- * повезёт и довезёт; везти некому (`carry`) — только откуда, куда и с какого часа ждёт. Путь к этому часу уже кончился
- * решением положить — перевозка пишется рядом с ним.
+ * повезёт и довезёт; везти некому (`carry`) — только откуда, куда и с какого часа ждёт, и `orderly`, если некому потому, что
+ * не срочного медсестра не везёт. Путь к этому часу уже кончился решением положить — перевозка пишется рядом с ним.
  */
-export function bedRide(s: ShiftState, p: ShiftPatient, r: { since: number; from: string; to: string; go?: number; pick?: number; off?: number; done?: number }, nurse = false) {
+export function bedRide(
+  s: ShiftState, p: ShiftPatient, r: { since: number; from: string; to: string; go?: number; pick?: number; off?: number; done?: number }, nurse = false, orderly = false,
+) {
   const j = s.journeys?.of[p.id];
   if (!j) return;
   // ждал, что везти некому, а теперь везут: почему ждал — тоже
   const none = j.bed !== undefined && j.bed.pick === undefined;
+  const only = orderly || (none && j.bed!.orderly === true);
   j.bed = {
     t: r.since, from: r.from, to: r.to,
     ...(r.pick !== undefined && r.off !== undefined && r.done !== undefined ? { pick: r.pick, off: r.off, done: r.done } : {}),
     ...(r.go !== undefined && r.go > r.since && !none ? { busy: true as const } : {}), ...(none ? { none: true as const } : {}),
-    ...(nurse ? { nurse: true as const } : {}),
+    ...(only ? { orderly: true as const } : {}), ...(nurse ? { nurse: true as const } : {}),
   };
 }
 

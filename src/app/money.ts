@@ -319,14 +319,21 @@ export function tipOf(d: DaySummary, rooms: Record<string, string>, worse: boole
 /** Узкие места суток для экрана — до трёх, где ждали полчаса и дольше или очередь была от пяти, самые долгие сначала. */
 export function slowOf(
   load: DayLoad | undefined,
-): ({ kind: 'doctors'; queue: number; wait: number } | { kind: 'room'; id: Id; queue: number; wait: number; n: number } | { kind: 'door'; n: number } | { kind: 'beds'; peak: number; of: number } | { kind: 'gurney'; n: number; wait: number })[] {
+): (
+  | { kind: 'doctors'; queue: number; wait: number }
+  | { kind: 'room'; id: Id; queue: number; wait: number; n: number }
+  | { kind: 'door'; n: number }
+  | { kind: 'beds'; peak: number; of: number }
+  | { kind: 'gurney'; n: number; wait: number; now?: number }
+)[] {
   if (!load) return [];
   const out: { wait: number; row: ReturnType<typeof slowOf>[number] }[] = [];
   if (load.wait >= SLOW_WAIT || load.queue >= LONG_QUEUE) out.push({ wait: load.wait, row: { kind: 'doctors', queue: load.queue, wait: load.wait } });
   for (const [id, r] of Object.entries(load.rooms ?? {})) if (r.wait >= SLOW_WAIT || r.queue >= LONG_QUEUE) out.push({ wait: r.wait, row: { kind: 'room', id, queue: r.queue, wait: r.wait, n: r.n } });
   if ((load.door ?? 0) > 0) out.push({ wait: Infinity, row: { kind: 'door', n: load.door! } });
   if (load.beds && load.beds.of > 0 && load.beds.peak >= load.beds.of) out.push({ wait: Infinity, row: { kind: 'beds', peak: load.beds.peak, of: load.beds.of } });
-  // каталка (spec docs/specs/2026-10-orderlies.md): лежачие ждали её дольше `GURNEY_WAIT` минут
-  if (load.gurney && load.gurney.n > 0) out.push({ wait: load.gurney.wait, row: { kind: 'gurney', n: load.gurney.n, wait: load.gurney.wait } });
+  // каталка (spec docs/specs/2026-10-orderlies.md): лежачие ждали её дольше `GURNEY_WAIT` минут; ждут и сейчас — везти некому
+  const g = load.gurney;
+  if (g && (g.n > 0 || g.now)) out.push({ wait: g.wait, row: { kind: 'gurney', n: g.n, wait: g.wait, ...(g.now ? { now: g.now } : {}) } });
   return out.sort((a, b) => b.wait - a.wait).slice(0, 3).map(x => x.row);
 }
