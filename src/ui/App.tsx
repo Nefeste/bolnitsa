@@ -393,40 +393,36 @@ function SiteCard({ r, actions, hud }: { r: RoomCard; actions: Actions; hud: Hud
  */
 function MoneyChart({ r }: { r: RoomCard }) {
   const days = r.money ?? [];
-  if (days.length === 0) return null;
+  // денег у помещения ещё не было — раздела нет: карточка растёт снизу вверх и не закрывает план зря
+  if (!days.some(d => d.income > 0 || d.expenses > 0)) return null;
   const top = Math.max(1, ...days.flatMap(d => [d.income, d.expenses]));
   const w = 280;
-  const h = 64;
+  const h = 40;
   const slot = w / days.length;
   const bar = Math.max(2, Math.min(9, slot / 2 - 1));
-  const any = days.some(d => d.income > 0 || d.expenses > 0);
   return (
     <div className="moneychart" id="room-money">
       <div className="label">
         {T.metrics.chart}
         {r.service ? <span className="muted"> — {T.metrics.serviceRevenue}</span> : null}
+        <span className="legend">
+          <i className="sw inc" /> {T.metrics.chartIncome} <i className="sw exp" /> {T.metrics.chartExpenses}
+        </span>
       </div>
-      {any ? (
-        <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" role="img" aria-label={T.metrics.chart}>
-          {days.map((d, i) => {
-            const x = i * slot + slot / 2;
-            const hi = (d.income / top) * (h - 2);
-            const he = (d.expenses / top) * (h - 2);
-            return (
-              <g key={d.day ?? 'now'} className={d.day === null ? 'now' : undefined}>
-                <title>{`${d.day === null ? T.metrics.today : T.metrics.dayN(d.day)}: ${T.metrics.chartIncome} ${money(d.income)}, ${T.metrics.chartExpenses} ${money(d.expenses)}`}</title>
-                <rect x={x - bar - 0.5} y={h - hi} width={bar} height={hi} className="inc" />
-                <rect x={x + 0.5} y={h - he} width={bar} height={he} className="exp" />
-              </g>
-            );
-          })}
-        </svg>
-      ) : (
-        <div className="muted">{T.metrics.chartNone}</div>
-      )}
-      <div className="legend">
-        <i className="sw inc" /> {T.metrics.chartIncome} <i className="sw exp" /> {T.metrics.chartExpenses}
-      </div>
+      <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" role="img" aria-label={T.metrics.chart}>
+        {days.map((d, i) => {
+          const x = i * slot + slot / 2;
+          const hi = (d.income / top) * (h - 2);
+          const he = (d.expenses / top) * (h - 2);
+          return (
+            <g key={d.day ?? 'now'} className={d.day === null ? 'now' : undefined}>
+              <title>{`${d.day === null ? T.metrics.today : T.metrics.dayN(d.day)}: ${T.metrics.chartIncome} ${money(d.income)}, ${T.metrics.chartExpenses} ${money(d.expenses)}`}</title>
+              <rect x={x - bar - 0.5} y={h - hi} width={bar} height={hi} className="inc" />
+              <rect x={x + 0.5} y={h - he} width={bar} height={he} className="exp" />
+            </g>
+          );
+        })}
+      </svg>
     </div>
   );
 }

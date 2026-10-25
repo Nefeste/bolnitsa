@@ -575,7 +575,6 @@ export const en: Strings = {
     chart: 'Money by day',
     chartIncome: 'revenue',
     chartExpenses: 'costs',
-    chartNone: 'the room has had no money yet',
     load: (queue: number, busy: boolean) => [queue > 0 ? `${queue} waiting` : '', busy ? 'busy inside' : ''].filter(Boolean).join(' · '),
     beds: (used: number, all: number) => `beds: ${used} of ${all} taken`,
     free: 'free',
