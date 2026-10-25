@@ -84,31 +84,31 @@ export async function doctorPart({ page, port, out, ok, fail, q, shots }) {
   if ((await hud()).speed === 0 && (await hud()).t === t0) ok('карта открыта — часы стоят, скорость не меняется');
   else fail(`часы идут при открытой карте: ${JSON.stringify(await hud())}`);
 
-  // вопрос: беседой, часы — на цену вопроса
-  const asked0 = await page.$$eval('#talk .pair', els => els.length);
-  const qBtn = await page.$('.questions button.q:not([disabled])');
+  // вопрос (шаг «Расспрос», решение владельца #104): из шага — в ленту «Ход приёма» с ответом, часы — на цену вопроса
+  const asked0 = await page.$$eval('#dcard-course .pair', els => els.length);
+  const qBtn = await page.$('#stepbody-talk button.q:not([disabled])');
   // текст вопроса — без минут и «?» (первый текстовый узел кнопки)
   const qText = await qBtn.evaluate(el => el.firstChild?.textContent?.trim() ?? '');
   await qBtn.click();
   await fresher(c0.version);
-  const asked1 = await page.$$eval('#talk .pair', els => els.length);
+  const asked1 = await page.$$eval('#dcard-course .pair', els => els.length);
   const t1 = (await hud()).t;
-  if (asked1 === asked0 + 1 && t1 > t0) ok(`вопрос «${qText}» — ответ в беседе, часы +${Math.round((t1 - t0) / 60)} мин`);
+  if (asked1 === asked0 + 1 && t1 > t0) ok(`вопрос «${qText}» — ответ в ленте «Ход приёма», часы +${Math.round((t1 - t0) / 60)} мин`);
   else fail(`вопрос: реплик ${asked0} → ${asked1}, часы ${t0} → ${t1}`);
 
-  // осмотр: первый несделанный в «Весь больной» или «У постели»
-  await page.click('#tab-examine');
-  const exam = await page.$('#ex-whole button.xrow:not([disabled]), #ex-bedside button.xrow:not([disabled])');
+  // осмотр — шаг «Осмотр»: первый несделанный в «Весь больной» или «У постели»; сделанный уходит из шага в ленту
+  await page.click('#step-examine');
+  const exam = await page.$('#stepbody-examine #ex-whole button.xrow:not([disabled]), #stepbody-examine #ex-bedside button.xrow:not([disabled])');
   const examId = await exam.getAttribute('data-exam');
   const v1 = (await card()).version;
   await exam.click();
   await fresher(v1);
-  if (await page.$(`.xrow.done[data-exam="${examId}"]`)) ok(`осмотр: ${examId} — ответ на месте строки`);
-  else fail(`осмотр ${examId}: строки «сделано» нет`);
+  if ((await page.$(`#course-${examId.replace(/\./g, '_')}`)) && !(await page.$(`#stepbody-examine [data-exam="${examId}"]`))) ok(`осмотр: ${examId} — в ленте, из шага ушёл`);
+  else fail(`осмотр ${examId}: в ленте нет или в шаге остался`);
 
-  // назначить анализ бланком: галочка, «Отправить» — «Ждём»; «Подождать» — пока не придёт
-  await page.click('#tab-order');
-  const box = await page.$('#or-lab input[type=checkbox]:not([disabled])');
+  // назначить анализ бланком (шаг «Обследования»): галочка, «Отправить» — «Ждём»; «Подождать» — пока не придёт
+  await page.click('#step-order');
+  const box = await page.$('#stepbody-order #or-lab input[type=checkbox]:not([disabled])');
   const labId = await box.getAttribute('data-exam');
   await box.click();
   await until(id => !!document.querySelector(`input[data-exam="${id}"]:checked`), labId);
@@ -137,8 +137,10 @@ export async function doctorPart({ page, port, out, ok, fail, q, shots }) {
   const labDone = lab.groups.some(g => g.exam === labId);
   if (labDone && lab.pending.length === 0 && (await hud()).speed === 0) ok(`результат пришёл к ${lab.clock} — карта и пауза (часы +${Math.round(((await hud()).t - tw) / 60)} мин)`);
   else fail(`результат анализа: ${JSON.stringify({ labDone, pending: lab.pending })}`);
-  await page.click('#tab-known');
-  await page.waitForTimeout(200);
+  // пришедшее — в ленте; карта открылась на «Решении»
+  const decideOpen = await page.$('#step-decide.on');
+  if (decideOpen && (await page.$(`#course-${labId.replace(/\./g, '_')}`))) ok('результат — в ленте «Ход приёма», открыт шаг «Решение»');
+  else fail(`после результата: «Решение» открыт — ${!!decideOpen}`);
   ok(`снимок карты: ${join(out, 'e2e-doctor-1-card.jpg')} (${await shot('e2e-doctor-1-card.jpg')} КБ)`);
 
   // уровень медицины: «Врач» — «Похоже на» нет; «Студент» — снова есть
@@ -245,7 +247,8 @@ export async function doctorPart({ page, port, out, ok, fail, q, shots }) {
   if (took && tc?.active) ok(`«Взять случай» с карты: «${await page.textContent('#dcard-title')}» — у вас в кабинете, ${tc.groups.length} результатов врача`);
   else fail(`«Взять случай»: карта ${took}, ${JSON.stringify((await hud()).d.said)}`);
   if (took) {
-    // закончить быстро: диагноз — первый в списке, «Завершить приём»
+    // закончить быстро: шаг «Решение», диагноз — первый в списке, «Завершить приём»
+    await page.click('#step-decide');
     const first = await page.$eval('#dx-select option:nth-child(2)', o => o.value).catch(() => null);
     if (first) {
       const vv = (await card()).version;

@@ -23,12 +23,6 @@ import type { DoctorHud } from './types';
 import { db } from './db';
 import { Round } from './Round';
 
-/**
- * Макет своей карты (spec docs/specs/2026-10-own-card.md; решение владельца #73): в середине — лента «Ход приёма», справа —
- * шаги «Расспрос», «Осмотр», «Обследования», «Решение», открыт один. Пока владелец не одобрил — только с `?card=steps`.
- */
-const STEPS_LAYOUT = typeof location !== 'undefined' && new URLSearchParams(location.search).get('card') === 'steps';
-
 /** Ключ для id в DOM: точки в номерах базы мешают селекторам. */
 export const dom = (id: string) => id.replace(/\./g, '_');
 
@@ -166,16 +160,12 @@ function CardWindow({ v, level, meanwhile, next, actions }: P) {
         </div>
       ) : read ? (
         <Course v={v} explain={setTerm} />
-      ) : STEPS_LAYOUT ? (
+      ) : (
+        // своя карта (spec docs/specs/2026-10-own-card.md; решение владельца #104): слева — лента «Ход приёма», справа — шаги
+        // «Расспрос», «Осмотр», «Обследования», «Решение», открыт один
         <div className="dcols steps">
           <Course v={v} explain={setTerm} live />
           <Steps key={v.id} v={v} act={act} actions={actions} explain={setTerm} />
-        </div>
-      ) : (
-        <div className="dcols">
-          <TalkColumn v={v} act={act} explain={setTerm} />
-          <ExamColumn v={v} act={act} actions={actions} explain={setTerm} />
-          <DecideColumn v={v} act={act} explain={setTerm} />
         </div>
       )}
       {term ? <TermPopup term={term} close={() => setTerm(null)} /> : null}
@@ -278,9 +268,9 @@ function Steps({ v, act, actions, explain }: { v: CardView; act: (c: Command) =>
           {k === open ? (
             <div className="dstepbody" id={`stepbody-${k}`}>
               {k === 'talk' ? (
-                <TalkColumn v={v} act={act} explain={explain} bare />
+                <TalkColumn v={v} act={act} explain={explain} />
               ) : k === 'decide' ? (
-                <DecideColumn v={v} act={act} explain={explain} bare />
+                <DecideColumn v={v} act={act} explain={explain} />
               ) : (
                 <ExamColumn v={v} act={act} actions={actions} explain={explain} only={k} />
               )}
@@ -403,15 +393,12 @@ function Answer({ g, explain, all }: { g: ResultGroup; explain: (x: TermInfo) =>
   );
 }
 
-/** Опрос — беседой: заданные вопросы и ответы по порядку; вопросы — «О жалобах» и «О жизни». */
-/** `bare` — шаг «Расспрос» своей карты (макет): только вопросы; что спрошено — в ленте. */
-function TalkColumn({ v, act, explain, bare }: { v: CardView; act: (c: Command) => void; explain: (x: TermInfo) => void; bare?: boolean }) {
+/** Шаг «Расспрос» своей карты: вопросы, которые ещё можно задать, — «О жалобах» и «О жизни»; что спрошено — в ленте. */
+function TalkColumn({ v, act, explain }: { v: CardView; act: (c: Command) => void; explain: (x: TermInfo) => void }) {
   const t = T.case.talk;
   const p = T.case.patient;
   const [rest, setRest] = useState(false);
   const ids = examsByAction(v.portrait).ask;
-  const asks = new Set(ids);
-  const asked = [...v.groups].reverse().filter(g => asks.has(g.exam));
   const focus = v.focus ? new Set(v.focus) : undefined;
   const main = focus ? ids.filter(id => focus.has(id)) : ids;
   const others = focus ? ids.filter(id => !focus.has(id)) : [];
@@ -432,56 +419,23 @@ function TalkColumn({ v, act, explain, bare }: { v: CardView; act: (c: Command) 
     { key: 'c', title: t.aboutComplaints, list: left.filter(id => !lifeHistory(id)) },
     { key: 'l', title: t.aboutLife, list: left.filter(lifeHistory) },
   ].filter(x => x.list.length > 0);
-  const more =
-    restLeft > 0 ? (
-      <button type="button" className="linkish" onClick={() => setRest(!rest)}>
-        {rest ? p.restHide : p.restShow(restLeft)}
-      </button>
-    ) : null;
-  if (bare)
-    return (
-      <div className="dstepcol" id="col-talk">
-        <div className="dscroll">
-          {focus ? <p className="muted small">{p.focusNote}</p> : null}
-          {groups.length === 0 ? <p className="muted">{T.doctor.card.steps.nothingLeft}</p> : null}
-          {groups.map(x => (
-            <div key={x.key}>
-              <div className="label">{x.title}</div>
-              <div className="qs">{x.list.map(button)}</div>
-            </div>
-          ))}
-          {more}
-        </div>
-      </div>
-    );
   return (
-    <div className="dcol" id="col-talk">
-      <h3>{T.doctor.card.talk}</h3>
-      <div className="talk" id="talk">
-        {asked.length === 0 ? <p className="muted">{t.empty}</p> : null}
-        {asked.map(g => (
-          <div key={g.key} className={g.fresh ? 'pair fresh' : 'pair'} id={`said-${dom(g.exam)}`}>
-            <div className="doc">
-              <small className="mono">{g.at}</small> {question(g.exam)}
-            </div>
-            <div className="pt">
-              <Answer g={g} explain={explain} />
-            </div>
+    <div className="dstepcol" id="col-talk">
+      <div className="dscroll">
+        {focus ? <p className="muted small">{p.focusNote}</p> : null}
+        {groups.length === 0 ? <p className="muted">{T.doctor.card.steps.nothingLeft}</p> : null}
+        {groups.map(x => (
+          <div key={x.key}>
+            <div className="label">{x.title}</div>
+            <div className="qs">{x.list.map(button)}</div>
           </div>
         ))}
+        {restLeft > 0 ? (
+          <button type="button" className="linkish" onClick={() => setRest(!rest)}>
+            {rest ? p.restHide : p.restShow(restLeft)}
+          </button>
+        ) : null}
       </div>
-      {v.active ? (
-        <div className="questions">
-          {focus ? <p className="muted small">{p.focusNote}</p> : null}
-          {groups.map(x => (
-            <div key={x.key}>
-              <div className="label">{x.title}</div>
-              <div className="qs">{x.list.map(button)}</div>
-            </div>
-          ))}
-          {more}
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -683,9 +637,8 @@ function ExamColumn({ v, act, actions, explain, only }: { v: CardView; act: (c: 
   );
 }
 
-/** «Похоже на», ваш ряд гипотез, правила решения, диагноз, лечение, место — и «Завершить приём». */
-/** `bare` — шаг «Решение» своей карты (макет): без заголовка колонки. */
-function DecideColumn({ v, act, explain, bare }: { v: CardView; act: (c: Command) => void; explain: (x: TermInfo) => void; bare?: boolean }) {
+/** Шаг «Решение» своей карты: «Похоже на», ваш ряд гипотез, правила решения, диагноз, лечение, место — и «Завершить приём». */
+function DecideColumn({ v, act, explain }: { v: CardView; act: (c: Command) => void; explain: (x: TermInfo) => void }) {
   const p = T.case.patient;
   const d = T.case.decision;
   const h = T.case.differential;
@@ -715,8 +668,7 @@ function DecideColumn({ v, act, explain, bare }: { v: CardView; act: (c: Command
   const open = v.differential.find(x => x.id === hyp);
   const setting = v.settings.find(o => o.key === v.draft.setting)?.title ?? p.setting[v.draft.setting];
   return (
-    <div className={bare ? 'dstepcol' : 'dcol'} id="col-decide">
-      {bare ? null : <h3>{c.decide}</h3>}
+    <div className="dstepcol" id="col-decide">
       <div className="dscroll">
         {v.hints.length > 0 ? (
           <Section title={p.likely} id="sec-likely">
