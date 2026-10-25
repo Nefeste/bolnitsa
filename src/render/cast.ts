@@ -56,7 +56,7 @@ export const statureOf = (s: Pick<LookSpec, 'sex' | 'age'>) => STATURE[s.sex][s.
 
 /**
  * Цвет одежды по должности (геймдизайн §13): врачи — белые халаты; медсёстры и хирурги — костюмы своих цветов;
- * лаборанты — белое; рентгенолаборанты — серо-голубое. Линейный RGB, как в материалах Three.js.
+ * лаборанты — белое; рентгенолаборанты — серо-голубое; санитары — серое. Линейный RGB, как в материалах Three.js.
  */
 export const ROLE_COLOR: Record<string, number> = {
   'role.nurse': 0x6fa8d6,
@@ -64,6 +64,8 @@ export const ROLE_COLOR: Record<string, number> = {
   'role.surgeon': 0x3f8f6f,
   'role.anesthetist': 0x4f9f96,
   'role.radiographer': 0x7a93ad,
+  // санитар (spec docs/specs/2026-10-orderlies.md) — в сером, как в геймдизайне (§13)
+  'role.orderly': 0x8c8f93,
 };
 /** Белый халат — врачам и всем, кого нет в ROLE_COLOR. */
 export const COAT = 0xf2f4f4;

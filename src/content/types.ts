@@ -844,6 +844,11 @@ export interface StaffRole {
   /** описывает снимки своего помещения: от навыка — точность (рентгенолог, врач УЗД) */
   reads?: true;
   /**
+   * помещение работает и без него (spec docs/specs/2026-10-orderlies.md: санитар); в кандидатах дня «Анамнеза» его нет —
+   * нанимают на место
+   */
+  optional?: true;
+  /**
    * специалист (spec 2026-10-chapter-4, часть 59): с какими болезнями к нему записываются — своя запись у его кабинета
    * из них, и принимает он только записанных к нему
    */
@@ -942,7 +947,9 @@ export interface Economy {
      * `blur` п. п.; перерыв в ординаторской — `rest` минут, усталость меньше на `relief`; туалет — раз в `toilet` часов (от,
      * до), на `wc` минут. Нет — врачи не устают.
      */
-    fatigue?: { hour: number; case: number; exam: number; night: number; slow: number; slower: number; tired: number; blur: number; rest: number; relief: number; toilet: [number, number]; wc: number };
+    fatigue?: { hour: number; case: number; exam: number; ride: number; night: number; slow: number; slower: number; tired: number; blur: number; rest: number; relief: number; toilet: [number, number]; wc: number };
+    /** каталка (spec 2026-10-orderlies): переложить на каталку и с неё, минут; нет — лежачих не везут, как в «Анамнезе» */
+    gurney?: { load: number; unload: number };
     /** рост, наставник, учёба, болезнь нанятых в смене (spec 2026-10-staff-mood, разделы 3–5); нет — ничего этого нет */
     growth?: { mentor: number; studyDays: number; studyCost: number; studyMood: number; sick: number };
     /** настроение нанятых в смене (spec 2026-10-staff-mood); нет — настроения нет */

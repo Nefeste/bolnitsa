@@ -38,7 +38,8 @@ describe('готовое помещение — образец целиком', 
         const { rect, door, items } = c.draft;
         expect([rect.w, rect.h]).toEqual(dimsOf(z, rot));
         // дверь — на стене образца «внизу», повёрнутой: поворот и есть сторона двери; где лежат — двойная
-        expect(door.length).toBe(rules.gurney ? 2 : Math.min(2, z.door.width));
+        // где лежат и куда везут лежачих на обследование (spec docs/specs/2026-10-orderlies.md, #90) — двойная
+        expect(door.length).toBe(rules.gurney || rules.wheels ? 2 : Math.min(2, z.door.width));
         for (const [x, y] of door) expect(sideOf(rect, x, y)).toBe(rot);
         // все предметы и аппараты образца, ни один не делит клеток с другим
         expect(items.length).toBe(z.objects.length + z.slots.length);

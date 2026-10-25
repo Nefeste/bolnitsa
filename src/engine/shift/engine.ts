@@ -14,7 +14,7 @@ import {
 import { type CampaignProgress, campaignEvening, chapterOf, nextChapterOf, startChapter, tutorialDayOf } from '../campaign/campaign';
 import { build, emptyPlot, type HospitalState, type PlacedRoom, type Plan, planOf, presetHospital, sizeOf, UNDO_DEPTH, widenPlot } from '../hospital/build';
 import { bedsideIn, DOCTOR, doctorRoom, examWhere, NONE_BROKEN, openBlocks, type Problem, problemsOf, slotKey, type Staffing, workingRooms } from '../hospital/requirements';
-import { applicantsOf, doctorOf, dutyOf, grow, memberAt, onDuty, presetStaff, PROFILE_PRIOR, readingOf, type StaffMember, speedOf, staffingOf, wageOf } from '../hospital/staff';
+import { applicantsOf, doctorOf, dutyOf, grow, memberAt, onDuty, ORDERLY, presetStaff, PROFILE_PRIOR, readingOf, type StaffMember, speedOf, staffingOf, wageOf } from '../hospital/staff';
 import { metersBetween, WALK_SPEED, walkSeconds } from '../hospital/walk';
 import { log2 } from '../core/math';
 import { P_ONE, RNG_VERSION, Rng } from '../core/rng';
@@ -31,7 +31,7 @@ import { askMinutes, examSkillWith, mentorOf } from '../career/skills';
 import type { Observation, Patient } from '../med/types';
 import {
   type ClosedCase, type ColleagueDay, type Command, DAY, type Flow, type GoneRow, type DaySummary, type Difficulty, easyLevel, type Notice, type PlannedReturn, REGISTRATION, SHIFT_END, SHIFT_SCHEMA_VERSION,
-  SHIFT_START, type ShiftEvent, type ShiftPatient, type ShiftState, TRIAGE, type Triage, type VisitKind, type WardDay, type AmbulanceDay, type SurgeryDay,
+  SHIFT_START, type ShiftEvent, type ShiftPatient, type ShiftState, TRIAGE, type Triage, type VisitKind, type WardDay, type AmbulanceDay, type SurgeryDay, type Ride,
 } from './types';
 import { type Ask, askFor, askLong } from './consult';
 import { backAt, beginRest, blurredOf, dropCrew, dueOf, restLeft, shiftEnded, slowedOf, startRest, tiredOf, wakeOf, worked } from './crew';
@@ -47,6 +47,7 @@ import { ambulancePerHour, bookedPerHour, type Capacity, walkPerHour } from './i
 import * as meeting from './meeting';
 import { depart, leaversDue, moodMorning } from './mood';
 import { backMorning, growMorning, sickMorning, tenure } from './growth';
+import { book, carriersOf, gurneyOf, lying, planRide, rideHome, ridesUntil } from './gurney';
 
 const MIN = 60;
 const TRIAGE_RANK: Record<Triage, number> = { red: 0, yellow: 1, green: 2 };
@@ -623,6 +624,8 @@ function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       // обследования — его перерывы и туалет (часть 2б)
       scheduleDuty(db, s);
       crewAll(db, s);
+      // каталка (spec docs/specs/2026-10-orderlies.md): наняли санитара или медсестру — лежачие, кого некому было везти
+      retryRides(db, s);
       return out;
     }
     // касса ПК (spec 2026-10-economy): кредит, который банк предложил на планёрке
@@ -892,6 +895,8 @@ function duty(db: ContentDb, s: ShiftState) {
   staffDesks(db, s);
   // часть 2б: пришедшие делать обследования — их перерывы и туалет
   crewAll(db, s);
+  // каталка (spec 2026-10-orderlies): пришли санитары и медсёстры — лежачие, кого некому было везти
+  retryRides(db, s);
 }
 
 /**
@@ -1621,6 +1626,23 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
     return away + cost;
   }
   const after = (e.time.report ?? 0) + (e.time.turnaround ?? 0);
+  if (queued && room && how.wheel) {
+    // лежачий (spec docs/specs/2026-10-orderlies.md): к аппарату везут на каталке, у аппарата ждут его и везут назад
+    const order = ORDER_MINUTES * MIN;
+    const ride = examRide(db, s, ctx, p, room.id, Math.round((e.time.procedure * MIN * roomPct) / 100), s.t + order);
+    if (ride?.exam) {
+      startRide(db, s, ride);
+      const { start, end } = ride.exam;
+      s.rooms[room.id] = end;
+      if (s.flow) meeting.examWait(s, room.id, ride.done, start);
+      addPending(s, p, examId, end + after * MIN, obs, { room: room.id, start, end });
+      p.out = { exam: examId, room: room.id, until: end, back: ride.exam.done };
+      if (s.flow && !p.by) schedule(s, p.out.back, { kind: 'reach', id: p.id });
+      const doer = examDoerOf(db, ctx, room.id);
+      if (doer) worked(db, s, doer, 'exam');
+      return order;
+    }
+  }
   if (queued && room) {
     const order = ORDER_MINUTES * MIN;
     // к аппарату — назначить, и пациент идёт туда сразу (0.5.12): из кабинета или прямо с прошлого обследования
@@ -1761,11 +1783,13 @@ function bookedUntil(s: ShiftState, how: ExamRoom, m: StaffMember): number {
 function examCrew(db: ContentDb, s: ShiftState, m: StaffMember) {
   if (!m.room) return;
   const ctx = hospitalCtx(db, s);
-  const how = examRooms(db).get(ctx.plan.rooms.find(r => r.id === m.room)?.type ?? '');
-  if (!how || examDoerOf(db, ctx, m.room)?.id !== m.id) return;
+  // санитар (spec docs/specs/2026-10-orderlies.md) — как те, кто делает обследования: записаны к нему перевозки
+  const carrier = m.role === ORDERLY && gurneyOf(db, s) !== undefined;
+  const how = carrier ? undefined : examRooms(db).get(ctx.plan.rooms.find(r => r.id === m.room)?.type ?? '');
+  if (!carrier && (!how || examDoerOf(db, ctx, m.room)?.id !== m.id)) return;
   const due = dueOf(db, s, m);
   if (!due) return;
-  const booked = bookedUntil(s, how, m);
+  const booked = how ? bookedUntil(s, how, m) : (ridesUntil(s, m.id) ?? 0);
   const from = Math.max(s.t, booked);
   const go = (kind: 'toilet' | 'rest'): boolean => {
     // к тому часу смена кончится — уйдёт домой
@@ -1798,10 +1822,14 @@ function crewStep(db: ContentDb, s: ShiftState, id: string) {
   examCrew(db, s, m);
 }
 
-/** Для окна (spec 2026-10-staff-shifts, часть 2): кто устаёт и отдыхает — нанятые врачи и те, кто делает обследования, в смене. */
+/**
+ * Для окна (spec 2026-10-staff-shifts, часть 2): кто устаёт и отдыхает — нанятые врачи, те, кто делает обследования, и
+ * санитары (spec docs/specs/2026-10-orderlies.md), в смене.
+ */
 export function crewList(db: ContentDb, s: ShiftState): StaffMember[] {
   const ctx = hospitalCtx(db, s);
-  return [...colleaguesOf(db, s), ...ctx.staff.filter(m => m.room !== undefined && examDoerOf(db, ctx, m.room)?.id === m.id)];
+  const carriers = gurneyOf(db, s) !== undefined;
+  return [...colleaguesOf(db, s), ...ctx.staff.filter(m => m.room !== undefined && (examDoerOf(db, ctx, m.room)?.id === m.id || (carriers && m.role === ORDERLY)))];
 }
 
 /** Все, кто сейчас в смене делает обследования: их перерывы и туалет — с этой минуты (начало игры, пересменка, найм). */
@@ -1821,7 +1849,12 @@ function examSetup(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id) {
   const where = bed ? { rooms: [] } : examWhere(db, ctx.plan, ctx.working, ctx.staffed, examId, brokenOf(s));
   if ('block' in where) return null;
   const queued = !bed && (e.kind === 'imaging' || e.kind === 'functional');
-  const rooms = e.room && !bed ? where.rooms.map(id => ctx.plan.rooms.find(r => r.id === id)!) : [];
+  // лежачий (spec docs/specs/2026-10-orderlies.md, «Как будет», 4): к аппарату — на каталке и только туда, где она
+  // пройдёт, — в помещение с двойной дверью; везти некому — нельзя
+  const wheel = gurneyOf(db, s) !== undefined && lying(p);
+  const all = e.room && !bed ? where.rooms.map(id => ctx.plan.rooms.find(r => r.id === id)!) : [];
+  const rooms = wheel && queued ? all.filter(r => r.door.length >= 2) : all;
+  if (wheel && queued && (rooms.length === 0 || carriersOf(ctx.plan, ctx.staff, p.bay!.room).length === 0)) return null;
   // аппарат — тот, что раньше освободится; в потоке для ПК — где раньше начнут, с дорогой до него (spec 2026-10-walk)
   const room = queued ? (s.flow ? soonest(ctx, s, p, rooms) : rooms.reduce((a, b) => ((s.rooms[b.id] ?? 0) < (s.rooms[a.id] ?? 0) ? b : a))) : rooms[0];
   const broken = brokenOf(s);
@@ -1832,10 +1865,10 @@ function examSetup(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id) {
   const doer = room ? memberAt(ctx.staff, room.id, db.rooms[room.type].staff[0]) : undefined;
   const roomPct = room ? Math.round((eq?.speed ?? 1) * (doer ? slowedOf(db, s, doer, speedOf(db, doer)) : speedOf(db, doer))) : 100;
   // дорога (FR-HOS-4, spec 2026-10-walk-breakdowns): снимок и функциональное — в своём кабинете, материал берут там, где
-  // записано (кровь — в процедурном, тропонин и пункцию — в смотровой приёмного)
-  const to = queued ? room?.id : e.collect && !bed ? collectRoom(ctx, p, e.collect, s.flow !== undefined) : undefined;
+  // записано (кровь — в процедурном, тропонин и пункцию — в смотровой приёмного); у лежачего — у постели
+  const to = queued ? room?.id : e.collect && !bed ? (wheel ? p.bay!.room : collectRoom(ctx, p, e.collect, s.flow !== undefined)) : undefined;
   const walk = to ? walkSeconds(ctx.plan, fromRoom(ctx, p), to, walkSpeed(s)) : 0;
-  return { e, ctx, bed, queued, room, eqId, roomPct, walk, to };
+  return { e, ctx, bed, queued, room, eqId, roomPct, walk, to, wheel };
 }
 
 /**
@@ -1898,6 +1931,9 @@ export function readyIn(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: I
   const away = Math.max(0, (p.out?.back ?? 0) - s.t) / MIN;
   if (bed) return away + bed.time.procedure;
   const after = (e.time.report ?? 0) + (e.time.turnaround ?? 0);
+  // лежачий (spec docs/specs/2026-10-orderlies.md): на каталке — когда кончат у аппарата
+  const ride = queued && room && how.wheel ? examRide(db, s, ctx, p, room.id, Math.round((e.time.procedure * MIN * roomPct) / 100), s.t + ORDER_MINUTES * MIN) : undefined;
+  if (ride?.exam) return (ride.exam.end - s.t) / MIN + after;
   if (queued && room) {
     const go = outFrom(ctx, s, p, room.id, s.t + ORDER_MINUTES * MIN);
     return (Math.max(go.at + go.walk, s.rooms[room.id] ?? 0) - s.t) / MIN + (e.time.procedure * roomPct) / 100 + after;
@@ -1970,7 +2006,9 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase
       for (const key of [t.id, db.targets[t.id]?.series]) if (key) seq[key] = (seq[key] ?? '') + t.grade;
     }
   }
-  if (p.bay) {
+  // каталка (spec docs/specs/2026-10-orderlies.md): кого кладут в стационар, лежит в смотровой, пока его не увезут
+  const keepBay = p.bay !== undefined && gurneyOf(db, s) !== undefined && STAYS.includes(closed.plan.setting);
+  if (p.bay && !keepBay) {
     delete p.bay;
     seatAtDoor(db, s);
   }
@@ -2024,6 +2062,11 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase
     sum.returnsPlanned++;
   }
   if (STAYS.includes(closed.plan.setting)) admit(db, s, p);
+  // положить некуда — место в смотровой свободно
+  if (keepBay && !p.stay && p.bay) {
+    delete p.bay;
+    seatAtDoor(db, s);
+  }
   journey.closed(s, p, wanted, () => ({ ward: [wardBeds(db, s).length, freeBeds(db, s).length], icu: [icuBeds(db, s).length, freeIcuBeds(db, s).length], ricu: [ricuBeds(db, s).length, freeRicuBeds(db, s).length], box: [boxBeds(db, s).length, freeBoxBeds(db, s).length] }));
   // поток для ПК (решение владельца 16.10.2026): приём нанятого врача — сразу строкой журнала, его разбор не досчитывается
   if (s.flow && p.by) evict(s, p);
@@ -2518,13 +2561,27 @@ export function emergencyBays(db: ContentDb, s: ShiftState): Bed[] {
     .flatMap(r => r.beds.map((_, bed) => ({ room: r.id, bed })));
 }
 
-/** Место занято, пока пациента не закрыли: ждёт, у врача или на обследовании. */
-const holdsBay = (p: ShiftPatient) => p.bay !== undefined && (p.status === 'waiting' || p.status === 'inRoom' || p.status === 'away');
+/**
+ * Место занято, пока пациента не закрыли: ждёт, у врача или на обследовании; положили в стационар — пока его не увезли на
+ * каталке (spec docs/specs/2026-10-orderlies.md).
+ */
+const holdsBay = (p: ShiftPatient) => p.bay !== undefined && (p.status === 'waiting' || p.status === 'inRoom' || p.status === 'away' || p.status === 'admitted');
 
-/** Свободные места смотровой. */
+/**
+ * Свободные места смотровой. Медсестра смотровой везёт кого-то на каталке (spec docs/specs/2026-10-orderlies.md: её места
+ * нет) — новых туда не кладут, пока она не вернётся: ждут у входа.
+ */
 export function freeBays(db: ContentDb, s: ShiftState): Bed[] {
   const taken = new Set(Object.values(s.patients).filter(holdsBay).map(p => `${p.bay!.room}:${p.bay!.bed}`));
-  return emergencyBays(db, s).filter(b => !taken.has(`${b.room}:${b.bed}`));
+  const away = s.rides ? awayRooms(db, s) : undefined;
+  return emergencyBays(db, s).filter(b => !taken.has(`${b.room}:${b.bed}`) && !away?.has(b.room));
+}
+
+/** Смотровые, чья медсестра сейчас везёт кого-то на каталке. */
+function awayRooms(db: ContentDb, s: ShiftState): Set<string> {
+  const out = new Set<string>();
+  for (const m of hospitalCtx(db, s).staff) if (m.role === 'role.nurse' && m.room !== undefined && backAt(s, m, s.t) > s.t) out.add(m.room);
+  return out;
 }
 
 /** Привезённые скорой, что ждут у входа: мест в смотровой не было. По времени приезда. */
@@ -2613,6 +2670,12 @@ function admit(db: ContentDb, s: ShiftState, p: ShiftPatient) {
   if (icu && !ricu) day.icu = (day.icu ?? 0) + 1;
   if (ricu) day.ricu = (day.ricu ?? 0) + 1;
   if (box) day.box = (day.box ?? 0) + 1;
+  // каталка (spec docs/specs/2026-10-orderlies.md): привезённого скорой — из смотровой, кого кладут в ПИТ или реанимацию —
+  // от врача; остальные идут сами
+  if (gurneyOf(db, s)) {
+    const from = p.bay?.room ?? (icu ? fromRoom(hospitalCtx(db, s), p) : undefined);
+    if (from) carry(db, s, p, 'bed', from, bed.room);
+  }
   if (op) startOperations(db, s);
 }
 
@@ -2667,9 +2730,15 @@ export function orQueueOf(s: ShiftState): ShiftPatient[] {
     .sort((a, b) => a.stay!.op!.queued - b.stay!.op!.queued || (a.id < b.id ? -1 : 1));
 }
 
-/** Кто сейчас на столе в этой операционной. */
+/**
+ * Кто сейчас на столе в этой операционной. На каталке (spec docs/specs/2026-10-orderlies.md) — с той минуты, как за ним пошли,
+ * и пока его не увезли со стола после операции.
+ */
 export function onTableIn(s: ShiftState, room: string): ShiftPatient | undefined {
-  return inpatientsOf(s).find(p => p.stay!.op?.room === room && !p.stay!.op.done && p.stay!.op.start !== undefined);
+  return inpatientsOf(s).find(p => {
+    const op = p.stay!.op;
+    return op?.room === room && op.start !== undefined && (!op.done || (op.carried === true && (op.off === undefined || op.off > s.t)));
+  });
 }
 
 /** Свободные операционные берут следующих из очереди: операция — `minutes` минут по часам смены. */
@@ -2679,11 +2748,20 @@ function startOperations(db: ContentDb, s: ShiftState) {
     const op = p.stay!.op!;
     const room = orsFor(db, s, op.tx).find(r => !onTableIn(s, r));
     if (!room) continue;
+    // каталка (spec docs/specs/2026-10-orderlies.md): из палаты на стол везут — операция начнётся, когда переложили; везти
+    // некому — ждёт в очереди операционной, стол свободен
+    let start = s.t;
+    if (gurneyOf(db, s)) {
+      const ride = carry(db, s, p, 'op', p.stay!.room, room);
+      if (!ride) continue;
+      start = ride.done;
+      op.carried = true;
+    }
     const surgeon = hospitalCtx(db, s).staff.find(m => m.room === room && m.role === 'role.surgeon');
     op.room = room;
     if (surgeon) op.surgeon = surgeon.id;
-    op.start = s.t;
-    op.end = s.t + db.treatments[op.tx].surgery!.minutes * MIN;
+    op.start = start;
+    op.end = start + db.treatments[op.tx].surgery!.minutes * MIN;
     schedule(s, op.end, { kind: 'opEnd', id: p.id });
   }
 }
@@ -2760,6 +2838,11 @@ function finishOperation(db: ContentDb, s: ShiftState, p: ShiftPatient | undefin
     }
   }
   if (s.economy) ledgerOf(s).expenses.consumables += db.treatments[op.tx].cost;
+  // каталка (spec docs/specs/2026-10-orderlies.md): со стола — назад на свою койку; стол свободен, когда его увезли
+  if (op.carried && op.room) {
+    const ride = carry(db, s, p, 'back', op.room, stay.room);
+    if (ride) op.off = ride.off;
+  }
   startOperations(db, s);
 }
 
@@ -2814,6 +2897,90 @@ function toTable(db: ContentDb, s: ShiftState, p: ShiftPatient | undefined): boo
   const course = wardCourse(db, p.patient, plan, ev, branch(s, `ward:${p.id}:${replans}`), from);
   p.stay = { room: stay.room, bed: stay.bed, since: stay.since, plan, planFrom: from, replans, ...course, op: { tx: op, queued: s.t } };
   return true;
+}
+
+// --- каталка (spec docs/specs/2026-10-orderlies.md) ---------------------------------------------------------------------
+
+/**
+ * Перевозка лежачего на обследование и назад (spec docs/specs/2026-10-orderlies.md, «Как будет», 4): процедура `seconds`
+ * секунд в кабинете `room`, аппарат свободен с часа его очереди; взять его — не раньше `after` и не раньше, чем он вернётся
+ * с другого обследования. Ничего не меняет; везти некому — нет.
+ */
+function examRide(db: ContentDb, s: ShiftState, ctx: HospitalCtx, p: ShiftPatient, room: string, seconds: number, after: number): Ride | undefined {
+  return planRide(db, s, ctx.plan, ctx.staff, p.id, 'exam', p.bay!.room, room, { exam: { seconds, ready: s.rooms[room] ?? 0 }, after: Math.max(after, p.out?.back ?? 0), since: after });
+}
+
+/** Срочный лежачий — кого везут первым, когда некому было везти: красный, в ПИТ или реанимацию. */
+const urgentRide = (p: ShiftPatient): boolean => p.triage === 'red' || p.stay?.plan.setting === 'icu' || p.stay?.plan.setting === 'ricu';
+
+/**
+ * Везти лежачего `p` на каталке из `from` в `to` (`why`): на того, кто раньше будет у него (`planRide`). Записали — его
+ * перевозка (`startRide`); некому — ждёт в `rideWait`, пока кто-то не выйдет на смену или его не наймут, а на операцию —
+ * в очереди операционной. `since` — с какого часа ждёт.
+ */
+function carry(db: ContentDb, s: ShiftState, p: ShiftPatient, why: 'bed' | 'op' | 'back', from: string, to: string, since = s.t): Ride | undefined {
+  const ctx = hospitalCtx(db, s);
+  const ride = planRide(db, s, ctx.plan, ctx.staff, p.id, why, from, to, { since });
+  if (!ride) {
+    if (why !== 'op') (s.rideWait ??= []).push({ id: p.id, why, from, to, since, ...(urgentRide(p) ? { urgent: true as const } : {}) });
+    return undefined;
+  }
+  startRide(db, s, ride);
+  return ride;
+}
+
+/**
+ * Перевозка записана: она за ним, он устал на `ride` очков; события — увезли оттуда, где лежал (из смотровой — место
+ * свободно, со стола — операционная свободна), и вернулся на место. Ждал дольше `gurney`-порога планёрки — в её узкие места.
+ */
+function startRide(db: ContentDb, s: ShiftState, ride: Ride) {
+  book(s, ride);
+  const m = s.staff?.find(x => x.id === ride.by);
+  if (m) worked(db, s, m, 'ride');
+  if (ride.why === 'back' || (ride.why === 'bed' && s.patients[ride.id]?.bay)) schedule(s, ride.off, { kind: 'ride', id: ride.id, at: 'off', by: ride.by });
+  schedule(s, ride.home, { kind: 'ride', id: ride.id, at: 'home', by: ride.by });
+  meeting.gurney(s, ride.since, ride.pick);
+}
+
+/**
+ * Событие перевозки: увезли из смотровой — место свободно, первый ждущий у входа занимает его; увезли со стола —
+ * операционная берёт следующего. Вернулся на место — перевозка кончилась; санитару, может быть, пора отдыхать.
+ */
+function rideStep(db: ContentDb, s: ShiftState, ev: Extract<ShiftEvent, { kind: 'ride' }>) {
+  if (ev.at === 'off') {
+    const p = s.patients[ev.id];
+    if (p?.bay && p.status === 'admitted') {
+      delete p.bay;
+      seatAtDoor(db, s);
+    }
+    startOperations(db, s);
+    return;
+  }
+  rideHome(s, ev.id, ev.by);
+  const m = s.staff?.find(x => x.id === ev.by);
+  if (m && m.role === ORDERLY) examCrew(db, s, m);
+  // медсестра вернулась — в её смотровую снова кладут ждущих у входа
+  if (m && m.role !== ORDERLY) seatAtDoor(db, s);
+}
+
+/**
+ * Пересменка и найм: лежачие, кого некому было везти, — срочные первыми, потом по порядку; везти снова некому — ждут
+ * дальше. Очередь операционной — тоже: на операцию везти было некому.
+ */
+function retryRides(db: ContentDb, s: ShiftState) {
+  if (!gurneyOf(db, s)) return;
+  const wait = s.rideWait;
+  if (wait) {
+    delete s.rideWait;
+    const order = [...wait].sort((a, b) => Number(!!b.urgent) - Number(!!a.urgent) || a.since - b.since);
+    for (const w of order) {
+      const p = s.patients[w.id];
+      if (!p || p.status !== 'admitted') continue;
+      const ride = carry(db, s, p, w.why, w.from, w.to, w.since);
+      if (ride && w.why === 'back' && p.stay?.op) p.stay.op.off = ride.off;
+    }
+  }
+  startOperations(db, s);
 }
 
 /**
@@ -2900,6 +3067,15 @@ function closeStay(db: ContentDb, s: ShiftState, p: ShiftPatient, end: StayEnd, 
   }
   closed.stay = { days, norm, end };
   p.status = 'done';
+  // каталка (spec docs/specs/2026-10-orderlies.md): ушёл, не дождавшись её, — место в смотровой свободно, ждать нечего
+  if (p.bay) {
+    delete p.bay;
+    seatAtDoor(db, s);
+  }
+  if (s.rideWait) {
+    s.rideWait = s.rideWait.filter(w => w.id !== p.id);
+    if (s.rideWait.length === 0) delete s.rideWait;
+  }
   if (s.economy) {
     const chosen = stay.plan.setting === 'surgery' || stay.plan.setting === 'icu' || stay.plan.setting === 'ricu' || stay.plan.setting === 'box' ? stay.plan.setting : 'admit';
     // место — по пришедшим результатам (часть 40): после КТ без крови палата при сотрясении — не ошибка
@@ -3113,6 +3289,8 @@ function handle(db: ContentDb, s: ShiftState, ev: ShiftEvent, notices: Notice[])
       return duty(db, s);
     case 'crew':
       return crewStep(db, s, ev.id);
+    case 'ride':
+      return rideStep(db, s, ev);
     case 'reach': {
       // поток для ПК (spec 2026-10-owner-play-2): ваш пациент дошёл — если он ещё ваш и не ушёл на другое обследование
       const p = s.patients[ev.id];

@@ -5,7 +5,7 @@
 import type { ShiftState } from './types';
 
 /** Номер схемы сохранения. */
-export const SAVE_SCHEMA = 1;
+export const SAVE_SCHEMA = 2;
 
 /** Почему сохранение не открыть: записано более новой версией игры; испорчено или не сохранение вовсе. */
 export type SaveProblem = 'newer' | 'broken';
@@ -19,8 +19,46 @@ export class SaveError extends Error {
   }
 }
 
-/** Шаги миграции: со схемы N на N + 1, над сырым снимком старого формата. Пока ни одного: схема 1 — первая. */
-const STEPS: Record<number, (state: Record<string, unknown>) => Record<string, unknown>> = {};
+/** Человек штата в сыром снимке — сколько нужно миграции. */
+interface RawStaff {
+  id: string;
+  role: string;
+  room?: string;
+  shift?: 'day' | 'night';
+}
+
+/** FNV-1a строки — облик добавленного миграцией человека: тот же снимок — тот же человек. */
+function fnv(x: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < x.length; i++) h = Math.imul(h ^ x.charCodeAt(i), 0x01000193) >>> 0;
+  return h;
+}
+
+/**
+ * 1 → 2, версия 0.17.0 (spec docs/specs/2026-10-orderlies.md, «Санитар»): в больнице ПК со штатом по сменам — санитар в каждой
+ * смотровой приёмного и операционной, по одному в каждую смену, где его там нет (ночная — если в больнице есть ночная смена):
+ * навык 3 и зарплата каталога 0.17.0 — 1 150 ₽, номер — следующий номер найма, облик — из номера.
+ */
+function orderlies(state: Record<string, unknown>): Record<string, unknown> {
+  const rooms = (state.hospital as { site?: { rooms?: { id: string; type: string }[] } } | undefined)?.site?.rooms;
+  const staff = state.staff as RawStaff[] | undefined;
+  if (!state.flow || !rooms || !staff?.some(m => m.shift !== undefined)) return state;
+  const shifts: ('day' | 'night')[] = staff.some(m => m.shift === 'night') ? ['day', 'night'] : ['day'];
+  let n = typeof state.nextStaff === 'number' ? state.nextStaff : 1;
+  const add: Record<string, unknown>[] = [];
+  for (const r of rooms) {
+    if (r.type !== 'room.emergency' && r.type !== 'room.or') continue;
+    for (const shift of shifts) {
+      if (staff.some(m => m.room === r.id && m.role === 'role.orderly' && m.shift === shift)) continue;
+      const id = `s${n++}`;
+      add.push({ id, role: 'role.orderly', sex: fnv(`sex:${id}`) % 2 ? 'f' : 'm', seed: fnv(`orderly:${id}`), skill: 3, salary: 1150, room: r.id, days: 0, shift });
+    }
+  }
+  return add.length > 0 ? { ...state, staff: [...staff, ...add], nextStaff: n } : state;
+}
+
+/** Шаги миграции: со схемы N на N + 1, над сырым снимком старого формата. */
+const STEPS: Record<number, (state: Record<string, unknown>) => Record<string, unknown>> = { 1: orderlies };
 
 /** Снимок схемы `schema` — в нынешний формат: шаги по очереди. Новее нынешней или не снимок — ошибка, ничего не меняется. */
 export function migrate(schema: unknown, state: unknown): ShiftState {

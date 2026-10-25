@@ -179,6 +179,13 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   skill +1); sickness — once per 60 shifts from a seed branch per person and day, the post stays empty, the shift unpaid.
   `StaffMember.away` keeps study and sickness: `onDuty` skips the away, the post stays theirs; the undo merge
   (`mergeStaff`) keeps skill, days and away from the engine. Ready-hospital staff start with staggered tenure (`tenure`).
+- Orderlies and gurneys (`docs/specs/2026-10-orderlies.md`): `shift/gurney.ts` — a ride is booked at once on whoever
+  reaches the patient first (an orderly of the shift; none — the nurse of the room they lie in or the nearest nurse); its
+  times (`go`, `pick`, `off`, `drop`, `done`, `home`, an exam's round trip) are known at booking; nobody to carry — the
+  patient waits in `s.rideWait` until a shift change or a hire. The engine (`carry`, `startRide`, the `ride` event) holds the
+  emergency bay until pickup, starts an operation when the patient is delivered and frees the table when they are taken
+  off (`Operation.carried`, `off`), wheels lying patients to imaging only through a double door. Only with shift staff in
+  the PC flow; the orderly role is `optional` (a room works without it) and never among Anamnez's daily candidates.
 - Saves (`docs/specs/2026-10-saves.md`): `src/engine/shift/migrate.ts` — the save schema number and the migration chain;
   `src/sim/packing.ts` — the file (header, engine snapshot, window view; JSON + gzip), written by the worker;
   `src/app/saves.ts` — slots (`auto-1…3` shifted each morning, `exit`, `manual-<n>`) over a disk: `electron/saves.cjs`

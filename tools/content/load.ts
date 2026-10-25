@@ -1149,6 +1149,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     const out: StaffRole = {
       id: r.id, name: r.name, gen: r.gen, hire: r.hire, salary: r.salary,
       ...(r.stands ? { stands: r.stands } : {}), ...(r.needs ? { needs: r.needs } : {}), ...(r.reads ? { reads: true as const } : {}),
+      ...(r.optional ? { optional: true as const } : {}),
       ...(r.profile ? { profile: [...r.profile] } : {}), ...(r.dat ? { dat: r.dat } : {}),
       // встающий на чужое место работает там же, где та должность
       rooms: Object.keys(rooms).sort().filter(id => rooms[id].staff.includes(r.stands ?? r.id)), texts: r.texts,

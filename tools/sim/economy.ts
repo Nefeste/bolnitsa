@@ -15,20 +15,23 @@
 // и кто ушёл сам, настроение в конце, кто вырос и сколько смен пропущено по болезни; с `--days 14` и больше — критерий: игрок
 // ничего не делает, а за первые две недели уходят сами не больше двух. `--raise` — игрок на каждой планёрке поднимает зарплату
 // тем, кто вырос и кто собирается уйти (как «Поднять зарплату» в строке планёрки): тогда уходят не больше двух за каждые две
-// недели всего срока, а в отчёте — сколько раз поднимали и как выросли зарплаты за сутки.
+// недели всего срока, а в отчёте — сколько раз поднимали и как выросли зарплаты за сутки. Каталка (spec
+// docs/specs/2026-10-orderlies.md): сколько перевозок, сколько лежачие ждали её, сколько раз везла медсестра; `--no-orderly
+// night` — готовая больница без ночных санитаров, `--no-orderly all` — без санитаров вовсе.
 // `--hall N` — сидя или стоя по своему залу не дальше N м (content/hospital/inflow.yaml, `hall`); `--hall 0` — по всей больнице.
 // `--bench N` — скамьи у дверей кабинетов не дальше N шагов (`bench`, spec docs/specs/2026-10-door-benches.md); `--bench 0` — без них.
-//   bun tools/sim/economy.ts [--days 7] [--seeds 1,2,3] [--only clinic,district,city,poly,polyspec] [--hall N] [--bench N] [--raise] [--json]
+//   bun tools/sim/economy.ts [--days 7] [--seeds 1,2,3] [--only clinic,district,city,poly,polyspec] [--hall N] [--bench N] [--raise]
+//                            [--no-orderly night|all] [--json]
 import type { ContentDb, Id } from '../../src/content/types';
 import { expensesOf, incomeOf } from '../../src/engine/economy/economy';
 import { DOOR_PRICE, emptySite, hospitalOf, priceOf, roomPrice, type Site, type SiteCommand } from '../../src/engine/hospital/site';
 import { siteOfPlan } from '../../src/engine/hospital/site-plan';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
-import { nightHospital, presetStaff, salaryOf, withNightShift } from '../../src/engine/hospital/staff';
+import { nightHospital, presetStaff, salaryOf, type StaffMember, withNightShift } from '../../src/engine/hospital/staff';
 import { apply, capacityOf, newFlowShift } from '../../src/engine/shift/engine';
 import { ambulancePerHour, walkPerHour } from '../../src/engine/shift/inflow';
 import { cashNow, startCash } from '../../src/engine/shift/money';
-import type { ShiftState } from '../../src/engine/shift/types';
+import type { Ride, ShiftState } from '../../src/engine/shift/types';
 import { buildDb } from '../content/load';
 
 const arg = (name: string, def: string) => {
@@ -40,6 +43,10 @@ const SEEDS = arg('seeds', '1,2,3').split(',').map(Number);
 const ONLY = arg('only', '').split(',').filter(Boolean);
 const asJson = process.argv.includes('--json');
 const RAISE = process.argv.includes('--raise');
+const NO_ORDERLY = arg('no-orderly', '');
+/** Готовая больница без ночных санитаров или без санитаров вовсе (`--no-orderly`). */
+const orderlies = (staff: StaffMember[]) =>
+  NO_ORDERLY ? staff.filter(m => m.role !== 'role.orderly' || (NO_ORDERLY === 'night' && m.shift !== 'night')) : staff;
 
 const { db, errors } = buildDb();
 if (errors.length) {
@@ -132,6 +139,9 @@ interface DayRow {
   day: number; cash: number; income: number; expenses: number; works: number; rep: number; score?: number;
   arrived: number; ambulance: number; seen: number; left: number; died: number; lying: number; flowWalk: number; flowAmb: number;
   salaries: number;
+  /** скорая: больше всего ждали у входа сразу; каталку ждали дольше порога планёрки — сколько раз и дольше всего, минут */
+  door: number;
+  gurney?: { n: number; wait: number };
 }
 interface Run {
   /** `week` — прибыль за первые 7 суток без стройки: критерий «не окупается за 7 суток» и при `--days` больше 7 */
@@ -146,6 +156,8 @@ interface Run {
   sick: { day: number; role: Id }[];
   /** `--raise`: сколько раз игрок поднял зарплату */
   raised: number;
+  /** каталка (spec docs/specs/2026-10-orderlies.md): перевозки — зачем, сколько ждали (минут), везла ли медсестра */
+  rides: { why: Ride['why']; wait: number; nurse: boolean }[];
   moods: { n: number; low: number; min: number; mean: number; why: Record<string, number> };
 }
 
@@ -154,7 +166,7 @@ function start(name: string, seed: number): ShiftState {
   if (name === 'city') {
     const rec = db.presets['preset.city'];
     const st = siteOfPreset(db, rec);
-    return newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, st), staff: withNightShift(db, st.rooms, presetStaff(db, rec)), flow, economy: { cash: startCash(db, 'preset') } });
+    return newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, st), staff: orderlies(withNightShift(db, st.rooms, presetStaff(db, rec))), flow, economy: { cash: startCash(db, 'preset') } });
   }
   if (name === 'poly' || name === 'polyspec') {
     const p = siteOfPlan(db, db.sites!['site.polyclinic']);
@@ -181,6 +193,8 @@ function run(name: string, seed: number): Run {
   const grew: Run['grew'] = [];
   const sick: Run['sick'] = [];
   let raised = 0;
+  const rides: Run['rides'] = [];
+  const seen = new Set<string>();
   const end = (DAYS * 24 + 8) * 3600;
   while (s.t < end) {
     for (const n of apply(db, s, { kind: 'advance', seconds: 300 })) {
@@ -194,6 +208,13 @@ function run(name: string, seed: number): Run {
       for (const id of ask) if (apply(db, s, { kind: 'site', cmd: { kind: 'raise', id } }).some(x => x.kind === 'site' && x.ok)) raised++;
     }
     minCash = Math.min(minCash, cashNow(s)!);
+    // каталка: новые записанные перевозки
+    for (const r of s.rides ?? []) {
+      const key = `${r.id}:${r.by}:${r.pick}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rides.push({ why: r.why, wait: Math.round((r.pick - r.since) / 60), nurse: s.staff?.find(m => m.id === r.by)?.role !== 'role.orderly' });
+    }
   }
   // настроение в конце: у кого есть смена
   const vs = (s.staff ?? []).filter(m => m.shift !== undefined).map(m => s.moods?.[m.id]?.v ?? db.economy.staff.mood?.start ?? 70);
@@ -210,7 +231,7 @@ function run(name: string, seed: number): Run {
     return {
       day: d.day, cash: e.cash, income: incomeOf(e.ledger), expenses: expensesOf(e.ledger), works: e.ledger.expenses.works ?? 0, rep: e.reputation.to, score: e.reputation.score,
       arrived: d.arrived, ambulance: d.ambulance?.arrived ?? 0, seen: col.reduce((n, c) => n + c.seen, d.seen), left: d.left, died: d.ward?.died ?? 0, lying: d.ward?.lying ?? 0,
-      flowWalk: 0, flowAmb: 0, salaries: e.ledger.expenses.salaries,
+      flowWalk: 0, flowAmb: 0, salaries: e.ledger.expenses.salaries, door: d.load?.door ?? 0, ...(d.load?.gurney ? { gurney: { ...d.load.gurney } } : {}),
     };
   });
   // поток от больницы сейчас — в среднем в сутки при часах по умолчанию
@@ -222,7 +243,7 @@ function run(name: string, seed: number): Run {
   }
   // прибыль — без стройки первых суток: сколько больница зарабатывает, когда построена
   const gain = (list: DayRow[]) => list.reduce((n, d, i) => n + d.income - d.expenses + (i === 0 ? d.works : 0), 0);
-  return { scenario: name, seed, start: first, value, minCash, profit: gain(days), week: gain(days.slice(0, 7)), days, lines, quits, leaves, moods, grew, sick, raised };
+  return { scenario: name, seed, start: first, value, minCash, profit: gain(days), week: gain(days.slice(0, 7)), days, lines, quits, leaves, moods, grew, sick, raised, rides };
 }
 
 const fmt = (n: number) => Math.round(n).toLocaleString('ru-RU');
@@ -253,6 +274,14 @@ if (asJson) {
       const up = r.grew.length ? ` (сутки ${Math.min(...r.grew.map(g => g.day))}–${Math.max(...r.grew.map(g => g.day))})` : '';
       const ill = r.sick.map(x => `${x.role.slice(5)} ${x.day}`).join(', ');
       console.log(`    выросли ${r.grew.length}${up}; смен пропущено по болезни ${r.sick.length}${ill ? ` — ${ill}` : ''}`);
+      if (r.rides.length > 0) {
+        const by = (w: Ride['why']) => r.rides.filter(x => x.why === w).length;
+        const waits = r.rides.map(x => x.wait).sort((a, b) => a - b);
+        const mean = waits.reduce((a, b) => a + b, 0) / waits.length;
+        console.log(
+          `    каталка: перевозок ${r.rides.length} (на койку ${by('bed')}, на операцию ${by('op')}, назад ${by('back')}, на обследование ${by('exam')}), ждали в среднем ${mean.toFixed(1)} мин, 9 из 10 — не дольше ${waits[Math.floor(waits.length * 0.9)]}, дольше всех ${waits[waits.length - 1]}; везла медсестра ${r.rides.filter(x => x.nurse).length}; скорая у входа — до ${Math.max(...r.days.map(d => d.door))} сразу`,
+        );
+      }
       if (RAISE) {
         // зарплаты за сутки: первые и последние семь (или все, если суток меньше)
         const avg = (list: DayRow[]) => list.reduce((n, d) => n + d.salaries, 0) / Math.max(1, list.length);

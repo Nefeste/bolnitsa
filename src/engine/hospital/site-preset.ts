@@ -35,9 +35,11 @@ export function siteOfPreset(db: ContentDb, p: Preset): Site {
     w, h, inside, main: [[hospital.entrance[0], hospital.entrance[1]]], ambulance: [], rooms: shellRooms, decor: hospital.decor.map(d => ({ ...d })),
     next: hospital.next, nextItem: 1, ...(doctorRoom(plan) ? { mine: doctorRoom(plan) } : {}),
   };
-  // одинарная дверь, где лежат, — двойная: соседняя клетка стены, если дверь туда встаёт
+  // одинарная дверь, где лежат и куда везут лежачих (spec docs/specs/2026-10-orderlies.md, #90), — двойная: соседняя клетка
+  // стены, если дверь туда встаёт
   const rooms = shellRooms.map(room => {
-    if (!room.door || room.door.length !== 1 || !rulesOf(db, room.type)?.gurney) return room;
+    const rules = rulesOf(db, room.type);
+    if (!room.door || room.door.length !== 1 || !(rules?.gurney || rules?.wheels)) return room;
     const [x, y] = room.door[0];
     const along: Cell = sideOf(room, x, y) % 2 === 0 ? [1, 0] : [0, 1];
     for (const k of [1, -1]) {

@@ -183,10 +183,11 @@ describe('каталог больницы', () => {
     expect(db.rooms['room.ward'].sizes.map(z => z.beds)).toEqual([2, 4]);
     expect(db.rooms['room.office'].sizes.every(z => z.beds === 0)).toBe(true);
     // смотровая приёмного (часть 27): койки — места для пациентов скорой, одно, два, три
-    expect(db.rooms['room.emergency']).toMatchObject({ emergency: true, beds: false, staff: ['role.nurse'] });
+    // санитар (spec docs/specs/2026-10-orderlies.md) — место есть, помещение работает и без него
+    expect(db.rooms['room.emergency']).toMatchObject({ emergency: true, beds: false, staff: ['role.nurse', 'role.orderly'] });
     expect(db.rooms['room.emergency'].sizes.map(z => z.beds)).toEqual([1, 2, 3]);
     // операционная (часть 28): бригада из трёх, стол и наркозный аппарат — каждый на своём месте
-    expect(db.rooms['room.or']).toMatchObject({ needsEquipment: true, staff: ['role.surgeon', 'role.anesthetist', 'role.or_nurse'] });
+    expect(db.rooms['room.or']).toMatchObject({ needsEquipment: true, staff: ['role.surgeon', 'role.anesthetist', 'role.or_nurse', 'role.orderly'] });
     expect(db.equipment['eq.or_table']).toMatchObject({ slot: 1, exams: [] });
     expect(db.equipment['eq.anesthesia']).toMatchObject({ slot: 0, exams: [] });
     expect(db.treatments['tx.appendectomy'].surgery).toMatchObject({
