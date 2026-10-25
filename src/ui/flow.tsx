@@ -3,6 +3,7 @@
 // панели: читают хранилище и просят игру.
 import type { ReactNode } from 'react';
 import { LONG_WAIT, type Mood, type PatientFilter, type PatientRow, WAIT_BAD, WAIT_OK, type Where } from '../app/flow';
+import { METRICS, METRICS_READY } from '../app/metrics';
 import type { Triage } from '../engine/shift/types';
 import { T } from '../i18n';
 import type { Actions, Hud } from './store';
@@ -175,12 +176,16 @@ export function PathSection({ hud }: { hud: Hud }) {
   );
 }
 
-/** Кнопка «Слои» слева и меню: «Очереди и загрузка» (L) работает, остальные слои геймдизайна §3 — позже. */
+/**
+ * Кнопка «Слои» слева и меню: «Очереди и загрузка» (L) и «Показатели» (M, spec docs/specs/2026-10-metrics-layer.md) работают,
+ * остальные слои геймдизайна §3 — позже.
+ */
 export function Layers({ hud, actions }: P) {
   const soon: (keyof typeof T.flow.layer)[] = ['departments', 'paths', 'comfort', 'problems'];
+  const metric = hud.layers.metric;
   return (
     <>
-      <button type="button" id="layers" className={hud.layers.open || hud.layers.queues ? 'on' : undefined} onClick={actions.toggleLayers} title="L">
+      <button type="button" id="layers" className={hud.layers.open || hud.layers.queues || metric ? 'on' : undefined} onClick={actions.toggleLayers} title="L">
         ▦ {T.flow.layers}
       </button>
       {hud.layers.open ? (
@@ -194,6 +199,24 @@ export function Layers({ hud, actions }: P) {
             </button>
           ))}
           {hud.layers.queues ? <p className="hint">{T.flow.legend(WAIT_OK / 60, WAIT_BAD / 60)}</p> : null}
+          {/* «Показатели»: столбики над помещениями; выручка и прибыль — следующей частью */}
+          <div className="metrics" id="metrics-menu" title={T.metrics.hint}>
+            <b>{T.metrics.title}</b>
+            <div className="row">
+              {METRICS.map(m => {
+                const ready = METRICS_READY.includes(m);
+                return (
+                  <button
+                    key={m} type="button" id={`metric-${m}`} className={metric === m ? 'on' : undefined} disabled={!ready} title={ready ? T.metrics.hint : T.metrics.soon}
+                    onClick={() => actions.setMetric(metric === m ? null : m)}
+                  >
+                    {T.metrics.name[m]}
+                  </button>
+                );
+              })}
+            </div>
+            {metric === 'load' || metric === 'wait' ? <p className="hint">{T.metrics.legend[metric](WAIT_OK / 60, WAIT_BAD / 60)}</p> : null}
+          </div>
         </div>
       ) : null}
     </>

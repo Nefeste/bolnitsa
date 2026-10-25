@@ -522,6 +522,22 @@ export const en: Strings = {
     layerSoon: 'later',
     legend: (a: number, b: number) => `Floor: green — waiting under ${a} min, yellow — ${a}–${b} min, red — ${b} min or longer; wards — by beds taken.`,
   },
+  metrics: {
+    title: 'Metrics',
+    hint: 'M — columns over the rooms',
+    name: { load: 'Load', wait: 'Waiting', revenue: 'Revenue', profit: 'Profit' },
+    soon: 'money by room — in the next part',
+    off: 'Turn off',
+    legend: {
+      load: (a: number, b: number) => `Height — people at the room: waiting and inside; wards — beds taken. Colour — the longest wait: under ${a} min, ${a}–${b}, ${b} or longer.`,
+      wait: (a: number, b: number) => `Height — the longest wait now, up to an hour. Colour: under ${a} min, ${a}–${b}, ${b} or longer.`,
+    },
+    load: (queue: number, busy: boolean) => [queue > 0 ? `${queue} waiting` : '', busy ? 'busy inside' : ''].filter(Boolean).join(' · '),
+    beds: (used: number, all: number) => `beds: ${used} of ${all} taken`,
+    free: 'free',
+    wait: (queue: number, longest: string) => `${queue} waiting, the longest — ${longest}`,
+    noWait: 'nobody is waiting',
+  },
   // режим врача (spec docs/specs/2026-10-doctor-mode.md)
   ...doctorEn,
   // энциклопедия (spec docs/specs/2026-10-encyclopedia.md)

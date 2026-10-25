@@ -49,6 +49,8 @@ import { chipShown, dur, medicLine, moodOf, pathCard, type PatientRow, patientRo
 import { type HintKey, hintOf } from './hints';
 import { DEFAULT_ROLE, firstOffice, type Role, ROLE_SETS, startFor } from './roles';
 import { ScenarioDesk, scenarioTitle } from './scenario';
+import { columnOf, type Metric, METRICS, METRICS_READY } from './metrics';
+import { ColumnLabels } from './collabels';
 import { AutoQuality, type QualityMode, readSettings, type Settings, writeSettings } from './settings';
 import { HoverLabel } from './hover';
 import { Labels } from './labels';
@@ -251,6 +253,10 @@ export class Game {
   private under: { key?: string; room: number } = { room: -1 };
   /** состояние каждого помещения словами — и когда значок над ним скрыт — для подписи под курсором */
   private roomState: string[] = [];
+  /** слой «Показатели» (spec docs/specs/2026-10-metrics-layer.md): строка столбика каждого помещения — для подписи */
+  private metricText: string[] = [];
+  /** числа над столбиками */
+  colLabels!: ColumnLabels;
   /** подсказки первых минут (spec 2026-10-aaa-polish): закрытые игроком; смотрел ли он уже карточку или вкладку */
   private seenHints = new Set<HintKey>();
   private looked = false;
@@ -404,7 +410,11 @@ export class Game {
     const p = this.prefs;
     this.showWalls();
     this.showProjection();
-    store.set({ ready: true, status: '', quality, qualityMode: p.quality, debug: p.debug, speed: this.speed });
+    // слой «Показатели» (spec docs/specs/2026-10-metrics-layer.md): из адреса (`?metric=load` — бенч и снимки) или как в
+    // настройках игрока; выручки и прибыли пока нет — слой выключен
+    const asked = METRICS.find(m => m === new URLSearchParams(location.search).get('metric'));
+    const metric = [asked, p.metric].find((m): m is Metric => !!m && METRICS_READY.includes(m)) ?? null;
+    store.set({ ready: true, status: '', quality, qualityMode: p.quality, debug: p.debug, speed: this.speed, layers: { ...store.get().layers, metric } });
     requestAnimationFrame(this.loop);
   }
 
@@ -444,6 +454,7 @@ export class Game {
       this.stage.scene.add(this.gurneys.group);
       this.labels = new Labels(this.stage);
       this.chips = new Chips(this.stage);
+      this.colLabels = new ColumnLabels(this.stage);
       this.hoverLabel = new HoverLabel();
       this.stage.iconOf = w => this.iconOf(w);
     } else {
@@ -943,6 +954,7 @@ export class Game {
     this.labels.frame();
     this.chips.visible = !this.builder.on;
     this.chips.frame();
+    this.colLabels.frame();
     this.hoverLabel.frame(this.mouse.x, this.mouse.y);
     const c = performance.now();
     this.push(this.frames.sim, b - a);
@@ -1114,6 +1126,20 @@ export class Game {
     this.chips.set(plan.rooms.flatMap((r, i) => (chipShown(chips[i], hud.layers.queues) ? [{ id: r.id, x: r.x + r.w / 2, z: r.y + r.h / 2, chip: chips[i] }] : [])));
     this.stage.tint.group.visible = hud.layers.queues;
     if (hud.layers.queues) this.stage.tint.set(loads.map((l, i) => tintOf(l, this.problems[i] !== undefined)));
+    // слой «Показатели»: столбик помещения по его нагрузке; не работает, нет людей, закрыто или не в смене — плашка, в
+    // подписи — почему (по значку: красный бывает и у долгой очереди — она столбик)
+    const metric = hud.layers.metric;
+    this.stage.columns.show(metric !== null);
+    if (metric) {
+      const cols = loads.map((l, i) => {
+        const c = chips[i];
+        return columnOf(metric, l, c.icon === 'down' || c.icon === 'staff' || c.icon === 'closed' ? (c.long ?? c.text) : undefined);
+      });
+      this.stage.columns.set(cols);
+      this.colLabels.set(cols.map(c => c.short));
+      this.metricText = cols.map(c => c.text);
+    }
+    this.colLabels.visible = metric !== null;
     let patients: PatientRow[] = [];
     let patientsAll = 0;
     if (hud.tab === 'patients') {
@@ -1168,7 +1194,10 @@ export class Game {
     if (!m.inside || m.drag || modal || this.builder.drag) this.under = { room: -1 };
     else {
       const key = this.builder.on ? undefined : this.stage.pickPerson(m.x, m.y, this.crowd);
+      // столбик слоя «Показатели» — его помещение, даже если за ним видна другая клетка пола
+      const col = key || this.builder.on ? -1 : this.stage.pickColumn(m.x, m.y);
       if (key) this.under = { key, room: -1 };
+      else if (col >= 0) this.under = { room: col };
       else {
         const cell = this.stage.pickCell(m.x, m.y, this.layout);
         this.under = { room: cell && cell.room >= 0 ? cell.room : -1 };
@@ -1194,7 +1223,9 @@ export class Game {
       return this.hoverLabel.set(T.card.patient(info.sex, info.age, info.name), what);
     }
     const r = this.layout.plan.rooms[u.room];
-    if (r) return this.hoverLabel.set(named(db.rooms[r.type]?.name, r.type), this.roomState[u.room]);
+    // слой «Показатели» — строка столбика: числа показателя
+    const metric = this.store.get().layers.metric ? this.metricText[u.room] : undefined;
+    if (r) return this.hoverLabel.set(named(db.rooms[r.type]?.name, r.type), metric ?? this.roomState[u.room]);
     this.hoverLabel.set();
   }
 
@@ -1417,6 +1448,14 @@ export class Game {
       this.store.set({ layers: { ...l, queues: !l.queues } });
       this.hud();
     },
+    // слой «Показатели» (spec docs/specs/2026-10-metrics-layer.md): показатель запоминается в настройках игрока
+    setMetric: (m: Metric | null) => {
+      if (m && !METRICS_READY.includes(m)) return;
+      const l = this.store.get().layers;
+      this.store.set({ layers: { ...l, metric: m } });
+      this.remember({ metric: m });
+      this.hud();
+    },
     doctor: a => this.doctor.dispatch(a),
     money: a => this.money.dispatch(a),
     scenario: a => this.scenario.dispatch(a),
@@ -1577,8 +1616,11 @@ export class Game {
         if (yours) this.actions.doctor({ kind: 'open', id: yours });
         else if (key && key !== YOU) this.actions.select(key);
         else {
-          const cell = this.stage.pickCell(e.clientX, e.clientY, this.layout);
-          if (cell && cell.room >= 0) this.selectRoom(cell.room);
+          // щелчок по столбику слоя «Показатели» — карточка его помещения
+          const col = this.stage.pickColumn(e.clientX, e.clientY);
+          const cell = col >= 0 ? undefined : this.stage.pickCell(e.clientX, e.clientY, this.layout);
+          if (col >= 0) this.selectRoom(col);
+          else if (cell && cell.room >= 0) this.selectRoom(cell.room);
           else this.actions.select(undefined);
         }
       }
@@ -1632,6 +1674,12 @@ export class Game {
       else if (k === 'Escape') this.cancel();
       // часть 3: L — слой «Очереди и загрузка», Tab — вкладка «Пациенты» (геймдизайн §12)
       else if (k === 'KeyL') this.actions.toggleQueues();
+      // M — слой «Показатели» по кругу: загрузка, ожидание, выключен (spec docs/specs/2026-10-metrics-layer.md)
+      else if (k === 'KeyM') {
+        const now = this.store.get().layers.metric;
+        const i = now ? METRICS_READY.indexOf(now) : -1;
+        this.actions.setMetric(i + 1 < METRICS_READY.length ? METRICS_READY[i + 1] : null);
+      }
       // решения врачей (spec docs/specs/2026-10-two-ways.md, F3): вкладка открыта — Enter «Согласен» на верхнем, Shift+Enter —
       // его карта; пробел — пауза во всей игре. На кнопке или в списке Enter — их
       else if ((k === 'Enter' || k === 'NumpadEnter') && this.store.get().tab === 'asks') {

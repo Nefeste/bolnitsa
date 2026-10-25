@@ -11,15 +11,17 @@ const memory = () => {
 
 describe('настройки', () => {
   test('по умолчанию — вид владельца: стены вниз, перспектива, качество «авто» (#70)', () => {
-    expect(DEFAULT_SETTINGS).toEqual({ walls: 'down', projection: 'persp', quality: 'auto', debug: false });
+    expect(DEFAULT_SETTINGS).toEqual({ walls: 'down', projection: 'persp', quality: 'auto', debug: false, metric: null });
     expect(parseSettings(null)).toEqual(DEFAULT_SETTINGS);
     expect(readSettings(memory())).toEqual(DEFAULT_SETTINGS);
   });
 
   test('записанное — читается; чужое и испорченное — по умолчанию, поле за полем', () => {
     const store = memory();
-    writeSettings({ walls: 'cut', projection: 'ortho', quality: 'low', debug: true }, store);
-    expect(readSettings(store)).toEqual({ walls: 'cut', projection: 'ortho', quality: 'low', debug: true });
+    writeSettings({ walls: 'cut', projection: 'ortho', quality: 'low', debug: true, metric: 'wait' }, store);
+    expect(readSettings(store)).toEqual({ walls: 'cut', projection: 'ortho', quality: 'low', debug: true, metric: 'wait' });
+    // слой «Показатели» (spec docs/specs/2026-10-metrics-layer.md): чужой показатель — слой выключен
+    expect(parseSettings('{"metric":"fun"}')).toEqual(DEFAULT_SETTINGS);
     expect(parseSettings('{"walls":"glass","projection":"ortho","quality":"ultra"}')).toEqual({ ...DEFAULT_SETTINGS, projection: 'ortho' });
     expect(parseSettings('{oops')).toEqual(DEFAULT_SETTINGS);
     expect(parseSettings('42')).toEqual(DEFAULT_SETTINGS);
