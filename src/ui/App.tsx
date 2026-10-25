@@ -570,7 +570,7 @@ function personLines(info: PersonInfo, names: Names): [string, string][] {
       ...(info.covers ? [[T.card.covers, info.covers.away ? T.card.coversLine(info.covers.who, awayLine(info.covers.away, info.covers.sex)) : info.covers.who] as [string, string]] : []),
       ...(info.coveredBy ? [[T.card.coveredBy, info.coveredBy] as [string, string]] : []),
       ...(info.shift && h ? [[T.card.shift, T.card.shiftLine(info.shift, clock(h[0] * 3600), clock(h[1] * 3600))] as [string, string]] : []),
-      ...(info.pay ? [[T.card.salary, T.card.salaryLine(money(info.pay.now), money(info.pay.market))] as [string, string]] : []),
+      ...(info.pay ? [[T.card.salary, (info.reserve ? T.card.salaryDayLine : T.card.salaryLine)(money(info.pay.now), money(info.pay.market))] as [string, string]] : []),
       ...(info.rest ? [[T.card.doing, restLine(info.rest)] as [string, string]] : []),
       // везёт каталку или свободен у каталки (spec docs/specs/2026-10-orderlies.md, «Что видно»)
       ...(info.ride ? [[T.card.doing, rideLine(info.ride, id => lowerFirst(names.room(id)))] as [string, string]] : []),

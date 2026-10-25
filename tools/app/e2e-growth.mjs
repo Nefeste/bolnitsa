@@ -159,7 +159,8 @@ export async function growthPart({ page, port, out, ok, fail, q, shots }) {
   await page.evaluate(() => window.__game.actions.setTab(null));
 
   // ---------------------------------------------------------------- второй из резерва: карточка и «Уволить»
-  const spare = await page.evaluate(r => window.__game.staff.find(m => m.role === r && m.room === undefined)?.id, role);
+  // свободный из резерва — любой должности: медсестёр из резерва могли уже поставить на места заболевшего и учащегося
+  const spare = await page.evaluate(() => window.__game.staff.find(m => m.room === undefined && !m.away)?.id);
   await page.evaluate(id => window.__game.actions.select(`s:${id}`), spare);
   await page.waitForSelector('#card-dismiss', { timeout: 10000 });
   const spareCard = flat(await page.textContent('#card'));

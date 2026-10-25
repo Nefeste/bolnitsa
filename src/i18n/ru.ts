@@ -363,6 +363,8 @@ export const ru = {
     leavingShort: 'уходит',
     salary: 'Зарплата',
     salaryLine: (rub: string, market: string) => `${rub} за смену · рынок ${market}`,
+    /** в резерве смены нет — платят за сутки (spec docs/specs/2026-10-staff-mood.md, часть 5) */
+    salaryDayLine: (rub: string, market: string) => `${rub} в сутки, и в резерве · рынок ${market}`,
     raise: (from: string, to: string) => `Поднять зарплату: ${from} → ${to}`,
     raiseHint: 'Настроение +10 сразу. Зарплата выше рынка его навыка на 10 % и больше — ещё +3 в сутки.',
     reshift: (to: 'day' | 'night'): string => (to === 'day' ? 'В дневную смену' : 'В ночную смену'),

@@ -330,6 +330,8 @@ export const en: Strings = {
     leavingShort: 'leaving',
     salary: 'Pay',
     salaryLine: (rub: string, market: string) => `${rub} per shift · market ${market}`,
+    /** no shift in the reserve — paid by the day (spec docs/specs/2026-10-staff-mood.md, part 5) */
+    salaryDayLine: (rub: string, market: string) => `${rub} a day, in the reserve too · market ${market}`,
     raise: (from: string, to: string) => `Raise pay: ${from} → ${to}`,
     raiseHint: 'Mood +10 at once. Pay 10% or more above the market for their skill — another +3 a day.',
     reshift: (to: 'day' | 'night') => (to === 'day' ? 'To the day shift' : 'To the night shift'),
