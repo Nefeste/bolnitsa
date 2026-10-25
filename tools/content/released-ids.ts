@@ -27,7 +27,8 @@ const isRow = (x: unknown): x is { id: string } & Record<string, unknown> =>
  * другие записи (факторы риска у болезни, противопоказания у лечения) — не свои id: их правят
  * вместе с записью.
  */
-const NESTED: Record<string, readonly string[]> = { conditions: ['stages'], rooms: ['sizes'], chapters: ['missions', 'letters'] };
+// сценарии ПК (spec docs/specs/2026-10-scenario-1.md): их цели и письма — в ходе кампании, как у глав
+const NESTED: Record<string, readonly string[]> = { conditions: ['stages'], rooms: ['sizes'], chapters: ['missions', 'letters'], scenarios: ['missions', 'letters'] };
 
 /**
  * Таблицы базы из записей с собственным `id` — всё, на что может сослаться сохранение, — и

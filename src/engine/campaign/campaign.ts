@@ -3,7 +3,7 @@
 // смены: ход задания выводится из итогов дней главы и больницы, выполненное запоминается днём,
 // письма приходят по своим поводам — в начале главы, после дня N, при задании, в конце главы.
 // Всё — вечером, при закрытии дня; те же зерно и команды — те же задания и письма (ADR 0004).
-import type { Chapter, ContentDb, DayKind, Id, Mission } from '../../content/types';
+import type { Chapter, ContentDb, DayKind, Id, Letter, LetterWhen, Mission, Scenario } from '../../content/types';
 import { expensesOf, incomeOf } from '../economy/economy';
 import { type HospitalState, planOf } from '../hospital/build';
 import { workingRooms } from '../hospital/requirements';
@@ -31,6 +31,12 @@ export interface CampaignProgress {
    * Отметка вида, как «прочитано» у письма, — движок её не читает (src/state/tips.ts).
    */
   tips?: { shown: Id[]; off?: boolean };
+  /**
+   * Сценарий ПК (spec docs/specs/2026-10-scenario-1.md): сколько заданных больных уже пришло — первые пришедшие сами; какие
+   * подсказки первых минут закрыты крестиком — отметка окна, как «прочитано» у письма: после загрузки они не вернутся.
+   */
+  taught?: number;
+  hints?: string[];
 }
 
 /**
@@ -58,6 +64,15 @@ export interface CampaignView {
 }
 
 export const chapterOf = (db: ContentDb, c: CampaignProgress): Chapter | undefined => db.chapters[c.chapter];
+
+/**
+ * Глава «Анамнеза» или сценарий ПК (spec docs/specs/2026-10-scenario-1.md): цели, письма и заданные больные у них одного
+ * устройства — вечер главы и планёрка сценария считают их одинаково.
+ */
+export const plotOf = (db: ContentDb, c: CampaignProgress): Chapter | Scenario | undefined => db.chapters[c.chapter] ?? db.scenarios?.[c.chapter];
+
+/** Сценарий ПК хода кампании; у главы «Анамнеза» и без кампании — нет. */
+export const scenarioOf = (db: ContentDb, c: CampaignProgress | undefined): Scenario | undefined => (c ? db.scenarios?.[c.chapter] : undefined);
 
 /**
  * День смены с обучением (часть 45б): первый день главы; у главы с помещением обучения — день, когда
@@ -232,13 +247,13 @@ export function missionProgress(db: ContentDb, v: CampaignView, m: Mission): Mis
 }
 
 /** Письма главы, пришедшие по поводу — в тот же день и в порядке записи. */
-function lettersFor(ch: Chapter, fits: (w: Chapter['letters'][number]['when']) => boolean): string[] {
+function lettersFor(ch: { letters: Letter[] }, fits: (w: LetterWhen) => boolean): string[] {
   return ch.letters.filter(l => fits(l.when)).map(l => l.id);
 }
 
-/** Начало главы: письма «в начале» — в день начала. */
+/** Начало главы или сценария ПК: письма «в начале» — в день начала. */
 export function startChapter(db: ContentDb, chapter: Id, since: number): CampaignProgress {
-  const ch = db.chapters[chapter];
+  const ch = db.chapters[chapter] ?? db.scenarios![chapter];
   return { chapter, since, done: {}, letters: lettersFor(ch, w => w === 'start').map(id => ({ id, day: since })) };
 }
 
@@ -249,7 +264,7 @@ export function startChapter(db: ContentDb, chapter: Id, since: number): Campaig
  */
 export function campaignEvening(db: ContentDb, v: CampaignView, day: number): { done: string[]; letters: string[] } {
   const c = v.campaign;
-  const ch = chapterOf(db, c);
+  const ch = plotOf(db, c);
   if (!ch) return { done: [], letters: [] };
   const done = ch.missions.filter(m => c.done[m.id] === undefined && missionProgress(db, v, m).done).map(m => m.id);
   for (const id of done) c.done[id] = day;

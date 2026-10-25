@@ -1060,7 +1060,12 @@ export type Mission = { id: string; main: boolean; text: Text } & (
   | { kind: 'mortality'; days: number; percent: number; lying: number }
 );
 
-export type LetterWhen = 'start' | 'end' | { afterDay: number } | { mission: string };
+/**
+ * Когда приходит письмо: в начале, в конце, после дня N, при задании. Сценарий ПК (spec docs/specs/2026-10-scenario-1.md)
+ * — ещё к состоянию подсказки первых минут (`hint` — ключ из src/app/hints.ts): его замечает окно, движок только хранит,
+ * что письмо пришло.
+ */
+export type LetterWhen = 'start' | 'end' | { afterDay: number } | { mission: string } | { hint: string };
 
 export interface Letter {
   id: string;
@@ -1145,6 +1150,30 @@ export interface Tip {
   text: Text;
   /** о чём подсказка — статьи энциклопедии */
   see: Id[];
+}
+
+/**
+ * Сценарий кампании ПК (spec docs/specs/2026-10-scenario-1.md): своя больница — пустое здание или готовая больница записи
+ * `sites/`, касса, что можно строить, первые больные — заданные, цели и письма. Цели и письма — того же устройства, что у
+ * главы «Анамнеза», и считаются тем же счётом.
+ */
+export interface Scenario {
+  id: Id;
+  order: number;
+  name: Text;
+  /** одна фраза о сценарии — на карточке экрана начала */
+  about: Text;
+  /** с чего начинается: `empty` — пустое здание песочницы, иначе — готовая больница записи `sites/` */
+  start: 'empty' | Id;
+  budget: number;
+  department: Id;
+  build: Id[];
+  tutorial: TutorialPatient[];
+  /** как у главы; у сценария — нет: заданные больные — первые пришедшие сами */
+  tutorialRoom?: Id[];
+  tutorialGap?: number;
+  missions: Mission[];
+  letters: Letter[];
 }
 
 /** Группа достижения в профиле. */
@@ -1424,6 +1453,8 @@ export interface ContentDb {
   money?: Money;
   characters: Record<Id, Character>;
   chapters: Record<Id, Chapter>;
+  /** сценарии кампании ПК (spec docs/specs/2026-10-scenario-1.md); нет (база тестов) — сценариев нет */
+  scenarios?: Record<Id, Scenario>;
   tips: Record<Id, Tip>;
   achievements: Record<Id, Achievement>;
   /** шкалы по витальным: NEWS2 (часть 27) */

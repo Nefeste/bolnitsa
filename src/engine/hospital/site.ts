@@ -538,7 +538,9 @@ export type SiteError =
   /** касса ПК (spec docs/specs/2026-10-economy.md): действие увело бы кассу ниже предела — не хватает `need` ₽ */
   | { kind: 'money'; need: number }
   /** уже уходит сам (spec docs/specs/2026-10-staff-mood.md): поднимать зарплату и переводить поздно */
-  | { kind: 'leaving' };
+  | { kind: 'leaving' }
+  /** сценарий ПК (spec docs/specs/2026-10-scenario-1.md): такого помещения в списке сценария нет */
+  | { kind: 'scenario' };
 
 export type Check = { ok: true; cost: number } | { ok: false; error: SiteError };
 const fail = (error: SiteError): { ok: false; error: SiteError } => ({ ok: false, error });

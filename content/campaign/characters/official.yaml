@@ -1,0 +1,11 @@
+# Управление здравоохранения в сценариях ПК (spec docs/specs/2026-10-scenario-1.md): персонаж игры, не человек; нейтральный
+# сеттинг (#10). Имя — предложение агента на одобрение.
+id: char.official
+name: { ru: "Ян Новак", en: "Jan Novak" }
+short: { ru: "Ян Новак", en: "Jan Novak" }
+sex: m
+age: 51
+portrait: 7311
+role:
+  ru: "Управление здравоохранения"
+  en: "Health department"

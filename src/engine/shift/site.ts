@@ -7,6 +7,7 @@
 // кто-то есть) убирается, когда освободится: проверка — событием очереди `siteFree`, поэтому итог не зависит от того,
 // каким шагом идут часы. Койка лежащего — номер в помещении; после стройки номер переносится на тот же предмет. С кассой
 // (spec docs/specs/2026-10-economy.md) стройка платится из неё сразу и не ниже предела минуса: не хватает — отказ `money`.
+import { scenarioOf } from '../campaign/campaign';
 import { Rng } from '../core/rng';
 import { DOCTOR, standInOf } from '../hospital/requirements';
 import {
@@ -191,6 +192,9 @@ export function siteCommand(db: ContentDb, s: ShiftState, cmd: SiteCommand): Not
     case 'study':
       return study(db, s, cmd.id);
   }
+  // сценарий ПК (spec docs/specs/2026-10-scenario-1.md): строят только помещения из его списка
+  const sc = scenarioOf(db, s.campaign);
+  if (sc && (cmd.kind === 'room' || cmd.kind === 'ready') && !sc.build.includes(cmd.type)) return no(cmd.kind, { kind: 'scenario' });
   const busy = occupied(db, s);
   let later = false;
   let r: Done;

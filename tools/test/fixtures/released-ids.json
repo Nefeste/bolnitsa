@@ -1,5 +1,5 @@
 {
-  "version": "0.17.0",
+  "version": "0.21.1",
   "base": 78,
   "ids": {
     "achievements": [
@@ -113,7 +113,9 @@
       "char.icu_head",
       "char.mentor",
       "char.neurologist",
-      "char.surgeon"
+      "char.official",
+      "char.surgeon",
+      "char.tutor"
     ],
     "conditions": [
       "cond.acs",
@@ -1283,6 +1285,32 @@
       "rule.qsofa",
       "rule.spesi",
       "rule.wells_dvt"
+    ],
+    "scenarios": [
+      "scenario.ambulatory"
+    ],
+    "scenarios.letters": [
+      "scenario.ambulatory/asks",
+      "scenario.ambulatory/budget",
+      "scenario.ambulatory/call",
+      "scenario.ambulatory/door",
+      "scenario.ambulatory/end",
+      "scenario.ambulatory/firstDay",
+      "scenario.ambulatory/furnish",
+      "scenario.ambulatory/hello",
+      "scenario.ambulatory/hire",
+      "scenario.ambulatory/labDone",
+      "scenario.ambulatory/look",
+      "scenario.ambulatory/machine",
+      "scenario.ambulatory/run",
+      "scenario.ambulatory/seenDone"
+    ],
+    "scenarios.missions": [
+      "scenario.ambulatory/antibiotics",
+      "scenario.ambulatory/cash",
+      "scenario.ambulatory/lab",
+      "scenario.ambulatory/noLeft",
+      "scenario.ambulatory/seen"
     ],
     "scores": [
       "score.news2"

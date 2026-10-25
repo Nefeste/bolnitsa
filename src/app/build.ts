@@ -76,6 +76,9 @@ export function whyText(db: ContentDb, site: Site | undefined, e: SiteError): st
     // уже уходит сам (spec docs/specs/2026-10-staff-mood.md)
     case 'leaving':
       return T.site.leaving;
+    // сценарий (spec docs/specs/2026-10-scenario-1.md): помещения нет в его списке
+    case 'scenario':
+      return T.site.scenario;
     case 'mode':
       return T.site.mode;
     // касса (spec docs/specs/2026-10-economy.md): трата увела бы кассу ниже предела минуса

@@ -121,6 +121,7 @@ export const en: Strings = {
     inUse: 'in use',
     busy: 'is seeing a patient',
     leaving: 'is already leaving',
+    scenario: 'not built in this scenario',
     mode: 'building works only in the PC game',
     unknown: 'not possible',
   },

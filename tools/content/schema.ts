@@ -2,6 +2,7 @@
 // Схема исходных записей медицинской базы (YAML в content/, `docs/11-content.md` §4).
 // Строгие объекты: опечатка в имени поля — ошибка сборки, а не молча пропущенное поле.
 import { z } from 'zod';
+import { HINT_KEYS, type HintKey } from '../../src/app/hints';
 import { SYSTEMS } from '../../src/content/types';
 
 export const BANDS = {
@@ -1043,6 +1044,22 @@ const letterSchema = z.strictObject({
   text,
 });
 
+/**
+ * Заданные первые пациенты (обучение с наставником): строкой — пришедший сам; с частью 34б — и привезённый скорой
+ * (`ambulance`), и с заданными скрытыми параметрами.
+ */
+const tutorialSchema = z.array(z.union([
+  z.string().regex(/^cond\.[a-z0-9_]+$/),
+  z.strictObject({
+    condition: z.string().regex(/^cond\.[a-z0-9_]+$/),
+    ambulance: z.literal(true).optional(),
+    params: z.record(z.string(), z.string()).optional(),
+    age: z.tuple([z.number().int().min(0).max(110), z.number().int().min(0).max(110)]).optional(),
+    /** с какими жалобами приходит (часть 60б): из попыток генератора — тот, у кого они есть */
+    complaints: z.array(z.string().regex(/^sym\.[a-z0-9_]+$/)).min(1).optional(),
+  }),
+])).default([]);
+
 /** Глава кампании: больница, бюджет, что можно строить, задания и письма. */
 export const chapterSchema = z.strictObject({
   id: z.string().regex(/^chapter\.[a-z0-9_]+$/),
@@ -1063,17 +1080,7 @@ export const chapterSchema = z.strictObject({
    * первые пациенты главы — заданные болезни (обучение с наставником): строкой — пришедший сам;
    * с часть 34б — и привезённый скорой (`ambulance`), и с заданными скрытыми параметрами
    */
-  tutorial: z.array(z.union([
-    z.string().regex(/^cond\.[a-z0-9_]+$/),
-    z.strictObject({
-      condition: z.string().regex(/^cond\.[a-z0-9_]+$/),
-      ambulance: z.literal(true).optional(),
-      params: z.record(z.string(), z.string()).optional(),
-      age: z.tuple([z.number().int().min(0).max(110), z.number().int().min(0).max(110)]).optional(),
-      /** с какими жалобами приходит (часть 60б): из попыток генератора — тот, у кого они есть */
-      complaints: z.array(z.string().regex(/^sym\.[a-z0-9_]+$/)).min(1).optional(),
-    }),
-  ])).default([]),
+  tutorial: tutorialSchema,
   /**
    * помещение обучения (часть 45б): смена с обучением — первый день главы, когда оно работает; с частью 60б — или
    * несколько: первый день, когда работают все
@@ -1083,6 +1090,38 @@ export const chapterSchema = z.strictObject({
   tutorialGap: z.number().int().min(1).max(240).optional(),
   missions: z.array(missionSchema).min(1),
   letters: z.array(letterSchema).default([]),
+});
+
+/**
+ * Письмо сценария ПК (spec docs/specs/2026-10-scenario-1.md): поводы главы и ещё — к состоянию подсказки первых минут
+ * (ключи — `HINT_KEYS` из src/app/hints.ts): его замечает окно.
+ */
+const scenarioLetterSchema = z.strictObject({
+  id: slug,
+  from: z.string().regex(/^char\.[a-z0-9_]+$/),
+  when: z.union([
+    z.literal('start'), z.literal('end'), z.strictObject({ afterDay: count }), z.strictObject({ mission: slug }),
+    z.strictObject({ hint: z.enum(HINT_KEYS as [HintKey, ...HintKey[]]) }),
+  ]),
+  text,
+});
+
+/**
+ * Сценарий кампании ПК (spec docs/specs/2026-10-scenario-1.md): как глава, но больница — пустое здание песочницы или
+ * готовая больница записи `sites/`; одна фраза для карточки экрана начала.
+ */
+export const scenarioSchema = z.strictObject({
+  id: z.string().regex(/^scenario\.[a-z0-9_]+$/),
+  order: count,
+  name: text,
+  about: text,
+  start: z.union([z.literal('empty'), z.string().regex(/^site\.[a-z0-9_]+$/)]),
+  budget: int,
+  department: z.string().regex(/^dept\.[a-z0-9_]+$/),
+  build: z.array(roomId).min(1),
+  tutorial: tutorialSchema,
+  missions: z.array(missionSchema).min(1),
+  letters: z.array(scenarioLetterSchema).default([]),
 });
 
 /**
@@ -1306,6 +1345,7 @@ export type InflowSrc = z.infer<typeof inflowSchema>;
 export type MoneySrc = z.infer<typeof moneySchema>;
 export type CharacterSrc = z.infer<typeof characterSchema>;
 export type ChapterSrc = z.infer<typeof chapterSchema>;
+export type ScenarioSrc = z.infer<typeof scenarioSchema>;
 export type TipSrc = z.infer<typeof tipSchema>;
 export type AchievementSrc = z.infer<typeof achievementSchema>;
 export type ScoreSrc = z.infer<typeof scoreSchema>;

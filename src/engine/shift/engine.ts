@@ -11,7 +11,7 @@ import {
   caseIncome, consumablesOf, emptyLedger, expensesOf, flowOf, incomeOf, interestOf, type Ledger, levelOf, payerOf, reputationAfter, salariesOf, upkeepOf,
   type WardClose, wardIncome,
 } from '../economy/economy';
-import { type CampaignProgress, campaignEvening, chapterOf, nextChapterOf, startChapter, tutorialDayOf } from '../campaign/campaign';
+import { type CampaignProgress, campaignEvening, chapterOf, nextChapterOf, plotOf, scenarioOf, startChapter, tutorialDayOf } from '../campaign/campaign';
 import { build, emptyPlot, type HospitalState, type PlacedRoom, type Plan, planOf, presetHospital, sizeOf, UNDO_DEPTH, widenPlot } from '../hospital/build';
 import { bedsideIn, DOCTOR, doctorRoom, examWhere, NONE_BROKEN, openBlocks, type Problem, problemsOf, slotKey, type Staffing, workingRooms } from '../hospital/requirements';
 import { applicantsOf, doctorOf, dutyOf, grow, memberAt, onDuty, ORDERLY, presetStaff, PROFILE_PRIOR, readingOf, type StaffMember, speedOf, staffingOf, wageOf } from '../hospital/staff';
@@ -20,7 +20,7 @@ import { log2 } from '../core/math';
 import { P_ONE, RNG_VERSION, Rng } from '../core/rng';
 import { examHarmOutcome, observe, type Outcome, rscOutcome } from '../med/course';
 import { complaintObservations, type ExamSkill, examFits, NORMAL_SKILL, runExam } from '../med/exams';
-import { freezeClock, generatePatient, patientAt, typicalPatient } from '../med/generate';
+import { freezeClock, type GenContext, generatePatient, patientAt, typicalPatient } from '../med/generate';
 import { type Belief, contextOf, likelyParams, posterior } from '../med/infer';
 import { scaleTriage } from '../med/news2';
 import { alsoSettings, choiceFor, evaluatePlan, primaryOf, recommendedSetting, selfLimits, settingFit, settingRoomsOf, STAYS, surgeriesOf, treatable, txAvailable, type Venue, verdictOf, whenHolds } from '../med/plan';
@@ -238,15 +238,23 @@ export function newSingle(
  */
 export function newFlowShift(
   db: ContentDb,
-  opts: { seed: number; season: Season; difficulty?: Difficulty; hospital: HospitalState; staff: StaffMember[]; flow: Flow; economy?: { cash: number } } & Variety,
+  opts: { seed: number; season: Season; difficulty?: Difficulty; hospital: HospitalState; staff: StaffMember[]; flow: Flow; economy?: { cash: number }; scenario?: Id } & Variety,
 ): ShiftState {
   // рост (spec 2026-10-staff-mood, раздел 3): у людей со сменой — разный стаж, растут не в одно утро
   const s = singleBase(db, { ...opts, staff: tenure(db, opts.seed, opts.staff), venue: SANDBOX_VENUE });
   s.flow = { ...opts.flow };
   // часы приёма — только верные (spec 2026-10-day): иначе — базы
   if (s.flow.hours && !validHours(s.flow.hours[0], s.flow.hours[1])) delete s.flow.hours;
+  // сценарий ПК (spec 2026-10-scenario-1): ход — как у главы «Анамнеза», дни сценария — с первых суток; отделение и касса —
+  // его. Больницу — пустое здание или готовую — строит окно, как у песочницы
+  const sc = opts.scenario ? db.scenarios?.[opts.scenario] : undefined;
+  if (sc) {
+    s.meta.department = sc.department;
+    s.campaign = startChapter(db, sc.id, s.day - 1);
+  }
   // касса (spec 2026-10-economy): с ней — плательщики, оплата случаев, расходы и репутация «Анамнеза»; до плана суток
-  if (opts.economy) s.economy = openEconomy(db, opts.economy.cash, s.t);
+  const cash = sc ? sc.budget : opts.economy?.cash;
+  if (cash !== undefined) s.economy = openEconomy(db, cash, s.t);
   planDay(db, s);
   // усталость (spec 2026-10-staff-shifts, часть 2): у врачей в смене перерывы и туалет — с первой минуты, даже если звать
   // ещё некого
@@ -628,6 +636,10 @@ function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
     case 'nextChapter':
       nextChapter(db, s);
       return [];
+    // сценарий ПК (spec 2026-10-scenario-1): отметка окна — письмо к подсказке, прочитано, «Без обучения»
+    case 'mark':
+      mark(db, s, cmd);
+      return [];
     // стройка ПК (spec 2026-10-build): в любой момент, пока идут часы
     case 'site': {
       // касса ПК (spec 2026-10-economy): зарплаты и содержание — по эту минуту; больница стала другой — и поток от неё
@@ -706,7 +718,7 @@ function building(db: ContentDb, s: ShiftState, cmd: Extract<Command, { kind: 'b
     return;
   }
   // в главе кампании строят только то, что глава разрешает
-  if (s.campaign && cmd.cmd.kind === 'room' && !chapterOf(db, s.campaign)?.build.includes(cmd.cmd.type)) return;
+  if (s.campaign && cmd.cmd.kind === 'room' && !plotOf(db, s.campaign)?.build.includes(cmd.cmd.type)) return;
   const r = build(db, { hospital: s.hospital, cash: s.economy.cash }, cmd.cmd);
   if (!r.ok) return;
   s.undo = [...(s.undo ?? []), { hospital: s.hospital, cash: s.economy.cash }].slice(-UNDO_DEPTH);
@@ -971,10 +983,13 @@ function flowArrive(db: ContentDb, s: ShiftState, ev: Extract<ShiftEvent, { kind
   const kind: VisitKind = ev.stream === 'amb' || as?.arrival === 'ambulance' ? 'ambulance' : ev.stream === 'ret' ? 'return' : ev.stream === 'book' ? 'appointment' : 'walkIn';
   const key = ev.stream === 'ret' ? `return:${ev.of}` : ev.stream === 'book' ? `flow:book:${ev.to}:${ev.n}` : `flow:${ev.stream}:${ev.n}`;
   const id = ev.stream === 'ret' ? `${d}-r${ev.of}` : ev.stream === 'book' ? `${bookPrefix(d, ev.to!)}${String(ev.n).padStart(3, '0')}` : `${d}-${ev.stream === 'amb' ? 'a' : 'w'}${String(ev.n).padStart(4, '0')}`;
+  // сценарий ПК (spec 2026-10-scenario-1): первые пришедшие сами — заданные сценарием, по порядку
+  const teach = ev.stream === 'walk' ? tutorialNext(db, s) : undefined;
   // записанный к специалисту болен болезнью его профиля, которую больница принимает (как запись «Анамнеза», часть 59)
   const patient = ret ? returningPatient(db, s, ret)
     : ev.stream === 'amb' ? ambulancePatient(db, s, d, key, admits, varied)
-      : generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${key}`), { ...gen, walkIn: true, ...(to ? { only: profileHere(db, to, admits) } : {}) });
+      : teach ? taughtPatient(db, s, d, key, teach, gen)
+        : generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${key}`), { ...gen, walkIn: true, ...(to ? { only: profileHere(db, to, admits) } : {}) });
   const own = ret ? [...new Set([...(s.patients[ret.of]?.departments ?? []), ...admits])] : admits;
   s.patients[id] = {
     id, patient, arriveT: s.t, kind, triage: 'green', status: 'coming', queuedT: 0, wait: 0, patience: 0,
@@ -982,9 +997,11 @@ function flowArrive(db: ContentDb, s: ShiftState, ev: Extract<ShiftEvent, { kind
     ...(ret ? { returnOf: ret.of, returnReason: ret.reason } : {}),
     ...(ret && s.patients[ret.of]?.closed?.stay?.end === 'early' ? { afterEarly: true as const } : {}),
     ...(to ? { to: to.id } : {}),
+    ...(teach ? { taught: true as const } : {}),
     ...(own.length > 1 ? { departments: own } : {}),
     ...(s.economy ? { payer: kind === 'ambulance' ? 'oms' : payerOf(db, s.meta.seed, id, s.economy.reputation ?? db.economy.reputation.start) } : {}),
   };
+  if (teach) s.campaign!.taught = (s.campaign!.taught ?? 0) + 1;
   if (ev.stream !== 'ret') scheduleFlow(db, s, ev.stream, ev.n + 1, s.t, ev.to);
   arrive(db, s, s.patients[id], notices);
   // путь пациента (spec 2026-10-flow-ui): стоит ли и почему — решил приход (spec 2026-10-own-hall); сел ли на скамейку у
@@ -992,6 +1009,68 @@ function flowArrive(db: ContentDb, s: ShiftState, ev: Extract<ShiftEvent, { kind
   const stood = s.patients[id].stands;
   const sat = s.patients[id].bench !== undefined ? { bench: true as const } : {};
   journey.arrived(s, s.patients[id], () => colleaguesOf(db, s).filter((m, _, list) => colleagueTakes(db, s, s.patients[id], m, list)).length, () => forPlayer(db, s, s.patients[id]), stood === 'far' ? { far: db.inflow?.hall ?? 0, ...sat } : stood === 'full' ? { full: true, ...sat } : {});
+}
+
+/**
+ * Следующий заданный больной сценария ПК (spec 2026-10-scenario-1): пока не пришли все из списка и работает ваш кабинет.
+ * Нанятые врачи заданных не берут (`taught`) — без вашего кабинета их некому принять: приходят обычные, а заданные ждут его.
+ */
+function tutorialNext(db: ContentDb, s: ShiftState): TutorialPatient | undefined {
+  const sc = scenarioOf(db, s.campaign);
+  const k = s.campaign?.taught ?? 0;
+  if (!sc || k >= sc.tutorial.length) return undefined;
+  const ctx = hospitalCtx(db, s);
+  const mine = doctorRoom(ctx.plan);
+  return mine !== undefined && ctx.working.has(mine) ? sc.tutorial[k] : undefined;
+}
+
+/**
+ * Заданный больной: болезнь — из записи, человек — типичный для неё, как у главы «Анамнеза» (`planDay`), из зерна
+ * пришедшего на его месте.
+ */
+function taughtPatient(db: ContentDb, s: ShiftState, d: number, key: string, teach: TutorialPatient, gen: GenContext) {
+  return typicalPatient(
+    db, n => fnv1a(`${s.meta.seed}:${d}:${key}${n ? `:${n}` : ''}`), { ...gen, primary: teach.condition, ...(teach.params ? { params: teach.params } : {}) }, TUTORIAL_TRIES, teach.age,
+    p => treatable(db, p) && (teach.complaints ?? []).every(f => p.complaints.includes(f)),
+  );
+}
+
+/**
+ * Отметка окна в сценарии ПК (spec 2026-10-scenario-1): ход сценария хранит её сам — после загрузки письмо не придёт второй
+ * раз, закрытая подсказка не вернётся. Письмо к состоянию подсказки — одно на состояние, раз и не при «Без обучения»; вне
+ * сценария — ничего.
+ */
+function mark(db: ContentDb, s: ShiftState, cmd: Extract<Command, { kind: 'mark' }>) {
+  const c = s.campaign;
+  const sc = scenarioOf(db, c);
+  if (!c || !sc) return;
+  if (cmd.what === 'off') {
+    const tips = (c.tips ??= { shown: [] });
+    if (cmd.on) tips.off = true;
+    else delete tips.off;
+    return;
+  }
+  const id = cmd.id;
+  switch (cmd.what) {
+    case 'hint': {
+      const l = sc.letters.find(x => typeof x.when === 'object' && 'hint' in x.when && x.when.hint === id);
+      if (l && !c.tips?.off && !c.letters.some(x => x.id === l.id)) c.letters.push({ id: l.id, day: s.day });
+      return;
+    }
+    case 'closed':
+      if (!(c.hints ??= []).includes(id)) c.hints.push(id);
+      return;
+    case 'read': {
+      const l = c.letters.find(x => x.id === id);
+      if (l) l.read = true;
+      return;
+    }
+    case 'tip': {
+      const tips = (c.tips ??= { shown: [] });
+      if (!tips.shown.includes(id)) tips.shown.push(id);
+      return;
+    }
+  }
 }
 
 /**
@@ -1209,6 +1288,9 @@ function morning(db: ContentDb, s: ShiftState, notices: Notice[]) {
   meeting.closeLoad(s, wardBeds(db, s).length + icuBeds(db, s).length + ricuBeds(db, s).length + boxBeds(db, s).length);
   const summary: DaySummary = { ...s.summary, grades: { ...s.summary.grades } };
   s.history.push(summary);
+  // сценарий ПК (spec 2026-10-scenario-1): цели и письма по поводам — по закрытым суткам, тем же счётом, что вечер главы
+  // «Анамнеза»; что выполнено и что пришло — в итог суток, на планёрку
+  if (s.campaign) summary.campaign = campaignEvening(db, { campaign: s.campaign, history: s.history, hospital: s.hospital, staff: s.staff }, s.day);
   // утро — следующие сутки, без остановки
   s.day++;
   if (s.economy) s.economy.ledger = emptyLedger();
