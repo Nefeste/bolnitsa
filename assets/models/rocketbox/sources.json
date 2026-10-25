@@ -1,0 +1,67 @@
+{
+ "commit": "0943055db6ec570bcef9f2c8b41c9e5467c808f9",
+ "files": {
+  "LICENSE.md": "17474e386e0b9e1a700cc3d06b2b0882a2c376d9c6b49c7f8274409b8f8d2352",
+  "Assets/Animations/all_animations_max_motextr_static/m_idle_breathe_01.max.fbx": "281735704260d96e882d13e3c77d0ede00ed5d2e40805cd305000b3e5cbb1090",
+  "Assets/Animations/all_animations_max_motextr_static/f_idle_breathe_01.max.fbx": "e470ba984484149c8269772b7640b754bd996ba83b23ae75535128412997aa45",
+  "Assets/Animations/all_animations_max_motextr_xy/m_walk_neutral.max.fbx": "93089851a370e3a117a6bd04c002815f7133fce41c6271e9eb448ca1228b154f",
+  "Assets/Animations/all_animations_max_motextr_xy/f_walk_neutral.max.fbx": "e210c9e34949a4eacad0a85021d4d1a59aab177ca1737e6038309896147ebae2",
+  "Assets/Animations/all_animations_max_motextr_xy/m_run_neutral.max.fbx": "2f5647b86022ddbb702819ce939c7012e3636796fff93d1b979ea716a71dff5f",
+  "Assets/Animations/all_animations_max_motextr_xy/f_run_neutral.max.fbx": "3665a15cc1fea263ffb642b22e0a12c7d3bc771fead869f8fec3959fbd584eeb",
+  "Assets/Animations/all_animations_max_motextr_xyz/m_sit_down_chair_01.max.fbx": "2dbfccc5febc8d37ff9d1593f75253cbd8d5393c6a448695184755535491e4cf",
+  "Assets/Animations/all_animations_max_motextr_xyz/f_sit_down_chair_01.max.fbx": "6ef5c1d78ed9050e722795cb2edca96e9551647a47729cab1d84a4c8383a3ed5",
+  "Assets/Animations/all_animations_max_motextr_xyz/m_sit_stand_up_chair_01.max.fbx": "69439ca9df8e330af75e82bd1b4e64e5e6858d3de0761515e67bad649a9989ac",
+  "Assets/Animations/all_animations_max_motextr_xyz/f_sit_stand_up_chair_01.max.fbx": "c9e35246ca52ddf85c6a6d9d1da2f064eb0d7089393d3d92667eff6c1da23a20",
+  "Assets/Avatars/Professions/Medical_Male_03/Export/Medical_Male_03.fbx": "097cc7866954595ad3243d7ff060e7a4b68ac0f91232a4f19ad3b9e0041f2d17",
+  "Assets/Avatars/Professions/Medical_Male_03/Textures/m153_body_color.tga": "0684fadbe2eae7f98a2dae333b495cc3321174c0c1e618523eef071b24efeb44",
+  "Assets/Avatars/Professions/Medical_Male_03/Textures/m153_head_color.tga": "5fef414d2953b8b696fe065364089c695d8a3ef3ae2b55edd29afbc7992b4ce3",
+  "Assets/Avatars/Professions/Medical_Male_03/Textures/m153_stetoskop_color.tga": "d480d0e5da84ee1a2f5824d74078011eac9feaf37621cacf8e77f9631e1c63e7",
+  "Assets/Avatars/Professions/Medical_Female_02/Export/Medical_Female_02.fbx": "ae96dd938340349bc643023b5838767f95f7cf63b026ecc3e5348fef00859115",
+  "Assets/Avatars/Professions/Medical_Female_02/Textures/f153_body_color.tga": "9731d55e2bcf431edfa48d655b8d77a85fec4660ef227caaeb5115a8c73574aa",
+  "Assets/Avatars/Professions/Medical_Female_02/Textures/f153_head_color.tga": "b4bd5494901c7a8cbc1c4df2083fed3091e8d00b57641ebfdd84a7951f623bc8",
+  "Assets/Avatars/Professions/Medical_Female_02/Textures/f153_opacity_color.tga": "d6bb4ddde05c1dcddd829db99e0f0ef4416d05cdb94e1e6770779724aa3f696f",
+  "Assets/Avatars/Professions/Medical_Female_02/Textures/f153_stetoskop_color.tga": "d480d0e5da84ee1a2f5824d74078011eac9feaf37621cacf8e77f9631e1c63e7",
+  "Assets/Avatars/Professions/Medical_Female_01/Export/Medical_Female_01.fbx": "e5aeed027bfc6da910fcc4fc5c3eaabc8881541c60673b9466e908f9513e9618",
+  "Assets/Avatars/Professions/Medical_Female_01/Textures/f152_body_color.tga": "4a77f4d66a566c535da9c6d10e79057e1a8dab30ff27c88f8613328ef6c323d8",
+  "Assets/Avatars/Professions/Medical_Female_01/Textures/f152_head_color.tga": "8dd641084b5d856eb38d801c97ebd69d601efdc9a9720ba7f6bd556ddd03d0cc",
+  "Assets/Avatars/Professions/Medical_Female_01/Textures/f152_opacity_color.tga": "07d5e246c49b95a15c336e4135d1d9a5cebfe2e3cb68b6041346ddf8c61b12f0",
+  "Assets/Avatars/Professions/Medical_Male_04/Export/Medical_Male_04.fbx": "5f7cd19833e24039bdf313d3534579b366b5ad5e7288627ebf579edf953a0a85",
+  "Assets/Avatars/Professions/Medical_Male_04/Textures/m162_body_color.tga": "e4c94f19f7f9ca05485f1786c92871e4eddb30633ab01c38b282194dd435572c",
+  "Assets/Avatars/Professions/Medical_Male_04/Textures/m162_head_color.tga": "35f616c20e0b809605c9d63457e60af25e60e901bc19f2326d21cbc74d04904a",
+  "Assets/Avatars/Professions/Medical_Male_04/Textures/m162_protection_color.tga": "32590d1f0de6155e936b189fd3ade5daa8cb1cdec8f9e5bb0f2be10222d1e1ba",
+  "Assets/Avatars/Adults/Male_Adult_08/Export/Male_Adult_08.fbx": "e0d979315a5f11050945522f9f084932807af2edeefbdb380a2c9aa36c9f9bb3",
+  "Assets/Avatars/Adults/Male_Adult_08/Textures/m014_body_color.tga": "9b6cef05b86497ffca6f131842950341302fa170e5ce3de1c2446501be774b91",
+  "Assets/Avatars/Adults/Male_Adult_08/Textures/m014_head_color.tga": "5d3723b8d6f6175b26adb1f2d46ade55b19630c2cee1bd2e43dbd293c6fa7d38",
+  "Assets/Avatars/Adults/Male_Adult_08/Textures/m014_opacity_color.tga": "282684b09dd7e3b7b521387240855773f419a90c67ba58ff9ad478a7ec01cc93",
+  "Assets/Avatars/Adults/Female_Adult_09/Export/Female_Adult_09.fbx": "a578ec65cabf169d7b13c0bb0a6c472e898857e81f6207b2af7f846d8b0d8523",
+  "Assets/Avatars/Adults/Female_Adult_09/Textures/f009_body_color.tga": "7e2a7688798489cb2a124947c581c1f5c0cd62b36303d5cee1d9b0baf320724b",
+  "Assets/Avatars/Adults/Female_Adult_09/Textures/f009_head_color.tga": "b311e6f30a9b587d62e4fd301354b24ea7f58a6cdf2c39abb73d46d9d40e799a",
+  "Assets/Avatars/Adults/Female_Adult_09/Textures/f009_opacity_color.tga": "868688524e4427758e716da5cc9bc3a6c6b35cf640e4fbe81c99618a750babf4"
+ },
+ "looks": {
+  "Medical_Male_03": {
+   "glb": "557b1e220dc936988d4efaf6034b7a61ada302dbf890eb52a097f053adea79d4",
+   "mask": "eda63cc84cb391decd38f2c01f6b98cb9215b7f3e4d9fc39cdab973d41430019"
+  },
+  "Medical_Female_02": {
+   "glb": "04117ba4a6863a7fb33188b1ce63329ff89c9f40b7476ef5febe2e415cbaddc8",
+   "mask": "2b034ff97efde391cb7e2df2638f9e30cda20aadae0af0900ea1e8659c0b1800"
+  },
+  "Medical_Female_01": {
+   "glb": "ccf5c91f82ac8297d89f26879e403708532d6324f20aa14390b7c18042425bf4",
+   "mask": "3f836005ced81de968d8aa7b0d3e2c44030641a3951ed29546b1e43818a5b275"
+  },
+  "Medical_Male_04": {
+   "glb": "38a9ffc153061b34be959875ab3563cca857a38a49db9c55984cf6f65b97dd74",
+   "mask": "dd6d48227549c4a13015f6c0529ea044cb0ff1009b3226987fe1e6f7f2e0c301"
+  },
+  "Male_Adult_08": {
+   "glb": "ef35fd58b92d8a55d6fae1a7923e07137dbb0ddccf0e973944c993873b268dd6",
+   "mask": "0274d6abe0b5dd3aaaf1f82f0b1bef60dbcf1f2ac98024fe64debd0d022ca109"
+  },
+  "Female_Adult_09": {
+   "glb": "19cff336de32fa605b5b290a1df13b10a408da56290c548784d897af4aa94b76",
+   "mask": "9b6e412a848f0463a267fa68087e98890dafca8fdfc1bb2ccdceb1c2384b7dcf"
+  }
+ }
+}

@@ -27,6 +27,11 @@ export interface LookSpec {
   /** материалы одежды, которые красятся цветом экземпляра */
   tint: string[];
   proportions: 'cartoon' | 'normal';
+  /**
+   * должности, которым вид — свой (Rocketbox: хирург — в зелёном костюме с шапочкой, медсестра — в костюме); у таких видов
+   * одежда красится по маске атласа. Нет — вид годится любой должности своего назначения
+   */
+  roles?: string[];
 }
 
 const L = (name: string, sex: 'm' | 'f', age: 'adult' | 'old', use: Use, tint: string[]): LookSpec => ({ name, sex, age, use, tint, proportions: 'cartoon' });
@@ -49,7 +54,24 @@ export const LOOKS: LookSpec[] = [
   L('OldClassy_Female', 'f', 'old', 'patient', ['Shirt']),
 ];
 
-export const lookSpec = (name: string): LookSpec | undefined => LOOKS.find(l => l.name === name);
+/**
+ * Люди Rocketbox (spec docs/specs/2026-10-people.md, часть 1 — за ключом адреса `?people=rb`; tools/app/people.mjs): врачи
+ * в халатах — любая должность персонала; медсестра — сёстры, санитары и операционная, костюм в цвете должности; хирург —
+ * операционная, у мужчин и сёстры. Регистраторов в части 1 нет — их место занимают врачи.
+ */
+const R = (name: string, sex: 'm' | 'f', use: Use, roles?: string[]): LookSpec => ({ name, sex, age: 'adult', use, tint: [], proportions: 'normal', ...(roles ? { roles } : {}) });
+const NURSES = ['role.nurse', 'role.or_nurse', 'role.orderly'];
+const OR = ['role.surgeon', 'role.anesthetist'];
+export const RB_LOOKS: LookSpec[] = [
+  R('Medical_Male_03', 'm', 'staff'),
+  R('Medical_Female_02', 'f', 'staff'),
+  R('Medical_Female_01', 'f', 'staff', [...NURSES, ...OR]),
+  R('Medical_Male_04', 'm', 'staff', [...NURSES, ...OR]),
+  R('Male_Adult_08', 'm', 'patient'),
+  R('Female_Adult_09', 'f', 'patient'),
+];
+
+export const lookSpec = (name: string): LookSpec | undefined => LOOKS.find(l => l.name === name) ?? RB_LOOKS.find(l => l.name === name);
 
 /** Рост вида по таблице. */
 export const statureOf = (s: Pick<LookSpec, 'sex' | 'age'>) => STATURE[s.sex][s.age];

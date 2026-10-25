@@ -7,6 +7,9 @@
 // одной текстуре float. Вершинный шейдер (people.ts) смешивает кадры A и B. Чистый Three.js без DOM: то же запекание
 // проверяют тесты в Bun (tools/test/people.test.ts).
 //
+// Люди Rocketbox (spec docs/specs/2026-10-people.md; tools/app/people.mjs): одна сетка с атласом вместо частей с цветом в
+// вершинах, упрощённая — своя сетка из того же файла, скорость шага — в extras корня. Запекание то же.
+//
 // Почему опора — по позе после скелета. Модели сжаты (EXT_meshopt_compression, координаты — 16-битные целые): вершины
 // лежат в пределах −1…1, а переход к настоящим размерам спрятан в обратных связанных матрицах. Поза из анимации живёт в
 // других координатах, чем связанная поза. Проба мерила рост и пол по связанной позе — и люди выходили выше и висели над
@@ -37,6 +40,17 @@ export interface Look {
   name: string;
   /** женская модель (cast.ts) */
   female: boolean;
+  /**
+   * атлас и маска (Rocketbox): R — одежда, которая красится цветом должности, A — непрозрачность прядей; нет — цвет в
+   * вершинах (Quaternius)
+   */
+  map?: THREE.Texture;
+  mask?: THREE.Texture;
+  /** линейная яркость ткани, которую красим: цвет должности × (яркость точки / эта) — складки остаются */
+  tintRef: number;
+  /** скорость шага и бега при ×1 проигрывания, м/с: ступня не скользит */
+  walk: number;
+  run: number;
   geometry: THREE.BufferGeometry;
   /** упрощённая геометрия для дальнего плана — те же вершины, меньше треугольников */
   lod: THREE.BufferGeometry;
@@ -100,6 +114,14 @@ export interface RawLook {
   name: string;
   female: boolean;
   geometry: THREE.BufferGeometry;
+  /** упрощённая из файла (Rocketbox: свои вершины); нет — упрощается при загрузке (lodOf) */
+  lod?: THREE.BufferGeometry;
+  map?: THREE.Texture;
+  /** маска атласа (Rocketbox) — отдельным файлом рядом с glb; ставит тот, кто грузит */
+  mask?: THREE.Texture;
+  tintRef: number;
+  walk: number;
+  run: number;
   /** матрицы суставов по кадрам: [кадр][сустав] — 16 чисел, уже с приведением к росту и полу */
   frames: Float32Array[];
   clips: Record<ClipName, { first: number; frames: number; duration: number }>;
@@ -159,10 +181,10 @@ function bodyVertices(g: THREE.BufferGeometry, bones: THREE.Bone[], re: RegExp):
   const want = new Set(bones.map((b, i) => (re.test(b.name) ? i : -1)).filter(i => i >= 0));
   const si = g.attributes.skinIndex.array as ArrayLike<number>;
   const sw = g.attributes.skinWeight.array as ArrayLike<number>;
-  const tint = g.attributes.aTint.array as ArrayLike<number>;
+  const tint = g.attributes.aTint?.array as ArrayLike<number> | undefined;
   const out: number[] = [];
   for (let v = 0; v < g.attributes.position.count; v++) {
-    if (tint[v * 2] > 0) continue;
+    if (tint && tint[v * 2] > 0) continue;
     let best = 0;
     let joint = -1;
     for (let k = 0; k < 4; k++) {
@@ -177,24 +199,10 @@ function bodyVertices(g: THREE.BufferGeometry, bones: THREE.Bone[], re: RegExp):
 }
 
 /**
- * Один персонаж: части тела → одна геометрия (позиция, нормаль, цвет, индексы и веса костей, признаки окраски),
- * анимации → матрицы суставов на каждый кадр с частотой BAKE_FPS, приведённые к росту и полу.
+ * Части Quaternius → одна геометрия: позиция, нормаль, цвет в вершинах, индексы и веса костей, признаки окраски (x —
+ * одежда, y — кожа).
  */
-export function bakeLook(gltf: { scene: THREE.Object3D; animations: THREE.AnimationClip[] }, name: string): RawLook {
-  const root = gltf.scene;
-  root.updateMatrixWorld(true);
-  const skinned: THREE.SkinnedMesh[] = [];
-  root.traverse(o => {
-    if ((o as THREE.SkinnedMesh).isSkinnedMesh) skinned.push(o as THREE.SkinnedMesh);
-  });
-  if (!skinned.length) throw new Error(`${name}: no SkinnedMesh`);
-  const skeleton = skinned[0].skeleton;
-  const joints = skeleton.bones.length;
-  const spec = lookSpec(name);
-  if (!spec) throw new Error(`${name}: not in cast.ts LOOKS`);
-  const female = spec.sex === 'f';
-  const tintMats = spec.tint;
-
+function colorParts(name: string, skinned: THREE.SkinnedMesh[], skeleton: THREE.Skeleton, tintMats: string[]): THREE.BufferGeometry {
   // Кожа набора — чёрная; под редкими прядями её не видно, а в живом тоне макушка просвечивает пятнами. Поэтому кожу
   // выше глаз (материал Face) красим в цвет волос (как в пробе).
   let faceTop = -Infinity;
@@ -249,6 +257,46 @@ export function bakeLook(gltf: { scene: THREE.Object3D; animations: THREE.Animat
   }
   const geometry = mergeGeometries(geoms, false);
   if (!geometry) throw new Error(`${name}: cannot merge parts`);
+  return geometry;
+}
+
+/**
+ * Rocketbox (tools/app/people.mjs): тело и упрощённая — свои сетки одного скелета, развёртка — в атлас. Атрибуты — в осях
+ * после привязки, как у частей Quaternius; скорость шага — из extras корня (единицы набора в секунду).
+ */
+function texturedParts(root: THREE.Object3D, body: THREE.SkinnedMesh, lodMesh?: THREE.SkinnedMesh) {
+  const keep = ['position', 'normal', 'uv', 'skinIndex', 'skinWeight'];
+  const own = (sm: THREE.SkinnedMesh) => {
+    const g = toFloat(sm.geometry);
+    g.applyMatrix4(sm.bindMatrix);
+    for (const k of Object.keys(g.attributes)) if (!keep.includes(k)) g.deleteAttribute(k);
+    return g;
+  };
+  const extras = (root.getObjectByName('rocketbox')?.userData ?? {}) as { speeds?: { Walk?: number; Run?: number }; tintRef?: number };
+  const map = (body.material as THREE.MeshStandardMaterial).map ?? undefined;
+  return { geometry: own(body), lod: lodMesh ? own(lodMesh) : undefined, map, tintRef: extras.tintRef ?? 0, speeds: extras.speeds ?? {} };
+}
+
+/**
+ * Один персонаж: части тела → одна геометрия (позиция, нормаль, цвет, индексы и веса костей, признаки окраски),
+ * анимации → матрицы суставов на каждый кадр с частотой BAKE_FPS, приведённые к росту и полу.
+ */
+export function bakeLook(gltf: { scene: THREE.Object3D; animations: THREE.AnimationClip[] }, name: string): RawLook {
+  const root = gltf.scene;
+  root.updateMatrixWorld(true);
+  const skinned: THREE.SkinnedMesh[] = [];
+  root.traverse(o => {
+    if ((o as THREE.SkinnedMesh).isSkinnedMesh) skinned.push(o as THREE.SkinnedMesh);
+  });
+  if (!skinned.length) throw new Error(`${name}: no SkinnedMesh`);
+  const skeleton = skinned[0].skeleton;
+  const joints = skeleton.bones.length;
+  const spec = lookSpec(name);
+  if (!spec) throw new Error(`${name}: not in cast.ts LOOKS`);
+  const female = spec.sex === 'f';
+  const body = skinned.find(s => s.name === 'body');
+  const textured = body ? texturedParts(root, body, skinned.find(s => s.name === 'lod')) : null;
+  const geometry = textured?.geometry ?? colorParts(name, skinned, skeleton, spec.tint);
 
   const mixer = new THREE.AnimationMixer(root);
   // у Casual_Bald в наборе нет бега — бежит шагом
@@ -283,20 +331,30 @@ export function bakeLook(gltf: { scene: THREE.Object3D; animations: THREE.Animat
 
   const frames: Float32Array[] = [];
   const clips = {} as RawLook['clips'];
+  // ступни Rocketbox: ноги вида длиннее или короче, чем у скелета анимации, и сидя ступня уходит под пол или висит —
+  // в каждом кадре посадки и вставания человек поднят или опущен так, чтобы ступня стояла на полу
+  const feet = textured ? bodyVertices(geometry, skeleton.bones, /^(Foot|Toes)[LR]$/) : [];
   for (const cn of CLIP_NAMES) {
     const clip = clipOf(cn);
     const n = Math.max(2, Math.round(clip.duration * BAKE_FPS) + 1);
     clips[cn] = { first: frames.length, frames: n, duration: clip.duration };
     for (let f = 0; f < n; f++) {
       pose(cn, Math.min(clip.duration, f / BAKE_FPS));
-      frames.push(frameMatrices(skeleton, norm));
+      const m = frameMatrices(skeleton, norm);
+      if (feet.length && (cn === 'SitDown' || cn === 'StandUp')) plant(geometry, m, feet);
+      frames.push(m);
     }
   }
 
   // сидя: самая нижняя точка таза и бёдер в последнем кадре SitDown и середина этой нижней полосы по глубине
   const sitFrame = frames[clips.SitDown.first + clips.SitDown.frames - 1];
   const sitPos = skinPositions(geometry, sitFrame);
-  const sv = bodyVertices(geometry, skeleton.bones, /^(Hips|UpperLeg[LR])$/);
+  let sv = bodyVertices(geometry, skeleton.bones, /^(Hips|UpperLeg[LR])$/);
+  // полы халата Rocketbox — на тех же костях и свисают ниже бёдер: опора — не ниже колена без 12 см
+  if (textured) {
+    const knee = Math.min(jointY(skeleton, sitFrame, 'LowerLegL'), jointY(skeleton, sitFrame, 'LowerLegR'));
+    sv = sv.filter(v => sitPos[v * 3 + 1] > knee - 0.12);
+  }
   let low = Infinity;
   for (const v of sv) low = Math.min(low, sitPos[v * 3 + 1]);
   let zs = 0;
@@ -316,10 +374,13 @@ export function bakeLook(gltf: { scene: THREE.Object3D; animations: THREE.Animat
   for (const v of bodyVertices(geometry, skeleton.bones, /^(Torso|Abdomen|Hips)$/)) back = Math.min(back, idle[v * 3 + 2]);
   const lie = { back: -back, mid: height / 2 };
 
-  // голова — вершины кости Head в позе «стоит»; плечи и таз — расстояние между левым и правым суставом стоя и сидя
+  // голова — вершины кости Head в позе «стоит»; плечи и таз — расстояние между левым и правым суставом стоя и сидя. У
+  // Rocketbox пряди и шапочка — тоже на кости головы: они не в счёт (четверти атласа 2 и 3, tools/app/people.mjs)
   let h0 = Infinity;
   let h1 = -Infinity;
+  const uv = textured ? (geometry.attributes.uv.array as ArrayLike<number>) : null;
   for (const v of bodyVertices(geometry, skeleton.bones, /^Head$/)) {
+    if (uv && uv[v * 2 + 1] >= 0.5) continue;
     h0 = Math.min(h0, idle[v * 3 + 1]);
     h1 = Math.max(h1, idle[v * 3 + 1]);
   }
@@ -337,7 +398,37 @@ export function bakeLook(gltf: { scene: THREE.Object3D; animations: THREE.Animat
     hips: width(sitFrame, 'UpperLegL', 'UpperLegR') / width(stand, 'UpperLegL', 'UpperLegR'),
   };
 
-  return { name, female, geometry, frames, clips, joints, height, headRatio, collapse, seat, lie };
+  // скорость шага и бега: Rocketbox — по смещению корня за петлю (в масштабе вида), Quaternius — подобрана по снимкам
+  const walk = textured?.speeds.Walk ? textured.speeds.Walk * s : WALK_SPEED;
+  const run = textured?.speeds.Run ? textured.speeds.Run * s : RUN_SPEED;
+  return { name, female, geometry, lod: textured?.lod, map: textured?.map, tintRef: textured?.tintRef ?? 0, walk, run, frames, clips, joints, height, headRatio, collapse, seat, lie };
+}
+
+/** Поднять или опустить кадр `m` так, чтобы нижняя из вершин `feet` была на полу. */
+function plant(g: THREE.BufferGeometry, m: Float32Array, feet: number[]) {
+  const pos = g.attributes.position.array as Float32Array;
+  const si = g.attributes.skinIndex.array as ArrayLike<number>;
+  const sw = g.attributes.skinWeight.array as ArrayLike<number>;
+  let low = Infinity;
+  for (const v of feet) {
+    let y = 0;
+    for (let k = 0; k < 4; k++) {
+      const w = sw[v * 4 + k];
+      if (w === 0) continue;
+      const o = si[v * 4 + k] * 16;
+      y += w * (m[o + 1] * pos[v * 3] + m[o + 5] * pos[v * 3 + 1] + m[o + 9] * pos[v * 3 + 2] + m[o + 13]);
+    }
+    low = Math.min(low, y);
+  }
+  // сдвиг по высоте — в перенос каждой матрицы сустава (строка y четвёртого столбца)
+  for (let o = 0; o < m.length; o += 16) m[o + 13] -= low;
+}
+
+/** Высота сустава в кадре (матрицы кадра × связанное положение кости). */
+function jointY(skeleton: THREE.Skeleton, f: Float32Array, name: string): number {
+  const j = skeleton.bones.findIndex(b => b.name === name);
+  const bind = new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().copy(skeleton.boneInverses[j]).invert());
+  return bind.applyMatrix4(new THREE.Matrix4().fromArray(f, j * 16)).y;
 }
 
 export interface Simplifier {
@@ -372,8 +463,9 @@ export function simplify(g: THREE.BufferGeometry, ratio: number, simplifier: Sim
   return lod;
 }
 
-/** Упрощённая модель вида: подошвы (ниже 2 см в позе «стоит») не упрощаются. */
+/** Упрощённая модель вида: подошвы (ниже 2 см в позе «стоит») не упрощаются; у Rocketbox — своя, из файла. */
 export function lodOf(r: RawLook, ratio: number, simplifier: Simplifier): THREE.BufferGeometry {
+  if (r.lod) return r.lod;
   const pos = skinPositions(r.geometry, r.frames[r.clips.Idle.first]);
   const n = r.geometry.attributes.position.count;
   const lock = new Uint8Array(n);
@@ -382,7 +474,7 @@ export function lodOf(r: RawLook, ratio: number, simplifier: Simplifier): THREE.
 }
 
 /** Все виды людей: запечённые матрицы — в одну текстуру. */
-export function packPeople(raws: RawLook[], lods: THREE.BufferGeometry[]): People {
+export function packPeople(raws: RawLook[], lods: (THREE.BufferGeometry | undefined)[]): People {
   const stride = Math.max(...raws.map(r => r.joints));
   const totalFrames = raws.reduce((a, r) => a + r.frames.length, 0);
   const texels = totalFrames * stride * 4;
@@ -394,10 +486,11 @@ export function packPeople(raws: RawLook[], lods: THREE.BufferGeometry[]): Peopl
     for (let f = 0; f < r.frames.length; f++) data.set(r.frames[f], (frame0 + f) * stride * 16);
     const clips = {} as Record<ClipName, Clip>;
     for (const cn of CLIP_NAMES) clips[cn] = { start: frame0 + r.clips[cn].first, frames: r.clips[cn].frames, duration: r.clips[cn].duration };
-    const lod = lods[i];
+    const lod = r.lod ?? lods[i]!;
     looks.push({
       name: r.name, female: r.female, geometry: r.geometry, lod, clips, joints: r.joints, tris: r.geometry.index!.count / 3, lodTris: lod.index!.count / 3,
       height: r.height, headRatio: r.headRatio, collapse: r.collapse, seat: r.seat, lie: r.lie,
+      map: r.map, mask: r.mask, tintRef: r.tintRef, walk: r.walk, run: r.run,
     });
     frame0 += r.frames.length;
   });
@@ -417,7 +510,8 @@ export function frameData(p: People, look: Look, frame: number): Float32Array {
 
 /** Нижняя и верхняя точка вида в кадре: по всем вершинам, которые рисует геометрия `g` (полная или упрощённая). */
 export function skinnedY(p: People, look: Look, frame: number, g: THREE.BufferGeometry = look.geometry): { min: number; max: number } {
-  const pos = skinPositions(look.geometry, frameData(p, look, frame));
+  // упрощённая Rocketbox — со своими вершинами; у Quaternius — те же атрибуты, что у полной
+  const pos = skinPositions(g, frameData(p, look, frame));
   const idx = g.index!.array as ArrayLike<number>;
   let min = Infinity;
   let max = -Infinity;

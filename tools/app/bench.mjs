@@ -3,7 +3,8 @@
 // Авто-бенч в Chromium без окна (Playwright): пресеты качества × общий план и крупный план, потом 4 снимка 1920×1080.
 // Итог — JSON того же вида, что у бенча в Electron (`electron . --bench`), и PNG.
 //   node tools/app/bench.mjs [--secs 15] [--warm 3] [--capped] [--qualities low,high] [--shots 0]
-//                            [--out tools/app/out/имя] [--size 1280x720]
+//                            [--out tools/app/out/имя] [--size 1280x720] [--people rb]
+// --people rb — люди Rocketbox (spec docs/specs/2026-10-people.md, часть 1): тот же ключ адреса, что у игры.
 // --capped — с вертикальной синхронизацией; без него — без неё (видно запас). Программный WebGL (SwiftShader): числа
 // говорят о процессоре контейнера, не о видеокарте игрока.
 import { chromium } from 'playwright-core';
@@ -23,6 +24,7 @@ const qualities = arg('qualities', 'low,medium,high');
 const shots = arg('shots', '1') !== '0';
 const capped = flag('capped');
 const [vw, vh] = arg('size', '1280x720').split('x').map(Number);
+const people = arg('people', '');
 const port = 8094;
 const server = await serve(port);
 const args = ['--ignore-gpu-blocklist', '--enable-unsafe-swiftshader', '--use-angle=swiftshader'];
@@ -40,7 +42,7 @@ page.on('pageerror', e => {
   console.log(`  pageerror ${e.message}`);
   errors.push(e.message);
 });
-const url = `http://127.0.0.1:${port}/index.html?bench=1&secs=${secs}&warm=${warm}&qualities=${qualities}&shots=${shots ? 1 : 0}&lang=ru`;
+const url = `http://127.0.0.1:${port}/index.html?bench=1&secs=${secs}&warm=${warm}&qualities=${qualities}&shots=${shots ? 1 : 0}&lang=ru${people ? `&people=${people}` : ''}`;
 console.log(`→ ${url}`);
 const tStart = Date.now();
 await page.goto(url);
@@ -63,7 +65,7 @@ await browser.close();
 server.close();
 const out = new URL('./out/', import.meta.url).pathname;
 mkdirSync(out, { recursive: true });
-const base = arg('out', `${out}bench-headless-${capped ? 'vsync' : 'uncapped'}`);
+const base = arg('out', `${out}bench-headless-${capped ? 'vsync' : 'uncapped'}${people ? `-${people}` : ''}`);
 for (const s of shotList) {
   const name = `${base}-${s.name.replace(/^(bench|shot)-[^-]*(-\d{4}-\d\d-\d\dT[\d-]+)?-/, '')}`;
   writeFileSync(name, Buffer.from(s.dataUrl.split(',')[1], 'base64'));

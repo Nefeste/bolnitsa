@@ -20,6 +20,8 @@ const loader = new GLTFLoader();
 loader.setMeshoptDecoder(MeshoptDecoder);
 // картинок в Bun нет: текстуры (атлас KayKit) пропускаются молча, а не предупреждением на каждую модель
 loader.register(() => ({ name: 'tests-no-images', loadTexture: () => Promise.resolve(null) as unknown as Promise<THREE.Texture> }));
+// атлас Rocketbox — WebP: расширение под тем же именем, что встроенное, его подменяет — без попытки декодировать картинку
+loader.register(() => ({ name: 'EXT_texture_webp', loadTexture: () => Promise.resolve(null) as unknown as Promise<THREE.Texture> }));
 
 export async function gltfOf(name: string): Promise<{ scene: THREE.Object3D; animations: THREE.AnimationClip[] }> {
   const buf = readFileSync(join(MODELS, `${name}.glb`));
@@ -43,6 +45,19 @@ export async function bakedPeople(): Promise<People> {
   for (const n of index.people) raws.push(bakeLook(await gltfOf(`people/${n}`), n));
   people = packPeople(raws, raws.map(r => lodOf(r, 0.25, MeshoptSimplifier)));
   return people;
+}
+
+/** Люди Rocketbox (spec docs/specs/2026-10-people.md; tools/app/people.mjs): виды набора. */
+export const rocketboxIndex = JSON.parse(readFileSync(join(MODELS, 'rocketbox', 'index.json'), 'utf8')) as { looks: string[] };
+
+let rocketbox: People | undefined;
+/** Люди Rocketbox, запечённые как в игре: упрощённая модель — из файла. */
+export async function bakedRocketbox(): Promise<People> {
+  if (rocketbox) return rocketbox;
+  const raws = [];
+  for (const n of rocketboxIndex.looks) raws.push(bakeLook(await gltfOf(`rocketbox/${n}`), n));
+  rocketbox = packPeople(raws, raws.map(() => undefined));
+  return rocketbox;
 }
 
 /** Больница пресета, план и раскладка. */
