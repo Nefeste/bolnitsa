@@ -330,7 +330,7 @@ export const ru = {
     sickShort: 'болеет',
     skillShort: (n: number) => `навык ${n}`,
     study: (days: number, cost: string) => `Отправить учиться: ${days} ${pluralRu(days, 'сутки', 'суток', 'суток')}, ${cost}`,
-    studyHint: 'Вернётся с навыком на ступень выше и настроением +20. Пока учится, его места в смене никто не займёт.',
+    studyHint: 'После учёбы — навык на ступень выше и настроение +20. Пока идёт учёба, место в смене пустует.',
     demolish: (back: string) => `Снести — вернётся ${back}`,
     furnish: (cost: string) => `Обставить — ${cost}`,
     reserve: (n: number) => `в резерве: ${n}`,

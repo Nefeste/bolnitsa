@@ -303,7 +303,7 @@ export const en: Strings = {
     sickShort: 'sick',
     skillShort: (n: number) => `skill ${n}`,
     study: (days: number, cost: string) => `Send to study: ${days} ${days === 1 ? 'day' : 'days'}, ${cost}`,
-    studyHint: 'Comes back one skill step higher with mood +20. While studying, nobody takes their post on the shift.',
+    studyHint: 'After study — one skill step higher and mood +20. While the study lasts, the post on the shift stays empty.',
     demolish: (back: string) => `Demolish — ${back} back`,
     furnish: (cost: string) => `Furnish — ${cost}`,
     reserve: (n: number) => `in reserve: ${n}`,

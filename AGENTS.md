@@ -100,8 +100,10 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # sits on a bench by an office door, «на скамье у кабинета» in a path, the «Скамья» tool,
                                    # its ghost, Ctrl+Z, demolishing a bench; then the city's free land: a ready ward in the
                                    # east wing works; then staff mood: «собирается уйти» at the meeting, the person card,
-                                   # «Поднять зарплату», «В другую смену», severance in «Уволить»);
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|17` for one part
+                                   # «Поднять зарплату», «В другую смену», severance in «Уволить»; then growth: «вырос до
+                                   # навыка 4» and back from study at the meeting with no scene rebuild, «Поднять зарплату»
+                                   # in its row, «Отправить учиться» in the card);
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|18` for one part
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -172,6 +174,11 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   (`depart` — also out of the build undo snapshots); the `raise` and `reshift` site commands, severance on dismissal (its own
   ledger line); numbers — `economy.yaml`, `staff.mood`. Mood lives in `s.moods` beside the staff, never in `StaffMember`:
   the build undo restores the staff by snapshot and must not rewind moods. Staff names in the window — `src/app/people.ts`.
+  Part 3b — `shift/growth.ts`: skill grows by worked shifts (`days`), faster with a mentor (skill 5, same role and shift);
+  pay does not follow, so the mood cause «below market» counts skill steps; the `study` site command (away three days,
+  skill +1); sickness — once per 60 shifts from a seed branch per person and day, the post stays empty, the shift unpaid.
+  `StaffMember.away` keeps study and sickness: `onDuty` skips the away, the post stays theirs; the undo merge
+  (`mergeStaff`) keeps skill, days and away from the engine. Ready-hospital staff start with staggered tenure (`tenure`).
 - Saves (`docs/specs/2026-10-saves.md`): `src/engine/shift/migrate.ts` — the save schema number and the migration chain;
   `src/sim/packing.ts` — the file (header, engine snapshot, window view; JSON + gzip), written by the worker;
   `src/app/saves.ts` — slots (`auto-1…3` shifted each morning, `exit`, `manual-<n>`) over a disk: `electron/saves.cjs`
