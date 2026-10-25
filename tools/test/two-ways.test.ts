@@ -118,3 +118,32 @@ describe('лежащие у нанятых врачей', () => {
     expect(doctorState(db, s).theirs.some(r => r.id === p.id)).toBe(false);
   }, 60_000);
 });
+
+describe('главврач утверждает: окно врача и карта (spec docs/specs/2026-10-two-ways.md, часть 2)', () => {
+  test('решение — строкой «Решений врачей»; карта — решение врача, срок и бланк; назначенное — «назначено вами»', () => {
+    const s = preset();
+    apply(db, s, { kind: 'asks', rules: ['every'] });
+    expect(doctorState(db, s).rules).toEqual(['every']);
+    const p = until(s, x => !!x.approve);
+    const a = p.approve!;
+    const row = doctorState(db, s).decisions.find(r => r.id === p.id)!;
+    const dx = db.conditions[a.plan!.diagnosis].name.ru.toLowerCase();
+    expect(row.decided).toMatch(new RegExp(`^${dx.replace(/[()]/g, '.')} — \\d+ из 10 · .+ · .+$`));
+    expect(row.p).toBe(Math.round(a.lead![0].p * 100));
+    expect(row.why).toEqual(['every']);
+    expect([row.at, row.until]).toEqual([a.at, a.until]);
+    expect(row.by).toBe(a.by);
+    const v = cardView(db, s, p.id, 'student', 1)!;
+    expect(v.approve).toEqual({ until: a.until });
+    expect(v.order).toBe(true);
+    expect(v.lead!.text.startsWith('решил: ')).toBe(true);
+    // назначили — в бланке «назначено вами — сделает врач», строки решения нет
+    const exam = ['exam.xray_chest', 'exam.cbc'].find(id => !p.done.includes(id))!;
+    apply(db, s, { kind: 'order', id: p.id, exam });
+    expect(doctorState(db, s).decisions.some(r => r.id === p.id)).toBe(false);
+    const after = cardView(db, s, p.id, 'student', 1)!;
+    expect(after.unavailable[exam]).toBe('назначено вами — сделает врач');
+    expect(after.approve).toBeUndefined();
+    expect(after.order).toBe(true);
+  }, 60_000);
+});

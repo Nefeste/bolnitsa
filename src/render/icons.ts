@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import type { Crowd, Walker } from './crowd';
 
 /** Значки атласа по порядку. */
-export const ICONS = ['long', 'unhappy', 'ask'] as const;
+export const ICONS = ['long', 'unhappy', 'ask', 'approve'] as const;
 export type IconKind = (typeof ICONS)[number];
 
 /** Клетка атласа, точек; значок — с полями, чтобы уменьшенные копии не захватывали соседа. */
@@ -14,7 +14,7 @@ const CELL = 64;
 const PAD = 5;
 
 /** Цвета значков — как полосы срочности и кнопки панелей (app/index.html). */
-const FILL: Record<IconKind, string> = { long: '#e7b416', unhappy: '#d8392b', ask: '#2fb5c9' };
+const FILL: Record<IconKind, string> = { long: '#e7b416', unhappy: '#d8392b', ask: '#2fb5c9', approve: '#8b6fd6' };
 
 function drawIcon(g: CanvasRenderingContext2D, kind: IconKind, x0: number) {
   const cx = x0 + CELL / 2;
@@ -49,6 +49,15 @@ function drawIcon(g: CanvasRenderingContext2D, kind: IconKind, x0: number) {
     g.lineTo(cx, cy - (r - 15));
     g.moveTo(cx, cy);
     g.lineTo(cx + (r - 18), cy + 2);
+    g.stroke();
+  } else if (kind === 'approve') {
+    // решение ждёт вашего ответа (spec docs/specs/2026-10-two-ways.md, F3): галочка
+    g.lineWidth = 6;
+    g.lineJoin = 'round';
+    g.beginPath();
+    g.moveTo(cx - 12, cy + 1);
+    g.lineTo(cx - 3, cy + 10);
+    g.lineTo(cx + 13, cy - 9);
     g.stroke();
   } else if (kind === 'unhappy') {
     // недовольное лицо: глаза и рот дугой вниз
@@ -119,7 +128,7 @@ export class Icons {
   private kind: THREE.InstancedBufferAttribute;
   private m4 = new THREE.Matrix4();
   /** сколько значков в последнем кадре — для сценария в браузере */
-  shown: Record<IconKind, number> = { long: 0, unhappy: 0, ask: 0 };
+  shown: Record<IconKind, number> = { long: 0, unhappy: 0, ask: 0, approve: 0 };
 
   constructor(capacity: number) {
     const geo = new THREE.PlaneGeometry(1, 1);
@@ -145,7 +154,7 @@ export class Icons {
    */
   update(crowd: Crowd, iconOf: (w: Walker) => number, half: number) {
     let n = 0;
-    const shown = { long: 0, unhappy: 0, ask: 0 };
+    const shown = { long: 0, unhappy: 0, ask: 0, approve: 0 };
     const cap = this.kind.count;
     for (const w of crowd.walkers.values()) {
       if (w.staff || n >= cap) continue;

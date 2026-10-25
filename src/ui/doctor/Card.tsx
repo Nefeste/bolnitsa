@@ -47,13 +47,15 @@ function CardWindow({ v, level, meanwhile, next, actions }: P) {
   const t = T.case.patient;
   const c = T.doctor.card;
   const [term, setTerm] = useState<TermInfo | null>(null);
-  const act = (cmd: Command) => actions.doctor({ kind: 'act', cmd });
+  // «Ещё обследование» (spec docs/specs/2026-10-two-ways.md, F2): больному нанятого врача обследование назначает главврач, а
+  // делает его врач
+  const act = (cmd: Command) => (v.order && cmd.kind === 'exam' ? actions.doctor({ kind: 'order', id: v.id, exams: [cmd.exam] }) : actions.doctor({ kind: 'act', cmd }));
   const pending = (v.pending.length > 0 || !!v.away) && !v.decision && v.active;
   const stepOut = !pending && !!v.canStepOut && v.active && !v.decision;
-  // для чтения: не ваш приём сейчас — часы идут, действий нет
+  // для чтения: не ваш приём сейчас — часы идут, действий нет; больному нанятого врача — бланк «Ещё обследование»
   const read = !v.active && !v.decision;
   return (
-    <div className={read ? 'dcard panel read' : 'dcard panel'} id="dcard" role="dialog" aria-labelledby="dcard-title">
+    <div className={read ? (v.order ? 'dcard panel read order' : 'dcard panel read') : 'dcard panel'} id="dcard" role="dialog" aria-labelledby="dcard-title">
       <div className="dhead">
         <div className="dtitle">
           <b id="dcard-title">{v.title}</b>
@@ -108,6 +110,8 @@ function CardWindow({ v, level, meanwhile, next, actions }: P) {
           ) : null}
         </div>
       ) : null}
+      {/* решение ждёт главврача (spec docs/specs/2026-10-two-ways.md, F3): ответы — здесь же */}
+      {v.approve ? <Approve v={v} actions={actions} /> : null}
       {/* решение нанятого врача (spec docs/specs/2026-10-discharged-card.md): диагноз, лечение, где лечить */}
       {v.decided ? <Decided d={v.decided} explain={setTerm} /> : null}
       {v.hints.length > 0 && !v.decision && !read ? (
@@ -147,6 +151,11 @@ function CardWindow({ v, level, meanwhile, next, actions }: P) {
       {v.round ? <Round key={v.round.current.join(',')} id={v.id} r={v.round} actions={actions} /> : null}
       {v.decision ? (
         <Review v={v} next={next} actions={actions} explain={setTerm} />
+      ) : read && v.order ? (
+        <div className="dcols two">
+          <Course v={v} explain={setTerm} />
+          <ExamColumn v={v} act={act} actions={actions} explain={setTerm} />
+        </div>
       ) : read ? (
         <Course v={v} explain={setTerm} />
       ) : (
@@ -157,6 +166,31 @@ function CardWindow({ v, level, meanwhile, next, actions }: P) {
         </div>
       )}
       {term ? <TermPopup term={term} close={() => setTerm(null)} /> : null}
+    </div>
+  );
+}
+
+/**
+ * Решение врача ждёт главврача (spec docs/specs/2026-10-two-ways.md, F3): до какого часа и «Согласен»; выписку — «Выписать»,
+ * «Ещё сутки». «Взять случай» — в полосе «кто ведёт», «Ещё обследование» — бланк рядом.
+ */
+function Approve({ v, actions }: { v: CardView; actions: Actions }) {
+  const c = T.doctor.card;
+  const t = T.doctor.asks;
+  const a = v.approve!;
+  return (
+    <div className="dbanner approve" id="dcard-approve">
+      <span>{a.discharge ? c.dischargeAsk(clock(a.until)) : c.approve(clock(a.until))}</span>
+      <button type="button" id="dcard-agree" className="on" onClick={() => actions.doctor({ kind: 'approve', id: v.id, answer: 'agree' })}>
+        {a.discharge ? t.dischargeNow : t.agree}
+      </button>
+      {/* «Взять случай» — в полосе «кто ведёт» выше */}
+      {a.discharge ? (
+        <button type="button" id="dcard-stay" onClick={() => actions.doctor({ kind: 'approve', id: v.id, answer: 'stay' })}>
+          {t.stay}
+        </button>
+      ) : null}
+      {v.order ? <span className="muted small">{c.orderHint}</span> : null}
     </div>
   );
 }
@@ -391,14 +425,14 @@ function ExamRow({ v, id, onExam, explain, check }: { v: CardView; id: Id; onExa
   if (check)
     return (
       <label className={why ? 'xrow off' : 'xrow'} title={why ?? undefined} id={`x-${dom(id)}`} data-exam={id}>
-        <input type="checkbox" id={`o-${dom(id)}`} data-exam={id} checked={check.on} disabled={!!why || !v.active} onChange={check.toggle} />
+        <input type="checkbox" id={`o-${dom(id)}`} data-exam={id} checked={check.on} disabled={!!why || !(v.active || v.order)} onChange={check.toggle} />
         <span>{info.name}</span>
         <small>{why ?? cost}</small>
         <Info onClick={() => explain(examTerm(id))} />
       </label>
     );
   return (
-    <button type="button" className="xrow" id={`x-${dom(id)}`} data-exam={id} disabled={!!why || !v.active} title={why ?? undefined} onClick={() => onExam(id)}>
+    <button type="button" className="xrow" id={`x-${dom(id)}`} data-exam={id} disabled={!!why || !(v.active || v.order)} title={why ?? undefined} onClick={() => onExam(id)}>
       <span>{info.name}</span>
       <small>{why ?? cost}</small>
       <Info onClick={() => explain(examTerm(id))} />
@@ -422,7 +456,9 @@ function ExamColumn({ v, act, actions, explain }: { v: CardView; act: (c: Comman
   const toggle = (id: Id) => setMarked(live.includes(id) ? live.filter(x => x !== id) : [...live, id]);
   const send = () => {
     if (live.length === 0) return;
-    actions.doctor({ kind: 'acts', cmds: live.map(exam => ({ kind: 'exam', exam })) });
+    // больному нанятого врача (spec docs/specs/2026-10-two-ways.md, F2) — назначит его врач, по порядку отметки
+    if (v.order) actions.doctor({ kind: 'order', id: v.id, exams: live });
+    else actions.doctor({ kind: 'acts', cmds: live.map(exam => ({ kind: 'exam', exam })) });
     setMarked([]);
     setTab('order');
   };

@@ -1,7 +1,7 @@
 // Режим врача в окне (spec docs/specs/2026-10-doctor-mode.md, «Окно»): что панели знают о враче и о чём просят игру.
 // Состояние врача и вид карты приходят из потока расчёта готовыми (src/sim/doctor.ts) — правды о больном в них нет.
 import type { BodySystem, Id } from '../../content/types';
-import type { Command, Difficulty } from '../../engine/shift/types';
+import type { AskRule, Command, Difficulty } from '../../engine/shift/types';
 import type { CardView, DoctorState } from '../../sim/doctor';
 
 export interface DoctorHud {
@@ -41,6 +41,17 @@ export type DoctorAction =
   | { kind: 'acts'; cmds: Command[] }
   /** ответ на просьбу без карты: «Пусть решает сам», «Направить к …» */
   | { kind: 'consult'; id: string; answer: 'self' | 'refer'; to?: string }
+  /**
+   * ответ главврача на решение врача (spec docs/specs/2026-10-two-ways.md, F3): «Согласен», «Взять», «Направить к …», выписку —
+   * «Ещё сутки»
+   */
+  | { kind: 'approve'; id: string; answer: 'agree' | 'take' | 'refer' | 'stay'; to?: string }
+  /** «Согласен со всеми, где уверен от 80 %» */
+  | { kind: 'agreeAll' }
+  /** «Ещё обследование» (F2): назначает главврач, делает врач больного — по порядку отметки */
+  | { kind: 'order'; id: string; exams: Id[] }
+  /** о чём спрашивать главврача — галочки */
+  | { kind: 'asks'; rules: AskRule[] }
   | { kind: 'mine'; systems: BodySystem[] }
   | { kind: 'mineOpen'; open: boolean }
   /** «Мой кабинет»; без `room` — «Не принимаю» */

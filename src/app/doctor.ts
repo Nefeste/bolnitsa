@@ -10,7 +10,7 @@ import { type Command, type Difficulty, type Notice } from '../engine/shift/type
 import { lang, named, T } from '../i18n';
 import { useDb } from '../sim/caseView';
 import type { Slice } from '../sim/client';
-import { DEFAULT_LEVEL, LEVELS } from '../sim/doctor';
+import { AGREE_ALL, DEFAULT_LEVEL, LEVELS } from '../sim/doctor';
 import { setUiDb } from '../ui/doctor/db';
 import { type DoctorAction, type DoctorHud, initialDoctor } from '../ui/doctor/types';
 import type { Speed } from '../ui/store';
@@ -206,6 +206,23 @@ export class Doctor {
     return T.doctor.notices.consult(m ? named(this.g.db.roles[m.role]?.name, m.role) : '');
   }
 
+  /**
+   * Верхнее решение на утверждении (spec docs/specs/2026-10-two-ways.md, F3): Enter — «Согласен», Shift+Enter — его карта.
+   * Карта открыта — клавиша её не трогает.
+   */
+  top(card: boolean) {
+    const x = this.hud.state?.decisions[0];
+    if (!x || this.open) return;
+    if (card) this.dispatch({ kind: 'open', id: x.id });
+    else this.dispatch({ kind: 'approve', id: x.id, answer: 'agree' });
+  }
+
+  /** Строка журнала: решение нанятого врача ждёт вашего ответа (spec 2026-10-two-ways, F3). */
+  approveText(n: Extract<Notice, { kind: 'approve' }>): string {
+    const m = this.g.staff.find(x => x.id === n.by);
+    return T.doctor.notices.approve(m ? named(this.g.db.roles[m.role]?.name, m.role) : '');
+  }
+
   /** Строка журнала: вашему лежащему стало хуже (spec 2026-10-economy). */
   worseText(id: string): string {
     const row = this.hud.state?.ward.find(r => r.id === id);
@@ -308,6 +325,24 @@ export class Doctor {
         client.command({ kind: 'consult', id: a.id, answer: a.answer, ...(a.to ? { to: a.to } : {}) });
         // ответили на просьбу — автопаузу игры снять
         this.unstop();
+        break;
+      // «Главврач утверждает» (spec docs/specs/2026-10-two-ways.md, F3): «Взять» — как «Взять случай»: поток проверит
+      // кабинет и скажет, что вышло
+      case 'approve':
+        if (a.answer === 'take') {
+          delete this.hud.said;
+          this.taking = a.id;
+          client.doctor({ kind: 'take', id: a.id });
+        } else client.command({ kind: 'approve', id: a.id, answer: a.answer, ...(a.to ? { to: a.to } : {}) });
+        break;
+      case 'agreeAll':
+        for (const d of this.hud.state?.decisions ?? []) if (d.p !== undefined && d.p >= AGREE_ALL) client.command({ kind: 'approve', id: d.id, answer: 'agree' });
+        break;
+      case 'order':
+        for (const exam of a.exams) client.command({ kind: 'order', id: a.id, exam });
+        break;
+      case 'asks':
+        client.command({ kind: 'asks', rules: a.rules });
         break;
       case 'mine':
         client.command({ kind: 'mine', systems: a.systems as BodySystem[] });

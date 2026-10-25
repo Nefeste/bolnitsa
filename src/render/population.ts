@@ -66,6 +66,8 @@ export type PersonInfo =
       door?: true;
       /** везут на каталке (spec docs/specs/2026-10-orderlies.md): что с перевозкой сейчас, откуда и куда */
       gurney?: { phase: RidePhase; from: string; to: string };
+      /** решение его врача ждёт главврача — до какого часа (spec docs/specs/2026-10-two-ways.md, F3) */
+      approve?: number;
     }
   /**
    * фельдшер скорой (spec docs/specs/2026-10-orderlies.md, «Что видно»): кого привёз; ждёт с ним у входа — мест в смотровой
@@ -86,6 +88,8 @@ export interface PatientNow {
   since: number;
   limit: number;
   ask?: { at: number; until: number };
+  /** решение его врача ждёт главврача (spec docs/specs/2026-10-two-ways.md, F3) */
+  approve?: { at: number; until: number };
   /** идёт — к какому часу дойдёт (spec 2026-10-walk); нет — NO_TIME */
   arrive: number;
   /** ждёт у двери кабинета на скамье (spec docs/specs/2026-10-door-benches.md): номер скамьи коридора; -1 — нет */
@@ -419,9 +423,11 @@ export class Population {
       const room = roomH >= 0 ? (this.roomIndex[roomH] ?? -1) : -1;
       const prev = this.last.get(key);
       const askUntil = buf[o + P.askUntil];
+      const approveUntil = buf[o + P.approveUntil];
       const now: PatientNow = {
         row, status: STATUSES[buf[o + P.status]], triage: TRIAGES[buf[o + P.triage]], doing, room, by: buf[o + P.by], bed: buf[o + P.bed], kind: String(buf[o + P.flags]),
         since: buf[o + P.since], limit: buf[o + P.limit], ...(askUntil !== NO_TIME ? { ask: { at: buf[o + P.askAt], until: askUntil } } : {}),
+        ...(approveUntil !== NO_TIME ? { approve: { at: buf[o + P.approveAt], until: approveUntil } } : {}),
         arrive: buf[o + P.arrive], seat: this.places.doorSeat(key),
       };
       // идёт — дойти к часу движка (spec 2026-10-walk)
@@ -727,6 +733,7 @@ export class Population {
       ...(l.row.to ? { to: l.row.to } : {}),
       ...(room ? { room } : {}), ...(by ? { by } : {}), visit: ['appointment', 'walkIn', 'return', 'ambulance'][Number(l.kind)] ?? 'walkIn',
       ...(walking ? { walking: true as const } : {}), ...(coming ? { arrive: l.arrive } : {}), ...(door ? { door: true as const } : {}),
+      ...(l.approve ? { approve: l.approve.until } : {}),
     };
   }
 

@@ -17,9 +17,10 @@ import {
   hospitalCtx, icuBeds, isOut, moreUrgent, observationsOf, operationOf, type OrBlock, orBlock, reviewedCase, reviewFor, ricuBeds, targetPlace, wardBeds,
 } from '../engine/shift/engine';
 import { inBox, inIcu, inRicu, orQueueOf, stayEquipment } from '../engine/shift/engine';
+import { asksOf } from '../engine/shift/approve';
 import { KEEP } from '../engine/shift/journey';
 import { minutesTo, targetStart, targetsFor } from '../engine/shift/targets';
-import { type ClosedCase, type Command, type ConsultWhy, DAY, type Difficulty, type ShiftPatient, type ShiftState, type Triage } from '../engine/shift/types';
+import { type ApproveWhy, type AskRule, type ClosedCase, type Command, type ConsultWhy, DAY, type Difficulty, type ShiftPatient, type ShiftState, type Triage } from '../engine/shift/types';
 import { daysIn, stayNorm, vitalOn, WARD_VITALS, type WardState, wardState } from '../engine/shift/ward';
 import { genitive, type Lang, lang as currentLang, named, setLang, T } from '../i18n';
 import {
@@ -82,6 +83,8 @@ export interface WardRow extends PatientRow {
   event?: string;
   /** лежащий у нанятого врача (spec docs/specs/2026-10-two-ways.md, F2): кто ведёт — должность и навык */
   by?: string;
+  /** его врач предлагает выписать и ждёт ответа главврача (F3): «… — ответ до 09:30; не ответите — выпишет» */
+  approve?: string;
 }
 
 /**
@@ -120,6 +123,30 @@ export interface AskRow {
   lead: { name: string; p: number }[];
 }
 
+/**
+ * Решение нанятого врача на утверждении (spec docs/specs/2026-10-two-ways.md, F3) — словами: «Терапевт, навык 3 · Иванова,
+ * 67 · пневмония — 7 из 10 · амоксициллин · дома». Выписка — диагноз и сутки, без плана. Верно ли решение — не здесь.
+ */
+export interface DecisionRow {
+  id: string;
+  who: string;
+  complaint: string;
+  triage: Triage;
+  /** чей больной: номер человека, должность, навык */
+  by: string;
+  role: string;
+  skill: number;
+  at: number;
+  until: number;
+  why: ApproveWhy[];
+  /** решение приёма: «пневмония — 7 из 10 · амоксициллин · дома» */
+  decided?: string;
+  /** уверенность во всей группе его диагноза, % — для «Согласен со всеми, где уверен от 80 %» */
+  p?: number;
+  /** выписка: «пневмония · в стационаре 6 суток · обычно до 7 — можно выписывать» */
+  discharge?: string;
+}
+
 /** Нанятый врач, который сегодня принимает, — для «Направить к …». */
 export interface ColleagueRow {
   id: string;
@@ -145,6 +172,10 @@ export interface DoctorState {
   theirs: WardRow[];
   closed: ClosedRow[];
   asks: AskRow[];
+  /** решения нанятых врачей на утверждении (spec docs/specs/2026-10-two-ways.md, F3) — старые сверху */
+  decisions: DecisionRow[];
+  /** о чём спрашивать главврача — галочки */
+  rules: AskRule[];
   colleagues: ColleagueRow[];
   mine: BodySystem[];
   dayOpen: boolean;
@@ -172,6 +203,13 @@ export interface CardView extends VisitView {
   decided?: { diagnosis: { id: Id; name: string }; treatments: { id: Id; name: string }[]; setting: string };
   /** «Взять случай» сейчас можно */
   take?: true;
+  /**
+   * «Ещё обследование» (spec docs/specs/2026-10-two-ways.md, F2): больному нанятого врача главврач может назначить — врач
+   * сделает назначенное первым; что уже назначено и не сделано — в `unavailable`
+   */
+  order?: true;
+  /** решение ждёт главврача (F3): до какого часа, игровые секунды; `discharge` — врач предлагает выписать */
+  approve?: { until: number; discharge?: true };
 }
 
 /** «Приняты» (spec docs/specs/2026-10-discharged-card.md): принят и ушёл — домой или в другую больницу; без правды о болезни. */
@@ -201,6 +239,9 @@ export const SEEN = 50;
 
 /** Сколько строк общей очереди показывать. */
 export const OTHERS = 5;
+
+/** «Согласен со всеми, где уверен от 80 %» (spec docs/specs/2026-10-two-ways.md, F3): уверенность в группе диагноза, %. */
+export const AGREE_ALL = 80;
 
 // --- что в больнице ваше -----------------------------------------------------------------------------------------------
 
@@ -302,6 +343,21 @@ export function doctorState(db: ContentDb, s: ShiftState): DoctorState {
       why: [...c.why], lead: c.lead.map(x => ({ name: db.conditions[x.id]?.name.ru ?? x.id, p: Math.round(x.p * 100) })),
     }];
   });
+  const decisions: DecisionRow[] = [];
+  for (const p of Object.values(s.patients)) {
+    const a = p.approve;
+    const m = a ? (staff.find(x => x.id === a.by) ?? s.staff?.find(x => x.id === a.by)) : undefined;
+    if (!a || !m) continue;
+    const r = rowOf(db, p);
+    const lead = a.lead?.[0];
+    decisions.push({
+      id: p.id, who: r.who, complaint: r.complaint, triage: p.triage, by: m.id, role: named(db.roles[m.role]?.name, m.role), skill: m.skill, at: a.at, until: a.until,
+      why: [...a.why],
+      ...(a.plan ? { decided: T.doctor.asks.decided(lowerFirst(named(db.conditions[a.plan.diagnosis]?.name, a.plan.diagnosis)), Math.round((lead?.p ?? 0) * 10), planText(db, a.plan)) } : {}),
+      ...(a.plan && lead ? { p: Math.round(lead.p * 100) } : {}),
+      ...(!a.plan && p.closed && p.stay ? { discharge: T.doctor.asks.discharge(named(db.conditions[p.closed.diagnosis]?.name, p.closed.diagnosis), T.case.ward.days(daysIn(p.stay, s.day), stayNorm(db, p.closed.diagnosis))) } : {}),
+    });
+  }
   return {
     ...(office ? { office } : {}),
     ...(office || s.doctorAt ? { at: s.doctorAt ?? office } : {}),
@@ -314,6 +370,8 @@ export function doctorState(db: ContentDb, s: ShiftState): DoctorState {
     theirs: theirs.sort((a, b) => (a.by ?? '').localeCompare(b.by ?? '') || (a.id < b.id ? -1 : 1)),
     closed: closed.sort((a, b) => b.at - a.at),
     asks: asks.sort((a, b) => a.at - b.at || (a.id < b.id ? -1 : 1)),
+    decisions: decisions.sort((a, b) => a.at - b.at || (a.id < b.id ? -1 : 1)),
+    rules: [...asksOf(s)],
     colleagues: colleaguesOf(db, s).map(m => ({ id: m.id, role: named(db.roles[m.role]?.name, m.role), skill: m.skill })),
     mine: [...(s.meta.mine ?? [])],
     dayOpen: s.dayOpen,
@@ -374,6 +432,7 @@ export function wardRow(db: ContentDb, s: ShiftState, p: ShiftPatient): WardRow 
     canDischarge: !op || op.done === true, canTransfer: !op || op.done === true || op.start === undefined, busy: !!op && !op.done,
     ...(stay.shock !== undefined && days === stay.shock + 1 ? { event: t.shock } : {}),
     ...(c.by ? { by: staffName(db, s, c.by) } : {}),
+    ...(p.approve ? { approve: T.doctor.card.dischargeAsk(hhmm(minuteOfDay(p.approve.until))) } : {}),
   };
 }
 
@@ -404,6 +463,9 @@ function leadOf(db: ContentDb, s: ShiftState, p: ShiftPatient, level: Difficulty
   // принят и ушёл (spec 2026-10-discharged-card): чем кончилось и когда; диагноз и лечение — блоком решения в карте
   if (closed && p.status !== 'admitted' && !closed.stay) return { by: who, text: t.released(closed.plan.setting, hhmm(minuteOfDay(closed.at))) };
   if (closed) return { by: who, text: t.decided(dx(closed.diagnosis), planText(db, closed.plan)) };
+  // решил, а решение ждёт главврача (spec docs/specs/2026-10-two-ways.md, F3)
+  const plan = p.approve?.plan;
+  if (plan) return { by: who, text: t.decided(dx(plan.diagnosis), planText(db, plan)) };
   const ph = p.phase;
   if (!ph?.diagnosis) return { by: who, text: t.seeking };
   const c = ph.confidence;
@@ -616,14 +678,18 @@ export function cardView(db: ContentDb, s: ShiftState, id: string, level: Diffic
   const watching = p.by !== undefined && !p.closed;
   // в больнице, приём не закрыт и не у нанятого врача: что можно у постели и сколько минут — для действий карты
   const live = here !== undefined && !p.closed && !watching;
+  // «Ещё обследование» (spec docs/specs/2026-10-two-ways.md, F2): больному нанятого врача, пока тот его ведёт, — назначит врач
+  const order = here !== undefined && watching && s.flow !== undefined && s.dayOpen && (p.status === 'inRoom' || p.status === 'waiting' || p.status === 'away');
   const arrived = arrivedOf(seen, watching ? s.t : Infinity);
   const asking = watching ? p.results.filter(r => r.at > s.t).map(r => ({ exam: r.exam, readyAt: minuteOfDay(r.at) })) : [];
   const prev = p.returnOf ? s.patients[p.returnOf] : undefined;
   const bedside: Record<Id, number> = {};
-  if (live) {
+  if (live || order) {
     for (const [eid, e] of Object.entries(db.exams)) if (e.bedside && bedsideOf(db, s, p, eid)) bedside[eid] = e.bedside.time.procedure;
   }
   const unavailable: Record<Id, string> = Object.fromEntries(Object.entries(unavailableOf(db, s)).filter(([eid]) => bedside[eid] === undefined));
+  // назначено главврачом и ещё не сделано — второй раз не назначить
+  for (const eid of order ? (p.orders ?? []) : []) unavailable[eid] = T.doctor.card.orderedChief;
   const minutes: Record<Id, number> = {};
   if (live) {
     for (const [eid, e] of Object.entries(db.exams)) {
@@ -686,6 +752,8 @@ export function cardView(db: ContentDb, s: ShiftState, id: string, level: Diffic
   return {
     ...view, id, active: mine && !p.closed && coming === undefined, ...(where ? { where } : {}), ...(coming !== undefined ? { coming } : {}), ...(where === 'waiting' && !s.current ? { callable: true } : {}), ...(round ? { round } : {}),
     ...(lead ? { lead } : {}), ...(decided ? { decided } : {}), ...(take ? { take: true as const } : {}),
+    ...(order ? { order: true as const } : {}),
+    ...(p.approve && here ? { approve: { until: p.approve.until, ...(p.approve.plan ? {} : { discharge: true as const }) } } : {}),
   };
 }
 
@@ -729,8 +797,8 @@ function cardKey(s: ShiftState, id: string): string {
   return [
     p.step, p.results.length, p.pending.length, p.status, p.closed ? `${p.closed.at}:${p.closed.outcome.kind}` : '', s.current ?? '', s.until ?? '', p.out?.back ?? '', s.meet ?? '',
     JSON.stringify(p.draft), live ? Math.floor(s.t / 60) : p.results.filter(r => r.at <= s.t).length, s.day, s.dayOpen, p.by ?? '', (s.consults ?? []).length,
-    // что думает нанятый врач (spec 2026-10-two-ways, F1)
-    p.phase?.diagnosis ?? '', p.phase?.confidence ?? '',
+    // что думает нанятый врач (spec 2026-10-two-ways, F1); решение ждёт главврача и что он назначил (F2–F3)
+    p.phase?.diagnosis ?? '', p.phase?.confidence ?? '', p.approve?.until ?? '', (p.orders ?? []).join(','),
     // обход (spec 2026-10-economy): сменили лечение, операция пошла
     p.stay ? `${p.stay.replans}:${p.stay.op?.start ?? ''}:${p.stay.op?.done ?? ''}` : '',
   ].join('|');

@@ -691,6 +691,7 @@ export class Game {
       : n.kind === 'resultsReady' ? this.doctor.resultsText(n.id)
       : n.kind === 'arrest' ? T.notices.arrest
       : n.kind === 'consult' ? this.doctor.consultText(n)
+      : n.kind === 'approve' ? this.doctor.approveText(n)
       : n.kind === 'morning' ? T.notices.morning
       : n.kind === 'worse' ? this.doctor.worseText(n.id)
       : n.kind === 'reached' ? this.doctor.reachedText(n.id)
@@ -1438,6 +1439,15 @@ export class Game {
       else if (k === 'Escape') this.cancel();
       // часть 3: L — слой «Очереди и загрузка», Tab — вкладка «Пациенты» (геймдизайн §12)
       else if (k === 'KeyL') this.actions.toggleQueues();
+      // решения врачей (spec docs/specs/2026-10-two-ways.md, F3): вкладка открыта — Enter «Согласен» на верхнем, Shift+Enter —
+      // его карта; пробел — пауза во всей игре. На кнопке или в списке Enter — их
+      else if ((k === 'Enter' || k === 'NumpadEnter') && this.store.get().tab === 'asks') {
+        const tag = (e.target as HTMLElement | null)?.tagName;
+        if (tag !== 'BUTTON' && tag !== 'SELECT') {
+          e.preventDefault();
+          this.doctor.top(e.shiftKey);
+        }
+      }
       else if (k === 'Tab') {
         e.preventDefault();
         this.actions.setTab(this.store.get().tab === 'patients' ? null : 'patients');
