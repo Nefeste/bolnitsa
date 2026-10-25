@@ -1,6 +1,6 @@
 // Настроение нанятых (spec docs/specs/2026-10-staff-mood.md, часть 1): 0–100, новый — 70; раз в сутки, на планёрке в 08:00,
 // по прошедшим суткам — зарплата против рынка, предел усталости, отдых на месте без ординаторской, нет санузла, ночные подряд;
-// без причин — к 70. Ниже 30 три утра подряд — «собирается уйти», двое суток на ответ; не поднялось выше 30 — уходит сам после
+// и каждое утро — к 70 на десятую часть расстояния (не меньше 1): у постоянной причины — равновесие, ночные — 50. Ниже 30 три утра подряд — «собирается уйти», двое суток на ответ; не поднялось выше 30 — уходит сам после
 // своей смены. «Поднять зарплату» и «В другую смену» — прибавка сразу; уволить — с выплатой за три смены; отмена стройки
 // возвращает и выплату, и настроение. Те же зерно и команды — то же при любом шаге часов. Без смен настроения нет.
 import { describe, expect, test } from 'bun:test';
@@ -62,7 +62,7 @@ function pair(s: ShiftState): [StaffMember, StaffMember] {
 
 describe('настроение персонала', () => {
   test('числа — в economy.yaml: гипотезы части 3а', () => {
-    expect(M).toEqual({ start: 70, drift: 2, market: 10, below: -5, above: 3, limit: -5, here: -3, toilet: -3, nights: [3, -2], quit: 30, days: 3, respond: 2, raise: 10, moved: 5, step: 10, severance: 3 });
+    expect(M).toEqual({ start: 70, drift: 10, market: 10, below: -5, above: 3, limit: -5, here: -3, toilet: -3, nights: [3, -2], quit: 30, days: 3, respond: 2, raise: 10, moved: 5, step: 10, severance: 3 });
   });
 
   test('без смен настроения нет: ни записей, ни новостей на планёрке', () => {
@@ -73,23 +73,30 @@ describe('настроение персонала', () => {
     expect(moodsOf(db, s)).toEqual([]);
   }, 60_000);
 
-  test('без причин — 70; ночные: с третьей подряд — −2 в сутки; окно видит всех со сменой', () => {
+  test('без причин — 70; ночные: с третьей подряд — −2 в сутки и тяга к 70 — до равновесия 50; окно видит всех со сменой', () => {
     const s = city(2);
     // новый — 70, ещё до первой планёрки
     expect(moodsOf(db, s)).toEqual(s.staff!.map(m => ({ id: m.id, v: M.start })));
     const n = nightIn(s)[0];
     const d = dayIn(s)[0];
-    for (const want of [70, 70, 68, 66]) {
+    // третья ночная: −2; дальше −2 и +1 тяги, пока до 70 меньше 20
+    for (const want of [70, 70, 68, 67]) {
       expect(morning(s)).toBeUndefined();
       expect(v(s, d.id)).toBe(M.start);
       expect(s.moods![d.id].why).toBeUndefined();
       expect(v(s, n.id)).toBe(want);
     }
-    expect(s.moods![n.id]).toMatchObject({ v: 66, d: -2, why: ['nights'], nights: 4 });
-    expect(moodsOf(db, s).find(x => x.id === n.id)).toEqual({ id: n.id, v: 66, d: -2, why: ['nights'] });
+    expect(s.moods![n.id]).toMatchObject({ v: 67, d: -1, why: ['nights'], nights: 4 });
+    expect(moodsOf(db, s).find(x => x.id === n.id)).toEqual({ id: n.id, v: 67, d: -1, why: ['nights'] });
+    // равновесие: в 20 от 70 тяга — 2, как ночные; ниже 30 ночные сами не опускают
+    for (let i = 0; i < 18; i++) morning(s);
+    expect(s.moods![n.id]).toMatchObject({ v: 50, why: ['nights'] });
+    expect(s.moods![n.id].d).toBeUndefined();
+    morning(s);
+    expect(v(s, n.id)).toBe(50);
   }, 120_000);
 
-  test('зарплата ниже рынка на 10 % и больше — −5, выше — +3; без причин — назад к 70 по 2', () => {
+  test('зарплата ниже рынка на 10 % и больше — −5, выше — +3; без причин — назад к 70', () => {
     const s = city(3);
     const [a, b] = dayIn(s);
     pay(s, a.id, 85);
@@ -97,14 +104,13 @@ describe('настроение персонала', () => {
     morning(s);
     expect(s.moods![a.id]).toMatchObject({ v: 65, d: -5, why: ['below'] });
     expect(s.moods![b.id]).toMatchObject({ v: 73, d: 3, why: ['above'] });
-    // зарплату вернули к рынку — причин нет: тянется к 70, причина остаётся видна, пока не дотянется
+    // зарплату вернули к рынку — причин нет: тянется к 70 (до 70 меньше 20 — по 1), причина видна, пока не дотянется
     pay(s, a.id, 100);
     pay(s, b.id, 100);
     morning(s);
-    expect(s.moods![a.id]).toMatchObject({ v: 67, d: 2, why: ['below'] });
-    expect(s.moods![b.id]).toMatchObject({ v: 71, d: -2, why: ['above'] });
-    morning(s);
-    morning(s);
+    expect(s.moods![a.id]).toMatchObject({ v: 66, d: 1, why: ['below'] });
+    expect(s.moods![b.id]).toMatchObject({ v: 72, d: -1, why: ['above'] });
+    for (let i = 0; i < 4; i++) morning(s);
     expect(s.moods![a.id].v).toBe(70);
     expect(s.moods![a.id].why).toBeUndefined();
     expect(s.moods![b.id].v).toBe(70);
@@ -155,9 +161,9 @@ describe('настроение персонала', () => {
     morning(s);
     expect(s.moods![n1.id]).toMatchObject({ v: 65, why: ['limit'] });
     expect(s.moods![n2.id]).toMatchObject({ v: 65, why: ['limit'] });
-    // отметка прочитана: следующие сутки — без неё
+    // отметка прочитана: следующие сутки — без неё, только тяга к 70
     morning(s);
-    expect(s.moods![n1.id].v).toBe(67);
+    expect(s.moods![n1.id].v).toBe(66);
   }, 120_000);
 
   test('ниже 30 три утра — «собирается уйти», двое суток; не ответили — ночной уходит в 08:00, дневной в 20:00; отмена не вернёт', () => {
@@ -166,18 +172,19 @@ describe('настроение персонала', () => {
     const other = dayIn(s).find(x => x.id !== d.id && x.room !== d.room)!;
     for (const m of [d, n]) {
       pay(s, m.id, 80);
-      (s.moods ??= {})[m.id] = { v: 34 };
+      (s.moods ??= {})[m.id] = { v: 31 };
     }
     // шаг отмены со снимком штата, где они есть
     site(db, s, { kind: 'raise', id: other.id });
+    // −5 ниже рынка и тяга: 31 − 5 + 3 = 29
     const low = morning(s);
     expect(low?.low).toEqual(expect.arrayContaining([d.id, n.id]));
     expect(s.moods![d.id]).toMatchObject({ v: 29, low: 1 });
     expect(morning(s)?.low).toBeUndefined();
     const quit = morning(s);
-    expect(s.moods![d.id]).toMatchObject({ v: 19, low: 3, quit: s.day + 2 });
+    expect(s.moods![d.id]).toMatchObject({ v: 27, low: 3, quit: s.day + 2 });
     // ночной: третья ночная подряд — ещё −2
-    expect(s.moods![n.id]).toMatchObject({ v: 17, low: 3, quit: s.day + 2, why: ['below', 'nights'] });
+    expect(s.moods![n.id]).toMatchObject({ v: 25, low: 3, quit: s.day + 2, why: ['below', 'nights'] });
     expect(quit?.quit).toEqual(expect.arrayContaining([{ id: d.id, until: s.day + 2 }, { id: n.id, until: s.day + 2 }]));
     expect(morning(s)?.quit).toBeUndefined();
     expect(member(s, d.id)).toBeDefined();
@@ -208,34 +215,33 @@ describe('настроение персонала', () => {
     const s = city(8);
     const p = dayIn(s)[1];
     pay(s, p.id, 80);
-    (s.moods ??= {})[p.id] = { v: 34 };
+    // два утра ниже 30 уже было: 18 − 5 + 5 = 18 — третье
+    (s.moods ??= {})[p.id] = { v: 18, low: 2 };
     morning(s);
-    morning(s);
-    morning(s);
-    expect(s.moods![p.id]).toMatchObject({ v: 19, quit: s.day + 2 });
+    expect(s.moods![p.id]).toMatchObject({ v: 18, low: 3, quit: s.day + 2 });
     const until = s.moods![p.id].quit;
-    // до рынка: +10 — 29, ещё не выше 30
+    // до рынка: +10 — 28, ещё не выше 30
     site(db, s, { kind: 'raise', id: p.id });
     expect(member(s, p.id).salary).toBe(marketOf(db, p));
-    // стрелка окна — с настроения до планёрки: 24 → 19 на планёрке, +10 сейчас
-    expect(s.moods![p.id]).toMatchObject({ v: 29, d: 5, quit: until });
+    // стрелка окна — с настроения до планёрки: 18 → 18 на планёрке, +10 сейчас
+    expect(s.moods![p.id]).toMatchObject({ v: 28, d: 10, quit: until });
     // ещё раз: на 10 % выше рынка — 39, «собирается уйти» снято сразу
     const salary = raisedOf(db, member(s, p.id));
     expect(salary).toBe(Math.ceil((marketOf(db, p) * 110) / 100 / 50) * 50);
     expect(salary * 100).toBeGreaterThanOrEqual(marketOf(db, p) * 110);
     site(db, s, { kind: 'raise', id: p.id });
     expect(member(s, p.id).salary).toBe(salary);
-    expect(s.moods![p.id].v).toBe(39);
+    expect(s.moods![p.id].v).toBe(38);
     expect(s.moods![p.id].quit).toBeUndefined();
     // отмена — зарплата, настроение и «собирается уйти» как были; снова — остаётся
     site(db, s, { kind: 'undo' });
     expect(member(s, p.id).salary).toBe(marketOf(db, p));
-    expect(s.moods![p.id]).toMatchObject({ v: 29, low: 3, quit: until });
+    expect(s.moods![p.id]).toMatchObject({ v: 28, d: 10, low: 3, quit: until });
     site(db, s, { kind: 'raise', id: p.id });
-    // утром — выше рынка: +3; ухода нет
+    // утром — выше рынка: +3 и тяга +3; ухода нет
     const news = morning(s);
     expect(news?.leave).toBeUndefined();
-    expect(s.moods![p.id]).toMatchObject({ v: 42, why: ['above'] });
+    expect(s.moods![p.id]).toMatchObject({ v: 44, d: 6, why: ['above'] });
     morning(s);
     morning(s);
     expect(member(s, p.id)).toBeDefined();
@@ -294,7 +300,7 @@ describe('настроение персонала', () => {
       const [d, n] = pair(s);
       for (const m of [d, n]) {
         pay(s, m.id, 80);
-        (s.moods ??= {})[m.id] = { v: 34 };
+        (s.moods ??= {})[m.id] = { v: 31 };
       }
       const notices = run(s, 6 * DAY + 21 * H, step);
       return { moods: s.moods, staff: s.staff, cash: cashNow(s), news: notices.flatMap(x => (x.kind === 'morning' && x.staff ? [x.staff] : [])) };

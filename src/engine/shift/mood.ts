@@ -118,13 +118,23 @@ function shiftEndOf(db: ContentDb, t: number): number {
   return h >= day[1] * 3600 ? base + DAY + day[0] * 3600 : base + day[0] * 3600;
 }
 
+/**
+ * Тяга к начальному за утро: `drift` % расстояния, отброшенная дробь, но не меньше 1, пока не дотянулось. Постоянные причины
+ * `c` в сутки держат настроение у равновесия `start` + `c` · 100 / `drift`: ночные (−2) — у 50, ниже рынка (−5) — у 20.
+ */
+function pull(n: Numbers, v: number): number {
+  const d = n.start - v;
+  return d === 0 ? 0 : Math.sign(d) * Math.max(1, Math.trunc((Math.abs(d) * n.drift) / 100));
+}
+
 /** Порядок причин с одинаковым весом — для строки окна. */
 const ORDER: MoodWhy[] = ['below', 'limit', 'here', 'toilet', 'nights', 'above'];
 
 /**
  * Планёрка (spec «Как будет», 1–2): настроение каждого нанятого со сменой — по прошедшим суткам. Причины — с отметками этих
  * суток (`limit`, `here`, начало смены в [t − сутки, t)), зарплатой против рынка сейчас, санузлом в больнице (`toilet` —
- * есть ли он сейчас, как у репутации) и ночными подряд; без причин — к начальному на `drift`. Ниже порога `days` утр подряд —
+ * есть ли он сейчас, как у репутации) и ночными подряд; и каждое утро — к начальному на `drift` % расстояния (`pull`). Ниже
+ * порога `days` утр подряд —
  * «собирается уйти» до утра через `respond` суток; к тому утру не выше порога — уходит после своей смены (`go`), выше — остаётся.
  * Записи тех, кого нет в штате, — прочь. Что сказать на планёрке — новости; нечего — нет.
  */
@@ -153,8 +163,7 @@ export function moodMorning(db: ContentDb, s: ShiftState, toilet: boolean): Staf
     if (r.limit !== undefined && r.limit < s.t) delete r.limit;
     if (r.here !== undefined && r.here < s.t) delete r.here;
     const before = r.v;
-    const sum = causes.reduce((a, c) => a + c[1], 0);
-    r.v = clamp(causes.length > 0 ? r.v + sum : r.v > n.start ? Math.max(n.start, r.v - n.drift) : Math.min(n.start, r.v + n.drift));
+    r.v = clamp(r.v + causes.reduce((a, c) => a + c[1], 0) + pull(n, r.v));
     if (r.v !== before) r.d = r.v - before;
     else delete r.d;
     if (causes.length > 0) {

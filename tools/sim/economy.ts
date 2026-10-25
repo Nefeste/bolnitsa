@@ -130,7 +130,8 @@ interface DayRow {
   arrived: number; ambulance: number; seen: number; left: number; died: number; lying: number; flowWalk: number; flowAmb: number;
 }
 interface Run {
-  scenario: string; seed: number; start: number; value: number; minCash: number; profit: number; days: DayRow[];
+  /** `week` — прибыль за первые 7 суток без стройки: критерий «не окупается за 7 суток» и при `--days` больше 7 */
+  scenario: string; seed: number; start: number; value: number; minCash: number; profit: number; week: number; days: DayRow[];
   lines: Record<string, number>;
   /** персонал (spec 2026-10-staff-mood): собирались уйти и ушли сами — сутки, должность, причины; настроение в конце */
   quits: { day: number; role: Id }[];
@@ -202,8 +203,8 @@ function run(name: string, seed: number): Run {
     d.flowAmb = Math.round(ambulancePerHour(db, c) * 24);
   }
   // прибыль — без стройки первых суток: сколько больница зарабатывает, когда построена
-  const profit = days.reduce((n, d, i) => n + d.income - d.expenses + (i === 0 ? d.works : 0), 0);
-  return { scenario: name, seed, start: first, value, minCash, profit, days, lines, quits, leaves, moods };
+  const gain = (list: DayRow[]) => list.reduce((n, d, i) => n + d.income - d.expenses + (i === 0 ? d.works : 0), 0);
+  return { scenario: name, seed, start: first, value, minCash, profit: gain(days), week: gain(days.slice(0, 7)), days, lines, quits, leaves, moods };
 }
 
 const fmt = (n: number) => Math.round(n).toLocaleString('ru-RU');
@@ -233,11 +234,12 @@ if (asJson) {
       console.log(`    персонал: со сменой ${m.n}, настроение в конце ${m.min}–${Math.round(m.mean)} (ниже 30 — ${m.low}); причины ${why || 'нет'}; собирались уйти ${r.quits.length}, ушли сами ${r.leaves.length}${gone ? ` — ${gone}` : ''}`);
     }
     const low = rs.filter(r => r.minCash < -limit);
-    const rich = rs.filter(r => r.profit > r.value);
+    const rich = rs.filter(r => r.week > r.value);
     if (low.length) console.log(`  ✗ касса ниже предела (−${fmt(limit)}): зёрна ${low.map(r => r.seed).join(', ')}`);
     else console.log(`  ✓ касса ни разу не ниже предела −${fmt(limit)} ₽`);
-    if (rich.length) console.log(`  ✗ окупилась за ${DAYS} суток: зёрна ${rich.map(r => r.seed).join(', ')}`);
-    else console.log(`  ✓ за ${DAYS} суток не окупается целиком: прибыль ${rs.map(r => fmt(r.profit)).join(' / ')} при цене ${fmt(rs[0].value)}`);
+    const week = Math.min(DAYS, 7);
+    if (rich.length) console.log(`  ✗ окупилась за ${week} суток: зёрна ${rich.map(r => r.seed).join(', ')}`);
+    else console.log(`  ✓ за ${week} суток не окупается целиком: прибыль ${rs.map(r => fmt(r.week)).join(' / ')} при цене ${fmt(rs[0].value)}`);
     fails += low.length + rich.length;
     // персонал (spec 2026-10-staff-mood): за две недели, если игрок ничего не делает, уходят сами не больше двух
     if (DAYS >= 14) {

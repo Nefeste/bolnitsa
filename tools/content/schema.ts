@@ -840,12 +840,12 @@ export const economySchema = z.strictObject({
       toilet: z.tuple([z.number().int().min(1).max(12), z.number().int().min(1).max(12)]), wc: z.number().int().min(1).max(30),
     }).refine(f => f.slow <= f.tired && f.toilet[0] <= f.toilet[1], 'fatigue: slow не выше tired, toilet — от и до').optional(),
     /**
-     * настроение нанятых в смене (spec 2026-10-staff-mood): с какого начинается и к какому тянется без причин, на сколько в
-     * сутки; от скольких % ниже или выше рынка зарплата — причина; очки за причины в сутки; порог «собирается уйти», сколько утр
+     * настроение нанятых в смене (spec 2026-10-staff-mood): с какого начинается и к какому тянется каждое утро, на сколько %
+     * расстояния; от скольких % ниже или выше рынка зарплата — причина; очки за причины в сутки; порог «собирается уйти», сколько утр
      * подряд ниже него и сколько суток на ответ; разовые прибавки; шаг повышения, %; выплата при увольнении — смен
      */
     mood: z.strictObject({
-      start: pct, drift: z.number().int().min(0).max(20), market: z.number().int().min(1).max(50),
+      start: pct, drift: z.number().int().min(1).max(100), market: z.number().int().min(1).max(50),
       below: z.number().int().min(-50).max(0), above: z.number().int().min(0).max(50), limit: z.number().int().min(-50).max(0),
       here: z.number().int().min(-50).max(0), toilet: z.number().int().min(-50).max(0),
       nights: z.tuple([z.number().int().min(1).max(14), z.number().int().min(-50).max(0)]),
