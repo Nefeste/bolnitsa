@@ -12,6 +12,7 @@ import type { EconomyHud, MoneyAction } from '../app/money';
 import type { HintKey } from '../app/hints';
 import type { SaveRow } from '../app/saves';
 import type { Role } from '../app/roles';
+import type { QualityMode } from '../app/settings';
 
 /** Скорость игры (spec docs/specs/2026-10-walk.md): ×1, ×3, ×12; 0 — пауза. */
 export type Speed = 0 | 1 | 3 | 12;
@@ -108,7 +109,10 @@ export interface Hud {
   /** на сколько игровых минут расчёт отстаёт */
   lag: number;
   walls: WallMode;
+  /** качество на сцене сейчас; `qualityMode` — что выбрано в настройках: «авто» или своё; `autoQuality` — что выбрало «авто» */
   quality: Quality;
+  qualityMode: QualityMode;
+  autoQuality?: Quality;
   projection: 'persp' | 'ortho';
   tab: Tab | null;
   selected?: { key: string; info: PersonInfo };
@@ -152,8 +156,8 @@ export interface Hud {
   economy?: EconomyHud;
   /** подсказка первых минут (spec docs/specs/2026-10-aaa-polish.md): что сделать дальше; нет — ничего не показывать */
   hint?: { key: HintKey; text: string };
-  /** панель вида (стены, качество, камера) раскрыта; свёрнутая — одна кнопка */
-  viewOpen: boolean;
+  /** окно «Настройки» (spec docs/specs/2026-10-settings.md; решение владельца #70): стены, камера, качество, «Отладка» */
+  settingsOpen: boolean;
   /** меню игры (spec docs/specs/2026-10-saves.md): раскрыто ли и сохранения — новые сверху */
   menu: { open: boolean; rows: SaveRow[] };
   /** экран начала: сохранения — «Продолжить» и «Загрузить»; `problem` — почему не открылось то, что выбрали */
@@ -174,8 +178,9 @@ export const initial: Hud = {
   left: 0,
   queue: 0,
   lag: 0,
-  walls: 'cut',
-  quality: 'medium',
+  walls: 'down',
+  quality: 'high',
+  qualityMode: 'auto',
   projection: 'persp',
   tab: null,
   notices: [],
@@ -196,7 +201,7 @@ export const initial: Hud = {
   gpuMs: null,
   people: 0,
   version: '',
-  viewOpen: false,
+  settingsOpen: false,
   menu: { open: false, rows: [] },
 };
 
@@ -223,9 +228,10 @@ export interface Actions {
   untilMorning(): void;
   setWalls(m: WallMode): void;
   setQuality(q: Quality): void;
+  /** «Настройки»: качество «авто» или своё — запоминается */
+  setQualityMode(m: QualityMode): void;
   setProjection(p: 'persp' | 'ortho'): void;
   overview(): void;
-  rotate(steps: number): void;
   select(key: string | undefined): void;
   setTab(t: Tab | null): void;
   toggleDebug(): void;
@@ -272,9 +278,10 @@ export interface Actions {
   doctor(a: DoctorAction): void;
   /** касса и планёрка (spec docs/specs/2026-10-economy.md): экран планёрки, автопауза, часы приёма, кредит */
   money(a: MoneyAction): void;
-  /** подсказки первых минут и панель вида (spec docs/specs/2026-10-aaa-polish.md) */
+  /** подсказки первых минут (spec docs/specs/2026-10-aaa-polish.md) */
   dismissHint(): void;
-  toggleView(): void;
+  /** «Настройки» (spec docs/specs/2026-10-settings.md): окно из меню игры */
+  toggleSettings(): void;
   /** меню игры (spec docs/specs/2026-10-saves.md): раскрыть, сохранить, загрузить ячейку, удалить, новая игра */
   toggleMenu(): void;
   saveGame(): void;

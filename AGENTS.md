@@ -226,7 +226,9 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   (`docs/specs/2026-10-doctor-mode.md`): `caseView.ts` (a copy of Anamnez's player view of a case) and `doctor.ts` build the
   patient card and the doctor's lists here and send them ready-made — the window never sees a patient's truth.
 - `src/app/` — the game in the window: loads the database and models, starts with the empty building or the preset,
-  frame loop, clock, input, build tools (`build.ts`), room labels (`labels.ts`), auto-bench (`bench.ts`); people and flow:
+  frame loop, clock, input, build tools (`build.ts`), room labels (`labels.ts`), auto-bench (`bench.ts`), the player's
+  settings (`settings.ts`: walls, camera, quality «auto», kept in page storage, not in saves — bench and build change the
+  view through `showWalls`/`showQuality`, which do not write them); people and flow:
   pure window logic (`flow.ts` — path lines, room load and state, patient rows) and room status chips (`chips.ts`).
 - `src/render/` — the 3D view (Three.js): `layout.ts` places template items on the engine plan, `catalog.ts` maps
   engine items to CC0 models or code-made ones, `world.ts` floors and cut walls, `doors.ts`, `lamps.ts`, `post.ts`

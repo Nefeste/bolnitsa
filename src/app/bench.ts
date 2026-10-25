@@ -72,14 +72,15 @@ export async function runBench(g: Game, opts: BenchOpts) {
   const startQuality = g.stage.quality;
   try {
     store.set({ status: T.debug.benchRunning });
-    g.actions.setWalls('cut');
-    g.actions.setProjection('persp');
+    // вид бенча — без записи в настройки игрока (spec docs/specs/2026-10-settings.md)
+    g.showWalls('cut');
+    g.showProjection('persp');
     const target = Math.floor(g.t / 86400) * 86400 + (opts.hour ?? 10.5) * 3600;
     if (g.t < target) await fastForward(g, target);
     g.setSpeed(1);
     const path = route(g);
     for (const q of qualities) {
-      g.actions.setQuality(q);
+      g.showQuality(q);
       for (const cam of cams) {
         const name = cam === 'overview' ? T.debug.overviewCam : T.debug.closeCam;
         const place = (k: number) => {
@@ -162,7 +163,7 @@ export async function runBench(g: Game, opts: BenchOpts) {
     let shots: unknown[] = [];
     if (opts.shots !== false) {
       store.set({ status: T.debug.shots });
-      g.actions.setQuality('high');
+      g.showQuality('high');
       shots = await takeShots(g, prefix);
     }
     const info = window.shell ? await window.shell.info() : null;
@@ -214,7 +215,9 @@ export async function runBench(g: Game, opts: BenchOpts) {
       store.set({ status: T.debug.download });
     }
     setTimeout(() => store.set({ status: '' }), 15000);
-    g.actions.setQuality(startQuality);
+    g.showQuality(startQuality);
+    g.showWalls();
+    g.showProjection();
   } catch (e) {
     window.__benchError = String((e as Error)?.stack ?? e);
     store.set({ error: String(e) });

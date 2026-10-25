@@ -7,12 +7,12 @@ import type { SaveRow } from '../app/saves';
 import { clock, type Lang, lang, money, T } from '../i18n';
 import { lowerFirst } from '../i18n/case';
 import type { PersonInfo } from '../render/population';
-import type { Quality } from '../render/view';
 import type { WallMode } from '../render/world';
 import { Card } from './doctor/Card';
 import { Encyclopedia, openEncyclopedia } from './Encyclopedia';
 import { Asks, Dock, OfficeRow, TakeCase } from './doctor/Dock';
 import { ROLES } from '../app/roles';
+import type { QualityMode } from '../app/settings';
 import { Meeting, Reports, signed } from './Meeting';
 import { Layers, PathSection, PatientsTab } from './flow';
 import { type Actions, type Hud, type RoomCard, type Speed, type Store, type Tab, type Tool, useHud } from './store';
@@ -114,63 +114,62 @@ function Money({ hud }: { hud: Hud }) {
 }
 
 /**
- * Панель вида — свёрнута в одну кнопку «Вид» (spec docs/specs/2026-10-aaa-polish.md, «Интерфейс»): стены, качество и камера
- * нужны не каждую минуту, а место под ними — значкам помещений и извещениям.
+ * «Настройки» (spec docs/specs/2026-10-settings.md; решение владельца #70): стены и камера — по умолчанию вид владельца,
+ * «вниз» и перспектива; качество — «авто» по первым секундам игры или своё; «Отладка». Запоминаются на этом компьютере.
+ * Открываются из меню «Игра»; кнопки вида на экране больше нет — камера клавишами.
  */
-function ViewBar({ hud, actions }: P) {
+function SettingsPanel({ hud, actions }: P) {
+  if (!hud.settingsOpen) return null;
+  const t = T.settings;
   const walls: [WallMode, string][] = [
     ['full', T.view.wallsFull],
     ['cut', T.view.wallsCut],
     ['down', T.view.wallsDown],
   ];
-  const q: [Quality, string][] = [
+  const q: [QualityMode, string][] = [
+    ['auto', hud.qualityMode === 'auto' && hud.autoQuality ? t.autoChose(T.view[hud.autoQuality]) : t.auto],
     ['low', T.view.low],
     ['medium', T.view.medium],
     ['high', T.view.high],
   ];
-  const menu = (
-    <Btn id="view-menu" on={hud.viewOpen} onClick={actions.toggleView} title={T.view.menuHint}>
-      ⚙ {T.view.menu}
-    </Btn>
-  );
-  if (!hud.viewOpen)
-    return (
-      <div className="viewbar panel" id="viewbar">
-        {menu}
-      </div>
-    );
   return (
-    <div className="viewbar panel open" id="viewbar">
-      {menu}
-      <span className="label">{T.view.walls}</span>
-      {walls.map(([m, s]) => (
-        <Btn key={m} id={`walls-${m}`} on={hud.walls === m} onClick={() => actions.setWalls(m)}>
-          {s}
+    <div className="settings panel" id="settings" role="dialog" aria-labelledby="settings-title">
+      <div className="row">
+        <b id="settings-title">{t.title}</b>
+        <button type="button" className="close" id="settings-close" onClick={actions.toggleSettings} title="Esc">
+          ✕
+        </button>
+      </div>
+      <div className="label">{T.view.walls}</div>
+      <div className="row">
+        {walls.map(([m, s]) => (
+          <Btn key={m} id={`walls-${m}`} on={hud.walls === m} onClick={() => actions.setWalls(m)}>
+            {s}
+          </Btn>
+        ))}
+      </div>
+      <div className="label">{T.view.camera}</div>
+      <div className="row">
+        <Btn id="camera-persp" on={hud.projection === 'persp'} onClick={() => actions.setProjection('persp')}>
+          {T.view.persp}
         </Btn>
-      ))}
-      <span className="label">{T.view.quality}</span>
-      {q.map(([m, s]) => (
-        <Btn key={m} id={`quality-${m}`} on={hud.quality === m} onClick={() => actions.setQuality(m)}>
-          {s}
+        <Btn id="camera-ortho" on={hud.projection === 'ortho'} onClick={() => actions.setProjection('ortho')}>
+          {T.view.ortho}
         </Btn>
-      ))}
-      <span className="label">{T.view.camera}</span>
-      <Btn on={hud.projection === 'persp'} onClick={() => actions.setProjection('persp')}>
-        {T.view.persp}
-      </Btn>
-      <Btn on={hud.projection === 'ortho'} onClick={() => actions.setProjection('ortho')}>
-        {T.view.ortho}
-      </Btn>
-      <Btn onClick={() => actions.rotate(-1)} title="Q">
-        ⟲
-      </Btn>
-      <Btn onClick={() => actions.rotate(1)} title="E">
-        ⟳
-      </Btn>
-      <Btn onClick={actions.overview}>{T.view.overview}</Btn>
-      <Btn id="debug" on={hud.debug} onClick={actions.toggleDebug}>
-        {T.view.debug}
-      </Btn>
+      </div>
+      <p className="muted small">{t.keys}</p>
+      <div className="label">{T.view.quality}</div>
+      <div className="row">
+        {q.map(([m, s]) => (
+          <Btn key={m} id={`quality-${m}`} on={hud.qualityMode === m} onClick={() => actions.setQualityMode(m)} title={m === 'auto' ? t.autoHint : undefined}>
+            {s}
+          </Btn>
+        ))}
+      </div>
+      <label className="check">
+        <input type="checkbox" id="debug" checked={hud.debug} onChange={actions.toggleDebug} /> {T.view.debug}
+      </label>
+      <p className="muted small">{t.where}</p>
     </div>
   );
 }
@@ -807,7 +806,7 @@ function SaveList({ rows, load, remove, prefix }: { rows: SaveRow[]; load: (slot
   );
 }
 
-/** Меню игры: «Сохранить», сохранения, «Новая игра». */
+/** Меню игры: «Сохранить», сохранения, «Новая игра», «Настройки». */
 function GameMenu({ hud, actions }: P) {
   if (!hud.menu.open) return null;
   return (
@@ -824,6 +823,16 @@ function GameMenu({ hud, actions }: P) {
       <SaveList rows={hud.menu.rows} load={actions.loadGame} remove={actions.deleteGame} prefix="save" />
       <button type="button" id="new-game" title={T.saves.newGameHint} onClick={actions.newGame}>
         {T.saves.newGame}
+      </button>
+      {/* настройки (spec docs/specs/2026-10-settings.md): вид и качество — здесь, а не кнопкой на экране */}
+      <button
+        type="button" id="settings-open" title={T.settings.openHint}
+        onClick={() => {
+          actions.toggleMenu();
+          actions.toggleSettings();
+        }}
+      >
+        ⚙ {T.settings.open}
       </button>
     </div>
   );
@@ -934,9 +943,9 @@ export function App({ store, actions, names }: { store: Store; actions: Actions;
         <HintStrip {...p} />
         <Notice {...p} />
       </div>
-      <ViewBar {...p} />
       <LeftTools {...p} />
       <GameMenu {...p} />
+      <SettingsPanel {...p} />
       <RightTabs {...p} />
       <BottomCard {...p} />
       {!hud.build.on ? <Dock hud={hud} actions={actions} /> : null}

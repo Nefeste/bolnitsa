@@ -95,7 +95,7 @@ const ok = msg => console.log(`✓ ${msg}`);
 const shotAs = async name => {
   const q = arg('shots', '');
   if (q) {
-    await page.evaluate(x => window.__game.actions.setQuality(x), q);
+    await page.evaluate(x => window.__game.showQuality(x), q);
     await page.evaluate(() => new Promise(r => {
       let n = 0;
       const f = () => (++n >= 4 ? r() : requestAnimationFrame(f));
@@ -103,7 +103,7 @@ const shotAs = async name => {
     }));
   }
   await page.screenshot({ path: join(out, name) });
-  if (q) await page.evaluate(x => window.__game.actions.setQuality(x), arg('q', 'low'));
+  if (q) await page.evaluate(x => window.__game.showQuality(x), arg('q', 'low'));
 };
 /** Шесть помещений прототипа — тот же план, что в tools/test/site-kit.ts (PROTO): тип, прямоугольник со стенами, кого нанять. */
 const PROTO = [
@@ -278,13 +278,67 @@ async function partOne() {
     if (hover.hoverRing && hover.text.length > 0 && hover.cursor === 'pointer') ok(`наведение на человека: кольцо, курсор-рука, подпись «${hover.text}»`);
     else fail(`наведение на человека: ${JSON.stringify(hover)}`);
   } else fail('не нашёл второго человека в кадре');
-  // панель вида свёрнута в кнопку «Вид»: стены вниз и обратно
-  if (!(await page.$('#walls-down'))) await page.click('#view-menu');
-  await page.click('#walls-down');
-  const mode = await page.evaluate(() => window.__game.stage.walls.uniforms.uMode.value);
-  if (mode === 2) ok('стены — вниз');
-  else fail('стены не переключились');
+  await settingsPart();
+}
+
+/**
+ * «Настройки» (spec docs/specs/2026-10-settings.md; решение владельца #70): кнопки «Вид» на экране нет; стены, камера и
+ * качество — «Игра» → «Настройки», по умолчанию стены вниз и качество «авто»; выбор переживает перезагрузку. В конце —
+ * снова как по умолчанию: следующие части начинают с вида игрока, как прежде.
+ */
+async function settingsPart() {
+  const view = () =>
+    page.evaluate(() => {
+      const g = window.__game;
+      const on = id => document.getElementById(id)?.classList.contains('on') ?? null;
+      return {
+        mode: g.stage.walls.uniforms.uMode.value,
+        projection: g.stage.cam.projection,
+        quality: g.stage.quality,
+        auto: g.auto !== undefined,
+        buttons: { down: on('walls-down'), cut: on('walls-cut'), ortho: on('camera-ortho'), persp: on('camera-persp'), low: on('quality-low'), medium: on('quality-medium'), qauto: on('quality-auto') },
+        saved: localStorage.getItem('bolnitsa.settings'),
+      };
+    });
+  const open = async () => {
+    await page.click('#game-menu-open');
+    await page.click('#settings-open');
+    await page.waitForSelector('#settings', { timeout: 5000 });
+  };
+  if (await page.$('#view-menu')) fail('кнопка «Вид» осталась на экране');
+  else ok('кнопки «Вид» на экране нет — вид в «Настройках»');
+  await open();
+  // снимок окна — для отчёта (docs/reports/2026-10-settings/); кнопка «Игра» гаснет за 0,12 с — дождаться
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: join(out, 'settings.jpg'), type: 'jpeg', quality: 72 });
+  const a = await view();
+  if (a.mode === 2 && a.buttons.down && a.buttons.persp && a.buttons.low && a.buttons.qauto === false && a.saved === null) ok('«Настройки»: по умолчанию стены вниз, перспектива; качество — заданное адресом (?q=low)');
+  else fail(`«Настройки» по умолчанию: ${JSON.stringify(a)}`);
   await page.click('#walls-cut');
+  await page.click('#camera-ortho');
+  await page.click('#quality-medium');
+  const b = await view();
+  if (b.mode === 1 && b.projection === 'ortho' && b.quality === 'medium' && b.buttons.cut && b.buttons.ortho && b.buttons.medium) ok('«Настройки»: стены «срез», камера «орто», качество «среднее» — сразу на карте');
+  else fail(`«Настройки» не применились: ${JSON.stringify(b)}`);
+  await page.keyboard.press('Escape');
+  if (await page.$('#settings')) fail('Esc не закрыл «Настройки»');
+  else ok('Esc закрывает «Настройки»');
+  // перезагрузка без ?q=: качество — из настроек
+  await page.goto(`http://127.0.0.1:${port}/index.html?lang=ru&hospital=preset&flow=6,1`);
+  await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
+  await open();
+  const c = await view();
+  if (c.mode === 1 && c.projection === 'ortho' && c.quality === 'medium' && !c.auto && c.buttons.cut && c.buttons.ortho && c.buttons.medium) ok('после перезагрузки — те же стены, камера и качество');
+  else fail(`после перезагрузки: ${JSON.stringify(c)}`);
+  // назад к виду по умолчанию; «авто» начинает с высокого и смотрит на кадр
+  await page.click('#walls-down');
+  await page.click('#camera-persp');
+  await page.click('#quality-auto');
+  const d = await view();
+  if (d.mode === 2 && d.projection === 'persp' && d.quality === 'high' && d.auto && d.buttons.qauto && JSON.parse(d.saved ?? '{}').quality === 'auto') ok('качество «авто»: с высокого, по времени кадра; стены вниз и перспектива — снова');
+  else fail(`«авто» и вид по умолчанию: ${JSON.stringify(d)}`);
+  await page.click('#settings-close');
+  if (await page.$('#settings')) fail('«✕» не закрыл «Настройки»');
 }
 
 async function partTwo() {
