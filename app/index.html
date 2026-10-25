@@ -249,6 +249,18 @@
     /* больной нанятого врача: «Ход приёма» и бланк «Ещё обследование» рядом (spec docs/specs/2026-10-two-ways.md, F2) */
     .dcard.read.order { left: max(1.5%, calc(50% - 560px)); right: max(1.5%, calc(50% - 560px)); }
     .dcols.two { grid-template-columns: 1fr 1fr; }
+    /* своя карта, макет (spec docs/specs/2026-10-own-card.md): лента «Ход приёма» и шаги, открыт один */
+    .dcols.steps { grid-template-columns: 1.25fr 1fr; }
+    .dcols.steps .dcourse { margin-top: 0; }
+    .dsteps { display: flex; flex-direction: column; gap: 4px; min-height: 0; }
+    .dstep { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; text-align: left; padding: 6px 10px; }
+    .dstep b { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; }
+    .dstep small { color: var(--muted); }
+    .dstep.on, .dstep.on:hover:not(:disabled) { background: rgba(47,181,201,.16); color: var(--text); border-color: var(--accent); }
+    .dstep.on b { color: var(--accent); }
+    .dstep.on small { color: var(--text); opacity: .75; }
+    .dstepbody { flex: 1; min-height: 0; display: flex; flex-direction: column; background: rgba(255,255,255,.03); border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; }
+    .dstepcol { flex: 1; min-height: 0; display: flex; flex-direction: column; }
     .dbanner.approve { background: rgba(139,111,214,.18); color: #e2d8ff; }
     .dcourse { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin-top: 6px; padding-right: 2px; }
     .dcourse h3 { margin: 0 0 2px; font-size: 13px; color: var(--accent); text-transform: uppercase; letter-spacing: .05em; }
