@@ -291,6 +291,31 @@
     #card-said.bad { color: #ff9b86; }
     .term { position: absolute; right: 24px; top: 70px; width: 340px; padding: 10px 12px; z-index: 6; background: rgba(28,38,44,.98); }
     .term p { margin: 4px 0; }
+    .term .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+    /* энциклопедия (docs/specs/2026-10-encyclopedia.md): поверх карты, карты пациента и экрана начала */
+    .enc { position: absolute; left: 50%; top: 52px; bottom: 10px; transform: translateX(-50%); width: min(1180px, 97%); z-index: 8; display: flex; flex-direction: column; gap: 4px; padding: 8px 12px; background: rgb(18, 25, 29); }
+    .enc-head { display: flex; align-items: center; gap: 8px; }
+    .enc-head .enc-name { font-size: 16px; flex: none; }
+    .enc-head input.search { flex: 1; margin: 0; width: auto; }
+    .enc-note { color: var(--muted); font-size: 12px; }
+    .enc-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 190px minmax(220px, 1fr) 2.3fr; gap: 10px; }
+    .enc-sections, .enc-list, .enc-article { min-height: 0; overflow-y: auto; }
+    .enc-sections { display: flex; flex-direction: column; gap: 3px; }
+    .enc-sections button { display: flex; justify-content: space-between; gap: 6px; text-align: left; }
+    .enc-sections button small { opacity: .75; font-variant-numeric: tabular-nums; }
+    .enc-list { display: flex; flex-direction: column; padding-right: 6px; border-right: 1px solid var(--line); }
+    .enc-group h3, .enc-block h4 { margin: 10px 0 3px; font-size: 12px; color: var(--accent); text-transform: uppercase; letter-spacing: .05em; }
+    .enc-group:first-child h3 { margin-top: 0; }
+    button.enc-item { width: 100%; text-align: left; background: none; border-color: transparent; padding: 2px 6px; }
+    button.enc-item.on { background: rgba(47,181,201,.18); border-color: var(--accent); color: var(--text); }
+    .enc-article { padding-right: 6px; }
+    .enc-article h2 { margin: 0 0 2px; font-size: 18px; }
+    .enc-block p { margin: 3px 0; line-height: 1.45; }
+    .enc-row { display: flex; gap: 8px; align-items: baseline; margin: 4px 0; }
+    .enc-row > .label { flex: 0 0 150px; margin: 0; }
+    .enc-refs { display: flex; flex-wrap: wrap; gap: 3px; }
+    button.enc-ref { padding: 1px 8px; border-radius: 11px; font-size: 12px; text-align: left; }
+    button.enc-ref small { color: var(--muted); }
     /* касса, планёрка, обход (docs/specs/2026-10-economy.md) */
     .top .stat .ok, .msec .ok, .dround .ok, .dlists .ok { color: #8fe3b4; }
     .top .stat .bad, .msec .bad, .dround .bad, .dlists .bad { color: #ff9b86; }

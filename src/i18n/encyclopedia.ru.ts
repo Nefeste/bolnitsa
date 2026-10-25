@@ -1,0 +1,314 @@
+// из anamnez: src/i18n/sections/encyclopedia.ts @ 53d71e1, изменено: без подписей скрытых параметров (`when`, `whenList` —
+// в when.ts «Больницы») и подсказок наставника «Анамнеза»; свои строки окна — `ui` (spec docs/specs/2026-10-encyclopedia.md).
+// Английский — encyclopedia.en.ts, того же вида (тип `EncyclopediaStrings`: пропуск строки ломает tsc).
+import { lowerFirst } from './case';
+import { pluralRu } from './plural';
+
+const decimal = (x: number) => String(x).replace('.', ',');
+/** «в 2 раза», «в 5 раз», «в 1,5 раза»: при дробном — всегда «раза» */
+const timesWord = (x: number) => (Number.isInteger(x) ? pluralRu(x, 'раз', 'раза', 'раз') : 'раза');
+/** «1 балл», «2 балла», «5 баллов» */
+const pointsWord = (n: number) => `${n}\u00a0${pluralRu(n, 'балл', 'балла', 'баллов')}`;
+
+export const encyclopediaRu = {
+  encyclopedia: {
+    title: 'Энциклопедия',
+    // 12-publishing.md §3: та же мысль, что в оговорке, одной строкой вверху каждого раздела
+    disclaimer: 'Сведения упрощены для игры: это не справочник и не замена врачу.',
+    search: 'Поиск по энциклопедии',
+    nothing: 'Ничего не нашлось',
+    articles: (n: number) => `${n}\u00a0${pluralRu(n, 'статья', 'статьи', 'статей')}`,
+    sections: {
+      conditions: 'Болезни',
+      findings: 'Признаки',
+      exams: 'Обследования',
+      treatments: 'Лечение',
+      risks: 'Факторы риска',
+      scores: 'Шкалы и правила',
+      hospital: 'Больница',
+    },
+    chronic: 'Хронические болезни',
+    findingGroup: { sym: 'Жалобы', hx: 'Анамнез', sign: 'Осмотр', vital: 'Показатели', lab: 'Анализы', img: 'Снимки', ecg: 'ЭКГ' },
+    findingKind: { sym: 'Жалоба', hx: 'Анамнез', sign: 'Находка при осмотре', vital: 'Показатель', lab: 'Анализ', img: 'Снимок', ecg: 'ЭКГ' },
+    examGroup: { ask: 'Расспрос', examine: 'Осмотр', lab: 'Анализы и экспресс-тесты', imaging: 'Снимки и функциональные' },
+    examKind: { ask: 'Расспрос', physical: 'Осмотр', bedside: 'У постели', lab: 'Анализ', rapid: 'Экспресс-тест', functional: 'Функциональное', imaging: 'Снимок' },
+    txKind: { drug: 'Лекарство', regimen: 'Режим и советы', procedure: 'Процедура', surgery: 'Операция' },
+    severity: { minor: 'лёгкое', moderate: 'средней тяжести', serious: 'серьёзное', critical: 'угрожает жизни' },
+    band: {
+      always: 'Почти всегда',
+      usually: 'Обычно',
+      often: 'Часто',
+      sometimes: 'Иногда',
+      rarely: 'Редко',
+      veryRarely: 'Исключительно редко',
+      never: 'Не бывает',
+    },
+    icd: (code: string) => `МКБ-10: ${code}`,
+
+    // статья болезни — разделы в порядке 11-content.md §4
+    what: 'Что это',
+    signs: 'Признаки',
+    who: 'У кого бывает',
+    peakAfter: (from: number) => `Чаще после ${from}\u00a0лет.`,
+    peakBetween: (from: number, to: number) => `Чаще в ${from}–${to}\u00a0лет.`,
+    onlyWomen: 'Почти только у женщин.',
+    moreWomen: 'Чаще у женщин.',
+    onlyMen: 'Почти только у мужчин.',
+    moreMen: 'Чаще у мужчин.',
+    season: { winter: 'Чаще зимой.', spring: 'Чаще весной.', summer: 'Чаще летом.', autumn: 'Чаще осенью.' },
+    requires: 'Бывает только при',
+    riskFactors: 'Факторы риска',
+    times: (x: number) => `в ${decimal(x)}\u00a0${timesWord(x)} чаще`,
+    confirm: 'Как подтвердить',
+    clinical: 'Отдельного подтверждающего обследования нет: диагноз ставят по жалобам и осмотру, исключив опасное.',
+    similar: 'С чем спутать',
+    treatment: 'Лечение',
+    firstLine: 'Первая линия',
+    plan: 'Обычно назначают',
+    acceptable: 'Можно также',
+    supportive: 'Облегчить состояние',
+    notIndicated: 'Не нужно',
+    harmful: 'Опасно',
+    prevent: 'Обязательная профилактика',
+    // обязательное при лечении здесь (часть 38б): кислород при низкой сатурации
+    require: 'Обязательно',
+    // обязательное и при переводе (часть 39а): тромболизис в окне
+    beforeTransfer: 'Обязательно до перевода',
+    preHospital: 'До приезда скорой',
+    setting: { home: 'дома', ward: 'в стационаре', ambulance: 'скорая, больница', admit: 'в стационаре', surgery: 'операция', transfer: 'скорая, перевод в центр', icu: 'палата интенсивной терапии', ricu: 'реанимация с ИВЛ', box: 'бокс инфекционного отделения' },
+    whereTitle: 'Где лечить',
+    whereDefault: (s: string) => `Обычно — ${s}.`,
+    whereIf: (when: string, s: string) => `${when[0].toUpperCase()}${when.slice(1)} — ${s}.`,
+    whereRedFlag: (s: string) => `При красных флагах — ${s}.`,
+    // своей ПИТ нет — скорая (часть 38а)
+    whereNoIcu: (s: string) => `Своей палаты интенсивной терапии нет — ${s}.`,
+    // реанимация (spec 2026-10-chapter-4, часть 47): своей нет — перевод; в амбулатории — скорая
+    whereNoRicu: (s: string) => `Своей реанимации с ИВЛ нет — ${s}.`,
+    // заразная болезнь (spec 2026-10-chapter-4, часть 49а): в стационаре — бокс, в общей палате соседи — контактные
+    whereNoBox: 'Своих боксов нет — скорая или перевод в инфекционную больницу; в общую палату заразного не кладут.',
+    isolation: { contact: 'Заразна: передаётся через руки, посуду и предметы.', airborne: 'Заразна: передаётся по воздуху.' } as Record<string, string>,
+    // ещё место, которое не ошибка (часть 32б): «При смещении без красных флагов — можно и дома.»
+    whereAlso: (when: string, s: string, flags = false, risks = false) =>
+      `${when[0].toUpperCase()}${when.slice(1)}${flags || risks ? ` без ${[flags ? 'красных флагов' : '', risks ? 'факторов риска' : ''].filter(Boolean).join(' и ')}` : ''} — можно и ${s}.`,
+    whereRisk: (risk: string, s: string) => `Если есть «${risk}» — ${s}.`,
+    // без аппарата у постели (часть 42б): «Без монитора с дефибриллятором у постели — палата интенсивной терапии.»
+    whereWithout: (equipment: string[], s: string) => `Без ${equipment.join(' и ')} у постели — ${s}.`,
+    // нет работающего кабинета (spec 2026-10-chapter-4, часть 53а)
+    whereNoRoom: (rooms: string[], s: string) => `Без работающего ${rooms.join(' и ')} — ${s}.`,
+    // после обследования (spec 2026-10-chapter-3, часть 40): «После обследования «КТ головного мозга» — дома.»
+    whereAfter: (exams: string[], s: string) => `После обследования «${exams.join('» или «')}» — ${s}.`,
+    whereAfterFlags: (exams: string[], flags: string[], s: string) => `После обследования «${exams.join('» или «')}», если есть «${flags.join('» или «')}», — ${s}.`,
+    // операция и срок стационара (spec 2026-09-chapter-2, части 26 и 28)
+    // срока нет (часть 32: закрытый перелом) — без срока
+    whereSurgery: (op: string, hours: number | undefined, onset = false) =>
+      hours === undefined ? `Операция — ${lowerFirst(op)}.` : `Операция — ${lowerFirst(op)}: в первые ${hours}\u00a0ч ${onset ? 'от начала болезни' : 'после поступления'}.`,
+    whereStay: (lo: number, hi: number) => `В стационаре обычно ${lo === hi ? lo : `${lo}–${hi}`}\u00a0${pluralRu(hi, 'день', 'дня', 'дней')}.`,
+    // наблюдение в палате и стационар после операции (часть 30в)
+    whereObserve: (hours: number) => `Без показаний к экстренной операции — лечение в палате; не помогло — операция не позже ${hours}\u00a0ч после поступления.`,
+    whereStayOperated: (lo: number, hi: number) => `После операции — ${lo === hi ? lo : `${lo}–${hi}`}\u00a0${pluralRu(hi, 'день', 'дня', 'дней')}.`,
+    // осложнённая стадия (часть 28б): риск по часам без операции, срок после неё, исходы операции
+    whereStayComplicated: (name: string, lo: number, hi: number) => `После операции, если была ${name}, — ${lo === hi ? lo : `${lo}–${hi}`}\u00a0${pluralRu(hi, 'день', 'дня', 'дней')}.`,
+    complicationRisk: (name: string, hours: number, early: string, every: number, later: string) =>
+      `${name[0].toUpperCase()}${name.slice(1)} без операции: за первые ${hours}\u00a0ч — до ${early}\u00a0%, дальше — ${later}\u00a0% за каждые ${every}\u00a0ч.`,
+    // по сроку (часть 30б): прободная язва позже суток — поздняя госпитализация
+    complicationAfter: (name: string, hours: number, when?: string) =>
+      `${when ? `${when[0].toUpperCase()}${when.slice(1)} позже` : 'Позже'} ${hours}\u00a0ч от начала болезни — ${name}.`,
+    // каждый час до операции (часть 30б, Buck 2013)
+    opDelay: (pctHour: string) => `Каждый час от поступления до операции выживаемость ниже на ${pctHour}\u00a0%.`,
+    opOutcomes: 'Исходы',
+    opComplications: (plain: string, complicated?: string, name?: string) =>
+      `Осложнения после операции — ${plain}\u00a0%${complicated && name ? `; если была ${name}, — ${complicated}\u00a0%` : ''}.`,
+    opDeaths: (plain: string, complicated?: string, name?: string) =>
+      `Умирают в стационаре — ${plain}\u00a0%${complicated && name ? `; если была ${name}, — ${complicated}\u00a0%` : ''}.`,
+    surgeryRow: 'Операция',
+    opTreats: 'Чем лечат и в какой срок',
+    opWindow: (hours: number, onset = false, observe?: number) =>
+      `в первые ${hours}\u00a0ч ${onset ? 'от начала болезни' : 'после поступления'}${observe !== undefined ? `; после наблюдения — до ${observe}\u00a0ч` : ''}`,
+    opTeam: 'Бригада',
+    course: 'Без лечения',
+    // исход перевода по часам до реперфузии и фибрилляция желудочков (spec 2026-10-chapter-3, часть 39б)
+    afterTransfer: 'После перевода',
+    rscWay: (hours: number, pci: number) =>
+      `Артерию открывают тромболизисом здесь или вмешательством в сосудистом центре: до него ${hours}\u00a0ч пути, там до вмешательства — ${pci}\u00a0ч.`,
+    rscLysis: (pct: string) =>
+      `Тромболизис открывает артерию у ${pct}\u00a0% больных: через 60–90\u00a0минут подъём ST снижается наполовину и больше. Нет — в центре спасающее вмешательство.`,
+    rscDeath: (rows: string) =>
+      `Смертность в стационаре — по классу Killip: ${rows}. Чем позже открыли артерию, тем ближе к верхней границе; позже 12\u00a0часов польза для сердца мала.`,
+    rscRow: (cls: string, lo: string, hi: string) => `${cls} — ${lo}–${hi}\u00a0%`,
+    arrest: (pct: string, hours: number) =>
+      `До открытия артерии, в первые ${hours}\u00a0часов от начала, — фибрилляция желудочков: около ${pct}\u00a0% в час. Под монитором её снимают разрядом, без монитора она смертельна.`,
+    selfLimiting: 'Обычно проходит само.',
+    // острый период проходит в стационаре (spec 2026-10-chapter-3, часть 41а)
+    settles: 'Острый период проходит под наблюдением в стационаре; помогло лечение — последствий нет, нет — остаются, и дальше реабилитация.',
+    settlesResidual: 'Острый период проходит под наблюдением в стационаре; последствия остаются, и дальше реабилитация.',
+    // по скрытому параметру (часть 30д): «При неосложнённом — обычно проходит само.»
+    selfLimitingIf: (when: string) => `${when[0].toUpperCase()}${when.slice(1)} — обычно проходит само.`,
+    // срок одним днём (часть 33б: анафилактический шок — в тот же день)
+    untreated: (band: string, from: number, to: number, when?: string) =>
+      `${when ? `${when[0].toUpperCase()}${when.slice(1)} без` : 'Без'} действенного лечения ${band.toLowerCase()} становится хуже — ${from !== to ? `на ${from}–${to}-й день` : from === 0 ? 'в тот же день' : `на ${from}-й день`}.`,
+    // часть 41б: хуже — другая болезнь, с долей из записи: «без действенного лечения на 1–7-й день — ишемический инсульт у 6 %»
+    untreatedAs: (pct: string, from: number, to: number, name: string, when?: string) =>
+      `${when ? `${when[0].toUpperCase()}${when.slice(1)} без` : 'Без'} действенного лечения ${from !== to ? `на ${from}–${to}-й день` : from === 0 ? 'в тот же день' : `на ${from}-й день`} — ${name} у ${pct}\u00a0%.`,
+    redFlags: 'Красные флаги',
+    redFlagsNote: 'Признаки опасного течения: с ними тактика другая.',
+    pearls: 'Что запомнить',
+    sources: 'Источники',
+
+    // признак
+    redFlag: 'красный флаг',
+    howFound: 'Как выявить',
+    inConditions: 'При каких болезнях',
+    fromRisks: 'Бывает и от',
+    redFlagFor: 'Красный флаг при',
+
+    // обследование
+    minutes: (n: number) => `${n}\u00a0мин`,
+    checks: 'Что проверяет',
+    accuracy: (sens: number, spec: number) => `чувствительность ${sens}\u00a0%, специфичность ${spec}\u00a0%`,
+    accuracyNote: 'Чувствительность — какую долю больных обследование находит; специфичность — какую долю здоровых не принимает за больных.',
+    // ложные находки по жалобам (вопрос 33): осмотр, снимки и ЭКГ
+    accuracyByComplaint: (x: number) => `Специфичность — у тех, кому обследование показано по жалобам; у остальных ложная находка в\u00a0${x}\u00a0раз реже.`,
+    confirms: 'Подтверждает',
+    // вред при противопоказании (spec 2026-10-chapter-4, часть 50а): «Часто — осложнение, от которого больной умирает в первые сутки»
+    examHarm: 'Когда нельзя',
+    examHarmText: (band: string) => `При противопоказании ${band.toLowerCase()} — осложнение, от которого больной умирает в первые сутки: перед обследованием проверяют каждый пункт правила.`,
+
+    // лечение
+    usedAs: 'Где в лечении',
+    firstLineFor: 'Первая линия при',
+    planFor: 'Обычно назначают при',
+    acceptableFor: 'Можно при',
+    supportiveFor: 'Облегчает при',
+    harmfulFor: 'Опасно при',
+    preventFor: 'Профилактика при',
+    requireFor: 'Обязательно при',
+    beforeTransferFor: 'Обязательно до перевода при',
+    preHospitalFor: 'До приезда скорой при',
+    contraindications: 'Противопоказания',
+    level: { absolute: 'нельзя', relative: 'с осторожностью' },
+    // лечение у постели и его спутники (часть 39а): тромболизис
+    bedsideOnly: 'Только лежащему под этим аппаратом — в кабинете врача не назначить',
+    // лечение реанимации (spec 2026-10-chapter-4, часть 47)
+    ricuOnly: 'Только в реанимации: назначили — место становится «В ОРИТ»; своей реанимации нет — больного переводят',
+    companions: 'С чем назначают',
+    companionsNote: 'Без них лечение неполное — разбор скажет, чего не хватило',
+    companionsEach: 'Каждое',
+    companionsOneOf: 'Одно из',
+    companionsFor: 'Только при',
+    companionsIf: 'Только тем, у кого',
+
+    // фактор риска
+    riskKind: 'Фактор риска',
+    // шкалы (часть 27)
+    scoreKind: 'Шкала',
+    scoreGroup: 'Шкалы',
+    // правила решения (spec 2026-09-chapter-2, часть 32): оттавские правила
+    ruleGroup: 'Правила',
+    ruleKind: 'Правило решения',
+    ruleWhen: 'Когда применяют',
+    ruleAge: (years: number) => `Проверено у тех, кому ${years}\u00a0лет и больше.`,
+    ruleAny: 'Если есть хоть один признак',
+    ruleNone: 'Если проверили все и ни одного нет',
+    ruleNoneMinor: 'Если проверили все: основных нет, дополнительных не хватает',
+    // часть 32г: круг применимости, возраст и дополнительные признаки
+    ruleRequires: 'Применяют, если есть хоть один',
+    // часть 33а: при каких признаках правило не применяют (тромбофлебит, беременность)
+    ruleExcludes: 'Не применяют, если есть',
+    ruleAgeMain: (years: number) => `Возраст старше ${years}\u00a0лет — тоже основной признак.`,
+    ruleAgeFrom: (years: number) => `Возраст ${years}\u00a0лет и старше — тоже основной признак.`,
+    ruleMinor: (count: number) => `Или не меньше ${count === 2 ? 'двух' : count} из этих`,
+    ruleAgeMinor: (from: number, to: number) => `Возраст ${from}–${to}\u00a0лет — тоже дополнительный признак.`,
+    // часть 41б: шкала с баллами — пункты с весами и порог
+    rulePointsTitle: 'Баллы',
+    // у пункта-признака — подпись к ссылке на него, возраст — строкой
+    rulePointsItem: (w: number) => pointsWord(w),
+    rulePointsUnless: (w: number, unless: string[]) => `${pointsWord(w)}, если нет ${unless.length > 1 ? 'пунктов' : 'пункта'} ${unless.map(u => `«${u}»`).join(', ')}`,
+    rulePointsAge: (years: number, w: number) => `Возраст ${years}\u00a0лет и старше — ${pointsWord(w)}`,
+    // часть 42а: возраст полосами, балл за пол и порог по полу (CHA₂DS₂-VASc)
+    rulePointsAgeRange: (from: number, to: number, w: number) => `Возраст ${from}–${to}\u00a0${pluralRu(to, 'год', 'года', 'лет')} — ${pointsWord(w)}`,
+    rulePointsSex: (sex: 'm' | 'f', w: number) => `${sex === 'f' ? 'Женский' : 'Мужской'} пол — ${pointsWord(w)}`,
+    rulePointsYes: (from: number) => `Если баллов ${from} и больше`,
+    rulePointsNo: (from: number) => `Если меньше ${from}`,
+    rulePointsYesSex: (m: number, f: number) => `Если баллов у мужчин ${m} и больше, у женщин — ${f} и больше`,
+    rulePointsNoSex: (m: number, f: number) => `Если у мужчин меньше ${m}, у женщин — меньше ${f}`,
+    ruleExams: 'Какое обследование',
+    // правило о лечении (часть 39а): «Можно ли тромболизис»
+    ruleDecides: 'О каком лечении',
+    // правило о месте (часть 43б): sPESI — дома или в стационаре
+    rulePlace: 'О чём решает',
+    rulePlaceText: 'Где лечить: дома или в стационаре.',
+    examForComplaints: 'Делают при жалобе',
+    ruleAbout: 'При каких болезнях',
+    rulesFor: 'Правила решения',
+    inRules: 'В правилах решения',
+    // тактика по скрытому параметру (часть 32): «Первая линия, со смещением»
+    byParamRow: (role: string, when: string) => `${role}, ${when}`,
+    // группа «одно из» в списке тактики (часть 39в): «Обязательно при лечении здесь — одно из»
+    oneOf: (role: string) => `${role} — одно из`,
+    scorePoints: 'Баллы',
+    scoreUpTo: (v: string) => `${v} и меньше`,
+    scoreFrom: (v: string) => `${v} и больше`,
+    scoreOxygen: (n: number) => `Дышит кислородом — ${n}`,
+    scoreConfusion: (n: number) => `Спутанность, ответ только на голос или боль, нет ответа — ${n}`,
+    scoreLevels: 'Что значит сумма',
+    scoreLevelsText: (medium: number, single: number, high: number) =>
+      `0–${medium - 1} — низкий риск; ${medium}–${high - 1} — средний: срочно к врачу, как и при ${single} по одному показателю; ${high} и больше — высокий: экстренно.`,
+    scoreUses: 'По каким признакам',
+    shows: 'Как проявляется',
+    raises: 'Чаще бывают',
+    // профессии с этой вредностью (spec 2026-10-occupation, 0.5.10): «Строитель — у 40 из 100»
+    jobs: 'У кого по работе',
+    jobShare: (job: string, n: number) => `${job} — ${n === 100 ? 'у всех' : `у ${n} из 100`}`,
+    limits: 'Мешает лечению',
+
+    // больница: помещения, аппараты, должности (spec 2026-09-own-hospital)
+    hospitalGroup: { rooms: 'Помещения', equipment: 'Аппараты', roles: 'Должности' },
+    whereDone: 'Где делают',
+    collectHere: 'берут материал',
+    roomKind: 'Помещение',
+    fromPrice: (rub: string) => `от ${rub}`,
+    doneHere: 'Что здесь делают',
+    collectsFor: 'Здесь берут материал на',
+    needs: 'Что нужно, чтобы работало',
+    needPeople: 'Люди',
+    needMachine: 'Аппарат — хотя бы один',
+    needMachines: 'Аппараты — все сразу',
+    // реанимация (spec 2026-10-chapter-4, часть 47): койка работает, если у неё есть все аппараты
+    needMachinesPerBed: 'У каждой койки — все эти аппараты',
+    machines: 'Аппараты',
+    sizes: 'Размеры и цена',
+    sizeLine: (id: string, w: number, h: number, cost: string, upkeep: string, seats: number, beds = 0, bays = 0) =>
+      `${id} — ${w}\u00a0×\u00a0${h}\u00a0м, ${cost}, содержание ${upkeep} в\u00a0день${seats > 0 ? `, ${seats}\u00a0${pluralRu(seats, 'место', 'места', 'мест')}` : ''}${beds > 0 ? `, ${beds}\u00a0${pluralRu(beds, 'койка', 'койки', 'коек')}` : ''}${bays > 0 ? `, ${bays}\u00a0${pluralRu(bays, 'место', 'места', 'мест')} для скорой` : ''}.`,
+    sizeNote: 'Размер — вместе со стенами; соседние помещения делят стену.',
+    equipmentKind: 'Аппарат',
+    examsBy: 'Что им делают',
+    standsIn: 'Где стоит',
+    upgrades: 'Улучшение для',
+    upgradedBy: 'Можно заменить на',
+    prices: 'Цена',
+    priceLine: (price: string, upkeep: string) => `${price}, обслуживание — ${upkeep} в\u00a0день.`,
+    slower: (x: number) => `Обследование идёт в\u00a0${decimal(x)}\u00a0${timesWord(x)} дольше обычного.`,
+    faster: (x: number) => `Обследование идёт в\u00a0${decimal(x)}\u00a0${timesWord(x)} быстрее обычного.`,
+    worse: (sens: number, spec: number) => `Точность ниже обычной: чувствительность — на\u00a0${sens}, специфичность — на\u00a0${spec}\u00a0${pluralRu(spec, 'процентный пункт', 'процентных пункта', 'процентных пунктов')}.`,
+    better: (sens: number, spec: number) => `Точность выше обычной: чувствительность — на\u00a0${sens}, специфичность — на\u00a0${spec}\u00a0${pluralRu(spec, 'процентный пункт', 'процентных пункта', 'процентных пунктов')}.`,
+    roleKind: 'Должность',
+    worksIn: 'Где работает',
+    salary: 'Зарплата',
+    salaryLine: (from: string, to: string) => `От ${from} до ${to} за смену — по навыку.`,
+    perShift: (from: string, to: string) => `${from}–${to} за смену`,
+
+    // окно «Больницы» (spec docs/specs/2026-10-encyclopedia.md)
+    ui: {
+      open: 'Энциклопедия',
+      openHint: 'Болезни, признаки, обследования, лечение, помещения и должности — по той же базе, по которой идёт игра',
+      more: 'Подробнее в энциклопедии',
+      back: 'Назад',
+      close: 'Закрыть',
+      choose: 'Выберите раздел слева, а в нём — статью; или найдите её поиском.',
+      found: (n: number) => `Найдено: ${n}`,
+      hint: 'F1 — статья о том, что под курсором',
+    },
+  },
+};
+
+export type EncyclopediaStrings = typeof encyclopediaRu;

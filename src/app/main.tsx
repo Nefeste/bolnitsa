@@ -11,6 +11,7 @@ import { createRoot } from 'react-dom/client';
 import { setLang, systemLang, T, type Lang } from '../i18n';
 import type { Quality } from '../render/view';
 import { App, type Names } from '../ui/App';
+import { installEncyclopediaKeys } from '../ui/Encyclopedia';
 import { type Actions, Store } from '../ui/store';
 import type { Flow } from '../engine/shift/types';
 import { SaveError } from '../engine/shift/migrate';
@@ -84,6 +85,8 @@ const names: Names = {
   finding: id => game?.names().finding(id) ?? id ?? '—',
   dat: id => game?.names().dat(id) ?? id ?? '—',
 };
+// энциклопедия (spec docs/specs/2026-10-encyclopedia.md): F1 и Esc окна — раньше клавиш игры, и на экране начала
+installEncyclopediaKeys();
 createRoot(document.getElementById('ui')!).render(<App store={store} actions={actions} names={names} />);
 
 const quality = (['low', 'medium', 'high'] as Quality[]).find(x => x === q.get('q')) ?? 'high';

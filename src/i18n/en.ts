@@ -1,6 +1,7 @@
 // Строки игры по-английски: тот же вид, что ru.ts, — пропущенная строка не соберётся (tsc).
 import { doctorEn } from './doctor.en';
 import { economyEn } from './economy.en';
+import { encyclopediaEn } from './encyclopedia.en';
 import type { Strings } from './ru';
 
 export const en: Strings = {
@@ -413,4 +414,6 @@ export const en: Strings = {
   },
   // режим врача (spec docs/specs/2026-10-doctor-mode.md)
   ...doctorEn,
+  // энциклопедия (spec docs/specs/2026-10-encyclopedia.md)
+  ...encyclopediaEn,
 };

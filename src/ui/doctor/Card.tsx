@@ -7,6 +7,7 @@
 // логика та же, разметка своя). Вид приходит из потока расчёта готовым (правды в нём нет); отсюда — только знание о
 // медицине из базы: списки обследований, их минуты и цена, «Что это?».
 import { memo, type ReactNode, useState } from 'react';
+import { sectionOf as articleOf } from '../../app/encyclopedia';
 import type { Id } from '../../content/types';
 import type { Command, Difficulty } from '../../engine/shift/types';
 import { clock, money, T } from '../../i18n';
@@ -14,6 +15,7 @@ import {
   conditionTerm, examInfo, examsByAction, examTerm, findingInfo, lifeHistory, type Line, type ResultGroup, type TermInfo, treatmentTerm,
 } from '../../sim/caseView';
 import { type CardView, LEVELS } from '../../sim/doctor';
+import { openEncyclopedia } from '../Encyclopedia';
 import type { Actions } from '../store';
 import { BODY_PLACES, type ExamPlace, placeOf, SHELVES } from './places';
 import { SECTIONS, sectionOf } from './sections';
@@ -73,7 +75,7 @@ function CardWindow({ v, level, meanwhile, next, actions }: P) {
           <span className="muted">{t.checkup(v.portrait.sex === 'f')}</span>
         ) : (
           v.complaints.map(x => (
-            <button key={x.f} type="button" className="said" onClick={() => setTerm(findingInfo(x.f))}>
+            <button key={x.f} type="button" className="said" data-enc={x.f} onClick={() => setTerm(findingInfo(x.f))}>
               «{x.text}»
             </button>
           ))
@@ -198,7 +200,7 @@ function Decided({ d, explain }: { d: NonNullable<CardView['decided']>; explain:
       <b>{T.doctor.card.decided}</b>
       <div>
         <span className="label">{p.diagnosisLabel}</span>
-        <button type="button" className="said" id="decided-dx" onClick={() => explain(conditionTerm(d.diagnosis.id))}>
+        <button type="button" className="said" id="decided-dx" data-enc={d.diagnosis.id} onClick={() => explain(conditionTerm(d.diagnosis.id))}>
           {d.diagnosis.name}
         </button>
       </div>
@@ -208,7 +210,7 @@ function Decided({ d, explain }: { d: NonNullable<CardView['decided']>; explain:
           <span className="muted">{p.noTreatment}</span>
         ) : (
           d.treatments.map((x, i) => (
-            <button key={x.id} type="button" className="said" onClick={() => explain(treatmentTerm(x.id))}>
+            <button key={x.id} type="button" className="said" data-enc={x.id} onClick={() => explain(treatmentTerm(x.id))}>
               {x.name}
               {i < d.treatments.length - 1 ? ',' : ''}
             </button>
@@ -260,7 +262,7 @@ function Answer({ g, explain, all }: { g: ResultGroup; explain: (x: TermInfo) =>
   return (
     <span className="answer">
       {[...yes, ...showNo].map((l, i) => (
-        <button key={`${l.f}${i}`} type="button" className={l.shown ? 'line yes' : 'line'} onClick={() => explain(findingInfo(l.f))}>
+        <button key={`${l.f}${i}`} type="button" className={l.shown ? 'line yes' : 'line'} data-enc={l.f} onClick={() => explain(findingInfo(l.f))}>
           {l.text}
         </button>
       ))}
@@ -539,7 +541,7 @@ function DecideColumn({ v, act, explain }: { v: CardView; act: (c: Command) => v
   const txRow = (x: CardView['treatments'][number]) => {
     const on = v.draft.treatments.includes(x.id);
     return (
-      <label key={x.id} className={x.disabled && !on ? 'xrow off' : 'xrow'} id={`txr-${dom(x.id)}`}>
+      <label key={x.id} className={x.disabled && !on ? 'xrow off' : 'xrow'} id={`txr-${dom(x.id)}`} data-enc={x.id}>
         <input type="checkbox" id={`tx-${dom(x.id)}`} checked={on} disabled={(x.disabled && !on) || !v.active} onChange={() => act({ kind: 'toggleTreatment', id: x.id })} />
         <span>
           {x.name}
@@ -573,7 +575,7 @@ function DecideColumn({ v, act, explain }: { v: CardView; act: (c: Command) => v
           {v.differential.length === 0 ? <p className="muted small">{h.empty}</p> : null}
           {v.differential.map(x => (
             <div key={x.id} className={hyp === x.id ? 'hyp open' : 'hyp'}>
-              <button type="button" id={`hyp-${dom(x.id)}`} className="hyphead" onClick={() => setHyp(hyp === x.id ? null : x.id)}>
+              <button type="button" id={`hyp-${dom(x.id)}`} className="hyphead" data-enc={x.id} onClick={() => setHyp(hyp === x.id ? null : x.id)}>
                 <span>{x.name}</span>
                 <small>{[x.outOf10 !== undefined ? h.outOf10(x.outOf10) : x.word, h.count(x.pro.length, x.con.length)].filter(Boolean).join(' · ')}</small>
               </button>
@@ -607,7 +609,7 @@ function DecideColumn({ v, act, explain }: { v: CardView; act: (c: Command) => v
             <>
               <input className="search" id="hyp-search" value={adding} placeholder={h.add} onChange={e => setAdding(e.target.value)} />
               {found.map(x => (
-                <button key={x.id} type="button" className={inRow.has(x.id) ? 'xrow on' : 'xrow'} id={`hyp-add-${dom(x.id)}`} onClick={() => act({ kind: 'hypothesis', id: x.id })}>
+                <button key={x.id} type="button" className={inRow.has(x.id) ? 'xrow on' : 'xrow'} id={`hyp-add-${dom(x.id)}`} data-enc={x.id} onClick={() => act({ kind: 'hypothesis', id: x.id })}>
                   <span>{x.name}</span>
                   <small>{inRow.has(x.id) ? h.inRow : h.toRow}</small>
                 </button>
@@ -629,7 +631,7 @@ function DecideColumn({ v, act, explain }: { v: CardView; act: (c: Command) => v
           {v.differential.length > 0 || v.hints.length > 0 ? (
             <div className="chips">
               {[...v.differential.map(x => ({ id: x.id, name: x.name })), ...v.hints.filter(x => !inRow.has(x.id)).map(x => ({ id: x.id, name: x.name }))].map(x => (
-                <button key={x.id} type="button" id={`dx-${dom(x.id)}`} className={v.draft.diagnosis === x.id ? 'small on' : 'small'} disabled={!v.active} onClick={() => act({ kind: 'diagnose', id: x.id })}>
+                <button key={x.id} type="button" id={`dx-${dom(x.id)}`} className={v.draft.diagnosis === x.id ? 'small on' : 'small'} data-enc={x.id} disabled={!v.active} onClick={() => act({ kind: 'diagnose', id: x.id })}>
                   {x.name}
                 </button>
               ))}
@@ -717,7 +719,7 @@ function Review({ v, next, actions, explain }: { v: CardView; next?: { id: strin
             {x.verdict === 'correct' ? t.correct : x.verdict === 'partly' ? t.partly : t.wrong}
           </p>
           <p id="review-truth">
-            <button type="button" className="said" onClick={() => explain(conditionTerm(x.truth))}>
+            <button type="button" className="said" data-enc={x.truth} onClick={() => explain(conditionTerm(x.truth))}>
               {t.truth(x.truthName)}
             </button>
           </p>
@@ -825,9 +827,24 @@ function TermPopup({ term, close }: { term: TermInfo; close: () => void }) {
           <p>{term.list.items.join(', ')}</p>
         </>
       ) : null}
-      <button type="button" id="term-close" onClick={close}>
-        {T.case.patient.gotIt}
-      </button>
+      <div className="row">
+        {term.id && articleOf(db(), term.id) ? (
+          <button
+            type="button"
+            id="term-more"
+            title="F1"
+            onClick={() => {
+              openEncyclopedia(term.id);
+              close();
+            }}
+          >
+            {T.encyclopedia.ui.more}
+          </button>
+        ) : null}
+        <button type="button" id="term-close" onClick={close}>
+          {T.case.patient.gotIt}
+        </button>
+      </div>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 // Строки игры по-русски (устав, docs/05-rules.md: все строки для игрока — здесь). Английский — en.ts, того же вида.
 import { doctorRu } from './doctor.ru';
 import { economyRu } from './economy.ru';
+import { encyclopediaRu } from './encyclopedia.ru';
 
 export const ru = {
   // часть 5б (spec docs/specs/2026-10-economy.md): касса, планёрка, часы приёма, кредит, обход — `money`, `meeting`, `round`
@@ -438,6 +439,8 @@ export const ru = {
   },
   // режим врача (spec docs/specs/2026-10-doctor-mode.md): карта пациента и разбор — `case`, окно врача — `doctor`
   ...doctorRu,
+  // энциклопедия (spec docs/specs/2026-10-encyclopedia.md): статьи из базы — `encyclopedia`
+  ...encyclopediaRu,
 };
 
 function years(n: number): string {

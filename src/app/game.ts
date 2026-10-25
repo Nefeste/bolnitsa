@@ -38,6 +38,7 @@ import type { PathView, World } from '../sim/protocol';
 import type { Actions, Hud, RoomCard, Speed, Store, Tab } from '../ui/store';
 import { Builder, objectName, whyText } from './build';
 import { Chips } from './chips';
+import { loadContent } from './content';
 import { Doctor } from './doctor';
 import { chipShown, dur, moodOf, pathCard, type PatientRow, patientRows, roomChip, roomLoads, tintOf } from './flow';
 import { type HintKey, hintOf } from './hints';
@@ -252,7 +253,7 @@ export class Game {
   static async create(host: HTMLElement, store: Store, version: string, quality: Quality, start: Start = 'preset', flow: Flow = AUTO, loaded?: SaveFile): Promise<Game> {
     const t0 = performance.now();
     store.set({ status: T.app.loading, version });
-    const db = (await (await fetch('./content.json')).json()) as ContentDb;
+    const db = await loadContent();
     const g = new Game(db, store, host, version);
     g.start = start;
     g.flow = loaded?.state.flow ?? flow;
@@ -1129,7 +1130,7 @@ export class Game {
     const here = this.staff.filter(m => m.room === r.id);
     let people = 0;
     for (const w of this.crowd.walkers.values()) if (Math.floor(w.x) > r.x && Math.floor(w.x) < r.x + r.w - 1 && Math.floor(w.z) > r.y && Math.floor(w.z) < r.y + r.h - 1) people++;
-    const base: RoomCard = { room: n, name: named(db.rooms[r.type]?.name, r.type), id: r.id, staff: here.map(m => named(db.roles[m.role]?.name, m.role)), people };
+    const base: RoomCard = { room: n, name: named(db.rooms[r.type]?.name, r.type), id: r.id, type: r.type, staff: here.map(m => named(db.roles[m.role]?.name, m.role)), people };
     const site = this.hospital.site;
     const room = site?.rooms.find(x => x.id === id);
     const rules = rulesOf(db, r.type);
