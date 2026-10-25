@@ -50,7 +50,7 @@ export async function moodPart({ page, port, out, ok, fail, q, shots }) {
     await page.waitForTimeout(200);
   }
   const staffText = await text('#meet-staff');
-  if (/собирается уйти: ответьте до планёрки суток 4/.test(staffText) && staffText.startsWith('Персонал')) ok(`планёрка, «Персонал»: «${staffText.slice(0, 160)}» (${Math.round((Date.now() - t0) / 1000)} с)`);
+  if (/собирается уйти: ответьте до утра дня 4/.test(staffText) && staffText.startsWith('Персонал')) ok(`планёрка, «Персонал»: «${staffText.slice(0, 160)}» (${Math.round((Date.now() - t0) / 1000)} с)`);
   else fail(`планёрка без «собирается уйти»: «${staffText}»`);
   ok(`снимок планёрки: ${join(out, 'e2e-mood-1-meeting.jpg')} (${await shot('e2e-mood-1-meeting.jpg')} КБ)`);
   const journal = await page.evaluate(() => window.__game.store.get().notices.slice(0, 6).map(n => n.text));

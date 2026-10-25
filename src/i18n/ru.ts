@@ -306,7 +306,7 @@ export const ru = {
       nights: 'ночные смены подряд',
     } as Record<string, string>,
     moodShort: (v: number) => `настроение ${v}`,
-    quitting: (day: number) => `собирается уйти — ответьте до планёрки суток ${day}`,
+    quitting: (day: number) => `собирается уйти — ответьте до утра дня ${day}`,
     quitShort: 'собирается уйти',
     leavingAt: (at: string) => `уходит сам — после смены, в ${at}`,
     leavingShort: 'уходит',

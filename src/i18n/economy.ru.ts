@@ -101,7 +101,7 @@ export const economyRu = {
     /** персонал (spec docs/specs/2026-10-staff-mood.md): упало настроение, собирается уйти, уходит */
     staff: 'Персонал',
     staffLow: (who: string) => `${who}: настроение ниже 30`,
-    staffQuit: (who: string, day: number) => `${who} собирается уйти: ответьте до планёрки суток ${day} — поднимите зарплату или переведите в другую смену`,
+    staffQuit: (who: string, day: number) => `${who} собирается уйти: ответьте до утра дня ${day} — поднимите зарплату или переведите в другую смену`,
     staffLeave: (who: string, why: string) => `${who} уходит после своей смены${why ? ` — ${why}` : ''}`,
     tip: 'Подсказка',
     tips: {
