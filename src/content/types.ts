@@ -1,4 +1,4 @@
-// из anamnez: src/content/types.ts @ 96503ac, изменено: ContentDb.consults — «Просят посмотреть» (spec 2026-10-consults); ContentDb.day — сутки целиком (spec 2026-10-day); ContentDb.inflow и ContentDb.money, Consults.long — поток от больницы, касса ПК, долгий случай (spec 2026-10-economy); ContentDb.sites и SitePlan — готовые больницы из готовых помещений (spec 2026-10-real-hospital); Inflow.bench, Preset.benches и SitePlan.benches — скамьи у дверей кабинетов (spec 2026-10-door-benches)
+// из anamnez: src/content/types.ts @ 96503ac, изменено: ContentDb.consults — «Просят посмотреть» (spec 2026-10-consults); ContentDb.day — сутки целиком (spec 2026-10-day); ContentDb.inflow и ContentDb.money, Consults.long — поток от больницы, касса ПК, долгий случай (spec 2026-10-economy); ContentDb.sites и SitePlan — готовые больницы из готовых помещений (spec 2026-10-real-hospital); Inflow.bench, Preset.benches и SitePlan.benches — скамьи у дверей кабинетов (spec 2026-10-door-benches); Preset.land — свободная земля под стройку (spec 2026-10-city-land)
 // Типы собранной медицинской базы (`docs/04-data-model.md` §1).
 //
 // Исходник — YAML в content/, собирает tools/content/build.ts. Здесь — то, что получает
@@ -877,6 +877,11 @@ export interface Preset {
    * (`siteOfPreset`); в режимах «Анамнеза» их нет
    */
   benches?: [number, number][];
+  /**
+   * свободная земля под стройку — только в больнице ПК (spec 2026-10-city-land): участок и прямоугольники внутренности
+   * здания сверх коридоров и помещений (`siteOfPreset`); в режимах «Анамнеза» её нет
+   */
+  land?: { plot: [number, number]; inside: { x: number; y: number; w: number; h: number }[] };
   /** кто где работает: должность и номер помещения в списке; `later` — нанимают в главе (часть 60а) */
   staff: { role: Id; room: number; later?: true }[];
 }

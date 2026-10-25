@@ -4,6 +4,8 @@
 // тот же (номера помещений те же). Внутренность здания — коридоры и полы помещений: стены помещений готовой больницы —
 // стены корпуса. Одинарная дверь помещения, где лежат, становится двойной — в ПК-версии каталка в одинарную не проходит.
 // Скамьи у дверей кабинетов (`benches`, spec docs/specs/2026-10-door-benches.md) — только здесь: ставятся, как ставит игрок.
+// Свободная земля под стройку (`land`, spec docs/specs/2026-10-city-land.md) — тоже: участок шире и внутренность здания
+// больше на её прямоугольники; что там не помещение — коридор.
 import type { Cell, ContentDb, Preset } from '../../content/types';
 import { planOf, presetHospital } from './build';
 import { doctorRoom } from './requirements';
@@ -26,10 +28,11 @@ function runs(w: number, cells: readonly number[]): Rect[] {
 export function siteOfPreset(db: ContentDb, p: Preset): Site {
   const { hospital } = presetHospital(db, p);
   const plan = planOf(db, hospital);
-  const inside: Rect[] = [...runs(hospital.w, hospital.corridor), ...plan.rooms.map(r => ({ x: r.x + 1, y: r.y + 1, w: r.w - 2, h: r.h - 2 }))];
+  const inside: Rect[] = [...runs(hospital.w, hospital.corridor), ...plan.rooms.map(r => ({ x: r.x + 1, y: r.y + 1, w: r.w - 2, h: r.h - 2 })), ...(p.land?.inside ?? []).map(r => ({ ...r }))];
+  const [w, h] = p.land?.plot ?? [hospital.w, hospital.h];
   const shellRooms: SiteRoom[] = plan.rooms.map(r => ({ id: r.id, type: r.type, x: r.x, y: r.y, w: r.w, h: r.h, ...(r.door.length ? { door: r.door.map(([x, y]) => [x, y] as Cell) } : {}), items: [] }));
   const shell: Site = {
-    w: hospital.w, h: hospital.h, inside, main: [[hospital.entrance[0], hospital.entrance[1]]], ambulance: [], rooms: shellRooms, decor: hospital.decor.map(d => ({ ...d })),
+    w, h, inside, main: [[hospital.entrance[0], hospital.entrance[1]]], ambulance: [], rooms: shellRooms, decor: hospital.decor.map(d => ({ ...d })),
     next: hospital.next, nextItem: 1, ...(doctorRoom(plan) ? { mine: doctorRoom(plan) } : {}),
   };
   // одинарная дверь, где лежат, — двойная: соседняя клетка стены, если дверь туда встаёт
