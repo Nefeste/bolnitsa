@@ -100,8 +100,8 @@ export const economyEn: EconomyStrings = {
     staffLow: (who: string) => `${who}: mood below 30`,
     staffQuit: (who: string, day: number) => `${who} is about to quit: answer before the morning of day ${day} — raise their pay or move them to the other shift`,
     staffLeave: (who: string, why: string) => `${who} leaves after their shift${why ? ` — ${why}` : ''}`,
-    staffGrew: (who: string, skill: number) => `${who} grew to skill ${skill} — the pay is the same, below the market: raise it`,
-    staffBack: (who: string, skill: number) => `${who} is back from study — skill ${skill}`,
+    staffGrew: (who: string, skill: number, _sex: 'm' | 'f') => `${who} grew to skill ${skill} — the pay is the same, below the market: raise it`,
+    staffBack: (who: string, skill: number, _sex: 'm' | 'f') => `${who} is back from study — skill ${skill}`,
     staffSick: (who: string) => `${who} is sick — will not come to the shift today`,
     tip: 'Tip',
     tips: {

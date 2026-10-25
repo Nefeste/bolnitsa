@@ -92,11 +92,11 @@ export const ru = {
     undone: 'Отменено',
     hired: 'Нанят',
     /** с людьми (spec docs/specs/2026-10-staff-mood.md): уволен с выплатой; зарплата поднята; в другую смену */
-    dismissed: (paid: string) => `Уволен — выплата ${paid}`,
+    dismissed: (paid: string) => `Увольнение — выплата ${paid}`,
     raised: 'Зарплата поднята',
-    reshifted: 'Переведён в другую смену',
+    reshifted: 'Теперь — в другой смене',
     /** учёба (spec docs/specs/2026-10-staff-mood.md, раздел 4) */
-    studied: (cost: string) => `Отправлен учиться — ${cost}`,
+    studied: (cost: string) => `Учёба оплачена — ${cost}`,
     failed: (why: string) => `Нельзя: ${why}`,
   },
   site: {
@@ -325,7 +325,7 @@ export const ru = {
     skillLine: (skill: number, steps: number | undefined, mentor: string | undefined) =>
       `${skill}${steps !== undefined ? ` — до навыка ${skill + 1}: ${steps} ${pluralRu(steps, 'смена', 'смены', 'смен')}` : ''}${mentor ? ` · наставник — ${mentor}` : ''}`,
     awayStudy: (day: number) => `на учёбе — вернётся утром дня ${day}`,
-    awaySick: 'болеет — сегодня не вышел на смену',
+    awaySick: (sex: 'm' | 'f') => `болеет — сегодня не ${sex === 'f' ? 'вышла' : 'вышел'} на смену`,
     studyShort: 'учится',
     sickShort: 'болеет',
     skillShort: (n: number) => `навык ${n}`,
@@ -373,8 +373,8 @@ export const ru = {
     /** персонал (spec docs/specs/2026-10-staff-mood.md) */
     quit: (who: string) => `собирается уйти: ${who}`,
     leave: (who: string) => `уходит после смены: ${who}`,
-    grew: (who: string, skill: number) => `вырос до навыка ${skill}: ${who}`,
-    back: (who: string, skill: number) => `вернулся с учёбы, навык ${skill}: ${who}`,
+    grew: (who: string, skill: number, sex: 'm' | 'f') => `${sex === 'f' ? 'выросла' : 'вырос'} до навыка ${skill}: ${who}`,
+    back: (who: string, skill: number, sex: 'm' | 'f') => `${sex === 'f' ? 'вернулась' : 'вернулся'} с учёбы, навык ${skill}: ${who}`,
     sick: (who: string) => `болеет, на смену не выйдет: ${who}`,
     shiftEnd: 'приём закончен',
   },

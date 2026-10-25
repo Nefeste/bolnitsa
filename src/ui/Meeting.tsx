@@ -197,12 +197,12 @@ export function MeetingBody({ m, e, actions }: { m: MeetingView; e: EconomyHud; 
             ))}
             {m.staff.grew.map(x => (
               <li key={`g${x.id}`}>
-                {t.staffGrew(x.who, x.skill)} {x.raise ? <RaiseButton id={x.id} raise={x.raise} actions={actions} /> : null}
+                {t.staffGrew(x.who, x.skill, x.sex)} {x.raise ? <RaiseButton id={x.id} raise={x.raise} actions={actions} /> : null}
               </li>
             ))}
             {m.staff.back.map((x, i) => (
               <li key={`b${i}`} className="ok">
-                {t.staffBack(x.who, x.skill)}
+                {t.staffBack(x.who, x.skill, x.sex)}
               </li>
             ))}
             {m.staff.sick.map((x, i) => (

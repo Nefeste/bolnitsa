@@ -57,8 +57,8 @@ export interface MeetingView {
     quit: { id: string; who: string; until: number; raise?: Raise }[];
     leave: { who: string; why: string[] }[];
     /** разделы 3–5: кто вырос и до какого навыка, кто вернулся с учёбы, кто сегодня болеет */
-    grew: { id: string; who: string; skill: number; raise?: Raise }[];
-    back: { who: string; skill: number }[];
+    grew: { id: string; who: string; sex: 'm' | 'f'; skill: number; raise?: Raise }[];
+    back: { who: string; sex: 'm' | 'f'; skill: number }[];
     sick: string[];
   };
 }
@@ -185,8 +185,8 @@ export class Money {
           low: (news.low ?? []).flatMap(id => (member(id) ? [who(member(id)!)] : [])),
           quit: (news.quit ?? []).flatMap(q => (member(q.id) ? [{ id: q.id, who: who(member(q.id)!), until: q.until, ...raise(member(q.id)!) }] : [])),
           leave: (news.leave ?? []).map(l => ({ who: who(l), why: l.why })),
-          grew: (news.grew ?? []).flatMap(g => (member(g.id) ? [{ id: g.id, who: who(member(g.id)!), skill: g.skill, ...raise(member(g.id)!) }] : [])),
-          back: (news.back ?? []).flatMap(b => (member(b.id) ? [{ who: who(member(b.id)!), skill: b.skill }] : [])),
+          grew: (news.grew ?? []).flatMap(g => (member(g.id) ? [{ id: g.id, who: who(member(g.id)!), sex: member(g.id)!.sex, skill: g.skill, ...raise(member(g.id)!) }] : [])),
+          back: (news.back ?? []).flatMap(b => (member(b.id) ? [{ who: who(member(b.id)!), sex: member(b.id)!.sex, skill: b.skill }] : [])),
           sick: (news.sick ?? []).flatMap(id => (member(id) ? [who(member(id)!)] : [])),
         }
       : undefined;

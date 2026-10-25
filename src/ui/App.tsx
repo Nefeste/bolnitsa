@@ -528,7 +528,7 @@ function personLines(info: PersonInfo, names: Names): [string, string][] {
       ...(info.pay ? [[T.card.salary, T.card.salaryLine(money(info.pay.now), money(info.pay.market))] as [string, string]] : []),
       ...(info.rest ? [[T.card.doing, restLine(info.rest)] as [string, string]] : []),
       // учится или болеет (разделы 4–5)
-      ...(info.away ? [[T.card.doing, info.away.why === 'study' ? T.card.awayStudy(Math.floor(info.away.until / 86400) + 1) : T.card.awaySick] as [string, string]] : []),
+      ...(info.away ? [[T.card.doing, info.away.why === 'study' ? T.card.awayStudy(Math.floor(info.away.until / 86400) + 1) : T.card.awaySick(info.sex)] as [string, string]] : []),
     ];
   }
   // ушёл — на карте его нет: кто и как пришёл, остальное — в пути (spec 2026-10-flow-ui)

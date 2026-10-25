@@ -685,12 +685,13 @@ export class Game {
       }
       for (const l of n.staff.leave ?? []) this.notices.unshift({ t: this.t, text: T.notices.leave(this.staffWho(l)) });
       // рост, учёба, болезнь (разделы 3–5)
+      const person = (id: string) => this.staff.find(x => x.id === id);
       const who = (id: string) => {
-        const m = this.staff.find(x => x.id === id);
+        const m = person(id);
         return m ? this.staffWho(m) : id;
       };
-      for (const g of n.staff.grew ?? []) this.notices.unshift({ t: this.t, text: T.notices.grew(who(g.id), g.skill) });
-      for (const b of n.staff.back ?? []) this.notices.unshift({ t: this.t, text: T.notices.back(who(b.id), b.skill) });
+      for (const g of n.staff.grew ?? []) this.notices.unshift({ t: this.t, text: T.notices.grew(who(g.id), g.skill, person(g.id)?.sex ?? 'm') });
+      for (const b of n.staff.back ?? []) this.notices.unshift({ t: this.t, text: T.notices.back(who(b.id), b.skill, person(b.id)?.sex ?? 'm') });
       for (const id of n.staff.sick ?? []) this.notices.unshift({ t: this.t, text: T.notices.sick(who(id)) });
     }
     if (this.notices.length > 60) this.notices.length = 60;

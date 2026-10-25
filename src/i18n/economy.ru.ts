@@ -103,8 +103,8 @@ export const economyRu = {
     staffLow: (who: string) => `${who}: настроение ниже 30`,
     staffQuit: (who: string, day: number) => `${who} собирается уйти: ответьте до утра дня ${day} — поднимите зарплату или переведите в другую смену`,
     staffLeave: (who: string, why: string) => `${who} уходит после своей смены${why ? ` — ${why}` : ''}`,
-    staffGrew: (who: string, skill: number) => `${who} вырос до навыка ${skill} — зарплата прежняя, ниже рынка: поднимите`,
-    staffBack: (who: string, skill: number) => `${who} вернулся с учёбы — навык ${skill}`,
+    staffGrew: (who: string, skill: number, sex: 'm' | 'f') => `${who} ${sex === 'f' ? 'выросла' : 'вырос'} до навыка ${skill} — зарплата прежняя, ниже рынка: поднимите`,
+    staffBack: (who: string, skill: number, sex: 'm' | 'f') => `${who} ${sex === 'f' ? 'вернулась' : 'вернулся'} с учёбы — навык ${skill}`,
     staffSick: (who: string) => `${who} болеет — сегодня на смену не выйдет`,
     tip: 'Подсказка',
     tips: {
