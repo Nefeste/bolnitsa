@@ -1,8 +1,8 @@
-// Сценарий в браузере, часть 22 — своя карта, макет (spec docs/specs/2026-10-own-card.md; решение владельца #73): тот же
-// приём, что в части 4 (готовая больница, зерно 11, поток 6 в час, просьба к 09:08), но с `?card=steps`. В середине —
+// Сценарий в браузере, часть 22 — своя карта шагами (spec docs/specs/2026-10-own-card.md; решения владельца #73 и #104 —
+// карта по умолчанию): тот же приём, что в части 4 (готовая больница, зерно 11, поток 6 в час, просьба к 09:08). Слева —
 // лента «Ход приёма», справа — шаги «Расспрос», «Осмотр», «Обследования», «Решение», открыт один. Вопрос — уходит из шага в
 // ленту с ответом; осмотр — тоже; анализ — в ленте «назначено … — будет к …»; «Ждать» — результат: карта открывается на
-// «Решении»; гипотеза, диагноз, лечение, «Завершить приём» — разбор. Снимки для владельца — `e2e-owncard-*.jpg`.
+// «Решении»; гипотеза, диагноз, лечение, «Завершить приём» — разбор. Снимки — `e2e-owncard-*.jpg`.
 import { join } from 'node:path';
 
 /** @param {{ page: import('playwright-core').Page, port: number, out: string, ok: (m: string) => void, fail: (m: string) => void, q: string, shots: string }} x */
@@ -30,7 +30,7 @@ export async function ownCardPart({ page, port, out, ok, fail, q, shots }) {
       cols: document.querySelectorAll('#dcard .dcol').length,
     }));
 
-  await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&hospital=preset&seed=11&flow=6,1&card=steps`);
+  await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&hospital=preset&seed=11&flow=6,1`);
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
   await until(() => !!window.__game.store.get().doctor?.state);
   // просьба — «Посмотреть»: идёт к вам, вошёл — карта
@@ -43,8 +43,8 @@ export async function ownCardPart({ page, port, out, ok, fail, q, shots }) {
   const l0 = await layout();
   const titles = l0.steps.map(s => s.title);
   if (c0.active && l0.cols === 0 && JSON.stringify(titles) === JSON.stringify(['Расспрос', 'Осмотр', 'Обследования', 'Решение']) && l0.steps[0].on && l0.steps.filter(s => s.on).length === 1 && (await page.$('#dcard-course'))) {
-    ok(`своя карта, макет: лента «Ход приёма» и шаги ${titles.map(x => `«${x}»`).join(', ')}, открыт «Расспрос»`);
-  } else fail(`раскладка макета: ${JSON.stringify(l0)}`);
+    ok(`своя карта: лента «Ход приёма» и шаги ${titles.map(x => `«${x}»`).join(', ')}, открыт «Расспрос»`);
+  } else fail(`раскладка карты: ${JSON.stringify(l0)}`);
   ok(`снимок: ${join(out, 'e2e-owncard-1-start.jpg')} (${await shot('e2e-owncard-1-start.jpg')} КБ)`);
 
   // вопрос — из шага в ленту, с ответом

@@ -108,7 +108,7 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # «Ещё обследование» form, the path, Enter — «Согласен»; then roles: «Кто вы» on the start
                                    # screen, «Управляющий» sees no medicine for three hours, «Врач» and «Главврач» in the doctor
                                    # window, hints by role, the chief's line and the doctors' errors at the meeting, «Итог» in
-                                   # an error's card; then the own-card mock-up with `?card=steps`: the timeline and the
+                                   # an error's card; then the own card in steps (owner's decision #104): the timeline and the
                                    # steps, a question, an exam and a test go into the timeline, the result opens «Решение»;
                                    # then Rocketbox people with `?people=rb`: six looks with atlas and mask, the look and the
                                    # suit colour by role — read from the picture, people sit down, stand up and lie; then
@@ -270,8 +270,8 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   mask instead of vertex colours, the suit tinted by the mask (`people.ts`), walk and run speed per look (`bake.ts`).
   Icons above heads — `icons.ts` (drawn after the frame); the queues overlay floor tint — `overlay.ts`.
 - `src/ui/` — panels (React) and their store; `src/ui/doctor/` — the patient card window, the doctor's panel and the
-  «Просят посмотреть» tab, driven by `src/app/doctor.ts` (`?card=steps` — the own-card mock-up awaiting the owner, the
-  timeline and one open step, `docs/specs/2026-10-own-card.md`); `src/ui/flow.tsx` — the «Пациенты» tab, the patient's path and
+  «Просят посмотреть» tab, driven by `src/app/doctor.ts` (your own card — the timeline «Ход приёма» and one open step of
+  four, owner's decision #104, `docs/specs/2026-10-own-card.md`); `src/ui/flow.tsx` — the «Пациенты» tab, the patient's path and
   the map layers menu; `src/ui/Encyclopedia.tsx` — the encyclopedia window (`docs/specs/2026-10-encyclopedia.md`): its
   articles come from `src/app/encyclopedia.ts`, a copy of Anamnez's, over the window's database (`src/app/content.ts`
   reads it once for the game and for the start screen); F1 and Esc are caught before the game's keys; a name with

@@ -153,6 +153,8 @@ export async function economyPart({ page, port, out, ok, fail, q, shots }) {
   // идёт к вам — карта, когда войдёт (spec docs/specs/2026-10-owner-play-2.md)
   await page.waitForSelector('#dcard:not(.read)', { timeout: 60000 });
   let v = (await card()).version;
+  // своя карта — шагами (решение владельца #104): диагноз и место — в шаге «Решение»
+  await page.click('#step-decide');
   // диагноз — первый из «Похоже на» (уровень «Студент»), нет подсказок — первый в списке
   const dx = (await card()).hints[0]?.id ?? (await page.$eval('#dx-select option:nth-child(2)', o => o.value));
   await page.selectOption('#dx-select', dx);
