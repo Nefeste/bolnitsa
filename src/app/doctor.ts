@@ -19,6 +19,14 @@ import type { Game } from './game';
 import { firstOffice, type Role, ROLE_SETS, roleOf } from './roles';
 import { DEFAULT_ASKS } from '../engine/shift/approve';
 import { DOCTOR, standInOf } from '../engine/hospital/requirements';
+import { YOU } from '../render/population';
+
+/**
+ * Сколько секунд игры ждать, пока фигура дойдёт до приёма (замечание владельца 25.10.2026): движок считает больного вошедшим к
+ * своему часу, а фигура ещё встаёт с кушетки или пропускает встречных в двери. Не дошла и за это время — застряла: карта всё
+ * равно открывается.
+ */
+const REACH_WAIT = 300;
 
 /** Уровень медицины из адреса (`?level=`); нет — «Студент» (spec «Сложность»). */
 function levelOfUrl(): Difficulty {
@@ -38,6 +46,8 @@ export class Doctor {
   private collecting = false;
   /** где стоит фигура врача — номер помещения плана; -1 — фигуры нет */
   private figureAt = -1;
+  /** движок сказал «вошёл», а фигура ещё идёт: карта — когда она войдёт (`frame`), не позже `until` по часам игры */
+  private reaching: { id: string; until: number } | undefined;
   /** «Взять случай» отправлен: больной у вас — карта; в вашей очереди — сказать об этом */
   private taking: string | undefined;
   /** «Открыть карту» отправлено: карты нет — сказать (карта ушедшего хранится сутки, spec 2026-10-discharged-card) */
@@ -163,10 +173,49 @@ export class Doctor {
     }
   }
 
-  /** Карта вашего пациента: часы встанут, когда она придёт (`settle`). */
+  /**
+   * Карта вашего пациента — когда он перед вами (замечание владельца 25.10.2026: карта открывалась, пока больной ещё шёл по
+   * коридору, и пауза останавливала его за дверью): фигура ещё идёт — карта в `frame`, когда войдёт. Часы встанут, когда
+   * карта придёт (`settle`).
+   */
   private own(id: string) {
     if (this.hud.card?.id === id && this.hud.card.active) return;
+    if (!this.arrived(id)) {
+      this.reaching = { id, until: this.g.t + REACH_WAIT };
+      return;
+    }
+    this.reaching = undefined;
     this.view(id);
+  }
+
+  /** Каждый кадр: фигура дошла до приёма — его карта; не дошла к сроку — тоже; больной уже не ваш — ждать нечего. */
+  frame() {
+    const r = this.reaching;
+    if (!r) return;
+    if (this.hud.state?.current?.id !== r.id) {
+      this.reaching = undefined;
+      return;
+    }
+    if (!this.arrived(r.id) && this.g.t < r.until) return;
+    this.reaching = undefined;
+    this.view(r.id);
+  }
+
+  /**
+   * Дошёл ли до приёма тот, кто идёт: ваш больной — его фигура в помещении, где вы принимаете (`at`), и уже не идёт; к
+   * привезённому скорой идёте вы — и ваша фигура там же. Фигуры на карте нет — не ждать её.
+   */
+  private arrived(id: string): boolean {
+    const at = this.hud.state?.at;
+    const room = at ? this.g.plan.rooms.find(r => r.id === at) : undefined;
+    if (!room) return true;
+    const here = (key: string | undefined) => {
+      const w = key ? this.g.crowd.walkers.get(key) : undefined;
+      if (!w || w.leaving) return true;
+      const inside = w.x >= room.x && w.x <= room.x + room.w && w.z >= room.y && w.z <= room.y + room.h;
+      return inside && w.goals.length === 0 && w.state !== 'walk';
+    };
+    return here(this.g.pop.keyOf(id)) && here(YOU);
   }
 
   /** Автопауза игры: скорость запомнить — снимется, когда ответите или позовёте. */

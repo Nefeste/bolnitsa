@@ -955,6 +955,8 @@ export class Game {
     this.chips.visible = !this.builder.on;
     this.chips.frame();
     this.colLabels.frame();
+    // карта вашего больного — когда его фигура вошла (замечание владельца 25.10.2026)
+    this.doctor.frame();
     this.hoverLabel.frame(this.mouse.x, this.mouse.y);
     const c = performance.now();
     this.push(this.frames.sim, b - a);

@@ -9,6 +9,7 @@ import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { presetStaff } from '../../src/engine/hospital/staff';
 import { apply, atDoctor, hospitalCtx, isOut, newFlowShift, newSandbox } from '../../src/engine/shift/engine';
 import type { Notice, ShiftPatient, ShiftState } from '../../src/engine/shift/types';
+import { sliceOf } from '../../src/engine/shift/slice';
 import { toDoctor } from '../../src/engine/shift/walking';
 import { FLOW, hash, liveTo } from './site-kit';
 
@@ -99,6 +100,24 @@ describe('«Позвать» — часами игры (spec 2026-10-owner-play-
     until(s, p.id, 'reached');
     expect(s.t - back).toBeLessThan(5);
     expect(isOut(s, p)).toBe(false);
+  }, 60_000);
+
+  test('с обследования назад — к часу возвращения: срез говорит его фигуре, к какому часу дойти (замечание 25.10.2026)', () => {
+    const s = city(9);
+    const p = free(s);
+    apply(db, s, { kind: 'call', id: p.id });
+    until(s, p.id, 'reached');
+    const out = Object.values(db.exams).find(e => !p.done.includes(e.id) && atDoctor(db, s, p, e.id) === false)!;
+    apply(db, s, { kind: 'exam', exam: out.id });
+    const { until: done, back } = p.out!;
+    const office = doctorRoom(hospitalCtx(db, s).plan);
+    const person = () => sliceOf(s, office).people.find(x => x.id === p.id)!;
+    // там — до конца обследования; потом идёт назад, и у среза — час, когда он войдёт к вам
+    while (s.t < done) apply(db, s, { kind: 'advance', seconds: 5 });
+    expect(s.t).toBeLessThan(back);
+    expect(person()).toMatchObject({ doing: 'office', room: office, arrive: back });
+    until(s, p.id, 'reached');
+    expect(person().arrive).toBeUndefined();
   }, 60_000);
 
   test('детерминизм: те же команды в те же секунды — то же состояние', () => {
