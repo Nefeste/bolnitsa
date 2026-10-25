@@ -18,6 +18,7 @@ import { covers, nightHospital, salaryOf, type Shift, type StaffMember, wageOf }
 import { growthNumbers, studyUntil } from './growth';
 import { payStudy, paySeverance, payWorks, shortOf } from './money';
 import { cheer, leavingOf, moodBack, moodOut, raisedOf, severanceOf } from './mood';
+import { cover } from './reserve';
 import type { ContentDb, Id } from '../../content/types';
 import type { Notice, ShiftEvent, ShiftPatient, ShiftState } from './types';
 
@@ -154,8 +155,18 @@ function remember(s: ShiftState, works: Works, site: Site, room?: string, more: 
   if (works.undo.length > SITE_UNDO) works.undo.splice(0, works.undo.length - SITE_UNDO);
 }
 
-/** Команда стройки ПК. Только в потоке для ПК и в больнице ПК; ошибка — ничего не меняется, извещение с причиной. */
+/**
+ * Команда стройки ПК. Только в потоке для ПК и в больнице ПК; ошибка — ничего не меняется, извещение с причиной. Вышло —
+ * резерв приводится в порядок (`cover`, spec docs/specs/2026-10-staff-mood.md, часть 5): отправили учиться — на место встаёт
+ * резерв, уволили отсутствующего — замещающий остаётся, наняли в резерв — встаёт на пустое место.
+ */
 export function siteCommand(db: ContentDb, s: ShiftState, cmd: SiteCommand): Notice[] {
+  const out = siteCommandOf(db, s, cmd);
+  if (out.some(n => n.kind === 'site' && n.ok)) cover(s, () => occupied(db, s).staff);
+  return out;
+}
+
+function siteCommandOf(db: ContentDb, s: ShiftState, cmd: SiteCommand): Notice[] {
   const site = s.hospital?.site;
   if (!s.flow || !site) return no(cmd.kind, { kind: 'mode' });
   const works = (s.works ??= { spent: 0, undo: [] });
@@ -191,6 +202,15 @@ export function siteCommand(db: ContentDb, s: ShiftState, cmd: SiteCommand): Not
       return reshift(db, s, works, site, cmd.id);
     case 'study':
       return study(db, s, cmd.id);
+    // «Нанять в резерв» (часть 5): без места и смены; как найм — в отмене стройки
+    case 'reserve': {
+      if (!db.roles[cmd.role]?.hire) return no(cmd.kind, { kind: 'unknown' });
+      remember(s, works, site);
+      const { id, sex, seed } = newcomer(s);
+      s.staff = [...(s.staff ?? []), { id, role: cmd.role, sex, seed, skill: 3, salary: salaryOf(db, cmd.role, 3), days: 0 }];
+      nudge(s);
+      return [{ kind: 'site', cmd: cmd.kind, ok: true, cost: 0 }];
+    }
   }
   // сценарий ПК (spec docs/specs/2026-10-scenario-1.md): строят только помещения из его списка
   const sc = scenarioOf(db, s.campaign);
@@ -298,6 +318,8 @@ function mergeStaff(now: readonly StaffMember[], was: readonly StaffMember[]): S
     else delete out.room;
     if (m.shift !== undefined) out.shift = m.shift;
     else delete out.shift;
+    if (m.covers !== undefined) out.covers = m.covers;
+    else delete out.covers;
     return out;
   });
 }
@@ -344,7 +366,8 @@ function raise(db: ContentDb, s: ShiftState, works: Works, site: Site, id: strin
  */
 function reshift(db: ContentDb, s: ShiftState, works: Works, site: Site, id: string): Notice[] {
   const m = s.staff?.find(x => x.id === id);
-  if (!m?.shift) return no('reshift', { kind: 'nothing' });
+  // замещающий (часть 5) — на чужом месте: смена его — смена отсутствующего
+  if (!m?.shift || m.covers !== undefined) return no('reshift', { kind: 'nothing' });
   if (leavingOf(s, id)) return no('reshift', { kind: 'leaving' });
   const was = m.shift;
   const to: Shift = was === 'day' ? 'night' : 'day';
@@ -386,8 +409,8 @@ function hire(db: ContentDb, s: ShiftState, works: Works, site: Site, cmd: Extra
 
 /**
  * Человек на должность `post` помещения `roomId` в смену `shift` — без проверок и без записи отмены (их делает команда):
- * врачу — терапевт или `as` (специалист). Сначала тот, кто в резерве, — теперь в этой смене; нет — новый: навык 3, без
- * черты, зарплата каталога; пол и облик — из ветви зерна `hire:<номер>`. Должность в эту смену занята, ваш кабинет или
+ * врачу — терапевт или `as` (специалист). Сначала тот, кто в резерве (кто не в отлучке — раньше), — теперь в этой смене;
+ * нет — новый: навык 3, без черты, зарплата каталога (`newcomer`). Должность в эту смену занята, ваш кабинет или
  * нанять некого — никого, `false`.
  */
 function staffPost(db: ContentDb, s: ShiftState, site: Site, roomId: string, post: Id, as: Id | undefined, shift: Shift): boolean {
@@ -396,17 +419,24 @@ function staffPost(db: ContentDb, s: ShiftState, site: Site, roomId: string, pos
   if (!role || !db.roles[role]?.hire) return false;
   const staff = s.staff ?? [];
   if (staff.some(m => m.room === roomId && (db.roles[m.role]?.stands ?? m.role) === post && covers(m, shift))) return false;
-  const reserve = staff.find(m => m.room === undefined && m.role === role);
+  const free = (m: StaffMember) => m.room === undefined && m.role === role;
+  const reserve = staff.find(m => free(m) && !m.away) ?? staff.find(free);
   if (reserve) s.staff = staff.map(m => (m === reserve ? { ...m, room: roomId, shift } : m));
   else {
-    const n = s.nextStaff ?? 1;
-    const id = `s${n}`;
-    const r = Rng.seeded(s.meta.seed).fork(`hire:${id}`);
-    const sex: 'm' | 'f' = r.chance(5000) ? 'f' : 'm';
-    s.staff = [...staff, { id, role, sex, seed: r.u32(), skill: 3, salary: salaryOf(db, role, 3), room: roomId, days: 0, shift }];
-    s.nextStaff = n + 1;
+    const { id, sex, seed } = newcomer(s);
+    s.staff = [...staff, { id, role, sex, seed, skill: 3, salary: salaryOf(db, role, 3), room: roomId, days: 0, shift }];
   }
   return true;
+}
+
+/** Новый человек штата: номер по порядку, пол и облик — из ветви зерна `hire:<номер>`. */
+function newcomer(s: ShiftState): { id: string; sex: 'm' | 'f'; seed: number } {
+  const n = s.nextStaff ?? 1;
+  const id = `s${n}`;
+  const r = Rng.seeded(s.meta.seed).fork(`hire:${id}`);
+  const sex: 'm' | 'f' = r.chance(5000) ? 'f' : 'm';
+  s.nextStaff = n + 1;
+  return { id, sex, seed: r.u32() };
 }
 
 /**

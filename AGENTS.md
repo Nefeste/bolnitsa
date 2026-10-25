@@ -102,8 +102,10 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # east wing works; then staff mood: «собирается уйти» at the meeting, the person card,
                                    # «Поднять зарплату», «В другую смену», severance in «Уволить»; then growth: «вырос до
                                    # навыка 4» and back from study at the meeting with no scene rebuild, «Поднять зарплату»
-                                   # in its row, «Отправить учиться» in the card; then orderlies: a patient on the gurney in
-                                   # front of the orderly, their cards, «Следить», the path, «Персонал», paramedics; then the
+                                   # in its row, «Отправить учиться» in the card, the reserve: «Замена из резерва» at the
+                                   # meeting, «Нанять в резерв», «замещает: …», the reserve card's «Уволить»; then orderlies:
+                                   # a patient on the gurney in front of the orderly, their cards, «Следить», the path,
+                                   # «Персонал», paramedics; then the
                                    # chief approves: rule checkboxes, a decision in the list and on the map, its card with the
                                    # «Ещё обследование» form, the path, Enter — «Согласен»; then roles: «Кто вы» on the start
                                    # screen, «Управляющий» sees no medicine for three hours, «Врач» and «Главврач» in the doctor
@@ -202,6 +204,10 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   skill +1); sickness — once per 60 shifts from a seed branch per person and day, the post stays empty, the shift unpaid.
   `StaffMember.away` keeps study and sickness: `onDuty` skips the away, the post stays theirs; the undo merge
   (`mergeStaff`) keeps skill, days and away from the engine. Ready-hospital staff start with staggered tenure (`tenure`).
+  Part 5 — `shift/reserve.ts` (owner's decision #97): the `reserve` site command hires a person with no post and no shift,
+  paid every day; `cover` puts the first free reserve of the same role on the post of whoever is away (their room and shift,
+  `StaffMember.covers`) and sends them back when the absent returns (a busy one — once free, at a shift change); it runs
+  after the meeting, every site command and each shift change. A covering member cannot change shifts.
 - Orderlies and gurneys (`docs/specs/2026-10-orderlies.md`): `shift/gurney.ts` — a ride is booked at once on whoever
   reaches the patient first (an orderly of the shift; none — for an urgent patient only, the nurse of the room they lie in
   or the nearest nurse: red, ICU or reanimation, to the operation and back — owner's decision #99, `carriersOf`); its

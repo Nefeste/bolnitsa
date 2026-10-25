@@ -137,6 +137,8 @@ export interface Hud {
   /** вкладка «Персонал»: `on` — сейчас в смене (spec docs/specs/2026-10-staff-shifts.md) */
   /** «Персонал»: строка человека; `on` — в смене; `bad` — собирается уйти или уходит (spec docs/specs/2026-10-staff-mood.md) */
   staffList: { key: string; text: string; on?: true; bad?: true }[];
+  /** «Нанять в резерв» (spec docs/specs/2026-10-staff-mood.md, часть 5): должности тех, кто на местах, и зарплата за сутки */
+  reserveHire: { role: Id; text: string }[];
   debug: boolean;
   build: BuildHud;
   roomTypes: RoomTypeRow[];
@@ -200,6 +202,7 @@ export const initial: Hud = {
   seenAll: 0,
   layers: { open: false, queues: false, metric: null },
   staffList: [],
+  reserveHire: [],
   debug: false,
   build: { on: false, withStaff: true, moving: false, spent: 0, undo: 0 },
   roomTypes: [],
@@ -268,6 +271,8 @@ export interface Actions {
   reshift(id: string): void;
   /** «Отправить учиться» (spec docs/specs/2026-10-staff-mood.md, раздел 4) */
   study(id: string): void;
+  /** «Нанять в резерв» (spec docs/specs/2026-10-staff-mood.md, часть 5) */
+  reserve(role: Id): void;
   /**
    * начало игры: пустое здание, готовая больница или поликлиника и роль (spec docs/specs/2026-10-two-ways.md, F4); `{ load }`
    * — сохранение (spec 2026-10-saves)

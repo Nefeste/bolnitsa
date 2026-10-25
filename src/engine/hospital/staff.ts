@@ -39,6 +39,11 @@ export interface StaffMember {
    * смене его нет (`onDuty`, `dutyOf`)
    */
   away?: { why: 'study' | 'sick'; until: number };
+  /**
+   * резерв (spec 2026-10-staff-mood, часть 5; решение владельца #97): чьё место он сейчас замещает — номер отсутствующего; его
+   * место и смена — у замещающего, пока тот не вернётся (`cover` в shift/reserve.ts)
+   */
+  covers?: string;
 }
 
 /**

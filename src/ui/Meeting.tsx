@@ -292,6 +292,15 @@ export function MeetingBody({ m, e, actions }: { m: MeetingView; e: EconomyHud; 
             {m.staff.sick.map((x, i) => (
               <li key={`s${i}`}>{t.staffSick(x)}</li>
             ))}
+            {/* резерв (spec docs/specs/2026-10-staff-mood.md, часть 5) */}
+            {m.staff.covered.map((x, i) => (
+              <li key={`c${i}`} className="ok">
+                {t.staffCovered(x.who, x.by)}
+              </li>
+            ))}
+            {m.staff.returned.map((x, i) => (
+              <li key={`r${i}`}>{t.staffReturned(x.who, x.sex)}</li>
+            ))}
           </ul>
         </Section>
       ) : null}

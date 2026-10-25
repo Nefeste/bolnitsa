@@ -550,6 +550,9 @@ export interface StaffNews {
   grew?: { id: string; skill: number }[];
   back?: { id: string; skill: number }[];
   sick?: string[];
+  /** резерв (spec 2026-10-staff-mood, часть 5): чьё место занял кто из резерва; кто вернулся в резерв */
+  covered?: { id: string; by: string }[];
+  returned?: string[];
 }
 
 export interface Leaver {

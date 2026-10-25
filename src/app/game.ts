@@ -183,9 +183,18 @@ async function rocketbox(base: string): Promise<RawLook[]> {
   );
 }
 
-/** Те же люди на тех же местах — по порядку, номеру, должности и помещению: раскладка сцены та же. */
-function sameSpots(a: readonly StaffMember[], b: readonly StaffMember[]): boolean {
-  return a.length === b.length && a.every((m, i) => m.id === b[i].id && m.role === b[i].role && m.room === b[i].room);
+/**
+ * Раскладка сцены та же: те же люди на тех же местах — по порядку, номеру, должности и помещению — или те же клетки постов
+ * (резерв, spec docs/specs/2026-10-staff-mood.md, часть 5).
+ */
+function sameSpots(db: ContentDb, a: readonly StaffMember[], b: readonly StaffMember[]): boolean {
+  if (a.length === b.length && a.every((m, i) => m.id === b[i].id && m.role === b[i].role && m.room === b[i].room)) return true;
+  // резерв (spec docs/specs/2026-10-staff-mood.md, часть 5): нанят без места или встал на место отсутствующего — клетки
+  // постов те же, раскладка та же
+  const cells = (list: readonly StaffMember[]) => new Set(list.flatMap(m => (m.room !== undefined ? [`${m.room}:${db.roles[m.role]?.stands ?? m.role}`] : [])));
+  const x = cells(a);
+  const y = cells(b);
+  return x.size === y.size && [...x].every(k => y.has(k));
 }
 
 /**
@@ -514,7 +523,11 @@ export class Game {
     return this.staff.map(m => {
       const c = this.crew.get(m.id);
       const rest = c?.rest ? (c.rest.kind === 'toilet' ? T.card.wcShort : T.card.restShort(clock(c.rest.until))) : undefined;
-      const room = m.room ? named(db.rooms[plan.rooms.find(r => r.id === m.room)?.type ?? '']?.name, m.room) : T.card.reserve(1);
+      const room = m.room ? named(db.rooms[plan.rooms.find(r => r.id === m.room)?.type ?? '']?.name, m.room) : T.card.reserve;
+      // резерв (spec docs/specs/2026-10-staff-mood.md, часть 5): кого замещает; у отсутствующего — кто за него
+      const absent = m.covers !== undefined ? this.staff.find(x => x.id === m.covers) : undefined;
+      const sub = m.away ? this.staff.find(x => x.covers === m.id) : undefined;
+      const cover = [...(absent ? [T.card.coversShort(staffName(absent))] : []), ...(sub ? [T.card.coveredByShort(staffName(sub))] : [])];
       // настроение (spec docs/specs/2026-10-staff-mood.md): число и стрелка за сутки; собирается уйти или уходит — словами
       const mood = this.moods.get(m.id);
       const feel = mood
@@ -530,13 +543,25 @@ export class Game {
       return {
         key: `s:${m.id}`,
         text: [
-          this.staffWho(m), room, T.card.shifts[m.shift ?? 'both'], T.card.skillShort(m.skill), ...away, ...feel, ...(c ? [T.card.fatigueShort(c.f)] : []), ...(rest ? [rest] : []),
+          this.staffWho(m), room, ...(m.room !== undefined ? [T.card.shifts[m.shift ?? 'both']] : []), T.card.skillShort(m.skill), ...away, ...cover, ...feel,
+          ...(c ? [T.card.fatigueShort(c.f)] : []), ...(rest ? [rest] : []),
           ...(ride ? [T.card.rideShort(clock(ride.home))] : []),
         ].join(' · '),
         ...(onDuty(db, m, this.t) ? { on: true as const } : {}),
         ...(mood && (mood.quit !== undefined || mood.go !== undefined) ? { bad: true as const } : {}),
       };
     });
+  }
+
+  /**
+   * «Нанять в резерв» (spec docs/specs/2026-10-staff-mood.md, часть 5): должности тех, кто на местах, по порядку штата, с
+   * зарплатой за сутки; только в больнице ПК со сменами — без смен резерву некого замещать.
+   */
+  private reserveRoles(): { role: Id; text: string }[] {
+    const { db } = this;
+    if (!this.hospital.site || !this.staff.some(m => m.shift !== undefined)) return [];
+    const roles = [...new Set(this.staff.flatMap(m => (m.room !== undefined && db.roles[m.role]?.hire ? [m.role] : [])))];
+    return roles.map(role => ({ role, text: T.card.reserveRole(named(db.roles[role]?.name, role), money(payOf(db, salaryOf(db, role, 3)))) }));
   }
 
   /** Человек штата словами (spec docs/specs/2026-10-staff-mood.md): «Медсестра Петрова Анна». */
@@ -556,19 +581,26 @@ export class Game {
     const leaving = mood?.go !== undefined;
     const post = (x: StaffMember) => db.roles[x.role]?.stands ?? x.role;
     const to: Shift | undefined = m.shift === 'day' ? 'night' : m.shift === 'night' ? 'day' : undefined;
-    const other = to && m.room !== undefined ? this.staff.find(x => x !== m && x.room === m.room && post(x) === post(m) && x.shift === to) : undefined;
+    const other = to && m.room !== undefined ? this.staff.find(x => x !== m && x.room === m.room && post(x) === post(m) && x.shift === to && x.covers === undefined) : undefined;
     const said = this.staffSaid?.id === m.id ? { ok: this.staffSaid.ok, text: this.staffSaid.text } : undefined;
     // рост и учёба (разделы 3–4): смен до следующего навыка, наставник; учиться — со сменой, ниже навыка 5, на месте
     const g = db.economy.staff.growth;
     const steps = stepsLeft(db, this.staff, m);
     const mentor = m.shift !== undefined && m.skill < 5 ? mentorOf(this.staff, m) : undefined;
     const study = g && m.shift !== undefined && m.skill < 5 && !m.away && !leaving && this.hospital.site ? { days: g.studyDays, cost: g.studyCost * wageOf(db, m) } : undefined;
+    // резерв (часть 5): в резерве — уволить отсюда, места с кнопкой у него нет; замещает — кого и почему; у отсутствующего —
+    // кто за него; замещающему «В другую смену» нельзя — его смена та, что у отсутствующего
+    const absent = m.covers !== undefined ? this.staff.find(x => x.id === m.covers) : undefined;
+    const sub = m.away ? this.staff.find(x => x.covers === m.id) : undefined;
     return {
       ...info, name: staffName(m), skill: m.skill, ...(steps !== undefined ? { steps } : {}), ...(mentor ? { mentor: this.staffWho(mentor) } : {}),
       ...(m.away ? { away: { ...m.away } } : {}), ...(study ? { study } : {}),
       ...(mood ? { mood: { v: mood.v, ...(mood.d ? { d: mood.d } : {}), ...(mood.why ? { why: mood.why.map(w => T.card.moodWhy[w] ?? w) } : {}), ...(mood.quit !== undefined ? { quit: mood.quit } : {}), ...(mood.go !== undefined ? { go: mood.go } : {}) } } : {}),
       pay: { now: m.salary, market: marketOf(db, m), ...(leaving || !this.hospital.site ? {} : { raise: raisedOf(db, m) }) },
-      ...(to && !leaving && this.hospital.site ? { reshift: { to, ...(other ? { with: this.staffWho(other) } : {}) } } : {}),
+      ...(to && !leaving && this.hospital.site && m.covers === undefined ? { reshift: { to, ...(other ? { with: this.staffWho(other) } : {}) } } : {}),
+      ...(m.room === undefined ? { reserve: true as const, ...(this.hospital.site ? { fire: severanceOf(db, m) } : {}) } : {}),
+      ...(absent ? { covers: { who: this.staffWho(absent), sex: absent.sex, ...(absent.away ? { away: { ...absent.away } } : {}) } } : {}),
+      ...(sub ? { coveredBy: this.staffWho(sub) } : {}),
       ...(said ? { said } : {}),
     };
   }
@@ -610,6 +642,7 @@ export class Game {
     );
     this.store.set({
       staffList: this.staffRows(),
+      reserveHire: this.reserveRoles(),
       closed: this.closedText(),
       night: this.nightText(),
       roomTypes: Object.values(db.rooms)
@@ -701,7 +734,7 @@ export class Game {
     if (w.works) this.works = w.works;
     // та же больница и те же люди на тех же местах (spec docs/specs/2026-10-staff-mood.md: рост, учёба, болезнь, зарплата,
     // смена) — сцена та же: кто в больнице, сверит Population со следующим срезом
-    const light = !this.fresh && w.staffOnly === true && sameSpots(this.staff, w.staff);
+    const light = !this.fresh && w.staffOnly === true && sameSpots(this.db, this.staff, w.staff);
     this.hospital = w.hospital;
     this.staff = w.staff;
     if (this.fresh) {
@@ -832,6 +865,9 @@ export class Game {
       for (const g of n.staff.grew ?? []) this.notices.unshift({ t: this.t, text: T.notices.grew(who(g.id), g.skill, person(g.id)?.sex ?? 'm') });
       for (const b of n.staff.back ?? []) this.notices.unshift({ t: this.t, text: T.notices.back(who(b.id), b.skill, person(b.id)?.sex ?? 'm') });
       for (const id of n.staff.sick ?? []) this.notices.unshift({ t: this.t, text: T.notices.sick(who(id)) });
+      // резерв (часть 5)
+      for (const c of n.staff.covered ?? []) this.notices.unshift({ t: this.t, text: T.notices.covered(who(c.id), who(c.by)) });
+      for (const id of n.staff.returned ?? []) this.notices.unshift({ t: this.t, text: T.notices.returned(who(id), person(id)?.sex ?? 'm') });
     }
     if (this.notices.length > 60) this.notices.length = 60;
     // утро — сохранение само (spec docs/specs/2026-10-saves.md): три последних утра
@@ -1405,6 +1441,8 @@ export class Game {
       this.staffAct = id;
       this.command({ kind: 'study', id });
     },
+    // резерв (spec docs/specs/2026-10-staff-mood.md, часть 5)
+    reserve: role => this.command({ kind: 'reserve', role }),
     // начало выбирают до игры (main.tsx)
     startGame: () => {},
     // часть 3 (spec docs/specs/2026-10-flow-ui.md)
@@ -1529,13 +1567,15 @@ export class Game {
       const all = here.filter(x => post(x) === role);
       const both = all.find(x => x.shift === undefined);
       return (both ? (['both'] as const) : (['day', 'night'] as const)).map(shift => {
-        const m = shift === 'both' ? both : all.find(x => x.shift === shift);
+        // резерв (spec docs/specs/2026-10-staff-mood.md, часть 5): место — за отсутствующим, замена — рядом с ним
+        const m = shift === 'both' ? both : (all.find(x => x.shift === shift && x.covers === undefined) ?? all.find(x => x.shift === shift));
+        const sub = m?.away ? all.find(x => x.covers === m.id) : undefined;
         const pay = (x: Id) => money(payOf(db, salaryOf(db, x, 3), shift === 'both' ? undefined : shift));
         return {
           role, shift, name, salary: pay(hire), ...(db.roles[role]?.optional ? { optional: T.card.optional } : {}),
           ...(m
             ? {
-                who: `${named(db.roles[m.role]?.name, m.role)} · ${m.skill}${m.away ? ` · ${m.away.why === 'study' ? T.card.studyShort : T.card.sickShort}` : ''}`,
+                who: `${named(db.roles[m.role]?.name, m.role)} · ${m.skill}${m.away ? ` · ${m.away.why === 'study' ? T.card.studyShort : T.card.sickShort}` : ''}${sub ? ` · ${T.card.coveredByShort(staffName(sub))}` : ''}`,
                 staffId: m.id, fire: T.card.dismissHint(money(severanceOf(db, m))),
               }
             : {}),

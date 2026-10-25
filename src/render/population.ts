@@ -50,6 +50,12 @@ export type PersonInfo =
        */
       skill?: number; steps?: number; mentor?: string; away?: { why: 'study' | 'sick'; until: number }; study?: { days: number; cost: number };
       /**
+       * резерв (там же, часть 5; решение владельца #97): без места — в резерве, уволить из карточки — за сколько; замещает —
+       * кого и почему того нет; у отсутствующего — кто за него
+       */
+      reserve?: true; fire?: number;
+      covers?: { who: string; sex: 'm' | 'f'; away?: { why: 'study' | 'sick'; until: number } }; coveredBy?: string;
+      /**
        * перевозка на каталке (spec docs/specs/2026-10-orderlies.md, «Что видно»): что с ней сейчас, кого везут (имя), откуда и
        * куда (номера помещений плана); санитар без перевозки — `free`: ждёт у каталки
        */

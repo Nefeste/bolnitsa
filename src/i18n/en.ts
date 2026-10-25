@@ -330,6 +330,8 @@ export const en: Strings = {
     leavingShort: 'leaving',
     salary: 'Pay',
     salaryLine: (rub: string, market: string) => `${rub} per shift · market ${market}`,
+    /** no shift in the reserve — paid by the day (spec docs/specs/2026-10-staff-mood.md, part 5) */
+    salaryDayLine: (rub: string, market: string) => `${rub} a day, in the reserve too · market ${market}`,
     raise: (from: string, to: string) => `Raise pay: ${from} → ${to}`,
     raiseHint: 'Mood +10 at once. Pay 10% or more above the market for their skill — another +3 a day.',
     reshift: (to: 'day' | 'night') => (to === 'day' ? 'To the day shift' : 'To the night shift'),
@@ -347,7 +349,19 @@ export const en: Strings = {
     studyHint: 'After study — one skill step higher and mood +20. While the study lasts, the post on the shift stays empty.',
     demolish: (back: string) => `Demolish — ${back} back`,
     furnish: (cost: string) => `Furnish — ${cost}`,
-    reserve: (n: number) => `in reserve: ${n}`,
+    /** the reserve (spec docs/specs/2026-10-staff-mood.md, part 5; owner's decision #97) */
+    reserve: 'in the reserve',
+    reserveWhere: 'in the reserve — steps in for whoever falls sick or goes to study',
+    reserveHire: 'Hire into the reserve',
+    reserveHireHint:
+      'No post and no shift: steps in for whoever falls sick or goes to study, and goes back to the reserve when they return. Paid every day, even when covering for nobody.',
+    reserveRole: (name: string, salary: string) => `${name} · ${salary}`,
+    reserveNone: 'Nobody to hire into the reserve yet: no one is at a post',
+    covers: 'Covering for',
+    coversLine: (who: string, why: string) => `${who} — ${why}`,
+    coversShort: (who: string) => `covering for: ${who}`,
+    coveredBy: 'Covered by',
+    coveredByShort: (who: string) => `covered by: ${who}`,
   },
   triage: { red: 'red — to a doctor at once', yellow: 'yellow — urgent', green: 'green — in turn' },
   doing: {
@@ -390,6 +404,9 @@ export const en: Strings = {
     grew: (who: string, skill: number, _sex: 'm' | 'f') => `grew to skill ${skill}: ${who}`,
     back: (who: string, skill: number, _sex: 'm' | 'f') => `back from study, skill ${skill}: ${who}`,
     sick: (who: string) => `sick, will not come to the shift: ${who}`,
+    /** the reserve (part 5) */
+    covered: (who: string, by: string) => `covered from the reserve: ${who} → ${by}`,
+    returned: (who: string, _sex: 'm' | 'f') => `back in the reserve: ${who}`,
     shiftEnd: 'outpatient hours are over',
   },
   debug: {
