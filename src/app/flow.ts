@@ -355,6 +355,12 @@ export function rideLine(r: RideNow & { who?: string }, room: (id: string) => st
   }
 }
 
+/** Что делает фельдшер скорой: ввозит привезённого, ждёт с ним у входа, уходит к машине. */
+export function medicLine(m: { who?: string; wait?: true; leaving?: true }): string {
+  const who = m.who ?? T.card.ride.someone;
+  return m.leaving ? T.card.medicLeaving : m.wait ? T.card.medicWaits(who) : T.card.medicBrings(who);
+}
+
 /** Что с тем, кого везут: перекладывают, везут откуда и куда, на обследовании у аппарата. */
 export function wheelLine(r: RideNow, room: (id: string) => string): string {
   switch (r.phase) {

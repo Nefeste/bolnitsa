@@ -66,7 +66,12 @@ export type PersonInfo =
       door?: true;
       /** везут на каталке (spec docs/specs/2026-10-orderlies.md): что с перевозкой сейчас, откуда и куда */
       gurney?: { phase: RidePhase; from: string; to: string };
-    };
+    }
+  /**
+   * фельдшер скорой (spec docs/specs/2026-10-orderlies.md, «Что видно»): кого привёз; ждёт с ним у входа — мест в смотровой
+   * нет; передал и уходит к машине
+   */
+  | { kind: 'medic'; who?: string; wait?: true; leaving?: true };
 
 /** Что окно знает о пациенте из среза (часть 3): как `Seen` в src/app/flow.ts. */
 export interface PatientNow {
@@ -488,8 +493,15 @@ export class Population {
       if (goal && this.riding.get(by) !== k) this.crowd.retarget(cw, goal, true, g.due);
       this.riding.set(by, k);
       if (!pk || !pw) continue;
-      const lay = riderAt(ph, leg.to?.pose === 'lie');
+      let lay = riderAt(ph, leg.to?.pose === 'lie');
       if (lay === 'slice') continue;
+      // перекладывают, когда тот, кто везёт, уже встал у кровати: пока идёт — больной лежит где лежал; довёз, а ещё в пути (на
+      // ×12 кадр длиннее) — больной на каталке, пока не дойдёт
+      const there = (stop: Spot | undefined) => !!stop && cw.at?.key === stop.key && cw.goals.length === 0 && cw.state !== 'walk';
+      if (ph === 'load' && !there(leg.fromStop) && pw.carry !== cw.key) lay = 'from';
+      if (ph === 'loadBack' && !there(leg.toStop) && pw.carry !== cw.key) lay = 'to';
+      if ((ph === 'unload' || ph === 'wait') && lay === 'to' && !there(leg.toStop) && pw.carry === cw.key) lay = 'gurney';
+      if (ph === 'unloadBack' && !there(leg.fromStop) && pw.carry === cw.key) lay = 'gurney';
       held.add(pk);
       if (lay === 'gurney') {
         if (pw.carry !== cw.key) this.crowd.carry(pw, cw.key);
@@ -667,6 +679,14 @@ export class Population {
 
   /** Что о человеке сказать в панели. */
   info(key: string): PersonInfo | undefined {
+    if (key.startsWith('m:')) {
+      const w = this.crowd.walkers.get(key);
+      if (!w) return undefined;
+      const pk = `p:${key.slice(2)}`;
+      const who = this.names.get(Number(key.slice(2)))?.name;
+      const wait = !w.leaving && this.medics.get(pk) === key && w.state === 'idle' && w.goals.length === 0 && this.spots.get(pk)?.pose !== 'lie';
+      return { kind: 'medic', ...(who ? { who } : {}), ...(wait ? { wait: true as const } : {}), ...(w.leaving ? { leaving: true as const } : {}) };
+    }
     if (key.startsWith('s:')) {
       const m = this.staff.find(x => x.id === key.slice(2));
       if (!m) return undefined;

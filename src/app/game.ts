@@ -44,7 +44,7 @@ import { Builder, objectName, whyText } from './build';
 import { Chips } from './chips';
 import { loadContent } from './content';
 import { Doctor } from './doctor';
-import { chipShown, dur, moodOf, pathCard, type PatientRow, patientRows, roomChip, roomLoads, tintOf, wheelLine } from './flow';
+import { chipShown, dur, medicLine, moodOf, pathCard, type PatientRow, patientRows, roomChip, roomLoads, tintOf, wheelLine } from './flow';
 import { type HintKey, hintOf } from './hints';
 import { HoverLabel } from './hover';
 import { Labels } from './labels';
@@ -1018,6 +1018,7 @@ export class Game {
       const info = this.pop.info(u.key);
       if (!info) return this.hoverLabel.set();
       if (info.kind === 'staff') return this.hoverLabel.set(named(db.roles[info.role]?.name, info.role), info.room ? this.names().room(info.room) : undefined);
+      if (info.kind === 'medic') return this.hoverLabel.set(T.card.medic, medicLine(info));
       const what = info.gurney
         ? wheelLine(info.gurney, id => lowerFirst(this.names().room(id)))
         : info.door ? (info.walking ? T.card.toDoor : T.card.atDoor) : info.walking ? T.going[info.doing] : T.doing[info.doing];

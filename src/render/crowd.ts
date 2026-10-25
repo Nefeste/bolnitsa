@@ -351,7 +351,9 @@ export class Crowd {
   update(dt: number) {
     // обычный шаг на экране: та скорость, с какой дорогу считает движок, в настоящих секундах
     const v = this.rate > 0 ? WALK_SPEED_PC * this.rate : 0;
-    for (const w of this.walkers.values()) this.step(w, dt, v);
+    // кого везут на каталке — после того, кто везёт: лежит там, где каталка в этом кадре, а не в прошлом
+    for (const w of this.walkers.values()) if (w.carry === undefined) this.step(w, dt, v);
+    for (const w of this.walkers.values()) if (w.carry !== undefined) this.step(w, dt, v);
     this.separate(dt);
     for (const [k, w] of this.walkers) if (w.state === 'gone') this.walkers.delete(k);
   }

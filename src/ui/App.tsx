@@ -2,7 +2,7 @@
 // репутация, стройка, извещения; слева — стройка (spec docs/specs/2026-10-build.md) и слои; справа — вкладки; снизу —
 // карточка выбранного. Панели тонкие: читают хранилище (store.ts) и просят игру (Actions); 3D-кадр живёт вне React.
 import { type ReactNode, useState } from 'react';
-import { rideLine, wheelLine } from '../app/flow';
+import { medicLine, rideLine, wheelLine } from '../app/flow';
 import type { SaveRow } from '../app/saves';
 import { clock, type Lang, lang, money, T } from '../i18n';
 import { lowerFirst } from '../i18n/case';
@@ -525,6 +525,8 @@ function restLine(r: NonNullable<Extract<PersonInfo, { kind: 'staff' }>['rest']>
 }
 
 function personLines(info: PersonInfo, names: Names): [string, string][] {
+  // фельдшер скорой (spec docs/specs/2026-10-orderlies.md): кого привёз и что с ним
+  if (info.kind === 'medic') return [[T.card.doing, medicLine(info)]];
   // смены (spec docs/specs/2026-10-staff-shifts.md): чья смена; не в больнице — дома до своей смены; на перерыве — где и до
   // какого часа (часть 2)
   if (info.kind === 'staff') {
@@ -645,7 +647,7 @@ function HintStrip({ hud, actions }: P) {
 function BottomCard({ hud, actions, names }: P) {
   if (hud.selected) {
     const info = hud.selected.info;
-    const title = info.kind === 'patient' ? T.card.patient(info.sex, info.age, info.name) : names.role(info.role);
+    const title = info.kind === 'patient' ? T.card.patient(info.sex, info.age, info.name) : info.kind === 'medic' ? T.card.medic : names.role(info.role);
     return (
       <div className="card panel" id="card">
         <div className="cardhead">
