@@ -528,7 +528,7 @@ export const doctorRu = {
       dischargeNow: 'Выписать',
       stay: 'Ещё сутки',
       agreeAll: (n: number) => `Согласен со всеми, где уверен от 80 % (${n})`,
-      keys: 'Enter — «Согласен» на верхнем, пробел — его карта',
+      keys: 'Enter — «Согласен» на верхнем, Shift+Enter — его карта',
     },
     who: (name: string, sex: 'm' | 'f', age: number) => `${name}, ${age} ${pluralRu(age, 'год', 'года', 'лет')}${sex === 'f' ? ', ж' : ', м'}`,
     office2: {

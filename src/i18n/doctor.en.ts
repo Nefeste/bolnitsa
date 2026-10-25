@@ -508,7 +508,7 @@ export const doctorEn: DoctorStrings = {
       dischargeNow: 'Discharge',
       stay: 'One more day',
       agreeAll: (n: number) => `Agree with all at 80 % or more (${n})`,
-      keys: 'Enter — «Agree» on the top one, space — its card',
+      keys: 'Enter — «Agree» on the top one, Shift+Enter — its card',
     },
     who: (name: string, sex: 'm' | 'f', age: number) => `${name}, ${age} ${plural(age, 'year', 'years')}, ${sex === 'f' ? 'F' : 'M'}`,
     office2: {
