@@ -21,6 +21,15 @@ export function moodNumbers(db: ContentDb, s: ShiftState, m?: StaffMember): Numb
 export const marketOf = (db: ContentDb, m: StaffMember): number => salaryOf(db, m.role, m.skill, m.trait);
 
 /**
+ * На сколько ступеней навыка его зарплата ниже рынка (раздел 3: зарплата сама не растёт): 0 — не ниже рынка его навыка; 1 —
+ * как у навыка на ступень ниже, — вырос, а зарплату не подняли; 2 — на две и больше.
+ */
+export function behindOf(db: ContentDb, m: StaffMember): number {
+  for (let k = m.skill; k >= 1; k--) if (salaryOf(db, m.role, k, m.trait) <= m.salary) return m.skill - k;
+  return m.skill;
+}
+
+/**
  * Зарплата после «Поднять зарплату»: ниже рынка — до рынка, иначе — на `step` % выше, вверх до 50 ₽: не меньше шага, иначе
  * поднятая с рынка не была бы выше рынка настолько, чтобы радовать (`market`).
  */
@@ -146,7 +155,7 @@ function pull(n: Numbers, v: number): number {
 }
 
 /** Порядок причин с одинаковым весом — для строки окна. */
-const ORDER: MoodWhy[] = ['below', 'limit', 'here', 'toilet', 'nights', 'above'];
+const ORDER: MoodWhy[] = ['belowFar', 'below', 'limit', 'here', 'toilet', 'nights', 'above'];
 
 /**
  * Планёрка (spec «Как будет», 1–2): настроение каждого нанятого со сменой — по прошедшим суткам. Причины — с отметками этих
@@ -170,9 +179,10 @@ export function moodMorning(db: ContentDb, s: ShiftState, toilet: boolean): Staf
     if (works && m.shift === 'night') r.nights = (r.nights ?? 0) + 1;
     else delete r.nights;
     const causes: [MoodWhy, number][] = [];
-    const market = marketOf(db, m);
-    if (m.salary * 100 <= market * (100 - n.market)) causes.push(['below', n.below]);
-    else if (m.salary * 100 >= market * (100 + n.market)) causes.push(['above', n.above]);
+    const behind = behindOf(db, m);
+    if (behind >= 2) causes.push(['belowFar', n.below[1]]);
+    else if (behind === 1) causes.push(['below', n.below[0]]);
+    else if (m.salary * 100 >= marketOf(db, m) * (100 + n.market)) causes.push(['above', n.above]);
     const within = (x: number | undefined) => x !== undefined && x >= from && x < s.t;
     if (within(r.limit)) causes.push(['limit', n.limit]);
     if (within(r.here)) causes.push(['here', n.here]);

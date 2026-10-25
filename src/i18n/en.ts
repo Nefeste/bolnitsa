@@ -279,7 +279,7 @@ export const en: Strings = {
     mood: 'Mood',
     moodDelta: (d: number) => (d > 0 ? `↑${d}` : `↓${-d}`),
     moodWhy: {
-      below: 'pay below the market', above: 'pay above the market', limit: 'worked to the fatigue limit', here: 'no staff room', toilet: 'no toilet',
+      below: 'pay below the market', belowFar: 'pay far below the market', above: 'pay above the market', limit: 'worked to the fatigue limit', here: 'no staff room', toilet: 'no toilet',
       nights: 'night shifts in a row',
     } as Record<string, string>,
     moodShort: (v: number) => `mood ${v}`,

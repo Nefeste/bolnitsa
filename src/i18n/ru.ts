@@ -305,7 +305,7 @@ export const ru = {
     mood: 'Настроение',
     moodDelta: (d: number) => (d > 0 ? `↑${d}` : `↓${-d}`),
     moodWhy: {
-      below: 'зарплата ниже рынка', above: 'зарплата выше рынка', limit: 'предел усталости', here: 'нет ординаторской', toilet: 'нет санузла',
+      below: 'зарплата ниже рынка', belowFar: 'зарплата сильно ниже рынка', above: 'зарплата выше рынка', limit: 'предел усталости', here: 'нет ординаторской', toilet: 'нет санузла',
       nights: 'ночные смены подряд',
     } as Record<string, string>,
     moodShort: (v: number) => `настроение ${v}`,
@@ -318,7 +318,7 @@ export const ru = {
     raise: (from: string, to: string) => `Поднять зарплату: ${from} → ${to}`,
     raiseHint: 'Настроение +10 сразу. Зарплата выше рынка его навыка на 10 % и больше — ещё +3 в сутки.',
     reshift: (to: 'day' | 'night'): string => (to === 'day' ? 'В дневную смену' : 'В ночную смену'),
-    reshiftHint: (who: string | undefined) => (who ? `Сменами поменяется с: ${who}` : 'Его место в той смене свободно'),
+    reshiftHint: (who: string | undefined) => (who ? `Сменами поменяется с: ${who}` : 'Место в той смене свободно'),
     dismissHint: (paid: string) => `Уволить — выплата за три смены: ${paid}`,
     /** рост, наставник, учёба, болезнь (spec docs/specs/2026-10-staff-mood.md, разделы 3–5) */
     skill: 'Навык',

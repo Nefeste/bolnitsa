@@ -88,8 +88,8 @@ describe('рост, учёба, болезнь', () => {
     expect(news?.grew).toContainEqual({ id: n.id, skill: 4 });
     expect(member(s, n.id)).toMatchObject({ skill: 4, days: 0, salary: n.salary });
     expect(stepsLeft(db, s.staff!, member(s, n.id))).toBe(20);
-    // рынок навыка 4 — выше на 10 % и больше: в тот же день — «зарплата ниже рынка»
-    expect(s.moods![n.id]).toMatchObject({ v: 65, why: ['below'] });
+    // зарплата — навыка 3, а навык уже 4: на ступень ниже рынка — в тот же день «зарплата ниже рынка», −3
+    expect(s.moods![n.id]).toMatchObject({ v: 67, why: ['below'] });
     expect(member(s, reserve.id)).toMatchObject({ skill: 3, days: 18 });
   }, 60_000);
 

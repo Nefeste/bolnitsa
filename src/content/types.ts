@@ -947,7 +947,7 @@ export interface Economy {
     growth?: { mentor: number; studyDays: number; studyCost: number; studyMood: number; sick: number };
     /** настроение нанятых в смене (spec 2026-10-staff-mood); нет — настроения нет */
     mood?: {
-      start: number; drift: number; market: number; below: number; above: number; limit: number; here: number; toilet: number; nights: [number, number];
+      start: number; drift: number; market: number; below: [number, number]; above: number; limit: number; here: number; toilet: number; nights: [number, number];
       quit: number; days: number; respond: number; raise: number; moved: number; step: number; severance: number;
     };
   };
