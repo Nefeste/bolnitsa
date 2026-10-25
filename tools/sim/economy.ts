@@ -139,6 +139,9 @@ interface DayRow {
   day: number; cash: number; income: number; expenses: number; works: number; rep: number; score?: number;
   arrived: number; ambulance: number; seen: number; left: number; died: number; lying: number; flowWalk: number; flowAmb: number;
   salaries: number;
+  /** скорая: больше всего ждали у входа сразу; каталку ждали дольше порога планёрки — сколько раз и дольше всего, минут */
+  door: number;
+  gurney?: { n: number; wait: number };
 }
 interface Run {
   /** `week` — прибыль за первые 7 суток без стройки: критерий «не окупается за 7 суток» и при `--days` больше 7 */
@@ -228,7 +231,7 @@ function run(name: string, seed: number): Run {
     return {
       day: d.day, cash: e.cash, income: incomeOf(e.ledger), expenses: expensesOf(e.ledger), works: e.ledger.expenses.works ?? 0, rep: e.reputation.to, score: e.reputation.score,
       arrived: d.arrived, ambulance: d.ambulance?.arrived ?? 0, seen: col.reduce((n, c) => n + c.seen, d.seen), left: d.left, died: d.ward?.died ?? 0, lying: d.ward?.lying ?? 0,
-      flowWalk: 0, flowAmb: 0, salaries: e.ledger.expenses.salaries,
+      flowWalk: 0, flowAmb: 0, salaries: e.ledger.expenses.salaries, door: d.load?.door ?? 0, ...(d.load?.gurney ? { gurney: { ...d.load.gurney } } : {}),
     };
   });
   // поток от больницы сейчас — в среднем в сутки при часах по умолчанию
@@ -276,7 +279,7 @@ if (asJson) {
         const waits = r.rides.map(x => x.wait).sort((a, b) => a - b);
         const mean = waits.reduce((a, b) => a + b, 0) / waits.length;
         console.log(
-          `    каталка: перевозок ${r.rides.length} (на койку ${by('bed')}, на операцию ${by('op')}, назад ${by('back')}, на обследование ${by('exam')}), ждали в среднем ${mean.toFixed(1)} мин, 9 из 10 — не дольше ${waits[Math.floor(waits.length * 0.9)]}, дольше всех ${waits[waits.length - 1]}; везла медсестра ${r.rides.filter(x => x.nurse).length}`,
+          `    каталка: перевозок ${r.rides.length} (на койку ${by('bed')}, на операцию ${by('op')}, назад ${by('back')}, на обследование ${by('exam')}), ждали в среднем ${mean.toFixed(1)} мин, 9 из 10 — не дольше ${waits[Math.floor(waits.length * 0.9)]}, дольше всех ${waits[waits.length - 1]}; везла медсестра ${r.rides.filter(x => x.nurse).length}; скорая у входа — до ${Math.max(...r.days.map(d => d.door))} сразу`,
         );
       }
       if (RAISE) {

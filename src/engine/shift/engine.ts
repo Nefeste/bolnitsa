@@ -895,10 +895,8 @@ function duty(db: ContentDb, s: ShiftState) {
   staffDesks(db, s);
   // часть 2б: пришедшие делать обследования — их перерывы и туалет
   crewAll(db, s);
-  // каталка (spec 2026-10-orderlies): пришли санитары и медсёстры — лежачие, кого некому было везти; привезённые, кого
-  // некому было отсортировать, пока медсестра везла другого
+  // каталка (spec 2026-10-orderlies): пришли санитары и медсёстры — лежачие, кого некому было везти
   retryRides(db, s);
-  if (s.flow) for (const p of Object.values(s.patients)) if (p.kind === 'ambulance' && p.bay && !p.sorted && p.status === 'waiting' && !awayNurse(db, s, p)) nurseSorts(db, s, p);
 }
 
 /**
@@ -2569,10 +2567,21 @@ export function emergencyBays(db: ContentDb, s: ShiftState): Bed[] {
  */
 const holdsBay = (p: ShiftPatient) => p.bay !== undefined && (p.status === 'waiting' || p.status === 'inRoom' || p.status === 'away' || p.status === 'admitted');
 
-/** Свободные места смотровой. */
+/**
+ * Свободные места смотровой. Медсестра смотровой везёт кого-то на каталке (spec docs/specs/2026-10-orderlies.md: её места
+ * нет) — новых туда не кладут, пока она не вернётся: ждут у входа.
+ */
 export function freeBays(db: ContentDb, s: ShiftState): Bed[] {
   const taken = new Set(Object.values(s.patients).filter(holdsBay).map(p => `${p.bay!.room}:${p.bay!.bed}`));
-  return emergencyBays(db, s).filter(b => !taken.has(`${b.room}:${b.bed}`));
+  const away = s.rides ? awayRooms(db, s) : undefined;
+  return emergencyBays(db, s).filter(b => !taken.has(`${b.room}:${b.bed}`) && !away?.has(b.room));
+}
+
+/** Смотровые, чья медсестра сейчас везёт кого-то на каталке. */
+function awayRooms(db: ContentDb, s: ShiftState): Set<string> {
+  const out = new Set<string>();
+  for (const m of hospitalCtx(db, s).staff) if (m.role === 'role.nurse' && m.room !== undefined && backAt(s, m, s.t) > s.t) out.add(m.room);
+  return out;
 }
 
 /** Привезённые скорой, что ждут у входа: мест в смотровой не было. По времени приезда. */
@@ -2950,10 +2959,8 @@ function rideStep(db: ContentDb, s: ShiftState, ev: Extract<ShiftEvent, { kind: 
   rideHome(s, ev.id, ev.by);
   const m = s.staff?.find(x => x.id === ev.by);
   if (m && m.role === ORDERLY) examCrew(db, s, m);
-  // медсестра вернулась в смотровую — сортирует привезённых, пока её не было
-  if (m && m.room !== undefined && m.role !== ORDERLY) {
-    for (const p of Object.values(s.patients)) if (p.kind === 'ambulance' && p.bay?.room === m.room && !p.sorted && p.status === 'waiting' && !awayNurse(db, s, p)) nurseSorts(db, s, p);
-  }
+  // медсестра вернулась — в её смотровую снова кладут ждущих у входа
+  if (m && m.role !== ORDERLY) seatAtDoor(db, s);
 }
 
 /**
@@ -3498,16 +3505,7 @@ function arriveByAmbulance(db: ContentDb, s: ShiftState, p: ShiftPatient, notice
   const vf = arrestAfter(db, s, p);
   if (vf !== undefined) schedule(s, Math.max(s.t, p.arriveT + vf), { kind: 'arrest', id: p.id });
   notices.push({ kind: 'ambulance', id: p.id });
-  // медсестра смотровой везёт другого на каталке (spec docs/specs/2026-10-orderlies.md: её места нет) — отсортирует, когда
-  // вернётся
-  if (s.flow && !awayNurse(db, s, p)) nurseSorts(db, s, p);
-}
-
-/** Медсестра смотровой, где лежит привезённый, сейчас везёт кого-то на каталке: её нет на месте до возвращения. */
-function awayNurse(db: ContentDb, s: ShiftState, p: ShiftPatient): StaffMember | undefined {
-  if (!p.bay || !s.rides) return undefined;
-  const nurse = memberAt(hospitalCtx(db, s).staff, p.bay.room, 'role.nurse');
-  return nurse && backAt(s, nurse, s.t) > s.t ? nurse : undefined;
+  if (s.flow) nurseSorts(db, s, p);
 }
 
 /**
