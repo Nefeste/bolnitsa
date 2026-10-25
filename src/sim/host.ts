@@ -13,7 +13,7 @@ import { scenarioKey, scenarioView, type ScenarioView } from './campaign';
 import { patientName } from './caseView';
 import { comingAt, DoctorDesk, officeOf, takeCommand } from './doctor';
 import { Handles, packSlice } from './pack';
-import type { DoctorOut, FromSim, PathView, ToSim, World } from './protocol';
+import { type DoctorOut, type FromSim, type PathView, ROOMS_DAYS, type RoomsMoney, type ToSim, type World } from './protocol';
 
 /** Счёт до `ms` от сейчас; одно событие — всегда (как `budget` в session.ts «Анамнеза»). */
 function budget(ms: number): () => boolean {
@@ -49,6 +49,9 @@ export function createSim(db: ContentDb): SimHost {
   let sentMoods = '';
   /** перевозки на каталке (spec docs/specs/2026-10-orderlies.md) — как окно уже получило */
   let sentRides = '';
+  /** деньги по помещениям (spec docs/specs/2026-10-metrics-layer.md, часть 2): какими окно их уже получило */
+  let sentMoney = '';
+  let sentDays = -1;
   /** ход сценария (spec docs/specs/2026-10-scenario-1.md): по чему он посчитан и каким окно его уже получило */
   let scenarioAt: unknown[] = [];
   let sentScenario = '';
@@ -134,9 +137,30 @@ export function createSim(db: ContentDb): SimHost {
         scenario = now;
       }
     }
+    // деньги по помещениям (часть 2 слоя «Показатели»): сегодня — когда сдвинулись; прошедшие сутки — когда их прибавилось
+    let money: RoomsMoney | undefined;
+    if (s!.flow && s!.hospital?.site) {
+      const now = s!.summary.rooms ?? {};
+      let income = 0;
+      let expenses = 0;
+      for (const r of Object.values(now)) {
+        income += r.income;
+        expenses += r.expenses;
+      }
+      const sig = `${s!.day}:${Object.keys(now).length}:${income}:${expenses}`;
+      const days = s!.history.length !== sentDays;
+      if (sig !== sentMoney || days) {
+        sentMoney = sig;
+        money = { now: structuredClone(now) };
+        if (days) {
+          sentDays = s!.history.length;
+          money.days = s!.history.slice(-ROOMS_DAYS).flatMap(d => (d.rooms ? [{ day: d.day, rooms: structuredClone(d.rooms) }] : []));
+        }
+      }
+    }
     const lag = owed + (s!.until !== undefined ? s!.until - s!.t : 0);
     const { buf, names } = packSlice(s!, sliceOf(s!, officeOf(db, s!)), lag, handles, rooms, staff, patientName);
-    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...(late ? { late } : {}), ...(crew ? { crew } : {}), ...(moods ? { moods } : {}), ...(rides ? { rides } : {}), ...(scenario ? { scenario } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
+    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...(late ? { late } : {}), ...(crew ? { crew } : {}), ...(moods ? { moods } : {}), ...(rides ? { rides } : {}), ...(scenario ? { scenario } : {}), ...(money ? { money } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
   };
   const fresh = () => {
     owed = 0;
@@ -147,6 +171,8 @@ export function createSim(db: ContentDb): SimHost {
     sentCrew = '';
     sentMoods = '';
     sentRides = '';
+    sentMoney = '';
+    sentDays = -1;
     scenarioAt = [];
     sentScenario = '';
     sentPath = undefined;

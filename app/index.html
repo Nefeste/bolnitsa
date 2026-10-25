@@ -153,6 +153,17 @@
     .card .mood .bad { color: #ff9b86; }
     .card .mood .ok { color: #8fe3b4; }
     .tabbody .row.bad { color: #ff9b86; }
+    /* деньги помещения по суткам (docs/specs/2026-10-metrics-layer.md, часть 2): выручка — синим, расходы — серым */
+    .moneychart { margin-top: 6px; }
+    .moneychart .label { margin: 0 0 2px; font-size: 11px; }
+    .moneychart svg { display: block; width: 100%; height: 64px; background: rgba(255,255,255,.04); border-radius: 3px; }
+    .moneychart rect.inc, .moneychart .sw.inc { fill: #4f9fd8; background: #4f9fd8; }
+    .moneychart rect.exp, .moneychart .sw.exp { fill: #9aa4a9; background: #9aa4a9; }
+    .moneychart g.now rect { opacity: .7; }
+    .moneychart .legend { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .moneychart .sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin: 0 2px 0 6px; vertical-align: baseline; }
+    .layers .moneyday { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; font-size: 12px; }
+    .layers .moneyday input { width: 100%; }
     /* «Нанять в резерв» (docs/specs/2026-10-staff-mood.md, часть 5): должности строкой кнопок над списком */
     .tabbody .reserve { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 4px 0 6px; }
     .tabbody .reserve .label { margin: 0 4px 0 0; }
