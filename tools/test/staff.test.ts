@@ -41,7 +41,9 @@ const advanceUntil = (s: ShiftState, ok: () => boolean, max = 600) => {
 describe('кандидаты и найм', () => {
   test('кандидаты дня — на каждую должность, которую нанимают, от одного до двух; те же зерно и день — те же люди', () => {
     const a = applicantsOf(db, 7, 3, 1);
-    const roles = Object.values(db.roles).filter(r => r.hire).map(r => r.id);
+    // санитара (`optional`, spec docs/specs/2026-10-orderlies.md) нанимают на место — в кандидатах дня его нет
+    const roles = Object.values(db.roles).filter(r => r.hire && !r.optional).map(r => r.id);
+    expect(a.list.some(c => db.roles[c.role]?.optional)).toBe(false);
     for (const role of roles) {
       const n = a.list.filter(c => c.role === role).length;
       expect(n).toBeGreaterThanOrEqual(db.economy.staff.candidates[0]);

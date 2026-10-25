@@ -1,5 +1,5 @@
 {
-  "version": "0.5.0",
+  "version": "0.17.0",
   "base": 78,
   "ids": {
     "achievements": [
@@ -1203,6 +1203,7 @@
       "role.lab_tech",
       "role.nurse",
       "role.or_nurse",
+      "role.orderly",
       "role.radiographer",
       "role.radiologist",
       "role.registrar",

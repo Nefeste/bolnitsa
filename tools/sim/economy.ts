@@ -15,16 +15,19 @@
 // и кто ушёл сам, настроение в конце, кто вырос и сколько смен пропущено по болезни; с `--days 14` и больше — критерий: игрок
 // ничего не делает, а за первые две недели уходят сами не больше двух. `--raise` — игрок на каждой планёрке поднимает зарплату
 // тем, кто вырос и кто собирается уйти (как «Поднять зарплату» в строке планёрки): тогда уходят не больше двух за каждые две
-// недели всего срока, а в отчёте — сколько раз поднимали и как выросли зарплаты за сутки.
+// недели всего срока, а в отчёте — сколько раз поднимали и как выросли зарплаты за сутки. Каталка (spec
+// docs/specs/2026-10-orderlies.md): сколько перевозок, сколько лежачие ждали её, сколько раз везла медсестра; `--no-orderly
+// night` — готовая больница без ночных санитаров, `--no-orderly all` — без санитаров вовсе.
 // `--hall N` — сидя или стоя по своему залу не дальше N м (content/hospital/inflow.yaml, `hall`); `--hall 0` — по всей больнице.
 // `--bench N` — скамьи у дверей кабинетов не дальше N шагов (`bench`, spec docs/specs/2026-10-door-benches.md); `--bench 0` — без них.
-//   bun tools/sim/economy.ts [--days 7] [--seeds 1,2,3] [--only clinic,district,city,poly,polyspec] [--hall N] [--bench N] [--raise] [--json]
+//   bun tools/sim/economy.ts [--days 7] [--seeds 1,2,3] [--only clinic,district,city,poly,polyspec] [--hall N] [--bench N] [--raise]
+//                            [--no-orderly night|all] [--json]
 import type { ContentDb, Id } from '../../src/content/types';
 import { expensesOf, incomeOf } from '../../src/engine/economy/economy';
 import { DOOR_PRICE, emptySite, hospitalOf, priceOf, roomPrice, type Site, type SiteCommand } from '../../src/engine/hospital/site';
 import { siteOfPlan } from '../../src/engine/hospital/site-plan';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
-import { nightHospital, presetStaff, salaryOf, withNightShift } from '../../src/engine/hospital/staff';
+import { nightHospital, presetStaff, salaryOf, type StaffMember, withNightShift } from '../../src/engine/hospital/staff';
 import { apply, capacityOf, newFlowShift } from '../../src/engine/shift/engine';
 import { ambulancePerHour, walkPerHour } from '../../src/engine/shift/inflow';
 import { cashNow, startCash } from '../../src/engine/shift/money';
@@ -40,6 +43,10 @@ const SEEDS = arg('seeds', '1,2,3').split(',').map(Number);
 const ONLY = arg('only', '').split(',').filter(Boolean);
 const asJson = process.argv.includes('--json');
 const RAISE = process.argv.includes('--raise');
+const NO_ORDERLY = arg('no-orderly', '');
+/** Готовая больница без ночных санитаров или без санитаров вовсе (`--no-orderly`). */
+const orderlies = (staff: StaffMember[]) =>
+  NO_ORDERLY ? staff.filter(m => m.role !== 'role.orderly' || (NO_ORDERLY === 'night' && m.shift !== 'night')) : staff;
 
 const { db, errors } = buildDb();
 if (errors.length) {
@@ -156,7 +163,7 @@ function start(name: string, seed: number): ShiftState {
   if (name === 'city') {
     const rec = db.presets['preset.city'];
     const st = siteOfPreset(db, rec);
-    return newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, st), staff: withNightShift(db, st.rooms, presetStaff(db, rec)), flow, economy: { cash: startCash(db, 'preset') } });
+    return newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, st), staff: orderlies(withNightShift(db, st.rooms, presetStaff(db, rec))), flow, economy: { cash: startCash(db, 'preset') } });
   }
   if (name === 'poly' || name === 'polyspec') {
     const p = siteOfPlan(db, db.sites!['site.polyclinic']);
