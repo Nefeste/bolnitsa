@@ -5,8 +5,11 @@
 // Скелетная анимация считается в вершинном шейдере: матрицы суставов всех кадров всех видов лежат в одной текстуре
 // (bake.ts); на экземпляр приходят номер кадра A, кадр B и доля между ними, цвет одежды и кожи. На CPU за кадр — матрица и
 // три числа на человека.
+//
+// Люди Rocketbox (spec docs/specs/2026-10-people.md): у вида — свой материал с атласом и маской. Одежда по маске R —
+// цвет должности (цвет экземпляра) × яркость ткани, складки остаются; пряди — срез по альфе маски, и в тенях тоже.
 import * as THREE from 'three';
-import { BAKE_FPS, BONE_TEX_W, CLIP_NAMES, type People } from './bake';
+import { BAKE_FPS, BONE_TEX_W, CLIP_NAMES, type Look, type People } from './bake';
 import type { Crowd, Walker } from './crowd';
 
 const PARS = /* glsl */ `
@@ -42,15 +45,35 @@ const COLOR = /* glsl */ `
   vColor.rgb = mix( vColor.rgb, aSkin, aTint.y );
 `;
 
-function inject(shader: THREE.WebGLProgramParametersWithUniforms, bones: THREE.Texture, stride: number, depth: boolean) {
+// атлас Rocketbox: цвет экземпляра — в vTint (одежда по маске), а не множителем всего цвета
+const TINT_VERTEX = /* glsl */ `
+#ifdef USE_INSTANCING_COLOR
+  vTint = instanceColor.rgb;
+#else
+  vTint = vec3( 1.0 );
+#endif
+`;
+const TINT_FRAGMENT = /* glsl */ `
+vec4 mk = texture2D( uMask, vMapUv );
+if ( mk.a < 0.5 ) discard;
+float lum = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
+diffuseColor.rgb = mix( diffuseColor.rgb, vTint * min( lum / uTintRef, 1.6 ), mk.r );
+`;
+
+function inject(shader: THREE.WebGLProgramParametersWithUniforms, bones: THREE.Texture, stride: number, depth: boolean, look?: Look) {
   shader.uniforms.uBones = { value: bones };
   let v = `#define JOINT_STRIDE ${stride}\n#define BONE_W ${BONE_TEX_W}\n${shader.vertexShader}`
-    .replace('#include <skinning_pars_vertex>', PARS)
+    .replace('#include <skinning_pars_vertex>', look && !depth ? `${PARS}varying vec3 vTint;\n` : PARS)
     .replace('#include <skinbase_vertex>', BASE)
     .replace('#include <skinnormal_vertex>', 'objectNormal = normalize(mat3(skinM) * objectNormal);')
     .replace('#include <skinning_vertex>', 'transformed = (skinM * vec4(transformed, 1.0)).xyz;');
-  if (!depth) v = v.replace('#include <color_vertex>', COLOR);
+  if (!depth) v = v.replace('#include <color_vertex>', look ? TINT_VERTEX : COLOR);
   shader.vertexShader = v;
+  if (look && !depth) {
+    shader.uniforms.uMask = { value: look.mask };
+    shader.uniforms.uTintRef = { value: look.tintRef || 1 };
+    shader.fragmentShader = `uniform sampler2D uMask;\nuniform float uTintRef;\nvarying vec3 vTint;\n${shader.fragmentShader}`.replace('#include <color_fragment>', TINT_FRAGMENT);
+  }
 }
 
 /** Цвет экземпляра: одежда и кожа. */
@@ -64,6 +87,7 @@ export class PeopleView {
   private full: THREE.InstancedMesh[] = [];
   private far: THREE.InstancedMesh[] = [];
   private attrs: { full: Record<'anim' | 'skin', THREE.InstancedBufferAttribute>; far: Record<'anim' | 'skin', THREE.InstancedBufferAttribute> }[] = [];
+  /** материал людей с цветом в вершинах; у видов с атласом — свои (`textured`) */
   readonly material: THREE.MeshStandardMaterial;
   /** сколько людей нарисовано полной и упрощённой моделью в последнем кадре */
   nearCount = 0;
@@ -82,6 +106,7 @@ export class PeopleView {
     depth.customProgramCacheKey = () => 'baked-skin-depth';
     this.material = mat;
     for (const look of people.looks) {
+      const [lookMat, lookDepth] = look.map ? this.textured(look) : [mat, depth];
       const make = (g: THREE.BufferGeometry) => {
         const geo = g.clone();
         const anim = new THREE.InstancedBufferAttribute(new Float32Array(max * 3), 3);
@@ -90,11 +115,11 @@ export class PeopleView {
         skin.setUsage(THREE.DynamicDrawUsage);
         geo.setAttribute('aAnim', anim);
         geo.setAttribute('aSkin', skin);
-        const m = new THREE.InstancedMesh(geo, mat, max);
+        const m = new THREE.InstancedMesh(geo, lookMat, max);
         m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         m.setColorAt(0, new THREE.Color(1, 1, 1));
         m.instanceColor!.setUsage(THREE.DynamicDrawUsage);
-        m.customDepthMaterial = depth;
+        m.customDepthMaterial = lookDepth;
         m.frustumCulled = false;
         m.castShadow = true;
         m.receiveShadow = true;
@@ -108,6 +133,19 @@ export class PeopleView {
       this.far.push(d.m);
       this.attrs.push({ full: { anim: f.anim, skin: f.skin }, far: { anim: d.anim, skin: d.skin } });
     }
+  }
+
+  /** Материал вида с атласом и маской и материал его тени (срез прядей по альфе маски). */
+  private textured(look: Look): [THREE.MeshStandardMaterial, THREE.MeshDepthMaterial] {
+    const { boneTexture, jointStride } = this.people;
+    // пряди — пластины с двух сторон
+    const mat = new THREE.MeshStandardMaterial({ map: look.map, roughness: 0.82, metalness: 0, side: THREE.DoubleSide });
+    mat.onBeforeCompile = s => inject(s, boneTexture, jointStride, false, look);
+    mat.customProgramCacheKey = () => 'baked-skin-atlas';
+    const depth = new THREE.MeshDepthMaterial({ side: THREE.DoubleSide, map: look.mask, alphaTest: 0.5 });
+    depth.onBeforeCompile = s => inject(s, boneTexture, jointStride, true);
+    depth.customProgramCacheKey = () => 'baked-skin-atlas-depth';
+    return [mat, depth];
   }
 
   setShadows(on: boolean) {

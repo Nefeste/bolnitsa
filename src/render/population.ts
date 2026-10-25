@@ -112,6 +112,8 @@ interface Leg {
 export class Population {
   /** вид — по полу и возрасту; номера видов в `looks` */
   private byUse = new Map<string, number[]>();
+  /** виды «своей» должности (Rocketbox: хирург, медсестра — cast.ts, `roles`): ключ — должность и пол */
+  private byRole = new Map<string, number[]>();
   private paints = new Map<string, { clothes: THREE.Color; skin: THREE.Color }>();
   /** последнее о пациенте из среза — для панели, цвета и значков */
   private last = new Map<string, PatientNow>();
@@ -172,18 +174,26 @@ export class Population {
     private staff: StaffMember[],
     rooms: RoomInstance[],
   ) {
+    const add = (m: Map<string, number[]>, k: string, i: number) => {
+      if (!m.has(k)) m.set(k, []);
+      m.get(k)!.push(i);
+    };
     looks.forEach((l, i) => {
       const s = lookSpec(l.name)!;
-      const k = `${s.use}:${s.sex}:${s.age}`;
-      if (!this.byUse.has(k)) this.byUse.set(k, []);
-      this.byUse.get(k)!.push(i);
+      if (s.roles) for (const r of s.roles) add(this.byRole, `${r}:${s.sex}`, i);
+      else add(this.byUse, `${s.use}:${s.sex}:${s.age}`, i);
     });
     this.roomIndex = rooms.map(r => layout.plan.rooms.findIndex(p => p.id === r.id));
   }
 
-  /** Вид человека: пол, возраст, кому годится; нет такого — любой того же назначения. */
-  private pick(use: string, sex: 'm' | 'f', old: boolean, seed: number): number {
-    const list = this.byUse.get(`${use}:${sex}:${old ? 'old' : 'adult'}`) ?? this.byUse.get(`${use}:${sex}:adult`) ?? this.byUse.get(`${use}:${sex}:old`) ?? [0];
+  /**
+   * Вид человека: своя должность (есть такие виды — из них), пол, возраст, кому годится; нет такого — любой того же
+   * назначения, затем персонал того же пола.
+   */
+  private pick(use: string, sex: 'm' | 'f', old: boolean, seed: number, role?: Id): number {
+    const own = role ? this.byRole.get(`${role}:${sex}`) : undefined;
+    const list =
+      own ?? this.byUse.get(`${use}:${sex}:${old ? 'old' : 'adult'}`) ?? this.byUse.get(`${use}:${sex}:adult`) ?? this.byUse.get(`${use}:${sex}:old`) ?? this.byUse.get(`staff:${sex}:adult`) ?? [0];
     return list[Math.abs(seed) % list.length];
   }
 
@@ -312,7 +322,7 @@ export class Population {
         continue;
       }
       const use = m.role === 'role.registrar' ? 'registrar' : 'staff';
-      const look = this.pick(use, m.sex, m.seed % 3 === 0, m.seed);
+      const look = this.pick(use, m.sex, m.seed % 3 === 0, m.seed, m.role);
       this.crowd.add(key, look, spot, true, false, NaN, shift);
       this.paints.set(key, { clothes: new THREE.Color(roleColor(m.role)), skin: new THREE.Color(SKIN[m.seed % SKIN.length]) });
     }

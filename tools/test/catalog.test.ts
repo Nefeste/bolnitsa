@@ -1,13 +1,14 @@
 // Сопоставление «предмет движка → модель» (spec docs/specs/2026-10-shell-3d.md, «Больница на экране»): у каждого предмета
 // шаблонов помещений и у каждого аппарата базы есть запись; у каждой модели таблицы — файл в assets/models и строка в
-// sources.json с SHA-256 исходника и сжатого файла; файл тот, что записан.
+// sources.json с SHA-256 исходника и сжатого файла; файл тот, что записан. Люди Rocketbox (spec docs/specs/2026-10-people.md,
+// «Конвертер»; лицензия MIT) — так же по assets/models/rocketbox/sources.json, и в LICENSES.md — текст MIT дословно.
 import { describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CATALOG, entryOf, EXTRA_MODELS } from '../../src/render/catalog';
 import { buildDb } from '../content/load';
-import { index, MODELS } from './render-kit';
+import { index, MODELS, rocketboxIndex } from './render-kit';
 
 const { db } = buildDb();
 const files = new Set([...index.kenney.map(n => `kenney/${n}`), ...index.kaykit.map(n => `kaykit/${n}`), ...index.people.map(n => `people/${n}`)]);
@@ -46,5 +47,36 @@ describe('таблица моделей', () => {
       expect(lic.includes(f.replace(/\.glb$/, '').split('/')[1])).toBe(true);
       expect(lic.includes(s.sha256)).toBe(true);
     }
+  });
+});
+
+describe('люди Rocketbox', () => {
+  const RB = join(MODELS, 'rocketbox');
+  const rb = JSON.parse(readFileSync(join(RB, 'sources.json'), 'utf8')) as {
+    commit: string;
+    files: Record<string, string>;
+    looks: Record<string, { glb: string; mask: string }>;
+  };
+  const lic = readFileSync(join(MODELS, '..', 'LICENSES.md'), 'utf8');
+  const sha = (b: Buffer | string) => createHash('sha256').update(b).digest('hex');
+
+  test('у каждого вида — glb и маска, SHA-256 — те, что записаны; других файлов в папке нет', () => {
+    expect(Object.keys(rb.looks).sort()).toEqual(rocketboxIndex.looks.slice().sort());
+    for (const [name, s] of Object.entries(rb.looks)) {
+      expect([name, sha(readFileSync(join(RB, `${name}.glb`)))]).toEqual([name, s.glb]);
+      expect([name, sha(readFileSync(join(RB, `${name}.mask.png`)))]).toEqual([name, s.mask]);
+    }
+    const want = ['index.json', 'sources.json', ...rocketboxIndex.looks.flatMap(n => [`${n}.glb`, `${n}.mask.png`])];
+    expect(readdirSync(RB).sort()).toEqual(want.sort());
+  });
+
+  test('в LICENSES.md — коммит набора, каждый исходник и каждый файл игры с полным SHA-256, текст MIT дословно', () => {
+    expect(lic).toContain(rb.commit);
+    for (const [f, h] of Object.entries(rb.files)) expect([f, lic.includes(f) && lic.includes(h)]).toEqual([f, true]);
+    for (const [name, s] of Object.entries(rb.looks)) expect([name, lic.includes(name) && lic.includes(s.glb) && lic.includes(s.mask)]).toEqual([name, true]);
+    // текст лицензии в блоке кода — тот самый файл набора: тот же SHA-256
+    const m = /\*\*`LICENSE\.md` набора \(дословно\):\*\*\n\n```\n([\s\S]*?)\n```/.exec(lic);
+    expect(m).not.toBeNull();
+    expect(sha(`${m![1]}\n`)).toBe(rb.files['LICENSE.md']);
   });
 });

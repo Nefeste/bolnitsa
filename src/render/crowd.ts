@@ -389,7 +389,8 @@ export class Crowd {
       return;
     }
     const look = this.looks[w.look];
-    w.clipTime += dt * (w.clip === WALK || w.clip === RUN ? Math.max(0.2, w.v / (w.clip === RUN ? 3.2 : 1.25)) : w.clip === SITDOWN || w.clip === STANDUP ? fast : w.idle);
+    // шаг и бег — со скоростью вида (bake.ts: у Rocketbox — по смещению корня за петлю): ступня не скользит
+    w.clipTime += dt * (w.clip === WALK || w.clip === RUN ? Math.max(0.2, w.v / (w.clip === RUN ? look.run : look.walk)) : w.clip === SITDOWN || w.clip === STANDUP ? fast : w.idle);
     w.v = 0;
     switch (w.state) {
       case 'idle':

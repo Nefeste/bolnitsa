@@ -2,6 +2,7 @@
 // пустое здание или готовая больница движка, поток расчёта, 3D-вид, толпа по срезу, часы и скорости, ввод, стройка,
 // панели. Всё, что знает игра, — здесь; панели только читают хранилище и просят. Люди и поток (spec
 // docs/specs/2026-10-flow-ui.md): значки над людьми и помещениями, вкладка «Пациенты», путь выбранного, слой очередей.
+import * as THREE from 'three';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { MeshoptSimplifier } from 'three/addons/libs/meshopt_simplifier.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -20,7 +21,7 @@ import { clock, genitive, type Lang, money, named, setLang, T } from '../i18n';
 import { lowerFirst } from '../i18n/case';
 import type { Walker } from '../render/crowd';
 import { ICONS } from '../render/icons';
-import { bakeLook, lodOf, packPeople, type People } from '../render/bake';
+import { bakeLook, lodOf, packPeople, type People, type RawLook } from '../render/bake';
 import { CATALOG, EXTRA_MODELS } from '../render/catalog';
 import { Crowd } from '../render/crowd';
 import { furnish, type Furnished } from '../render/furniture';
@@ -153,6 +154,27 @@ loader.setMeshoptDecoder(MeshoptDecoder);
 
 async function loadGltf(url: string) {
   return loader.loadAsync(url);
+}
+
+/**
+ * Люди Rocketbox (spec docs/specs/2026-10-people.md, часть 1 — за ключом адреса `?people=rb`; tools/app/people.mjs): вид —
+ * glb с атласом и маска рядом.
+ */
+async function rocketbox(base: string): Promise<RawLook[]> {
+  const { looks } = (await (await fetch(`${base}/rocketbox/index.json`)).json()) as { looks: string[] };
+  const images = new THREE.TextureLoader();
+  return Promise.all(
+    looks.map(async n => {
+      const [gltf, mask] = await Promise.all([loadGltf(`${base}/rocketbox/${n}.glb`), images.loadAsync(`${base}/rocketbox/${n}.mask.png`)]);
+      // развёртка glTF — сверху вниз; маска — данные, не цвет
+      mask.flipY = false;
+      mask.colorSpace = THREE.NoColorSpace;
+      mask.needsUpdate = true;
+      const r = bakeLook(gltf, n);
+      r.mask = mask;
+      return r;
+    }),
+  );
 }
 
 /** Те же люди на тех же местах — по порядку, номеру, должности и помещению: раскладка сцены та же. */
@@ -312,7 +334,8 @@ export class Game {
     this.load.furniture = Math.round(performance.now() - tf);
     const tp = performance.now();
     await MeshoptSimplifier.ready;
-    const raws = await Promise.all(index.people.map(async n => bakeLook(await loadGltf(`${base}/people/${n}.glb`), n)));
+    const rb = new URLSearchParams(location.search).get('people') === 'rb';
+    const raws = rb ? await rocketbox(base) : await Promise.all(index.people.map(async n => bakeLook(await loadGltf(`${base}/people/${n}.glb`), n)));
     this.people = packPeople(raws, raws.map(r => lodOf(r, 0.25, MeshoptSimplifier)));
     this.load.people = Math.round(performance.now() - tp);
 
