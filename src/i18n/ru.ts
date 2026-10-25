@@ -617,7 +617,6 @@ export const ru = {
     chart: 'Деньги по суткам',
     chartIncome: 'выручка',
     chartExpenses: 'расходы',
-    chartNone: 'денег у помещения ещё не было',
     load: (queue: number, busy: boolean) => [queue > 0 ? `ждут ${queue}` : '', busy ? 'внутри занято' : ''].filter(Boolean).join(' · '),
     beds: (used: number, all: number) => `койки: занято ${used} из ${all}`,
     free: 'свободно',
