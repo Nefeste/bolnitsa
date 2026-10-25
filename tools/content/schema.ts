@@ -1,4 +1,4 @@
-// из anamnez: tools/content/schema.ts @ 96503ac, изменено: hospital/consults.yaml — «Просят посмотреть» (spec 2026-10-consults); hospital/day.yaml — сутки целиком (spec 2026-10-day); hospital/inflow.yaml и hospital/money.yaml, `long` у consults.yaml — поток от больницы, касса ПК, долгий случай (spec 2026-10-economy); hospital/sites — готовые больницы из готовых помещений (spec 2026-10-real-hospital); `benches` у готовых больниц и больниц из готовых помещений — скамьи у дверей кабинетов (spec 2026-10-door-benches); `land` у готовых больниц — свободная земля под стройку (spec 2026-10-city-land); `staff.mood` в economy.yaml — настроение нанятых (spec 2026-10-staff-mood)
+// из anamnez: tools/content/schema.ts @ 96503ac, изменено: hospital/consults.yaml — «Просят посмотреть» (spec 2026-10-consults); hospital/day.yaml — сутки целиком (spec 2026-10-day); hospital/inflow.yaml и hospital/money.yaml, `long` у consults.yaml — поток от больницы, касса ПК, долгий случай (spec 2026-10-economy); hospital/sites — готовые больницы из готовых помещений (spec 2026-10-real-hospital); `benches` у готовых больниц и больниц из готовых помещений — скамьи у дверей кабинетов (spec 2026-10-door-benches); `land` у готовых больниц — свободная земля под стройку (spec 2026-10-city-land); `staff.mood` в economy.yaml — настроение нанятых (spec 2026-10-staff-mood); `refer` у consults.yaml — направление к специалисту (spec 2026-10-specialists, часть 2)
 // Схема исходных записей медицинской базы (YAML в content/, `docs/11-content.md` §4).
 // Строгие объекты: опечатка в имени поля — ошибка сборки, а не молча пропущенное поле.
 import { z } from 'zod';
@@ -947,6 +947,9 @@ export const consultsSchema = z.strictObject({
   wait: z.number().int().min(1).max(24 * 60),
   // долгий случай (spec docs/specs/2026-10-economy.md): сколько игровых часов без диагноза, прежде чем просить «долго»
   long: z.number().int().min(1).max(24),
+  // направление к специалисту (spec docs/specs/2026-10-specialists.md, часть 2): во сколько раз вероятнее болезни профиля
+  // у направленного; не меньше 1 — поправка не делает их реже
+  refer: z.number().int().min(1).max(100),
 });
 
 /**
