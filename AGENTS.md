@@ -108,8 +108,9 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # «Ещё обследование» form, the path, Enter — «Согласен»; then roles: «Кто вы» on the start
                                    # screen, «Управляющий» sees no medicine for three hours, «Врач» and «Главврач» in the doctor
                                    # window, hints by role, the chief's line and the doctors' errors at the meeting, «Итог» in
-                                   # an error's card);
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|21` for one part
+                                   # an error's card; then the own-card mock-up with `?card=steps`: the timeline and the
+                                   # steps, a question, an exam and a test go into the timeline, the result opens «Решение»);
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|22` for one part
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -234,7 +235,8 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   only in rendering: the engine never sees them. Icons above heads — `icons.ts` (drawn after the frame); the queues
   overlay floor tint — `overlay.ts`.
 - `src/ui/` — panels (React) and their store; `src/ui/doctor/` — the patient card window, the doctor's panel and the
-  «Просят посмотреть» tab, driven by `src/app/doctor.ts`; `src/ui/flow.tsx` — the «Пациенты» tab, the patient's path and
+  «Просят посмотреть» tab, driven by `src/app/doctor.ts` (`?card=steps` — the own-card mock-up awaiting the owner, the
+  timeline and one open step, `docs/specs/2026-10-own-card.md`); `src/ui/flow.tsx` — the «Пациенты» tab, the patient's path and
   the map layers menu; `src/ui/Encyclopedia.tsx` — the encyclopedia window (`docs/specs/2026-10-encyclopedia.md`): its
   articles come from `src/app/encyclopedia.ts`, a copy of Anamnez's, over the window's database (`src/app/content.ts`
   reads it once for the game and for the start screen); F1 and Esc are caught before the game's keys; a name with

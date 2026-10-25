@@ -133,7 +133,14 @@ export async function ownerTwoPart({ page, port, out, ok, fail, q, shots }) {
   }));
   if (!w.card && w.speed === 3 && w.t > tc && w.label === 'Идёт к вам') ok(`«Позвать»: карты нет, часы идут; «${w.label}», «${w.said}»`);
   else fail(`«Позвать», пока идёт: ${JSON.stringify(w)}`);
-  await page.waitForSelector('#dcard:not(.read)', { timeout: 90000 });
+  // пока он идёт, нанятый врач может попросить посмотреть — автопауза ставит часы; они снова ×3, пока карта не откроется
+  const tw = Date.now();
+  while (!(await page.$('#dcard:not(.read)')) && Date.now() - tw < 90000) {
+    const sp = await page.evaluate(() => ({ speed: window.__game.speed, ff: window.__game.ff, card: !!document.getElementById('dcard') }));
+    if (sp.speed === 0 && !sp.ff && !sp.card) await page.evaluate(() => window.__game.actions.setSpeed(3));
+    await page.waitForTimeout(200);
+  }
+  await page.waitForSelector('#dcard:not(.read)', { timeout: 1000 });
   const inn = await page.evaluate(() => ({ speed: window.__game.speed, active: window.__game.store.get().doctor?.card?.active }));
   if (inn.active && inn.speed === 0) ok('вошёл к вам — карта и пауза');
   else fail(`вошёл: ${JSON.stringify(inn)}`);

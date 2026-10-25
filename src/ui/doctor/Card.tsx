@@ -6,7 +6,7 @@
 // Приём «Анамнеза» целиком (его PatientCard, Talk, Examine, Referral, Differential, DecisionScreen, OutcomeScreen —
 // логика та же, разметка своя). Вид приходит из потока расчёта готовым (правды в нём нет); отсюда — только знание о
 // медицине из базы: списки обследований, их минуты и цена, «Что это?».
-import { memo, type ReactNode, useState } from 'react';
+import { Fragment, memo, type ReactNode, useEffect, useRef, useState } from 'react';
 import { sectionOf as articleOf } from '../../app/encyclopedia';
 import type { Id } from '../../content/types';
 import type { Command, Difficulty } from '../../engine/shift/types';
@@ -22,6 +22,12 @@ import { SECTIONS, sectionOf } from './sections';
 import type { DoctorHud } from './types';
 import { db } from './db';
 import { Round } from './Round';
+
+/**
+ * Макет своей карты (spec docs/specs/2026-10-own-card.md; решение владельца #73): в середине — лента «Ход приёма», справа —
+ * шаги «Расспрос», «Осмотр», «Обследования», «Решение», открыт один. Пока владелец не одобрил — только с `?card=steps`.
+ */
+const STEPS_LAYOUT = typeof location !== 'undefined' && new URLSearchParams(location.search).get('card') === 'steps';
 
 /** Ключ для id в DOM: точки в номерах базы мешают селекторам. */
 export const dom = (id: string) => id.replace(/\./g, '_');
@@ -160,6 +166,11 @@ function CardWindow({ v, level, meanwhile, next, actions }: P) {
         </div>
       ) : read ? (
         <Course v={v} explain={setTerm} />
+      ) : STEPS_LAYOUT ? (
+        <div className="dcols steps">
+          <Course v={v} explain={setTerm} live />
+          <Steps key={v.id} v={v} act={act} actions={actions} explain={setTerm} />
+        </div>
       ) : (
         <div className="dcols">
           <TalkColumn v={v} act={act} explain={setTerm} />
@@ -201,12 +212,18 @@ function Approve({ v, actions }: { v: CardView; actions: Actions }) {
  * «Ход приёма» (spec docs/specs/2026-10-owner-play-2.md): что спрашивал врач и что отвечал пациент, что осматривал и что
  * нашёл, что назначил и что пришло — по времени, сверху вниз; назначенное и ещё не готовое — в конце, с часом.
  */
-function Course({ v, explain }: { v: CardView; explain: (x: TermInfo) => void }) {
+function Course({ v, explain, live }: { v: CardView; explain: (x: TermInfo) => void; live?: boolean }) {
   const c = T.doctor.card;
   const asks = new Set(examsByAction(v.portrait).ask);
   const done = [...v.groups].reverse();
+  // своя карта (макет): новое — внизу ленты, лента едет к нему
+  const box = useRef<HTMLDivElement>(null);
+  const n = v.groups.length + v.pending.length;
+  useEffect(() => {
+    if (live && box.current) box.current.scrollTop = box.current.scrollHeight;
+  }, [live, n]);
   return (
-    <div className="dcourse" id="dcard-course">
+    <div className="dcourse" id="dcard-course" ref={box}>
       <h3>{c.course}</h3>
       {done.length === 0 && v.pending.length === 0 ? <p className="muted">{c.courseEmpty}</p> : null}
       {done.map(g => (
@@ -223,6 +240,53 @@ function Course({ v, explain }: { v: CardView; explain: (x: TermInfo) => void })
         <div key={`${x.exam}:${x.at}`} className="pair wait" id={`course-wait-${dom(x.exam)}`} data-exam={x.exam}>
           <div className="doc">{c.ordered(x.name, x.at)}</div>
         </div>
+      ))}
+    </div>
+  );
+}
+
+type Step = 'talk' | 'examine' | 'order' | 'decide';
+const STEPS: readonly Step[] = ['talk', 'examine', 'order', 'decide'];
+/** Чью карту уже открывали: вернулся с результатами — сразу «Решение»; впервые — «Расспрос», даже взятый с результатами. */
+const opened = new Set<string>();
+
+/**
+ * Шаги своей карты (макет, spec docs/specs/2026-10-own-card.md): «Расспрос», «Осмотр», «Обследования», «Решение» — открыт
+ * один, в заголовке остальных — сколько сделано. Сделанное — в ленте «Ход приёма» рядом. Вернулся к вам с результатами —
+ * сначала «Решение».
+ */
+function Steps({ v, act, actions, explain }: { v: CardView; act: (c: Command) => void; actions: Actions; explain: (x: TermInfo) => void }) {
+  const s = T.doctor.card.steps;
+  const [open, setOpen] = useState<Step>(opened.has(v.id) && v.freshCount > 0 ? 'decide' : 'talk');
+  opened.add(v.id);
+  const ids = examsByAction(v.portrait);
+  const n = (list: Id[]) => list.filter(id => v.done.includes(id)).length;
+  const note: Record<Step, string> = {
+    talk: n(ids.ask) > 0 ? s.asked(n(ids.ask)) : '',
+    examine: n(ids.examine) > 0 ? s.examined(n(ids.examine)) : '',
+    order: v.pending.length > 0 ? s.waiting(v.pending.length) : n(ids.order) > 0 ? s.ordered(n(ids.order)) : '',
+    decide: v.draftDiagnosisName ?? '',
+  };
+  return (
+    <div className="dsteps" id="dcard-steps">
+      {STEPS.map(k => (
+        <Fragment key={k}>
+          <button type="button" id={`step-${k}`} className={k === open ? 'dstep on' : 'dstep'} aria-expanded={k === open} onClick={() => setOpen(k)}>
+            <b>{s.title[k]}</b>
+            {note[k] ? <small>{note[k]}</small> : null}
+          </button>
+          {k === open ? (
+            <div className="dstepbody" id={`stepbody-${k}`}>
+              {k === 'talk' ? (
+                <TalkColumn v={v} act={act} explain={explain} bare />
+              ) : k === 'decide' ? (
+                <DecideColumn v={v} act={act} explain={explain} bare />
+              ) : (
+                <ExamColumn v={v} act={act} actions={actions} explain={explain} only={k} />
+              )}
+            </div>
+          ) : null}
+        </Fragment>
       ))}
     </div>
   );
@@ -340,7 +404,8 @@ function Answer({ g, explain, all }: { g: ResultGroup; explain: (x: TermInfo) =>
 }
 
 /** Опрос — беседой: заданные вопросы и ответы по порядку; вопросы — «О жалобах» и «О жизни». */
-function TalkColumn({ v, act, explain }: { v: CardView; act: (c: Command) => void; explain: (x: TermInfo) => void }) {
+/** `bare` — шаг «Расспрос» своей карты (макет): только вопросы; что спрошено — в ленте. */
+function TalkColumn({ v, act, explain, bare }: { v: CardView; act: (c: Command) => void; explain: (x: TermInfo) => void; bare?: boolean }) {
   const t = T.case.talk;
   const p = T.case.patient;
   const [rest, setRest] = useState(false);
@@ -363,6 +428,32 @@ function TalkColumn({ v, act, explain }: { v: CardView; act: (c: Command) => voi
       </button>
     );
   };
+  const groups = [
+    { key: 'c', title: t.aboutComplaints, list: left.filter(id => !lifeHistory(id)) },
+    { key: 'l', title: t.aboutLife, list: left.filter(lifeHistory) },
+  ].filter(x => x.list.length > 0);
+  const more =
+    restLeft > 0 ? (
+      <button type="button" className="linkish" onClick={() => setRest(!rest)}>
+        {rest ? p.restHide : p.restShow(restLeft)}
+      </button>
+    ) : null;
+  if (bare)
+    return (
+      <div className="dstepcol" id="col-talk">
+        <div className="dscroll">
+          {focus ? <p className="muted small">{p.focusNote}</p> : null}
+          {groups.length === 0 ? <p className="muted">{T.doctor.card.steps.nothingLeft}</p> : null}
+          {groups.map(x => (
+            <div key={x.key}>
+              <div className="label">{x.title}</div>
+              <div className="qs">{x.list.map(button)}</div>
+            </div>
+          ))}
+          {more}
+        </div>
+      </div>
+    );
   return (
     <div className="dcol" id="col-talk">
       <h3>{T.doctor.card.talk}</h3>
@@ -382,22 +473,13 @@ function TalkColumn({ v, act, explain }: { v: CardView; act: (c: Command) => voi
       {v.active ? (
         <div className="questions">
           {focus ? <p className="muted small">{p.focusNote}</p> : null}
-          {[
-            { key: 'c', title: t.aboutComplaints, list: left.filter(id => !lifeHistory(id)) },
-            { key: 'l', title: t.aboutLife, list: left.filter(lifeHistory) },
-          ]
-            .filter(x => x.list.length > 0)
-            .map(x => (
-              <div key={x.key}>
-                <div className="label">{x.title}</div>
-                <div className="qs">{x.list.map(button)}</div>
-              </div>
-            ))}
-          {restLeft > 0 ? (
-            <button type="button" className="linkish" onClick={() => setRest(!rest)}>
-              {rest ? p.restHide : p.restShow(restLeft)}
-            </button>
-          ) : null}
+          {groups.map(x => (
+            <div key={x.key}>
+              <div className="label">{x.title}</div>
+              <div className="qs">{x.list.map(button)}</div>
+            </div>
+          ))}
+          {more}
         </div>
       ) : null}
     </div>
@@ -471,15 +553,21 @@ function ExamRow({ v, id, onExam, explain, check }: { v: CardView; id: Id; onExa
 
 type ExamTab = 'examine' | 'order' | 'known';
 
-/** Осмотр по местам на теле, бланк направления по разделам, «Известно» — новое сверху. */
-function ExamColumn({ v, act, actions, explain }: { v: CardView; act: (c: Command) => void; actions: Actions; explain: (x: TermInfo) => void }) {
+/**
+ * Осмотр по местам на теле, бланк направления по разделам, «Известно» — новое сверху. `only` — шаг «Осмотр» или
+ * «Обследования» своей карты (макет): один раздел без вкладок, сделанное — в ленте, а не здесь.
+ */
+function ExamColumn({ v, act, actions, explain, only }: { v: CardView; act: (c: Command) => void; actions: Actions; explain: (x: TermInfo) => void; only?: 'examine' | 'order' }) {
   const p = T.case.patient;
   const r = T.case.referral;
   const c = T.doctor.card;
-  const [tab, setTab] = useState<ExamTab>(v.groups.length > 0 && !v.active ? 'known' : 'examine');
+  const [chosen, setTab] = useState<ExamTab>(v.groups.length > 0 && !v.active ? 'known' : 'examine');
+  const tab: ExamTab = only ?? chosen;
   const [marked, setMarked] = useState<Id[]>([]);
   const [query, setQuery] = useState('');
-  const groups = examsByAction(v.portrait);
+  const all = examsByAction(v.portrait);
+  const left = (ids: Id[]) => (only ? ids.filter(id => !v.done.includes(id)) : ids);
+  const groups = { ...all, examine: left(all.examine), order: left(all.order) };
   const focus = v.focus ? new Set(v.focus) : undefined;
   const live = marked.filter(id => !v.done.includes(id) && !v.unavailable[id]);
   const toggle = (id: Id) => setMarked(live.includes(id) ? live.filter(x => x !== id) : [...live, id]);
@@ -489,7 +577,7 @@ function ExamColumn({ v, act, actions, explain }: { v: CardView; act: (c: Comman
     if (v.order) actions.doctor({ kind: 'order', id: v.id, exams: live });
     else actions.doctor({ kind: 'acts', cmds: live.map(exam => ({ kind: 'exam', exam })) });
     setMarked([]);
-    setTab('order');
+    if (!only) setTab('order');
   };
   const longest = live.reduce((m, id) => Math.max(m, v.minutes?.[id] ?? examInfo(id).minutes), 0);
   const loud = v.groups.filter(g => g.fresh || found(g));
@@ -511,7 +599,7 @@ function ExamColumn({ v, act, actions, explain }: { v: CardView; act: (c: Comman
           .map(place => ({ place, ids: byPlace(place) }))
           .filter(x => x.ids.length > 0)
           .map(x => (
-            <Section key={x.place} id={`ex-${x.place}`} title={T.case.body.places[x.place]} extra={c.examined(x.ids.filter(id => v.done.includes(id)).length, x.ids.length)} open={x.place === 'whole' || x.place === 'bedside' || x.place === 'chest' || x.place === 'belly'}>
+            <Section key={x.place} id={`ex-${x.place}`} title={T.case.body.places[x.place]} extra={only ? undefined : c.examined(x.ids.filter(id => v.done.includes(id)).length, x.ids.length)} open={x.place === 'whole' || x.place === 'bedside' || x.place === 'chest' || x.place === 'belly'}>
               {x.ids.map(id => (
                 <ExamRow key={id} v={v} id={id} onExam={y => act({ kind: 'exam', exam: y })} explain={explain} />
               ))}
@@ -568,6 +656,13 @@ function ExamColumn({ v, act, actions, explain }: { v: CardView; act: (c: Comman
       </div>
     );
   }
+  if (only)
+    return (
+      <div className="dstepcol" id="col-exam">
+        {tab === 'examine' && groups.examine.length === 0 ? <p className="muted">{c.steps.nothingLeft}</p> : null}
+        <div className="dscroll">{body}</div>
+      </div>
+    );
   return (
     <div className="dcol" id="col-exam">
       <h3>{c.exam}</h3>
@@ -589,7 +684,8 @@ function ExamColumn({ v, act, actions, explain }: { v: CardView; act: (c: Comman
 }
 
 /** «Похоже на», ваш ряд гипотез, правила решения, диагноз, лечение, место — и «Завершить приём». */
-function DecideColumn({ v, act, explain }: { v: CardView; act: (c: Command) => void; explain: (x: TermInfo) => void }) {
+/** `bare` — шаг «Решение» своей карты (макет): без заголовка колонки. */
+function DecideColumn({ v, act, explain, bare }: { v: CardView; act: (c: Command) => void; explain: (x: TermInfo) => void; bare?: boolean }) {
   const p = T.case.patient;
   const d = T.case.decision;
   const h = T.case.differential;
@@ -619,8 +715,8 @@ function DecideColumn({ v, act, explain }: { v: CardView; act: (c: Command) => v
   const open = v.differential.find(x => x.id === hyp);
   const setting = v.settings.find(o => o.key === v.draft.setting)?.title ?? p.setting[v.draft.setting];
   return (
-    <div className="dcol" id="col-decide">
-      <h3>{c.decide}</h3>
+    <div className={bare ? 'dstepcol' : 'dcol'} id="col-decide">
+      {bare ? null : <h3>{c.decide}</h3>}
       <div className="dscroll">
         {v.hints.length > 0 ? (
           <Section title={p.likely} id="sec-likely">

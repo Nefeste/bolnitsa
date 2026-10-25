@@ -546,6 +546,14 @@ export const doctorEn: DoctorStrings = {
       dischargeAsk: (at: string) => `The doctor proposes discharge — answer by ${at}; no answer — discharged`,
       orderHint: 'One more test — tick it on the form: the doctor orders it and decides with the result',
       orderedChief: 'ordered by you — the doctor will do it',
+      steps: {
+        title: { talk: 'History', examine: 'Examination', order: 'Tests', decide: 'Decision' } as Record<string, string>,
+        asked: (n: number) => `asked: ${n}`,
+        examined: (n: number) => `examined: ${n}`,
+        waiting: (n: number) => `awaiting results: ${n}`,
+        ordered: (n: number) => `done: ${n}`,
+        nothingLeft: 'Everything is done — see the timeline on the left',
+      },
       verdict: 'Outcome',
       truthIs: 'actually',
       verdictNote: {
