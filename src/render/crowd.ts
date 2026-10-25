@@ -408,7 +408,7 @@ export class Crowd {
       return;
     }
     const look = this.looks[w.look];
-    // шаг и бег — со скоростью вида (bake.ts: у Rocketbox — по смещению корня за петлю): ступня не скользит
+    // шаг и бег — со скоростью вида (bake.ts, lockFeet: при ней опорная ступня стоит на месте): ступня не скользит
     w.clipTime += dt * (w.clip === WALK || w.clip === RUN ? Math.max(0.2, w.v / (w.clip === RUN ? look.run : look.walk)) : w.clip === SITDOWN || w.clip === STANDUP ? fast : w.idle);
     if (w.fade > 0) w.fade = Math.max(0, w.fade - dt * fast);
     w.v = 0;
