@@ -99,8 +99,9 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # links, «Назад», F1 over a name, «Подробнее» in «Что это?»; then door benches: someone
                                    # sits on a bench by an office door, «на скамье у кабинета» in a path, the «Скамья» tool,
                                    # its ghost, Ctrl+Z, demolishing a bench; then the city's free land: a ready ward in the
-                                   # east wing works);
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|16` for one part
+                                   # east wing works; then staff mood: «собирается уйти» at the meeting, the person card,
+                                   # «Поднять зарплату», «В другую смену», severance in «Уволить»);
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|17` for one part
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -111,6 +112,7 @@ npm run bench -- --mode flow --day             # the whole day to 10:00 of day 2
 npm run bench -- --mode flow --quick --flat    # flat arrivals by hour: the same patients as before the 24-hour day, to compare
 bun tools/bench/consults.ts                    # «Просят посмотреть»: share of hired doctors' cases that ask you (--probe: why these thresholds)
 bun tools/sim/economy.ts --seeds 1,2,3         # economy simulator: scripted hospitals for 7 days, cash, flow, reputation and the criteria
+                                               # (`--days 14` — and who quits on their own: at most two in two weeks)
 bun tools/sim/halls.ts --flow 14               # the polyclinic under load: waiting halls by the offices vs at the entrance
                                                # (both: `--hall 0` — seats of the whole hospital, `--bench 0` — no door benches)
 bun --cpu-prof --cpu-prof-dir=tools/bench/out/prof tools/bench/bench.ts --mode flow --only 200 --quick --until 11
@@ -163,7 +165,13 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   and to the toilet every 4–5 hours; `s.crew` keeps it, integer fatigue, the same at any clock step; numbers —
   `economy.yaml`, `staff.fatigue`. Staff without a shift never tire. Part 2b — those who do exams (the first role of an
   exam room) tire per exam too and rest after their bookings (`planned` rest, the `crew` event in `engine.ts`): the
-  machine queue waits for them, a blood draw waits for the nurse, a lab result for the lab tech.
+  machine queue waits for them, a blood draw waits for the nurse, a lab result for the lab tech. Part 3a — `shift/mood.ts`
+  (`docs/specs/2026-10-staff-mood.md`): mood 0–100 of hired staff with a shift, once a day at the 08:00 meeting from the
+  past day (pay against the market of their skill, the fatigue limit, rest in place without a staff room, no toilet, nights
+  in a row); three mornings below 30 — «собирается уйти», two days to answer, then they leave after their shift
+  (`depart` — also out of the build undo snapshots); the `raise` and `reshift` site commands, severance on dismissal (its own
+  ledger line); numbers — `economy.yaml`, `staff.mood`. Mood lives in `s.moods` beside the staff, never in `StaffMember`:
+  the build undo restores the staff by snapshot and must not rewind moods. Staff names in the window — `src/app/people.ts`.
 - Saves (`docs/specs/2026-10-saves.md`): `src/engine/shift/migrate.ts` — the save schema number and the migration chain;
   `src/sim/packing.ts` — the file (header, engine snapshot, window view; JSON + gzip), written by the worker;
   `src/app/saves.ts` — slots (`auto-1…3` shifted each morning, `exit`, `manual-<n>`) over a disk: `electron/saves.cjs`

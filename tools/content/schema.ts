@@ -1,4 +1,4 @@
-// из anamnez: tools/content/schema.ts @ 96503ac, изменено: hospital/consults.yaml — «Просят посмотреть» (spec 2026-10-consults); hospital/day.yaml — сутки целиком (spec 2026-10-day); hospital/inflow.yaml и hospital/money.yaml, `long` у consults.yaml — поток от больницы, касса ПК, долгий случай (spec 2026-10-economy); hospital/sites — готовые больницы из готовых помещений (spec 2026-10-real-hospital); `benches` у готовых больниц и больниц из готовых помещений — скамьи у дверей кабинетов (spec 2026-10-door-benches); `land` у готовых больниц — свободная земля под стройку (spec 2026-10-city-land)
+// из anamnez: tools/content/schema.ts @ 96503ac, изменено: hospital/consults.yaml — «Просят посмотреть» (spec 2026-10-consults); hospital/day.yaml — сутки целиком (spec 2026-10-day); hospital/inflow.yaml и hospital/money.yaml, `long` у consults.yaml — поток от больницы, касса ПК, долгий случай (spec 2026-10-economy); hospital/sites — готовые больницы из готовых помещений (spec 2026-10-real-hospital); `benches` у готовых больниц и больниц из готовых помещений — скамьи у дверей кабинетов (spec 2026-10-door-benches); `land` у готовых больниц — свободная земля под стройку (spec 2026-10-city-land); `staff.mood` в economy.yaml — настроение нанятых (spec 2026-10-staff-mood)
 // Схема исходных записей медицинской базы (YAML в content/, `docs/11-content.md` §4).
 // Строгие объекты: опечатка в имени поля — ошибка сборки, а не молча пропущенное поле.
 import { z } from 'zod';
@@ -839,6 +839,19 @@ export const economySchema = z.strictObject({
       rest: z.number().int().min(1).max(120), relief: z.number().int().min(1).max(100),
       toilet: z.tuple([z.number().int().min(1).max(12), z.number().int().min(1).max(12)]), wc: z.number().int().min(1).max(30),
     }).refine(f => f.slow <= f.tired && f.toilet[0] <= f.toilet[1], 'fatigue: slow не выше tired, toilet — от и до').optional(),
+    /**
+     * настроение нанятых в смене (spec 2026-10-staff-mood): с какого начинается и к какому тянется без причин, на сколько в
+     * сутки; от скольких % ниже или выше рынка зарплата — причина; очки за причины в сутки; порог «собирается уйти», сколько утр
+     * подряд ниже него и сколько суток на ответ; разовые прибавки; шаг повышения, %; выплата при увольнении — смен
+     */
+    mood: z.strictObject({
+      start: pct, drift: z.number().int().min(0).max(20), market: z.number().int().min(1).max(50),
+      below: z.number().int().min(-50).max(0), above: z.number().int().min(0).max(50), limit: z.number().int().min(-50).max(0),
+      here: z.number().int().min(-50).max(0), toilet: z.number().int().min(-50).max(0),
+      nights: z.tuple([z.number().int().min(1).max(14), z.number().int().min(-50).max(0)]),
+      quit: pct, days: z.number().int().min(1).max(14), respond: z.number().int().min(1).max(14),
+      raise: pct, moved: pct, step: z.number().int().min(1).max(50), severance: z.number().int().min(0).max(30),
+    }).optional(),
   }),
   /** тарифы: ОМС по тяжести диагноза, доля по обоснованности и без подтверждения; ДМС и платно — обращение и прайс, % цены */
   tariffs: z.strictObject({

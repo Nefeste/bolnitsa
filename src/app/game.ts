@@ -13,6 +13,7 @@ import { siteOfPlan } from '../engine/hospital/site-plan';
 import { siteOfPreset } from '../engine/hospital/site-preset';
 import { dutyOf, onDuty, payOf, presetStaff, salaryOf, type Shift, shiftAt, type StaffMember, staffingOf, withNightShift } from '../engine/hospital/staff';
 import type { CrewView } from '../engine/shift/crew';
+import { marketOf, type MoodView, raisedOf, severanceOf } from '../engine/shift/mood';
 import type { Notice } from '../engine/shift/types';
 import { clock, genitive, type Lang, money, named, setLang, T } from '../i18n';
 import type { Walker } from '../render/crowd';
@@ -45,6 +46,7 @@ import { type HintKey, hintOf } from './hints';
 import { HoverLabel } from './hover';
 import { Labels } from './labels';
 import { Money } from './money';
+import { staffName } from './people';
 import { startCash } from '../engine/shift/money';
 import { GAME_PER_REAL } from '../engine/shift/walking';
 import type { Flow } from '../engine/shift/types';
@@ -207,6 +209,11 @@ export class Game {
   private broken = new Set<string>();
   /** усталость и перерывы врачей в смене — как прислал поток расчёта (spec docs/specs/2026-10-staff-shifts.md, часть 2) */
   private crew = new Map<string, CrewView>();
+  /** настроение нанятых со сменой — как прислал поток расчёта (spec docs/specs/2026-10-staff-mood.md) */
+  private moods = new Map<string, MoodView>();
+  /** действие с человеком из его карточки (spec 2026-10-staff-mood): с кем — ждём ответа движка; что ответил — для карточки */
+  private staffAct: string | undefined;
+  private staffSaid: { id: string; ok: boolean; text: string } | undefined;
   /** первая зона ожидания (общая очередь к врачам) и кабинет человека штата — номера в плане */
   private hall = -1;
   private office: number[] = [];
@@ -412,12 +419,57 @@ export class Game {
       const c = this.crew.get(m.id);
       const rest = c?.rest ? (c.rest.kind === 'toilet' ? T.card.wcShort : T.card.restShort(clock(c.rest.until))) : undefined;
       const room = m.room ? named(db.rooms[plan.rooms.find(r => r.id === m.room)?.type ?? '']?.name, m.room) : T.card.reserve(1);
+      // настроение (spec docs/specs/2026-10-staff-mood.md): число и стрелка за сутки; собирается уйти или уходит — словами
+      const mood = this.moods.get(m.id);
+      const feel = mood
+        ? [
+            `${T.card.moodShort(mood.v)}${mood.d ? ` ${T.card.moodDelta(mood.d)}` : ''}`,
+            ...(mood.go !== undefined ? [T.card.leavingShort] : mood.quit !== undefined ? [T.card.quitShort] : []),
+          ]
+        : [];
       return {
         key: `s:${m.id}`,
-        text: [named(db.roles[m.role]?.name, m.role), room, T.card.shifts[m.shift ?? 'both'], ...(c ? [T.card.fatigueShort(c.f)] : []), ...(rest ? [rest] : [])].join(' · '),
+        text: [this.staffWho(m), room, T.card.shifts[m.shift ?? 'both'], ...feel, ...(c ? [T.card.fatigueShort(c.f)] : []), ...(rest ? [rest] : [])].join(' · '),
         ...(onDuty(db, m, this.t) ? { on: true as const } : {}),
+        ...(mood && (mood.quit !== undefined || mood.go !== undefined) ? { bad: true as const } : {}),
       };
     });
+  }
+
+  /** Человек штата словами (spec docs/specs/2026-10-staff-mood.md): «Медсестра Петрова Анна». */
+  private staffWho(m: { role: Id; sex: 'm' | 'f'; seed: number }): string {
+    return `${named(this.db.roles[m.role]?.name, m.role)} ${staffName(m)}`;
+  }
+
+  /**
+   * Карточка человека штата (spec docs/specs/2026-10-staff-mood.md): имя; настроение; зарплата и рынок его навыка; «Поднять
+   * зарплату» и «В другую смену» — пока он не уходит сам; с кем поменяется сменами; что движок ответил на действие с ним.
+   */
+  private staffCard(info: Extract<PersonInfo, { kind: 'staff' }>): PersonInfo {
+    const { db } = this;
+    const m = info.id !== undefined ? this.staff.find(x => x.id === info.id) : undefined;
+    if (!m) return info;
+    const mood = this.moods.get(m.id);
+    const leaving = mood?.go !== undefined;
+    const post = (x: StaffMember) => db.roles[x.role]?.stands ?? x.role;
+    const to: Shift | undefined = m.shift === 'day' ? 'night' : m.shift === 'night' ? 'day' : undefined;
+    const other = to && m.room !== undefined ? this.staff.find(x => x !== m && x.room === m.room && post(x) === post(m) && x.shift === to) : undefined;
+    const said = this.staffSaid?.id === m.id ? { ok: this.staffSaid.ok, text: this.staffSaid.text } : undefined;
+    return {
+      ...info, name: staffName(m),
+      ...(mood ? { mood: { v: mood.v, ...(mood.d ? { d: mood.d } : {}), ...(mood.why ? { why: mood.why.map(w => T.card.moodWhy[w] ?? w) } : {}), ...(mood.quit !== undefined ? { quit: mood.quit } : {}), ...(mood.go !== undefined ? { go: mood.go } : {}) } } : {}),
+      pay: { now: m.salary, market: marketOf(db, m), ...(leaving || !this.hospital.site ? {} : { raise: raisedOf(db, m) }) },
+      ...(to && !leaving && this.hospital.site ? { reshift: { to, ...(other ? { with: this.staffWho(other) } : {}) } } : {}),
+      ...(said ? { said } : {}),
+    };
+  }
+
+  /** Ответ движка на действие с человеком из его карточки (spec 2026-10-staff-mood). */
+  private staffResult(n: SiteResult) {
+    if (this.staffAct === undefined || (n.cmd !== 'raise' && n.cmd !== 'reshift' && n.cmd !== 'dismiss')) return;
+    const text = !n.ok ? T.build.failed(whyText(this.db, this.hospital.site, n.error ?? { kind: 'unknown' })) : n.cmd === 'raise' ? T.build.raised : n.cmd === 'reshift' ? T.build.reshifted : T.build.dismissed(money(n.cost ?? 0));
+    this.staffSaid = { id: this.staffAct, ok: n.ok, text };
+    this.staffAct = undefined;
   }
 
   /** Слова о больнице — со стройкой и с языком: подписи помещений, список штата, «закрыта», типы помещений. */
@@ -561,14 +613,17 @@ export class Game {
     if (s.crew) {
       this.crew = new Map(s.crew.map(c => [c.id, c]));
       this.pop.setCrew(s.crew);
-      this.store.set({ staffList: this.staffRows() });
     }
+    // настроение (spec docs/specs/2026-10-staff-mood.md): «Персонал» и карточка — заново
+    if (s.moods) this.moods = new Map(s.moods.map(m => [m.id, m]));
+    if (s.crew || s.moods) this.store.set({ staffList: this.staffRows() });
     this.pop.sync(s.buf, s.names);
     for (const n of s.notices) {
       if (n.kind === 'site' && n.cmd === 'office') this.doctor.onOffice(n);
       else if (n.kind === 'site') {
         this.builder.onResult(n);
         this.flashOf(n);
+        this.staffResult(n);
       } else this.notice(n);
     }
     if (this.ff && this.ffStop(s.notices)) this.setSpeed(0);
@@ -598,6 +653,14 @@ export class Game {
       : n.kind === 'reached' ? this.doctor.reachedText(n.id)
       : T.notices.shiftEnd;
     this.notices.unshift({ t: this.t, text });
+    // персонал на планёрке (spec docs/specs/2026-10-staff-mood.md): кто собирается уйти и кто уходит — строками журнала
+    if (n.kind === 'morning' && n.staff) {
+      for (const q of n.staff.quit ?? []) {
+        const m = this.staff.find(x => x.id === q.id);
+        if (m) this.notices.unshift({ t: this.t, text: T.notices.quit(this.staffWho(m)) });
+      }
+      for (const l of n.staff.leave ?? []) this.notices.unshift({ t: this.t, text: T.notices.leave(this.staffWho(l)) });
+    }
     if (this.notices.length > 60) this.notices.length = 60;
     // утро — сохранение само (spec docs/specs/2026-10-saves.md): три последних утра
     if (n.kind === 'morning') void this.save('auto');
@@ -779,7 +842,7 @@ export class Game {
     if (!sel) return undefined;
     if (sel.startsWith('id:')) return this.goneInfo(sel.slice(3));
     const info = this.pop.info(sel);
-    if (info) return info;
+    if (info) return info.kind === 'staff' ? this.staffCard(info) : info;
     const id = this.pop.idOf(sel);
     this.selected = id ? `id:${id}` : undefined;
     return id ? this.goneInfo(id) : undefined;
@@ -1041,6 +1104,15 @@ export class Game {
     demolish: room => this.command({ kind: 'demolish', room }),
     hire: (room, role, as, shift) => this.command({ kind: 'hire', room, role, ...(as ? { as } : {}), ...(shift ? { shift } : {}) }),
     dismiss: id => this.command({ kind: 'dismiss', id }),
+    // настроение (spec docs/specs/2026-10-staff-mood.md): действия в карточке человека
+    raise: id => {
+      this.staffAct = id;
+      this.command({ kind: 'raise', id });
+    },
+    reshift: id => {
+      this.staffAct = id;
+      this.command({ kind: 'reshift', id });
+    },
     // начало выбирают до игры (main.tsx)
     startGame: () => {},
     // часть 3 (spec docs/specs/2026-10-flow-ui.md)
@@ -1158,7 +1230,7 @@ export class Game {
         const pay = (x: Id) => money(payOf(db, salaryOf(db, x, 3), shift === 'both' ? undefined : shift));
         return {
           role, shift, name, salary: pay(hire),
-          ...(m ? { who: `${named(db.roles[m.role]?.name, m.role)} · ${m.skill}`, staffId: m.id } : {}),
+          ...(m ? { who: `${named(db.roles[m.role]?.name, m.role)} · ${m.skill}`, staffId: m.id, fire: T.card.dismissHint(money(severanceOf(db, m))) } : {}),
           ...(role === DOCTOR && doctors.length > 1
             ? { options: doctors.map(x => ({ role: x, name: named(db.roles[x]?.name, x), salary: pay(x), hint: named(db.roles[x]?.texts.hint) })) }
             : {}),

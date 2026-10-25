@@ -59,6 +59,8 @@ export interface RoomCard {
    */
   posts?: {
     role: Id; name: string; who?: string; staffId?: string; salary: string; you?: boolean; shift?: 'day' | 'night' | 'both';
+    /** «Уволить» — подсказка с выплатой за три смены (spec docs/specs/2026-10-staff-mood.md) */
+    fire?: string;
     options?: { role: Id; name: string; salary: string; hint: string }[];
   }[];
   furnish?: { ok: boolean; text: string };
@@ -122,7 +124,8 @@ export interface Hud {
   /** слои карты: меню открыто; «Очереди и загрузка» включён */
   layers: { open: boolean; queues: boolean };
   /** вкладка «Персонал»: `on` — сейчас в смене (spec docs/specs/2026-10-staff-shifts.md) */
-  staffList: { key: string; text: string; on?: true }[];
+  /** «Персонал»: строка человека; `on` — в смене; `bad` — собирается уйти или уходит (spec docs/specs/2026-10-staff-mood.md) */
+  staffList: { key: string; text: string; on?: true; bad?: true }[];
   debug: boolean;
   build: BuildHud;
   roomTypes: RoomTypeRow[];
@@ -241,6 +244,9 @@ export interface Actions {
    */
   hire(room: string, role: Id, as?: Id, shift?: 'day' | 'night'): void;
   dismiss(id: string): void;
+  /** «Поднять зарплату» и «В другую смену» в карточке человека (spec docs/specs/2026-10-staff-mood.md) */
+  raise(id: string): void;
+  reshift(id: string): void;
   /** начало игры: пустое здание, готовая больница или поликлиника; `{ load }` — сохранение (spec 2026-10-saves) */
   startGame(kind: 'empty' | 'preset' | 'poly' | { load: string }): void;
   /** часть 3 (spec docs/specs/2026-10-flow-ui.md): фильтры «Пациентов», камера к человеку и выбор, слои карты */

@@ -5,6 +5,7 @@
 // — память времён обрезана, и отметка начала прогона бенча длиной массива давала пустую выборку.
 import type { Command, Notice, ShiftState } from '../engine/shift/types';
 import type { CrewView } from '../engine/shift/crew';
+import type { MoodView } from '../engine/shift/mood';
 import type { NameRow } from './pack';
 import type { SaveMeta } from './packing';
 import type { DoctorAct, DoctorOut, FromSim, PathView, ToSim, World } from './protocol';
@@ -24,6 +25,8 @@ export interface Slice extends DoctorOut {
   late?: number[];
   /** усталость и перерывы врачей в смене (spec 2026-10-staff-shifts, часть 2); когда изменились */
   crew?: CrewView[];
+  /** настроение нанятых со сменой (spec 2026-10-staff-mood); когда изменилось */
+  moods?: MoodView[];
 }
 
 export class SimClient {
@@ -76,6 +79,7 @@ export class SimClient {
       buf: msg.buf, names: msg.names, notices: msg.notices, lag: msg.lag, ...(msg.world ? { world: msg.world } : {}),
       ...(msg.doctor ? { doctor: msg.doctor } : {}), ...(msg.card !== undefined ? { card: msg.card } : {}), ...(msg.seen ? { seen: msg.seen } : {}), ...(msg.refused ? { refused: msg.refused } : {}),
       ...(msg.path ? { path: msg.path } : {}), ...(msg.broken ? { broken: msg.broken } : {}), ...(msg.late ? { late: msg.late } : {}), ...(msg.crew ? { crew: msg.crew } : {}),
+      ...(msg.moods ? { moods: msg.moods } : {}),
     });
   }
 

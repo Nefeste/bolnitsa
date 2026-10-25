@@ -74,6 +74,9 @@ export function whyText(db: ContentDb, site: Site | undefined, e: SiteError): st
       return T.site.inUse;
     case 'busy':
       return T.site.busy;
+    // уже уходит сам (spec docs/specs/2026-10-staff-mood.md)
+    case 'leaving':
+      return T.site.leaving;
     case 'mode':
       return T.site.mode;
     // касса (spec docs/specs/2026-10-economy.md): трата увела бы кассу ниже предела минуса
@@ -312,6 +315,10 @@ export class Builder {
     else if (n.later) this.result = { ok: true, text: T.build.later };
     else if (n.cmd === 'undo') this.result = { ok: true, text: T.build.undone };
     else if (n.cmd === 'hire') this.result = { ok: true, text: T.build.hired };
+    // с людьми (spec docs/specs/2026-10-staff-mood.md): уволен с выплатой, зарплата поднята, в другую смену
+    else if (n.cmd === 'dismiss') this.result = { ok: true, text: T.build.dismissed(money(n.cost ?? 0)) };
+    else if (n.cmd === 'raise') this.result = { ok: true, text: T.build.raised };
+    else if (n.cmd === 'reshift') this.result = { ok: true, text: T.build.reshifted };
     else if ((n.cost ?? 0) < 0) this.result = { ok: true, text: T.build.backOk(money(-(n.cost ?? 0))) };
     else if (n.hired !== undefined) this.result = { ok: true, text: T.build.spentHired(money(n.cost ?? 0), n.hired) };
     else this.result = { ok: true, text: T.build.spentOk(money(n.cost ?? 0)) };

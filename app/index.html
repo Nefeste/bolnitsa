@@ -116,6 +116,12 @@
     .fbar > i { position: absolute; inset: 0 auto 0 0; background: var(--green); }
     .fbar.f-slow > i { background: var(--yellow); }
     .fbar.f-blur > i { background: var(--red); }
+    /* настроение (docs/specs/2026-10-staff-mood.md): ниже 30, «собирается уйти» и «уходит» — красным */
+    .card .mood { margin-top: 6px; font-variant-numeric: tabular-nums; }
+    .card .mood .label { margin: 0; font-size: 11px; }
+    .card .mood .bad { color: #ff9b86; }
+    .card .mood .ok { color: #8fe3b4; }
+    .tabbody .row.bad { color: #ff9b86; }
     .card .post .hires { display: flex; gap: 4px; align-items: center; }
     .card .post .hires select { padding: 1px 4px; }
     .card .row { display: flex; gap: 6px; margin-top: 6px; }

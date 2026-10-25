@@ -56,6 +56,8 @@ const actions: Actions = {
   demolish: later('demolish'),
   hire: later('hire'),
   dismiss: later('dismiss'),
+  raise: later('raise'),
+  reshift: later('reshift'),
   filterPatients: later('filterPatients'),
   focus: later('focus'),
   find: later('find'),

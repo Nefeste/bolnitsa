@@ -108,6 +108,14 @@ export function payWorks(s: ShiftState, cost: number) {
   l.expenses.works = (l.expenses.works ?? 0) + cost;
 }
 
+/** Выплата уволенному (spec docs/specs/2026-10-staff-mood.md) — в кассу суток отдельной статьёй; отмена увольнения — минус. */
+export function paySeverance(s: ShiftState, amount: number) {
+  const e = s.economy;
+  if (!e || amount === 0) return;
+  const l = ledgerOf(e);
+  l.expenses.severance = (l.expenses.severance ?? 0) + amount;
+}
+
 /** Выплата по кредиту на планёрке — в кассу суток; вернули — кредита нет. */
 export function repay(s: ShiftState) {
   const e = s.economy;

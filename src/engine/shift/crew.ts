@@ -8,6 +8,7 @@ import { Rng } from '../core/rng';
 import type { Plan } from '../hospital/build';
 import { onDuty, shiftStartOf, type StaffMember } from '../hospital/staff';
 import { metersBetween } from '../hospital/walk';
+import { noteMood } from './mood';
 import type { Crew, Rest, ShiftState } from './types';
 import { walkPc } from './walking';
 
@@ -61,8 +62,31 @@ function settle(db: ContentDb, s: ShiftState, m: StaffMember, f: Fatigue): Crew 
   if (s.t > c.at) {
     c.f = Math.min(MAX, c.f + rateOf(f, m) * (s.t - c.at));
     c.at = s.t;
+    topped(db, s, m, c);
   }
   return c;
+}
+
+/**
+ * Дошёл до предела — отметка настроения за эту смену (spec docs/specs/2026-10-staff-mood.md). Усталость до перерыва только
+ * растёт, а перерыв начинается досчитанной: предел виден при первом же досчёте после него, а не успел до конца смены — в
+ * пересменку (`shiftEnded`).
+ */
+function topped(db: ContentDb, s: ShiftState, m: StaffMember, c: Crew) {
+  if (c.f >= MAX) noteMood(db, s, m, 'limit', shiftStartOf(db, s.t));
+}
+
+/**
+ * Пересменка (spec docs/specs/2026-10-staff-mood.md): у кого смена кончилась сейчас — дошёл ли до предела к её концу; отметка
+ * настроения — начало той смены. Позвать дважды в один час — то же.
+ */
+export function shiftEnded(db: ContentDb, s: ShiftState) {
+  if (!s.flow || !db.economy.staff.mood || !s.staff) return;
+  for (const m of s.staff) {
+    if (m.shift === undefined || !onDuty(db, m, s.t - 1) || onDuty(db, m, s.t)) continue;
+    const l = levelOf(db, s, m, s.t - 1);
+    if (l !== undefined && l >= MAX) noteMood(db, s, m, 'limit', shiftStartOf(db, s.t - 1));
+  }
 }
 
 /**
@@ -74,6 +98,7 @@ export function worked(db: ContentDb, s: ShiftState, m: StaffMember, what: 'case
   if (!f || !onDuty(db, m, s.t)) return;
   const c = settle(db, s, m, f);
   c.f = Math.min(MAX, c.f + f[what] * POINT);
+  topped(db, s, m, c);
 }
 
 /** Сколько времени у врача займёт работа, % (`speedOf`): с усталостью не ниже `slow` — на `slower` % дольше. */
@@ -184,6 +209,8 @@ export function startRest(db: ContentDb, s: ShiftState, plan: Plan, working: Rea
   c.rest = room
     ? { kind: 'staff', room, from, at: from + go, back: from + go + there, until: from + 2 * go + there, ...later }
     : { kind: 'here', ...(m.room ? { room: m.room } : {}), from, at: from, back: from + there, until: from + there, ...later };
+  // настроение (spec 2026-10-staff-mood): отдыхал на месте — ординаторской нет
+  if (!room) noteMood(db, s, m, 'here', shiftStartOf(db, from));
   if (!c.rest.planned) relieve(f, c);
   return c.rest;
 }
@@ -204,6 +231,7 @@ export function beginRest(db: ContentDb, s: ShiftState, m: StaffMember) {
   if (s.t > c.at) {
     c.f = Math.min(MAX, c.f + rateOf(f, m) * (s.t - c.at));
     c.at = s.t;
+    topped(db, s, m, c);
   }
   delete r.planned;
   relieve(f, c);

@@ -90,6 +90,10 @@ export const ru = {
     later: 'Занято — уберут, когда освободится',
     undone: 'Отменено',
     hired: 'Нанят',
+    /** с людьми (spec docs/specs/2026-10-staff-mood.md): уволен с выплатой; зарплата поднята; в другую смену */
+    dismissed: (paid: string) => `Уволен — выплата ${paid}`,
+    raised: 'Зарплата поднята',
+    reshifted: 'Переведён в другую смену',
     failed: (why: string) => `Нельзя: ${why}`,
   },
   site: {
@@ -118,6 +122,7 @@ export const ru = {
     doorTo: 'дверь — не в коридор: R повернёт',
     inUse: 'занято',
     busy: 'ведёт пациента',
+    leaving: 'уже уходит сам',
     mode: 'стройка — только в игре на ПК',
     unknown: 'нельзя',
   },
@@ -289,6 +294,29 @@ export const ru = {
     wcShort: 'в туалете',
     fatigueShort: (n: number) => `усталость ${n}`,
     dismiss: 'Уволить',
+    /**
+     * настроение (spec docs/specs/2026-10-staff-mood.md): «Настроение 45 ↓5 — зарплата ниже рынка, нет ординаторской»;
+     * «собирается уйти» и «уходит»; зарплата против рынка; действия в карточке человека
+     */
+    name: 'Имя',
+    mood: 'Настроение',
+    moodDelta: (d: number) => (d > 0 ? `↑${d}` : `↓${-d}`),
+    moodWhy: {
+      below: 'зарплата ниже рынка', above: 'зарплата выше рынка', limit: 'предел усталости', here: 'нет ординаторской', toilet: 'нет санузла',
+      nights: 'ночные смены подряд',
+    } as Record<string, string>,
+    moodShort: (v: number) => `настроение ${v}`,
+    quitting: (day: number) => `собирается уйти — ответьте до планёрки суток ${day}`,
+    quitShort: 'собирается уйти',
+    leavingAt: (at: string) => `уходит сам — после смены, в ${at}`,
+    leavingShort: 'уходит',
+    salary: 'Зарплата',
+    salaryLine: (rub: string, market: string) => `${rub} за смену · рынок ${market}`,
+    raise: (from: string, to: string) => `Поднять зарплату: ${from} → ${to}`,
+    raiseHint: 'Настроение +10 сразу. Зарплата выше рынка его навыка на 10 % и больше — ещё +3 в сутки.',
+    reshift: (to: 'day' | 'night'): string => (to === 'day' ? 'В дневную смену' : 'В ночную смену'),
+    reshiftHint: (who: string | undefined) => (who ? `Сменами поменяется с: ${who}` : 'Его место в той смене свободно'),
+    dismissHint: (paid: string) => `Уволить — выплата за три смены: ${paid}`,
     demolish: (back: string) => `Снести — вернётся ${back}`,
     furnish: (cost: string) => `Обставить — ${cost}`,
     reserve: (n: number) => `в резерве: ${n}`,
@@ -328,6 +356,9 @@ export const ru = {
     resultsReady: 'готовы результаты',
     arrest: 'фибрилляция: разряд под монитором',
     morning: 'планёрка: итоги суток',
+    /** персонал (spec docs/specs/2026-10-staff-mood.md) */
+    quit: (who: string) => `собирается уйти: ${who}`,
+    leave: (who: string) => `уходит после смены: ${who}`,
     shiftEnd: 'приём закончен',
   },
   debug: {

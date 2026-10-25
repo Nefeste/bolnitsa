@@ -1,4 +1,4 @@
-// из anamnez: src/content/types.ts @ 96503ac, изменено: ContentDb.consults — «Просят посмотреть» (spec 2026-10-consults); ContentDb.day — сутки целиком (spec 2026-10-day); ContentDb.inflow и ContentDb.money, Consults.long — поток от больницы, касса ПК, долгий случай (spec 2026-10-economy); ContentDb.sites и SitePlan — готовые больницы из готовых помещений (spec 2026-10-real-hospital); Inflow.bench, Preset.benches и SitePlan.benches — скамьи у дверей кабинетов (spec 2026-10-door-benches); Preset.land — свободная земля под стройку (spec 2026-10-city-land)
+// из anamnez: src/content/types.ts @ 96503ac, изменено: ContentDb.consults — «Просят посмотреть» (spec 2026-10-consults); ContentDb.day — сутки целиком (spec 2026-10-day); ContentDb.inflow и ContentDb.money, Consults.long — поток от больницы, касса ПК, долгий случай (spec 2026-10-economy); ContentDb.sites и SitePlan — готовые больницы из готовых помещений (spec 2026-10-real-hospital); Inflow.bench, Preset.benches и SitePlan.benches — скамьи у дверей кабинетов (spec 2026-10-door-benches); Preset.land — свободная земля под стройку (spec 2026-10-city-land); economy.staff.mood — настроение нанятых (spec 2026-10-staff-mood)
 // Типы собранной медицинской базы (`docs/04-data-model.md` §1).
 //
 // Исходник — YAML в content/, собирает tools/content/build.ts. Здесь — то, что получает
@@ -943,6 +943,11 @@ export interface Economy {
      * до), на `wc` минут. Нет — врачи не устают.
      */
     fatigue?: { hour: number; case: number; exam: number; night: number; slow: number; slower: number; tired: number; blur: number; rest: number; relief: number; toilet: [number, number]; wc: number };
+    /** настроение нанятых в смене (spec 2026-10-staff-mood); нет — настроения нет */
+    mood?: {
+      start: number; drift: number; market: number; below: number; above: number; limit: number; here: number; toilet: number; nights: [number, number];
+      quit: number; days: number; respond: number; raise: number; moved: number; step: number; severance: number;
+    };
   };
   /**
    * ОМС — за обращение по тяжести диагноза; экспертиза страховой: доля по обоснованности и
