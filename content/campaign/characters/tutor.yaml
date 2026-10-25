@@ -1,0 +1,11 @@
+# Наставник сценария 1 ПК (spec docs/specs/2026-10-scenario-1.md): персонаж игры, не человек; нейтральный сеттинг (#10) —
+# вымышленная страна, имена разных народов. Портрет рисуется кодом по зерну. Имя — предложение агента на одобрение.
+id: char.tutor
+name: { ru: "Мира Холм", en: "Mira Holm" }
+short: { ru: "Мира Холм", en: "Mira Holm" }
+sex: f
+age: 64
+portrait: 7203
+role:
+  ru: "Терапевт, тридцать лет вела эту амбулаторию, теперь — ваш наставник"
+  en: "A family doctor who ran this clinic for thirty years, now your mentor"

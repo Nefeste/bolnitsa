@@ -1,0 +1,186 @@
+# Сценарий 1 «Амбулатория» (spec docs/specs/2026-10-scenario-1.md; геймдизайн §9, §11): пустое здание песочницы, касса —
+# на амбулаторию с лабораторией и запас на зарплаты (симулятор экономики: такая амбулатория стоит около 380 тысяч и с вторых
+# суток в плюсе — касса подбирается замером, часть 4); первые трое у вас — ОРВИ, стрептококковый фарингит, цистит, как в
+# главе 1 «Участок» «Анамнеза». Письма наставника — к тем же состояниям, что подсказки первых минут (решение владельца #71),
+# и по поводам: в начале, после первых суток, при цели, в конце. Нейтральный сеттинг (#10): ни городов, ни валюты.
+id: scenario.ambulatory
+order: 1
+name: { ru: "Амбулатория", en: "Outpatient clinic" }
+about:
+  ru: "Пустое здание и наставник рядом: постройте амбулаторию, примите первых больных и откройте лабораторию."
+  en: "An empty building and a mentor at your side: build a clinic, see your first patients and open a laboratory."
+start: empty
+budget: 600000
+department: dept.therapy
+build: [room.reception, room.waiting, room.office, room.triage, room.procedure, room.lab, room.ecg, room.toilet, room.staff]
+tutorial: [cond.arvi, cond.strep_pharyngitis, cond.cystitis]
+missions:
+  - id: seen
+    main: true
+    kind: seen
+    count: 100
+    accuracy: 75
+    text: { ru: "Принять 100 пациентов с точностью от 75 %", en: "See 100 patients with at least 75 % accuracy" }
+  - id: lab
+    main: true
+    kind: roomWorks
+    room: room.lab
+    text:
+      ru: "Открыть лабораторию: построить, поставить анализатор, нанять лаборанта"
+      en: "Open a laboratory: build it, install an analyzer, hire a lab technician"
+  - id: cash
+    main: true
+    kind: days
+    days: 5
+    day: cashPositive
+    text: { ru: "Пять суток с кассой в плюсе", en: "Five days with a positive balance" }
+  - id: noLeft
+    main: false
+    kind: days
+    days: 1
+    day: noLeft
+    text: { ru: "Сутки без ушедших, не дождавшись приёма", en: "A day with nobody leaving before being seen" }
+  - id: antibiotics
+    main: false
+    kind: streak
+    days: 3
+    day: noNeedlessAntibiotic
+    text: { ru: "Три дня подряд без лишнего антибиотика", en: "Three days in a row without an unneeded antibiotic" }
+letters:
+  - id: hello
+    from: char.tutor
+    when: start
+    text:
+      ru: >-
+        Здравствуйте, коллега. Тридцать лет я вела амбулаторию на этом месте, теперь она ваша — только здание новое и
+        пустое. Первые дни я рядом. Начнём с регистратуры: без неё никто не войдёт.
+      en: >-
+        Hello, colleague. For thirty years I ran the clinic on this spot; now it is yours, only the building is new and
+        empty. I'll stay close for the first days. Let's start with the reception: nobody gets in without it.
+  - id: budget
+    from: char.official
+    when: start
+    text:
+      ru: >-
+        Деньги на амбулаторию — в кассе: на регистратуру, зал ожидания, кабинеты и процедурную, и отдельно — на
+        лабораторию. Без неё анализы ждут долго. Постройте её, когда освоитесь.
+      en: >-
+        The money for the clinic is in the till: for the reception, the waiting area, the offices and the treatment room,
+        and separately for a laboratory. Without it, tests take long. Build it once you have settled in.
+  - id: furnish
+    from: char.tutor
+    when: { hint: furnish }
+    text:
+      ru: >-
+        Стены — ещё не регистратура. У каждого помещения своё: стойка, стулья, раковина. «Обставить» расставит всё по
+        образцу, а «Готовое помещение» ставит сразу и стены, и мебель.
+      en: >-
+        Walls are not a reception yet. Every room needs its own things: a desk, chairs, a sink. "Furnish" sets them out
+        from a template, and "Ready room" places walls and furniture at once.
+  - id: door
+    from: char.tutor
+    when: { hint: door }
+    text:
+      ru: >-
+        Без двери в помещение не войти. Ставьте её на стену, что выходит в коридор. Где больные лежат, нужна двойная —
+        для каталки.
+      en: >-
+        Without a door nobody can get in. Put it in a wall that faces the corridor. Where patients lie down, make it a
+        double door, for the gurney.
+  - id: hire
+    from: char.tutor
+    when: { hint: hire }
+    text:
+      ru: >-
+        Помещение без человека стоит. Регистратор встречает, медсестра делает процедуры, а в своём кабинете врач — вы.
+        Кого нанять, подскажет карточка помещения.
+      en: >-
+        A room without its person stands idle. The receptionist greets people, the nurse does procedures, and in your
+        own office the doctor is you. The room card tells you whom to hire.
+  - id: machine
+    from: char.tutor
+    when: { hint: machine }
+    text:
+      ru: >-
+        Лаборатории нужен анализатор, кабинету ЭКГ — электрокардиограф. Без аппарата помещение не работает, сколько ни
+        нанимай.
+      en: >-
+        A laboratory needs an analyzer, an ECG room needs an electrocardiograph. Without the machine the room does not
+        work, however many people you hire.
+  - id: run
+    from: char.tutor
+    when: { hint: run }
+    text:
+      ru: >-
+        Всё готово. Пустите часы — люди придут сами: с утра по одному-двое в час, к обеду больше.
+      en: >-
+        Everything is ready. Start the clock and people will come on their own: one or two an hour in the morning, more
+        by midday.
+  - id: look
+    from: char.tutor
+    when: { hint: look }
+    text:
+      ru: >-
+        Пришёл первый. Его путь — регистратура, зал ожидания, кабинет врача. Щёлкните по нему: видно, где он и почему
+        ждёт.
+      en: >-
+        The first patient is here. The path is reception, waiting area, the doctor's office. Click on them to see where
+        they are and why they are waiting.
+  - id: call
+    from: char.tutor
+    when: { hint: call }
+    text:
+      ru: >-
+        Вас ждут. «Позвать» — и больной войдёт к вам, откроется его карта. Сначала выслушайте: жалобы и расспрос чаще
+        всего и есть диагноз.
+      en: >-
+        Someone is waiting for you. "Call" them in and their chart opens. Listen first: the complaints and a few
+        questions are most often the diagnosis.
+  - id: asks
+    from: char.tutor
+    when: { hint: asks }
+    text:
+      ru: >-
+        Нанятый врач не уверен и просит посмотреть. Загляните в его карту или скажите — пусть решает сам. Молча он тоже
+        решит, когда выйдет срок.
+      en: >-
+        A doctor you hired is not sure and asks you to take a look. Open the chart or tell them to decide on their own.
+        If you say nothing, they will decide when the time is up.
+  - id: firstDay
+    from: char.tutor
+    when: { afterDay: 1 }
+    text:
+      ru: >-
+        Первые сутки позади. Каждое утро — планёрка: кто пришёл, кто ушёл и почему, деньги. Загляните и в разбор своих
+        приёмов: там видно, что решило дело, а что ничего не добавило.
+      en: >-
+        The first day is behind us. Every morning there is a meeting: who came, who left and why, the money. Look at the
+        reviews of your own cases too: they show what settled the case and what added nothing.
+  - id: seenDone
+    from: char.tutor
+    when: { mission: seen }
+    text:
+      ru: >-
+        Сто приёмов, и почти все диагнозы верны. Так и работают на участке: не быстро, а точно. Людям это заметно.
+      en: >-
+        A hundred patients, and almost every diagnosis right. That is how a clinic works: not fast, but accurate. People
+        notice.
+  - id: labDone
+    from: char.official
+    when: { mission: lab }
+    text:
+      ru: >-
+        Лаборатория работает — это видно по отчётам: анализы в тот же день, диагнозы точнее. Спасибо, коллега.
+      en: >-
+        The laboratory is working, and it shows in the reports: tests the same day, more accurate diagnoses. Thank you,
+        colleague.
+  - id: end
+    from: char.tutor
+    when: end
+    text:
+      ru: >-
+        Амбулатория в порядке: люди идут, диагнозы точные, касса в плюсе. Дальше — сами: я буду заглядывать, но вы
+        справитесь.
+      en: >-
+        The clinic is in good shape: people come, the diagnoses are accurate, the balance is positive. From here on it is
+        up to you. I'll drop by, but you will manage.

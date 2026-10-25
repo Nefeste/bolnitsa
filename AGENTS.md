@@ -228,6 +228,13 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   (the user's game folder, slot names only) or the page storage (OPFS) in a browser. **A changed save format** — a field
   renamed or removed, a meaning changed — raises `SAVE_SCHEMA`, adds a migration step and a new sample in
   `tools/test/fixtures/saves/` (charter ADR 0004); a new optional field does not.
+- The PC campaign (`docs/specs/2026-10-scenario-1.md`): a scenario is Anamnez's campaign over the PC flow — a record in
+  `content/campaign/scenarios/` (start, cash, what is built, tutorial patients, goals, letters; a letter to a first-minutes
+  hint state is `when: { hint }`), `scenarioOf`/`plotOf` in `campaign/campaign.ts`. `newFlowShift(…, { scenario })` and the
+  sim's `start` message begin it; goals and letters are counted at the 08:00 meeting (`morning`); the first walk-ins are its
+  tutorial patients while your office works (`tutorialNext`, `taught`); the `site` command builds only its rooms (error
+  `scenario`); the window's marks — a hint state reached, a hint closed, a letter read, a tip shown, «Без обучения» — are
+  the `mark` command, kept in `s.campaign` and so in the save.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`), Web Worker
   (`worker.ts`) and its client in the window (`client.ts`). The window never runs the engine. The doctor mode
   (`docs/specs/2026-10-doctor-mode.md`): `caseView.ts` (a copy of Anamnez's player view of a case) and `doctor.ts` build the

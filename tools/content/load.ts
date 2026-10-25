@@ -20,7 +20,7 @@ import { P_ONE } from '../../src/engine/core/rng';
 import { SETTING_ORDER } from '../../src/engine/med/plan';
 import { findBrand } from './brands';
 import {
-  BANDS, type ChapterSrc, chapterSchema, type CharacterSrc, characterSchema, type ConditionSrc, conditionSchema, type EconomySrc, economySchema, type EquipmentSrc, equipmentSchema, type ExamSrc, examSchema, type FindingSrc, findingSchema,
+  BANDS, type ChapterSrc, chapterSchema, type ScenarioSrc, scenarioSchema, type CharacterSrc, characterSchema, type ConditionSrc, conditionSchema, type EconomySrc, economySchema, type EquipmentSrc, equipmentSchema, type ExamSrc, examSchema, type FindingSrc, findingSchema,
   type LinkSrc, PREVALENCE, type PresetSrc, presetSchema, type SiteSrc, siteSchema, type ProbabilitySrc, type ProfessionSrc, professionSchema, type RiskSrc, type RoleSrc, riskSchema, roleSchema, type RoomSrc, roomSchema,
   type TipSrc, tipSchema, type TreatmentSrc, treatmentSchema, versionSchema, type AchievementSrc, achievementSchema, type ScoreSrc, scoreSchema,
   type RuleSrc, ruleSchema, type TargetSrc, targetSchema, type SkillSrc, skillSchema,
@@ -195,6 +195,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   const sites: Record<string, SiteSrc> = {};
   const characters: Record<string, CharacterSrc> = {};
   const chapters: Record<string, ChapterSrc> = {};
+  const scenarios: Record<string, ScenarioSrc> = {};
   const tips: Record<string, TipSrc> = {};
   const achievements: Record<string, AchievementSrc> = {};
   const scores: Record<string, ScoreSrc> = {};
@@ -284,6 +285,9 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     } else if (top === 'campaign' && rel.split('/')[1] === 'chapters') {
       const c = check(chapterSchema);
       if (c) { expectId(c.id, 'chapter'); put(chapters, c); }
+    } else if (top === 'campaign' && rel.split('/')[1] === 'scenarios') {
+      const c = check(scenarioSchema);
+      if (c) { expectId(c.id, 'scenario'); put(scenarios, c); }
     } else if (top === 'campaign' && rel.split('/')[1] === 'tips') {
       const t = check(tipSchema);
       if (t) { expectId(t.id, 'tip'); put(tips, t); }
@@ -303,7 +307,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       const x = check(skillSchema);
       if (x) { expectId(x.id, 'skill'); put(skills, x); }
     } else {
-      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, people/professions, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/sites, hospital/economy.yaml, hospital/consults.yaml, hospital/day.yaml, hospital/inflow.yaml, hospital/money.yaml, campaign/characters, campaign/chapters, campaign/tips, achievements, scores, rules, targets, career/skills)`);
+      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, people/professions, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/sites, hospital/economy.yaml, hospital/consults.yaml, hospital/day.yaml, hospital/inflow.yaml, hospital/money.yaml, campaign/characters, campaign/chapters, campaign/scenarios, campaign/tips, achievements, scores, rules, targets, career/skills)`);
     }
   }
   if (!contentVersion) errors.push('version.yaml: нет contentVersion');
@@ -944,6 +948,10 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     chapters: Object.fromEntries(Object.values(chapters).sort((a, b) => a.order - b.order).map(({ tutorialRoom, ...c }) => [c.id, {
       ...c, tutorial: c.tutorial.map(t => (typeof t === 'string' ? { condition: t } : t)), ...(tutorialRoom ? { tutorialRoom: [tutorialRoom].flat() } : {}),
     }])),
+    // сценарии ПК (spec docs/specs/2026-10-scenario-1.md): заданный пациент строкой — пришедший сам, как у главы
+    scenarios: Object.fromEntries(Object.values(scenarios).sort((a, b) => a.order - b.order).map(c => [c.id, {
+      ...c, tutorial: c.tutorial.map(t => (typeof t === 'string' ? { condition: t } : t)),
+    }])),
     tips: Object.fromEntries(Object.values(tips).sort((a, b) => a.order - b.order).map(t => [t.id, t])),
     achievements: Object.fromEntries(Object.values(achievements).sort((a, b) => a.order - b.order).map(a => [a.id, a])),
     scores: Object.fromEntries(Object.values(scores).sort((a, b) => (a.id < b.id ? -1 : 1)).map(x => [x.id, x])),
@@ -1173,6 +1181,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     checkPresets(db, errors);
     checkSites(db, errors);
     checkCampaign(db, errors);
+    checkScenarios(db, errors);
     checkAchievements(db, errors);
     checkSkills(db, errors);
     // скорая везёт болезнь отделения (engine.ts, ambulancePatient): раз смотровую приёмного
@@ -1645,6 +1654,56 @@ function checkHospital(c: {
     for (const id of cond.confirm) {
       const e = exams[id];
       if (e?.room && !rooms[e.room]) errors.push(`${cond.id}: подтверждающее ${id} недостижимо — нет помещения ${e.room}`);
+    }
+  }
+}
+
+/**
+ * Сценарии ПК (spec docs/specs/2026-10-scenario-1.md): больница — пустое здание или запись `sites/`; помещения, болезни
+ * своего отделения и персонажи — из базы; цель «помещение работает» — из того, что в сценарии строят или что стоит с
+ * начала; письмо «при задании» — к цели сценария, к подсказке — одно на подсказку.
+ */
+function checkScenarios(db: ContentDb, errors: string[]) {
+  const orders = new Set<number>();
+  for (const c of Object.values(db.scenarios ?? {})) {
+    const at = (what: string) => errors.push(`${c.id}: ${what}`);
+    if (orders.has(c.order)) at(`порядок ${c.order} уже у другого сценария`);
+    orders.add(c.order);
+    const site = c.start === 'empty' ? undefined : db.sites?.[c.start];
+    if (c.start !== 'empty' && !site) at(`готовая больница ${c.start} не найдена`);
+    for (const r of c.build) if (!db.rooms[r]) at(`помещение ${r} не найдено`);
+    const standing = (site?.rooms ?? []).map(r => r.type);
+    for (const r of standing) if (!c.build.includes(r)) at(`помещение ${r} стоит с начала, а в сценарии его не построить`);
+    if (!Object.values(db.conditions).some(x => x.presenting && x.department === c.department)) at(`в отделении ${c.department} нет болезней`);
+    const departments = [c.department, ...new Set(c.build.flatMap(r => db.rooms[r]?.admits ?? []))];
+    for (const t of c.tutorial) {
+      const cond = db.conditions[t.condition];
+      if (!cond) at(`болезнь обучения ${t.condition} не найдена`);
+      else if (!cond.presenting || !departments.includes(cond.department)) at(`болезнь обучения ${t.condition} — не из приёма отделения ${departments.join(', ')}`);
+      if (t.ambulance) at(`болезнь обучения ${t.condition}: в сценарии заданные — пришедшие сами`);
+      for (const [name, value] of Object.entries(t.params ?? {})) {
+        if (cond && cond.params?.[name]?.[value] === undefined) at(`болезнь обучения ${t.condition}: параметра ${name} со значением ${value} у болезни нет`);
+      }
+    }
+    const missions = new Set<string>();
+    for (const m of c.missions) {
+      if (missions.has(m.id)) at(`задание ${m.id} повторяется`);
+      missions.add(m.id);
+      if (m.kind === 'roomWorks' && !c.build.includes(m.room)) at(`задание ${m.id}: ${m.room} нельзя построить в сценарии`);
+      if (!['seen', 'roomWorks', 'streak', 'days'].includes(m.kind)) at(`задание ${m.id}: вид ${m.kind} в сценарии ПК не считается`);
+    }
+    if (!c.missions.some(m => m.main)) at('нет основных заданий');
+    const letters = new Set<string>();
+    const hints = new Set<string>();
+    for (const l of c.letters) {
+      if (letters.has(l.id)) at(`письмо ${l.id} повторяется`);
+      letters.add(l.id);
+      if (!db.characters[l.from]) at(`письмо ${l.id}: персонаж ${l.from} не найден`);
+      if (typeof l.when === 'object' && 'mission' in l.when && !missions.has(l.when.mission)) at(`письмо ${l.id}: задания ${l.when.mission} в сценарии нет`);
+      if (typeof l.when === 'object' && 'hint' in l.when) {
+        if (hints.has(l.when.hint)) at(`письмо ${l.id}: к подсказке ${l.when.hint} письмо уже есть`);
+        hints.add(l.when.hint);
+      }
     }
   }
 }
