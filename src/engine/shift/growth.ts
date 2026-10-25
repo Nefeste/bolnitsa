@@ -103,7 +103,7 @@ export function backMorning(db: ContentDb, s: ShiftState): StaffNews['back'] {
  * в `sick` смен в среднем, из ветви зерна по человеку и суткам; до следующей планёрки его нет, место пустое. Зарплату за эту
  * смену не платят: `refund` возвращает её в кассу суток. Новости — кто болеет.
  */
-export function sickMorning(db: ContentDb, s: ShiftState, wage: (m: StaffMember) => number, refund: (rub: number) => void): StaffNews['sick'] {
+export function sickMorning(db: ContentDb, s: ShiftState, wage: (m: StaffMember) => number, refund: (rub: number, m: StaffMember) => void): StaffNews['sick'] {
   const g = growthNumbers(db, s);
   if (!g || !s.staff) return undefined;
   const until = s.t + DAY;
@@ -113,7 +113,7 @@ export function sickMorning(db: ContentDb, s: ShiftState, wage: (m: StaffMember)
   const next = s.staff.map(m => {
     if (m.shift === undefined || m.room === undefined || m.away || !root.fork(`sick:${m.id}:${s.day}`).chance(p)) return m;
     sick.push(m.id);
-    refund(wage(m));
+    refund(wage(m), m);
     return { ...m, away: { why: 'sick' as const, until } };
   });
   if (sick.length === 0) return undefined;

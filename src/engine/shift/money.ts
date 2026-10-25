@@ -9,6 +9,7 @@ import { emptyLedger, expensesOf, incomeOf, type Ledger, upkeepOf } from '../eco
 import type { HospitalState } from '../hospital/build';
 import { wagesOf } from '../hospital/staff';
 import { roomUpkeep, type Site } from '../hospital/site';
+import { accrueRooms, COMMON, roomExpense } from './rooms';
 import { DAY, type ShiftState, SHIFT_START } from './types';
 
 type Economy = NonNullable<ShiftState['economy']>;
@@ -84,9 +85,14 @@ export function accrue(db: ContentDb, s: ShiftState) {
   const l = ledgerOf(e);
   const up = upkeepPerDay(db, s.hospital);
   // смены (spec 2026-10-staff-shifts): зарплата — за смену, ночная дороже; без смены — за сутки, как прежде
-  l.expenses.salaries += Math.round((wagesOf(db, s.staff ?? []) * dt) / DAY);
-  l.expenses.equipment += Math.round((up.equipment * dt) / DAY);
-  l.expenses.rooms += Math.round((up.rooms * dt) / DAY);
+  const salaries = Math.round((wagesOf(db, s.staff ?? []) * dt) / DAY);
+  const equipment = Math.round((up.equipment * dt) / DAY);
+  const rooms = Math.round((up.rooms * dt) / DAY);
+  l.expenses.salaries += salaries;
+  l.expenses.equipment += equipment;
+  l.expenses.rooms += rooms;
+  // деньги по помещениям (spec docs/specs/2026-10-metrics-layer.md, часть 2): те же суммы — по помещениям
+  accrueRooms(db, s, dt, salaries + equipment + rooms);
 }
 
 /**
@@ -106,6 +112,7 @@ export function payWorks(s: ShiftState, cost: number) {
   if (!e || cost === 0) return;
   const l = ledgerOf(e);
   l.expenses.works = (l.expenses.works ?? 0) + cost;
+  roomExpense(s, COMMON, cost);
 }
 
 /** Выплата уволенному (spec docs/specs/2026-10-staff-mood.md) — в кассу суток отдельной статьёй; отмена увольнения — минус. */
@@ -114,6 +121,7 @@ export function paySeverance(s: ShiftState, amount: number) {
   if (!e || amount === 0) return;
   const l = ledgerOf(e);
   l.expenses.severance = (l.expenses.severance ?? 0) + amount;
+  roomExpense(s, COMMON, amount);
 }
 
 /** Учёба персонала (spec docs/specs/2026-10-staff-mood.md, раздел 4) — в кассу суток отдельной статьёй. */
@@ -122,16 +130,18 @@ export function payStudy(s: ShiftState, amount: number) {
   if (!e || amount === 0) return;
   const l = ledgerOf(e);
   l.expenses.study = (l.expenses.study ?? 0) + amount;
+  roomExpense(s, COMMON, amount);
 }
 
 /**
  * Смена, за которую не платят (spec docs/specs/2026-10-staff-mood.md, раздел 5: болеет): зарплаты идут в кассу по часам за
- * всех, поэтому её зарплата — назад из зарплат кассы суток.
+ * всех, поэтому её зарплата — назад из зарплат кассы суток; и из расходов помещения, где его место (`room`; нет — общее).
  */
-export function unpaidShift(s: ShiftState, amount: number) {
+export function unpaidShift(s: ShiftState, amount: number, room?: string) {
   const e = s.economy;
   if (!e || amount === 0) return;
   ledgerOf(e).expenses.salaries -= amount;
+  roomExpense(s, room ?? COMMON, -amount);
 }
 
 /** Выплата по кредиту на планёрке — в кассу суток; вернули — кредита нет. */
@@ -141,6 +151,7 @@ export function repay(s: ShiftState) {
   const pay = Math.min(e.loan.perDay, e.loan.left);
   const l = ledgerOf(e);
   l.expenses.loan = (l.expenses.loan ?? 0) + pay;
+  roomExpense(s, COMMON, pay);
   const left = e.loan.left - pay;
   if (left > 0) e.loan = { left, perDay: e.loan.perDay };
   else delete e.loan;
