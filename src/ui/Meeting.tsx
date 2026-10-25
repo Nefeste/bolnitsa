@@ -1,11 +1,11 @@
 // Экран планёрки в 08:00 и вкладка «Отчёты» (spec docs/specs/2026-10-economy.md, «Планёрка»; геймдизайн §12): сутки в цифрах,
 // нанятые врачи, касса по статьям, репутация и её причины, узкие места, что сломалось, кому из ваших лежащих хуже, персонал —
 // кто собирается уйти и кто уходит (spec docs/specs/2026-10-staff-mood.md), подсказка, часы приёма, кредит. Данные — из окна (src/app/money.ts), слова — здесь, при отрисовке.
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { PAYERS } from '../engine/economy/economy';
 import type { RepChange } from '../engine/economy/economy';
 import { money, T } from '../i18n';
-import { type EconomyHud, type MeetingView, slowOf, type Tip } from '../app/money';
+import { type EconomyHud, type MeetingView, type Raise, slowOf, type Tip } from '../app/money';
 import type { Actions } from './store';
 
 /** «+12 300 ₽», «−4 000 ₽». */
@@ -29,6 +29,25 @@ function reasonText(r: RepChange['reasons'][number], wait: number | undefined): 
   const x = T.meeting.repReason;
   const what = r.key === 'waitShort' || r.key === 'waitLong' ? x[r.key](wait ?? 0) : r.key === 'noToilet' ? x.noToilet() : x[r.key](r.count);
   return `${what} (${r.delta >= 0 ? '+' : '−'}${Math.abs(r.delta)})`;
+}
+
+/**
+ * «Поднять зарплату» в строке планёрки (spec docs/specs/2026-10-staff-mood.md): то же действие, что в карточке человека;
+ * нажали — кнопка говорит, что поднята (планёрка — снимок утра, её строки не пересчитываются).
+ */
+function RaiseButton({ id, raise, actions }: { id: string; raise: Raise; actions: Actions }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      type="button" className="small" id={`meet-raise-${id}`} disabled={done} title={T.card.raiseHint}
+      onClick={() => {
+        actions.raise(id);
+        setDone(true);
+      }}
+    >
+      {done ? T.build.raised : T.card.raise(money(raise.from), money(raise.to))}
+    </button>
+  );
 }
 
 function Section({ title, children, id }: { title: string; children: ReactNode; id?: string }) {
@@ -168,13 +187,26 @@ export function MeetingBody({ m, e, actions }: { m: MeetingView; e: EconomyHud; 
                 {t.staffLeave(x.who, x.why.slice(0, 2).map(w => T.card.moodWhy[w] ?? w).join(', '))}
               </li>
             ))}
-            {m.staff.quit.map((x, i) => (
-              <li key={`q${i}`} className="bad">
-                {t.staffQuit(x.who, x.until)}
+            {m.staff.quit.map(x => (
+              <li key={`q${x.id}`} className="bad">
+                {t.staffQuit(x.who, x.until)} {x.raise ? <RaiseButton id={x.id} raise={x.raise} actions={actions} /> : null}
               </li>
             ))}
             {m.staff.low.map((x, i) => (
               <li key={`w${i}`}>{t.staffLow(x)}</li>
+            ))}
+            {m.staff.grew.map(x => (
+              <li key={`g${x.id}`}>
+                {t.staffGrew(x.who, x.skill)} {x.raise ? <RaiseButton id={x.id} raise={x.raise} actions={actions} /> : null}
+              </li>
+            ))}
+            {m.staff.back.map((x, i) => (
+              <li key={`b${i}`} className="ok">
+                {t.staffBack(x.who, x.skill)}
+              </li>
+            ))}
+            {m.staff.sick.map((x, i) => (
+              <li key={`s${i}`}>{t.staffSick(x)}</li>
             ))}
           </ul>
         </Section>

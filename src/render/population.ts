@@ -42,6 +42,11 @@ export type PersonInfo =
       pay?: { now: number; market: number; raise?: number };
       reshift?: { to: 'day' | 'night'; with?: string };
       said?: { ok: boolean; text: string };
+      /**
+       * рост, учёба, болезнь (там же, разделы 3–5): навык, смен до следующего и наставник; отлучка — учится или болеет и до
+       * какого часа; «Отправить учиться» — на сколько суток и за сколько
+       */
+      skill?: number; steps?: number; mentor?: string; away?: { why: 'study' | 'sick'; until: number }; study?: { days: number; cost: number };
     }
   | {
       kind: 'patient'; id: string; name?: string; sex: 'm' | 'f'; age: number; complaint?: Id; triage: Triage; doing: Doing; room?: string; by?: Id; visit: string; gone?: true;
@@ -269,6 +274,14 @@ export class Population {
     }
     this.crowd.add(YOU, this.pick('staff', 'm', false, 7), spot, true);
     this.paints.set(YOU, { clothes: new THREE.Color(COAT), skin: new THREE.Color(SKIN[2]) });
+  }
+
+  /**
+   * Тот же штат на тех же местах, а у людей новое (spec docs/specs/2026-10-staff-mood.md: рост, учёба, болезнь, зарплата,
+   * смена): кто в больнице, сверит следующий срез (`sync`), раскладка та же.
+   */
+  setStaff(staff: StaffMember[]) {
+    this.staff = staff;
   }
 
   /** Стройка (spec docs/specs/2026-10-build.md, «Отрисовка»): новая раскладка, места, штат и список помещений больницы. */

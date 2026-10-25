@@ -16,6 +16,18 @@ export function growthNumbers(db: ContentDb, s: ShiftState, m?: StaffMember): Nu
   return s.flow && (m === undefined || m.shift !== undefined) ? db.economy.staff.growth : undefined;
 }
 
+/**
+ * Стаж в начале игры (spec «Как сделано», раздел 3): в готовой больнице люди работают не первый день — смен с последней
+ * ступени у каждого из ветви зерна, от 0 до `growthDays` − 1; иначе все, начавшие вместе, выросли бы в одно утро, а с ними
+ * разом упало бы и настроение. Новые — с нуля. Только у людей со сменой, когда в базе есть рост.
+ */
+export function tenure(db: ContentDb, seed: number, staff: readonly StaffMember[]): StaffMember[] {
+  const days = db.economy.staff.growthDays;
+  if (!db.economy.staff.growth || days < 2) return [...staff];
+  const root = Rng.seeded(seed);
+  return staff.map(m => (m.shift === undefined || m.days !== 0 || m.skill >= 5 ? m : { ...m, days: root.fork(`tenure:${m.id}`).range(0, days - 1) }));
+}
+
 /** Наставник (решение владельца, #86): в той же смене — человек той же должности с навыком 5, на своём месте и не в отлучке. */
 export function mentorOf(staff: readonly StaffMember[], m: StaffMember): StaffMember | undefined {
   return staff.find(x => x !== m && x.role === m.role && x.skill >= 5 && x.shift === m.shift && x.room !== undefined && !x.away);

@@ -11,9 +11,10 @@ import { type Block, DOCTOR, doctorRoom, openBlocks, type Problem, problemsOf, s
 import { demolishRefund, emptySite, furnishOf, hospitalOf, priceOf, readyCost, rulesOf, type Site, type SiteCommand, type SiteResult } from '../engine/hospital/site';
 import { siteOfPlan } from '../engine/hospital/site-plan';
 import { siteOfPreset } from '../engine/hospital/site-preset';
-import { dutyOf, onDuty, payOf, presetStaff, salaryOf, type Shift, shiftAt, type StaffMember, staffingOf, withNightShift } from '../engine/hospital/staff';
+import { dutyOf, onDuty, payOf, presetStaff, salaryOf, type Shift, shiftAt, type StaffMember, staffingOf, wageOf, withNightShift } from '../engine/hospital/staff';
 import type { CrewView } from '../engine/shift/crew';
 import { marketOf, type MoodView, raisedOf, severanceOf } from '../engine/shift/mood';
+import { mentorOf, stepsLeft } from '../engine/shift/growth';
 import type { Notice } from '../engine/shift/types';
 import { clock, genitive, type Lang, money, named, setLang, T } from '../i18n';
 import type { Walker } from '../render/crowd';
@@ -144,6 +145,11 @@ loader.setMeshoptDecoder(MeshoptDecoder);
 
 async function loadGltf(url: string) {
   return loader.loadAsync(url);
+}
+
+/** Те же люди на тех же местах — по порядку, номеру, должности и помещению: раскладка сцены та же. */
+function sameSpots(a: readonly StaffMember[], b: readonly StaffMember[]): boolean {
+  return a.length === b.length && a.every((m, i) => m.id === b[i].id && m.role === b[i].role && m.room === b[i].room);
 }
 
 /**
@@ -427,9 +433,11 @@ export class Game {
             ...(mood.go !== undefined ? [T.card.leavingShort] : mood.quit !== undefined ? [T.card.quitShort] : []),
           ]
         : [];
+      // навык и отлучка (разделы 3–5): учится или болеет
+      const away = m.away ? [m.away.why === 'study' ? T.card.studyShort : T.card.sickShort] : [];
       return {
         key: `s:${m.id}`,
-        text: [this.staffWho(m), room, T.card.shifts[m.shift ?? 'both'], ...feel, ...(c ? [T.card.fatigueShort(c.f)] : []), ...(rest ? [rest] : [])].join(' · '),
+        text: [this.staffWho(m), room, T.card.shifts[m.shift ?? 'both'], T.card.skillShort(m.skill), ...away, ...feel, ...(c ? [T.card.fatigueShort(c.f)] : []), ...(rest ? [rest] : [])].join(' · '),
         ...(onDuty(db, m, this.t) ? { on: true as const } : {}),
         ...(mood && (mood.quit !== undefined || mood.go !== undefined) ? { bad: true as const } : {}),
       };
@@ -455,8 +463,14 @@ export class Game {
     const to: Shift | undefined = m.shift === 'day' ? 'night' : m.shift === 'night' ? 'day' : undefined;
     const other = to && m.room !== undefined ? this.staff.find(x => x !== m && x.room === m.room && post(x) === post(m) && x.shift === to) : undefined;
     const said = this.staffSaid?.id === m.id ? { ok: this.staffSaid.ok, text: this.staffSaid.text } : undefined;
+    // рост и учёба (разделы 3–4): смен до следующего навыка, наставник; учиться — со сменой, ниже навыка 5, на месте
+    const g = db.economy.staff.growth;
+    const steps = stepsLeft(db, this.staff, m);
+    const mentor = m.shift !== undefined && m.skill < 5 ? mentorOf(this.staff, m) : undefined;
+    const study = g && m.shift !== undefined && m.skill < 5 && !m.away && !leaving && this.hospital.site ? { days: g.studyDays, cost: g.studyCost * wageOf(db, m) } : undefined;
     return {
-      ...info, name: staffName(m),
+      ...info, name: staffName(m), skill: m.skill, ...(steps !== undefined ? { steps } : {}), ...(mentor ? { mentor: this.staffWho(mentor) } : {}),
+      ...(m.away ? { away: { ...m.away } } : {}), ...(study ? { study } : {}),
       ...(mood ? { mood: { v: mood.v, ...(mood.d ? { d: mood.d } : {}), ...(mood.why ? { why: mood.why.map(w => T.card.moodWhy[w] ?? w) } : {}), ...(mood.quit !== undefined ? { quit: mood.quit } : {}), ...(mood.go !== undefined ? { go: mood.go } : {}) } } : {}),
       pay: { now: m.salary, market: marketOf(db, m), ...(leaving || !this.hospital.site ? {} : { raise: raisedOf(db, m) }) },
       ...(to && !leaving && this.hospital.site ? { reshift: { to, ...(other ? { with: this.staffWho(other) } : {}) } } : {}),
@@ -466,8 +480,10 @@ export class Game {
 
   /** Ответ движка на действие с человеком из его карточки (spec 2026-10-staff-mood). */
   private staffResult(n: SiteResult) {
-    if (this.staffAct === undefined || (n.cmd !== 'raise' && n.cmd !== 'reshift' && n.cmd !== 'dismiss')) return;
-    const text = !n.ok ? T.build.failed(whyText(this.db, this.hospital.site, n.error ?? { kind: 'unknown' })) : n.cmd === 'raise' ? T.build.raised : n.cmd === 'reshift' ? T.build.reshifted : T.build.dismissed(money(n.cost ?? 0));
+    if (this.staffAct === undefined || (n.cmd !== 'raise' && n.cmd !== 'reshift' && n.cmd !== 'dismiss' && n.cmd !== 'study')) return;
+    const text = !n.ok
+      ? T.build.failed(whyText(this.db, this.hospital.site, n.error ?? { kind: 'unknown' }))
+      : n.cmd === 'raise' ? T.build.raised : n.cmd === 'reshift' ? T.build.reshifted : n.cmd === 'study' ? T.build.studied(money(n.cost ?? 0)) : T.build.dismissed(money(n.cost ?? 0));
     this.staffSaid = { id: this.staffAct, ok: n.ok, text };
     this.staffAct = undefined;
   }
@@ -580,11 +596,19 @@ export class Game {
   /** Новая больница из потока (стройка, найм, убрали освободившееся). */
   private applyWorld(w: World) {
     if (w.works) this.works = w.works;
+    // та же больница и те же люди на тех же местах (spec docs/specs/2026-10-staff-mood.md: рост, учёба, болезнь, зарплата,
+    // смена) — сцена та же: кто в больнице, сверит Population со следующим срезом
+    const light = !this.fresh && w.staffOnly === true && sameSpots(this.staff, w.staff);
     this.hospital = w.hospital;
     this.staff = w.staff;
     if (this.fresh) {
       // та же больница, что окно отправило в `start`: сцена уже есть
       this.fresh = false;
+      return;
+    }
+    if (light) {
+      this.pop.setStaff(w.staff);
+      this.onDuty();
       return;
     }
     this.setWorld(false);
@@ -660,6 +684,14 @@ export class Game {
         if (m) this.notices.unshift({ t: this.t, text: T.notices.quit(this.staffWho(m)) });
       }
       for (const l of n.staff.leave ?? []) this.notices.unshift({ t: this.t, text: T.notices.leave(this.staffWho(l)) });
+      // рост, учёба, болезнь (разделы 3–5)
+      const who = (id: string) => {
+        const m = this.staff.find(x => x.id === id);
+        return m ? this.staffWho(m) : id;
+      };
+      for (const g of n.staff.grew ?? []) this.notices.unshift({ t: this.t, text: T.notices.grew(who(g.id), g.skill) });
+      for (const b of n.staff.back ?? []) this.notices.unshift({ t: this.t, text: T.notices.back(who(b.id), b.skill) });
+      for (const id of n.staff.sick ?? []) this.notices.unshift({ t: this.t, text: T.notices.sick(who(id)) });
     }
     if (this.notices.length > 60) this.notices.length = 60;
     // утро — сохранение само (spec docs/specs/2026-10-saves.md): три последних утра
@@ -1113,6 +1145,11 @@ export class Game {
       this.staffAct = id;
       this.command({ kind: 'reshift', id });
     },
+    // учёба (spec docs/specs/2026-10-staff-mood.md, раздел 4)
+    study: id => {
+      this.staffAct = id;
+      this.command({ kind: 'study', id });
+    },
     // начало выбирают до игры (main.tsx)
     startGame: () => {},
     // часть 3 (spec docs/specs/2026-10-flow-ui.md)
@@ -1230,7 +1267,12 @@ export class Game {
         const pay = (x: Id) => money(payOf(db, salaryOf(db, x, 3), shift === 'both' ? undefined : shift));
         return {
           role, shift, name, salary: pay(hire),
-          ...(m ? { who: `${named(db.roles[m.role]?.name, m.role)} · ${m.skill}`, staffId: m.id, fire: T.card.dismissHint(money(severanceOf(db, m))) } : {}),
+          ...(m
+            ? {
+                who: `${named(db.roles[m.role]?.name, m.role)} · ${m.skill}${m.away ? ` · ${m.away.why === 'study' ? T.card.studyShort : T.card.sickShort}` : ''}`,
+                staffId: m.id, fire: T.card.dismissHint(money(severanceOf(db, m))),
+              }
+            : {}),
           ...(role === DOCTOR && doctors.length > 1
             ? { options: doctors.map(x => ({ role: x, name: named(db.roles[x]?.name, x), salary: pay(x), hint: named(db.roles[x]?.texts.hint) })) }
             : {}),

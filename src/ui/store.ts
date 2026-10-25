@@ -247,6 +247,8 @@ export interface Actions {
   /** «Поднять зарплату» и «В другую смену» в карточке человека (spec docs/specs/2026-10-staff-mood.md) */
   raise(id: string): void;
   reshift(id: string): void;
+  /** «Отправить учиться» (spec docs/specs/2026-10-staff-mood.md, раздел 4) */
+  study(id: string): void;
   /** начало игры: пустое здание, готовая больница или поликлиника; `{ load }` — сохранение (spec 2026-10-saves) */
   startGame(kind: 'empty' | 'preset' | 'poly' | { load: string }): void;
   /** часть 3 (spec docs/specs/2026-10-flow-ui.md): фильтры «Пациентов», камера к человеку и выбор, слои карты */

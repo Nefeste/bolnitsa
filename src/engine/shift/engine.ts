@@ -46,7 +46,7 @@ import { accrue, offerOf, openEconomy, payWorks, repay, shortOf, takeLoan, unpai
 import { ambulancePerHour, bookedPerHour, type Capacity, walkPerHour } from './inflow';
 import * as meeting from './meeting';
 import { depart, leaversDue, moodMorning } from './mood';
-import { backMorning, growMorning, sickMorning } from './growth';
+import { backMorning, growMorning, sickMorning, tenure } from './growth';
 
 const MIN = 60;
 const TRIAGE_RANK: Record<Triage, number> = { red: 0, yellow: 1, green: 2 };
@@ -237,7 +237,8 @@ export function newFlowShift(
   db: ContentDb,
   opts: { seed: number; season: Season; difficulty?: Difficulty; hospital: HospitalState; staff: StaffMember[]; flow: Flow; economy?: { cash: number } } & Variety,
 ): ShiftState {
-  const s = singleBase(db, { ...opts, venue: SANDBOX_VENUE });
+  // рост (spec 2026-10-staff-mood, раздел 3): у людей со сменой — разный стаж, растут не в одно утро
+  const s = singleBase(db, { ...opts, staff: tenure(db, opts.seed, opts.staff), venue: SANDBOX_VENUE });
   s.flow = { ...opts.flow };
   // часы приёма — только верные (spec 2026-10-day): иначе — базы
   if (s.flow.hours && !validHours(s.flow.hours[0], s.flow.hours[1])) delete s.flow.hours;

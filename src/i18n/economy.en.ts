@@ -60,7 +60,7 @@ export const economyEn: EconomyStrings = {
     expenses: (rub: string) => `Expenses: ${rub}`,
     expense: {
       salaries: 'salaries', rooms: 'room upkeep', equipment: 'equipment upkeep', consumables: 'consumables', ward: 'bed-days',
-      repairs: 'repairs', works: 'building', interest: 'interest on debt', loan: 'loan', severance: 'severance pay',
+      repairs: 'repairs', works: 'building', interest: 'interest on debt', loan: 'loan', severance: 'severance pay', study: 'staff training',
     } as Record<string, string>,
     net: (rub: string) => `Day’s result: ${rub}`,
     cashAt: (rub: string) => `Cash at 08:00: ${rub}`,
@@ -100,6 +100,9 @@ export const economyEn: EconomyStrings = {
     staffLow: (who: string) => `${who}: mood below 30`,
     staffQuit: (who: string, day: number) => `${who} is about to quit: answer before the meeting of day ${day} — raise their pay or move them to the other shift`,
     staffLeave: (who: string, why: string) => `${who} leaves after their shift${why ? ` — ${why}` : ''}`,
+    staffGrew: (who: string, skill: number) => `${who} grew to skill ${skill} — the pay is the same, below the market: raise it`,
+    staffBack: (who: string, skill: number) => `${who} is back from study — skill ${skill}`,
+    staffSick: (who: string) => `${who} is sick — will not come to the shift today`,
     tip: 'Tip',
     tips: {
       below: 'Cash is below the limit: building waits for money. Take the bank’s loan or cut costs — dismiss extra staff, demolish what you do not need (half the price comes back).',

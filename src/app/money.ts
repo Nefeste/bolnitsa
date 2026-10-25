@@ -11,6 +11,8 @@ import type { Slice } from '../sim/client';
 import type { Speed } from '../ui/store';
 import type { Game } from './game';
 import { staffName } from './people';
+import { raisedOf } from '../engine/shift/mood';
+import type { StaffMember } from '../engine/hospital/staff';
 
 /** Нанятый врач на планёрке: должность, навык, приёмы за сутки. */
 export interface DoctorDay {
@@ -50,7 +52,21 @@ export interface MeetingView {
    * персонал (spec docs/specs/2026-10-staff-mood.md): у кого настроение упало ниже порога, кто собирается уйти — до планёрки
    * каких суток, кто уходит после своей смены и почему (причины — ключи, слова — при отрисовке); нечего сказать — нет
    */
-  staff?: { low: string[]; quit: { who: string; until: number }[]; leave: { who: string; why: string[] }[] };
+  staff?: {
+    low: string[];
+    quit: { id: string; who: string; until: number; raise?: Raise }[];
+    leave: { who: string; why: string[] }[];
+    /** разделы 3–5: кто вырос и до какого навыка, кто вернулся с учёбы, кто сегодня болеет */
+    grew: { id: string; who: string; skill: number; raise?: Raise }[];
+    back: { who: string; skill: number }[];
+    sick: string[];
+  };
+}
+
+/** «Поднять зарплату» прямо в строке планёрки: с какой и до какой, ₽ за смену. */
+export interface Raise {
+  from: number;
+  to: number;
 }
 
 export interface EconomyHud {
@@ -162,11 +178,16 @@ export class Money {
     // персонал (spec docs/specs/2026-10-staff-mood.md): уходящий ночной уже не в штате — кто он, сказано в извещении
     const who = (m: { role: Id; sex: 'm' | 'f'; seed: number }) => `${named(db.roles[m.role]?.name, m.role)} ${staffName(m)}`;
     const member = (id: string) => staff.find(x => x.id === id);
+    // поднять зарплату — с планёрки, как в карточке человека: в больнице ПК, кто не уходит сам
+    const raise = (m: StaffMember): { raise?: Raise } => (this.g.hospital.site && db.economy.staff.mood ? { raise: { from: m.salary, to: raisedOf(db, m) } } : {});
     const people = news
       ? {
           low: (news.low ?? []).flatMap(id => (member(id) ? [who(member(id)!)] : [])),
-          quit: (news.quit ?? []).flatMap(q => (member(q.id) ? [{ who: who(member(q.id)!), until: q.until }] : [])),
+          quit: (news.quit ?? []).flatMap(q => (member(q.id) ? [{ id: q.id, who: who(member(q.id)!), until: q.until, ...raise(member(q.id)!) }] : [])),
           leave: (news.leave ?? []).map(l => ({ who: who(l), why: l.why })),
+          grew: (news.grew ?? []).flatMap(g => (member(g.id) ? [{ id: g.id, who: who(member(g.id)!), skill: g.skill, ...raise(member(g.id)!) }] : [])),
+          back: (news.back ?? []).flatMap(b => (member(b.id) ? [{ who: who(member(b.id)!), skill: b.skill }] : [])),
+          sick: (news.sick ?? []).flatMap(id => (member(id) ? [who(member(id)!)] : [])),
         }
       : undefined;
     return {

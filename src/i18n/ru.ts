@@ -2,6 +2,7 @@
 import { doctorRu } from './doctor.ru';
 import { economyRu } from './economy.ru';
 import { encyclopediaRu } from './encyclopedia.ru';
+import { pluralRu } from './plural';
 
 export const ru = {
   // часть 5б (spec docs/specs/2026-10-economy.md): касса, планёрка, часы приёма, кредит, обход — `money`, `meeting`, `round`
@@ -94,6 +95,8 @@ export const ru = {
     dismissed: (paid: string) => `Уволен — выплата ${paid}`,
     raised: 'Зарплата поднята',
     reshifted: 'Переведён в другую смену',
+    /** учёба (spec docs/specs/2026-10-staff-mood.md, раздел 4) */
+    studied: (cost: string) => `Отправлен учиться — ${cost}`,
     failed: (why: string) => `Нельзя: ${why}`,
   },
   site: {
@@ -317,6 +320,17 @@ export const ru = {
     reshift: (to: 'day' | 'night'): string => (to === 'day' ? 'В дневную смену' : 'В ночную смену'),
     reshiftHint: (who: string | undefined) => (who ? `Сменами поменяется с: ${who}` : 'Его место в той смене свободно'),
     dismissHint: (paid: string) => `Уволить — выплата за три смены: ${paid}`,
+    /** рост, наставник, учёба, болезнь (spec docs/specs/2026-10-staff-mood.md, разделы 3–5) */
+    skill: 'Навык',
+    skillLine: (skill: number, steps: number | undefined, mentor: string | undefined) =>
+      `${skill}${steps !== undefined ? ` — до навыка ${skill + 1}: ${steps} ${pluralRu(steps, 'смена', 'смены', 'смен')}` : ''}${mentor ? ` · наставник — ${mentor}` : ''}`,
+    awayStudy: (day: number) => `на учёбе — вернётся утром дня ${day}`,
+    awaySick: 'болеет — сегодня не вышел на смену',
+    studyShort: 'учится',
+    sickShort: 'болеет',
+    skillShort: (n: number) => `навык ${n}`,
+    study: (days: number, cost: string) => `Отправить учиться: ${days} ${pluralRu(days, 'сутки', 'суток', 'суток')}, ${cost}`,
+    studyHint: 'Вернётся с навыком на ступень выше и настроением +20. Пока учится, его места в смене никто не займёт.',
     demolish: (back: string) => `Снести — вернётся ${back}`,
     furnish: (cost: string) => `Обставить — ${cost}`,
     reserve: (n: number) => `в резерве: ${n}`,
@@ -359,6 +373,9 @@ export const ru = {
     /** персонал (spec docs/specs/2026-10-staff-mood.md) */
     quit: (who: string) => `собирается уйти: ${who}`,
     leave: (who: string) => `уходит после смены: ${who}`,
+    grew: (who: string, skill: number) => `вырос до навыка ${skill}: ${who}`,
+    back: (who: string, skill: number) => `вернулся с учёбы, навык ${skill}: ${who}`,
+    sick: (who: string) => `болеет, на смену не выйдет: ${who}`,
     shiftEnd: 'приём закончен',
   },
   debug: {

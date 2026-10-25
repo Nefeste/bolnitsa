@@ -10,7 +10,7 @@ import { hospitalOf } from '../../src/engine/hospital/site';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { dutyOf, presetStaff, type StaffMember, wageOf, withNightShift } from '../../src/engine/hospital/staff';
 import { apply, newFlowShift } from '../../src/engine/shift/engine';
-import { mentorOf, stepsLeft } from '../../src/engine/shift/growth';
+import { mentorOf, stepsLeft, tenure } from '../../src/engine/shift/growth';
 import { cashNow } from '../../src/engine/shift/money';
 import type { Notice, ShiftState, StaffNews } from '../../src/engine/shift/types';
 import { hash, site } from './site-kit';
@@ -51,6 +51,22 @@ describe('рост, учёба, болезнь', () => {
     expect(base.economy.staff.growthDays).toBe(20);
   });
 
+  test('стаж в начале: у людей со сменой — от 0 до 19 смен с последней ступени, из зерна; новые и без смен — с нуля', () => {
+    const s = city(db, 9);
+    const days = s.staff!.map(m => m.days);
+    expect(Math.min(...days)).toBeGreaterThanOrEqual(0);
+    expect(Math.max(...days)).toBeLessThan(base.economy.staff.growthDays);
+    // разный: растут не в одно утро
+    expect(new Set(days).size).toBeGreaterThan(8);
+    expect(city(db, 9).staff).toEqual(s.staff);
+    expect(tenure(db, 9, legacy)).toEqual(legacy);
+    // нанятый — с нуля
+    const room = s.staff!.find(m => m.role === 'role.registrar' && m.shift === 'day')!.room!;
+    site(db, s, { kind: 'dismiss', id: s.staff!.find(m => m.room === room && m.role === 'role.registrar' && m.shift === 'day')!.id });
+    site(db, s, { kind: 'hire', room, role: 'role.registrar', shift: 'day' });
+    expect(s.staff!.at(-1)!.days).toBe(0);
+  }, 60_000);
+
   test('без смен — ни роста, ни болезни', () => {
     const d = withSick(2);
     const s = city(d, 1, legacy);
@@ -66,10 +82,10 @@ describe('рост, учёба, болезнь', () => {
     set(s, n.id, { days: 18 });
     set(s, reserve.id, { days: 18, room: undefined });
     expect(stepsLeft(db, s.staff!, member(s, n.id))).toBe(2);
-    expect(morning(db, s)?.grew).toBeUndefined();
+    expect(morning(db, s)?.grew?.some(g => g.id === n.id) ?? false).toBe(false);
     expect(member(s, n.id)).toMatchObject({ skill: 3, days: 19 });
     const news = morning(db, s);
-    expect(news?.grew).toEqual([{ id: n.id, skill: 4 }]);
+    expect(news?.grew).toContainEqual({ id: n.id, skill: 4 });
     expect(member(s, n.id)).toMatchObject({ skill: 4, days: 0, salary: n.salary });
     expect(stepsLeft(db, s.staff!, member(s, n.id))).toBe(20);
     // рынок навыка 4 — выше на 10 % и больше: в тот же день — «зарплата ниже рынка»
@@ -88,7 +104,7 @@ describe('рост, учёба, болезнь', () => {
     set(s, other.id, { shift: 'day' });
     expect(mentorOf(s.staff!, member(s, n.id))?.id).toBe(other.id);
     expect(stepsLeft(db, s.staff!, member(s, n.id))).toBe(1);
-    expect(morning(db, s)?.grew).toEqual([{ id: n.id, skill: 4 }]);
+    expect(morning(db, s)?.grew).toContainEqual({ id: n.id, skill: 4 });
     // навык 5 не растёт
     expect(member(s, other.id)).toMatchObject({ skill: 5 });
     expect(stepsLeft(db, s.staff!, member(s, other.id))).toBeUndefined();
@@ -112,9 +128,11 @@ describe('рост, учёба, болезнь', () => {
     expect(site(db, s, { kind: 'study', id: n.id }, false)).toMatchObject({ ok: false, error: { kind: 'nothing' } });
     // в отмене стройки её нет
     expect(site(db, s, { kind: 'undo' }, false)).toMatchObject({ ok: false, error: { kind: 'nothing' } });
+    // пока учится, не работает — и не растёт от смен
+    const days = member(s, n.id).days;
     for (let i = 0; i < 3; i++) {
       expect(morning(db, s)?.back).toBeUndefined();
-      expect(member(s, n.id).days).toBe(0);
+      expect(member(s, n.id).days).toBe(days);
     }
     const back = morning(db, s);
     expect(back?.back).toEqual([{ id: n.id, skill: 4 }]);
