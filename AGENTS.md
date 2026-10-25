@@ -286,8 +286,9 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   English (English typed as the Russian; the medical database is Russian-only for now and shows as is in English mode);
   `tools/test/i18n.test.ts` fails on Cyrillic in strings elsewhere in `src/app`, `src/ui`, `src/render`, `src/sim`.
 - `electron/` — the main process (window, `app://`, no network) and preload; `app/index.html` — the page.
-- `assets/` — CC0 models, Rocketbox people under MIT (`assets/models/rocketbox/`, made by `tools/app/people.mjs`) and
-  `LICENSES.md` (sources, licenses, SHA-256; MIT text verbatim); never add a model without its line there.
+- `assets/` — CC0 models, Rocketbox people under MIT (`assets/models/rocketbox/`, made by `tools/app/people.mjs`), the
+  game's font IBM Plex Sans under SIL OFL 1.1 (`assets/fonts/`, unmodified files with `OFL.txt`; owner's decision #107)
+  and `LICENSES.md` (sources, licenses, SHA-256; MIT text verbatim); never add a model or a font without its line there.
 - `tools/app/` — page build, model preparation, browser scenario, headless bench, the release update archive — one
   `resources/app.asar` (`update-zip.mjs`); `tools/test/` — Bun tests;
   `tools/content/` — database build; `tools/bench/` — engine bench.

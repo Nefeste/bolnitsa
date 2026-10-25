@@ -7,6 +7,10 @@
   <link rel="icon" href="data:,">
   <title>Bolnitsa</title>
   <style>
+    /* шрифт игры — IBM Plex Sans (решение владельца #107; docs/reports/2026-10-fonts.md): свои файлы из assets/fonts, сети не
+       нужно; переменные — насыщенность 100–700 и ширина 75–100 % в одном файле; цифры табличные сразу */
+    @font-face { font-family: "IBM Plex Sans"; src: url("assets/fonts/IBMPlexSans[wdth,wght].ttf") format("truetype"); font-weight: 100 700; font-stretch: 75% 100%; font-style: normal; font-display: block; }
+    @font-face { font-family: "IBM Plex Sans"; src: url("assets/fonts/IBMPlexSans-Italic[wdth,wght].ttf") format("truetype"); font-weight: 100 700; font-stretch: 75% 100%; font-style: italic; font-display: block; }
     :root {
       --panel: rgba(22, 30, 34, 0.86);
       --panel-2: rgba(36, 48, 54, 0.92);
@@ -19,7 +23,7 @@
       --yellow: #e7b416;
       --green: #4caf6e;
     }
-    html, body { margin: 0; height: 100%; background: #2a3236; color: var(--text); font: 13px/1.35 system-ui, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+    html, body { margin: 0; height: 100%; background: #2a3236; color: var(--text); font: 13px/1.35 "IBM Plex Sans", system-ui, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
     #view { position: absolute; inset: 0; touch-action: none; }
     #ui { position: absolute; inset: 0; pointer-events: none; }
     #ui > * { pointer-events: auto; }
