@@ -5,7 +5,9 @@ import { type ReactNode, useState } from 'react';
 import { type BodySystem, SYSTEMS } from '../../content/types';
 import { clock, T } from '../../i18n';
 import type { PersonInfo } from '../../render/population';
-import type { AskRow, PatientRow, WardRow } from '../../sim/doctor';
+import { AGREE_ALL, type AskRow, type DecisionRow, type PatientRow, type WardRow } from '../../sim/doctor';
+import { ASK_RULES, DEFAULT_ASKS } from '../../engine/shift/approve';
+import type { AskRule } from '../../engine/shift/types';
 import type { Actions, Hud, RoomCard } from '../store';
 import { Levels } from './Card';
 
@@ -214,6 +216,12 @@ function WardItem({ r, worse, actions }: { r: WardRow; worse: boolean; actions: 
         {r.op ? <div className="small">{r.op}</div> : null}
         <div className="small muted">{T.round.treatments(r.treatments)}</div>
         {r.by ? <div className="small muted">{T.card.by}: {r.by}</div> : null}
+        {/* врач предлагает выписать (spec docs/specs/2026-10-two-ways.md, F3) */}
+        {r.approve ? (
+          <div className="small approve" id={`ward-approve-${r.id}`}>
+            {r.approve}
+          </div>
+        ) : null}
         <div className="row">
           <Find id={r.id} find={actions.find} prefix="ward-find" />
           <button type="button" className="small" id={`ward-replan-${r.id}`} title={T.round.replanHint} onClick={() => actions.doctor({ kind: 'open', id: r.id })}>
@@ -222,6 +230,11 @@ function WardItem({ r, worse, actions }: { r: WardRow; worse: boolean; actions: 
           <button type="button" className="small" id={`ward-discharge-${r.id}`} disabled={!r.canDischarge} onClick={() => actions.doctor({ kind: 'ward', id: r.id, how: 'discharge' })}>
             {w.discharge}
           </button>
+          {r.approve ? (
+            <button type="button" className="small" id={`ward-stay-${r.id}`} onClick={() => actions.doctor({ kind: 'approve', id: r.id, answer: 'stay' })}>
+              {T.doctor.asks.stay}
+            </button>
+          ) : null}
           <button type="button" className="small" disabled={!r.canTransfer} onClick={() => actions.doctor({ kind: 'ward', id: r.id, how: 'transfer' })}>
             {w.transfer}
           </button>
@@ -265,12 +278,16 @@ function Mine({ mine, open, actions }: { mine: BodySystem[]; open: boolean; acti
   );
 }
 
-/** Вкладка «Просят посмотреть»: просьбы нанятых врачей с ответами; автопауза. */
+/**
+ * Вкладка «Просят посмотреть»: просьбы нанятых врачей с ответами; автопауза; о чём спрашивать главврача и решения врачей на
+ * утверждении (spec docs/specs/2026-10-two-ways.md, F3).
+ */
 export function Asks({ hud, actions }: { hud: Hud; actions: Actions }) {
   const d = hud.doctor;
   const st = d?.state;
   const t = T.doctor.asks;
   if (!d || !st) return null;
+  const sure = st.decisions.filter(x => x.p !== undefined && x.p >= AGREE_ALL).length;
   return (
     <div id="asks">
       <label className="small">
@@ -282,7 +299,127 @@ export function Asks({ hud, actions }: { hud: Hud; actions: Actions }) {
           <Ask key={a.id} a={a} colleagues={st.colleagues.filter(c => c.id !== a.by)} actions={actions} />
         ))}
       </ul>
+      <div className="label">{t.decisions}</div>
+      {st.decisions.length === 0 ? (
+        <p className="muted small" id="decisions-empty">
+          {t.decisionsEmpty}
+        </p>
+      ) : (
+        <>
+          <div className="row">
+            <button type="button" id="agree-all" disabled={sure === 0} onClick={() => actions.doctor({ kind: 'agreeAll' })}>
+              {t.agreeAll(sure)}
+            </button>
+          </div>
+          <p className="muted small">{t.keys}</p>
+        </>
+      )}
+      <ul id="decisions">
+        {st.decisions.map(x => (
+          <Decision key={x.id} x={x} colleagues={st.colleagues.filter(c => c.id !== x.by)} actions={actions} />
+        ))}
+      </ul>
+      <Rules rules={st.rules} actions={actions} />
     </div>
+  );
+}
+
+/**
+ * О чём спрашивать главврача (spec docs/specs/2026-10-two-ways.md, F3): строкой — что отмечено, «Изменить» — галочки; «ни о
+ * чём» снимает все. Внизу вкладки: сверху — то, на что отвечать.
+ */
+function Rules({ rules, actions }: { rules: AskRule[]; actions: Actions }) {
+  const t = T.doctor.asks;
+  const [open, setOpen] = useState(false);
+  const set = (next: AskRule[]) => actions.doctor({ kind: 'asks', rules: next });
+  return (
+    <div className="rules" id="ask-rules" title={t.rulesHint}>
+      <div className="row">
+        <span className="label">{t.rules}</span>
+        <button type="button" id="rules-edit" className="small" onClick={() => setOpen(!open)}>
+          {open ? T.doctor.mineDone : T.doctor.mineEdit}
+        </button>
+      </div>
+      <div className="small" id="rules-list">
+        {rules.length > 0 ? ASK_RULES.filter(r => rules.includes(r)).map(r => t.rule[r]).join(', ') : t.rule.never}
+      </div>
+      {open ? (
+        <>
+          {ASK_RULES.map(r => (
+            <label key={r} className="small">
+              <input type="checkbox" id={`rule-${r}`} checked={rules.includes(r)} onChange={() => set(rules.includes(r) ? rules.filter(x => x !== r) : [...rules, r])} /> {t.rule[r]}
+            </label>
+          ))}
+          <label className="small">
+            <input type="checkbox" id="rule-never" checked={rules.length === 0} onChange={() => set(rules.length === 0 ? [...DEFAULT_ASKS] : [])} /> {t.rule.never}
+          </label>
+          <p className="muted small">{t.rulesHint}</p>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Решение врача на утверждении: «Терапевт, навык 3 · Иванова, 67 · пневмония — 7 из 10 · амоксициллин · дома»; «Согласен»,
+ * «Карта», «Ещё обследование», «Взять», «Направить к …»; выписка — «Выписать», «Ещё сутки», «Карта».
+ */
+function Decision({ x, colleagues, actions }: { x: DecisionRow; colleagues: { id: string; role: string; skill: number }[]; actions: Actions }) {
+  const t = T.doctor.asks;
+  const [to, setTo] = useState('');
+  const open = () => actions.doctor({ kind: 'open', id: x.id });
+  return (
+    <li className={`ask decision t-${x.triage}`} id={`dec-${x.id}`}>
+      <div>
+        <b>{t.by(x.role, x.skill)}</b> · {x.who}
+      </div>
+      <div className="small" id={`dec-text-${x.id}`}>
+        {x.decided ?? x.discharge}
+      </div>
+      <div className="small muted">
+        {x.why.map(w => t.decisionWhy[w]).join(', ')} · {t.until(clock(x.until))}
+      </div>
+      <div className="row">
+        <button type="button" id={`dec-agree-${x.id}`} className="on" onClick={() => actions.doctor({ kind: 'approve', id: x.id, answer: 'agree' })}>
+          {x.discharge !== undefined ? t.dischargeNow : t.agree}
+        </button>
+        <button type="button" id={`dec-view-${x.id}`} title={T.doctor.viewHint} onClick={open}>
+          {T.doctor.view}
+        </button>
+        {x.discharge !== undefined ? (
+          <button type="button" id={`dec-stay-${x.id}`} onClick={() => actions.doctor({ kind: 'approve', id: x.id, answer: 'stay' })}>
+            {t.stay}
+          </button>
+        ) : (
+          <>
+            <button type="button" id={`dec-exam-${x.id}`} title={t.examHint} onClick={open}>
+              {t.exam}
+            </button>
+            <button type="button" id={`dec-take-${x.id}`} title={T.doctor.takeHint} onClick={() => actions.doctor({ kind: 'approve', id: x.id, answer: 'take' })}>
+              {t.take}
+            </button>
+            <select
+              id={`dec-refer-${x.id}`}
+              value={to}
+              disabled={colleagues.length === 0}
+              title={colleagues.length === 0 ? t.noRefer : undefined}
+              onChange={e => {
+                setTo(e.target.value);
+                if (e.target.value) actions.doctor({ kind: 'approve', id: x.id, answer: 'refer', to: e.target.value });
+              }}
+            >
+              <option value="">{t.refer}</option>
+              {colleagues.map(c => (
+                <option key={c.id} value={c.id}>
+                  {t.referTo(c.role, c.skill)}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
+        <Find id={x.id} find={actions.find} prefix="dec-find" />
+      </div>
+    </li>
   );
 }
 

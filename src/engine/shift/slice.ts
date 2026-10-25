@@ -25,6 +25,11 @@ export interface PersonSlice {
   room?: string;
   /** нанятый врач просит вас посмотреть его (spec 2026-10-consults): с какого часа, до какого ждёт ответа, почему */
   asks?: Pick<import('./types').Consult, 'at' | 'until' | 'why' | 'lead'>;
+  /**
+   * решение его врача ждёт главврача (spec 2026-10-two-ways, F3): с какого часа и до какого; ждёт у двери кабинета, лежащий
+   * — выписки на своей койке
+   */
+  approve?: { at: number; until: number };
   /** кто ведёт: номер человека из штата; нет — вы или никто */
   by?: string;
   doing: Doing;
@@ -140,6 +145,7 @@ export function sliceOf(s: ShiftState, office?: string): ShiftSlice {
       id: p.id, status: p.status, triage: p.triage, ...(d.room ? { room: d.room } : {}), ...(p.by ? { by: p.by } : {}), doing: d.doing,
       ...(d.bed !== undefined ? { bed: d.bed } : {}), kind: p.kind, since: ph.since, ...(ph.limit !== undefined ? { limit: ph.limit } : {}),
       ...(d.arrive !== undefined ? { arrive: d.arrive } : {}), ...(d.bench !== undefined ? { bench: d.bench } : {}),
+      ...(p.approve ? { approve: { at: p.approve.at, until: p.approve.until } } : {}),
     });
   }
   // «Просят посмотреть» (spec 2026-10-consults): у кого нанятый врач ждёт вашего ответа

@@ -301,3 +301,34 @@ describe('вкладка «Пациенты» и значки', () => {
     expect(moodOf({ ...base, status: 'away', doing: 'results' }, H(11))).toBe('long');
   });
 });
+
+describe('главврач утверждает в окне (spec docs/specs/2026-10-two-ways.md, часть 2)', () => {
+  test('путь: решение ждёт вашего ответа — и чем кончилось: согласились, промолчали, ещё обследование, взяли', () => {
+    const decided = (end: Journey['end'], more: Journey['steps'] = []): Journey => ({
+      kind: 'walkIn', at: H(10),
+      steps: [{ t: H(10, 5), k: 'doctor', by: 's1', room: 'r1' }, { t: H(10, 25), k: 'approve', by: 's1', until: H(10, 55) }, ...more],
+      ...(end ? { end } : {}),
+    });
+    const line = (j: Journey, now: number) => pathCard(j, false, now, names).lines.find(l => l.text.startsWith('решение врача'))!;
+    expect(line(decided(undefined), H(10, 37))).toEqual({ at: '10:25', text: 'решение врача ждёт вашего ответа — 12 мин (до 10:55)', why: 'ждёт у двери кабинета, врач принимает другого', kind: 'wait', now: true });
+    expect(line(decided({ t: H(10, 31), how: 'home', setting: 'home', chief: 'agreed' }), H(11)).why).toBe('вы согласились');
+    expect(line(decided({ t: H(10, 55), how: 'home', setting: 'home', chief: 'silent' }), H(11)).why).toBe('ответа не было — решение врача в силе');
+    expect(line(decided(undefined, [{ t: H(10, 30), k: 'own', by: 's1' }]), H(10, 40)).why).toBe('вы назначили ещё обследование');
+    expect(line(decided(undefined, [{ t: H(10, 30), k: 'own', by: 's2', refer: true }]), H(10, 40)).why).toBe('вы направили к другому врачу');
+    expect(line(decided(undefined, [{ t: H(10, 30), k: 'doctor' }]), H(10, 40)).why).toBe('вы взяли случай');
+    // обследование, которое назначил главврач, — в строке обследования
+    const j = decided(undefined, [
+      { t: H(10, 30), k: 'own', by: 's1' }, { t: H(10, 33), k: 'doctor', by: 's1', room: 'r1' },
+      { t: H(10, 35), k: 'exam', exam: 'exam.xray', room: 'r3', at: H(10, 37), start: H(10, 37), end: H(10, 45), back: H(10, 47), ready: H(11), chief: true },
+    ]);
+    expect(pathCard(j, false, H(10, 50), names).lines.find(l => l.text.startsWith('Рентгенография'))?.why).toBe('назначил главврач');
+  });
+
+  test('значок — после просьбы; в «Пациентах» — «ждёт вашего решения»', () => {
+    const base = { status: 'waiting' as const, doing: 'waiting' as const, since: H(10), limit: -1 };
+    expect(moodOf({ ...base, approve: { at: H(10), until: H(10, 30) } }, H(10))).toBe('approve');
+    expect(moodOf({ ...base, ask: { at: H(10), until: H(10, 30) }, approve: { at: H(10), until: H(10, 30) } }, H(10))).toBe('ask');
+    const row = { ...base, triage: 'green' as const, approve: { at: H(10), until: H(10, 30) }, key: 'p:1', id: '1-w0001', title: 'A' };
+    expect(patientRows([row], H(10, 12), NO_FILTER).rows[0].text).toBe('ждёт вашего решения — 12 мин');
+  });
+});

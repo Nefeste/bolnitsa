@@ -502,6 +502,33 @@ export const doctorRu = {
       referTo: (role: string, skill: number) => `${role}, навык ${skill}`,
       noRefer: 'других врачей сегодня нет',
       autopause: 'Автопауза: просьбы, результаты и ухудшение ваших больных',
+      /** «Главврач утверждает» (spec docs/specs/2026-10-two-ways.md, F3): о чём спрашивать и решения на утверждении */
+      rules: 'О чём спрашивать главврача',
+      rulesHint: 'Отмеченное врачи приносят вам, остальное решают сами. Автопауза — только на «не уверен»',
+      rule: {
+        unsure: 'не уверен',
+        long: 'долгий случай: 4 ч без диагноза',
+        below90: 'решение с уверенностью ниже 90 %',
+        every: 'каждое решение',
+        admit: 'госпитализация',
+        discharge: 'выписка из стационара',
+        never: 'ни о чём',
+      } as Record<string, string>,
+      decisions: 'Решения врачей',
+      decisionsEmpty: 'Решений на утверждении нет',
+      decisionWhy: {
+        below90: 'уверен меньше чем на 90 %', every: 'каждое решение', admit: 'госпитализация', exam: 'после вашего обследования', discharge: 'выписка',
+      } as Record<string, string>,
+      decided: (dx: string, outOf10: number, plan: string) => `${dx} — ${outOf10} из 10 · ${plan}`,
+      discharge: (dx: string, days: string) => `${dx} · ${days} — можно выписывать`,
+      agree: 'Согласен',
+      exam: 'Ещё обследование',
+      examHint: 'Карта больного: отметьте в бланке — назначит его врач и решит уже с результатом',
+      take: 'Взять',
+      dischargeNow: 'Выписать',
+      stay: 'Ещё сутки',
+      agreeAll: (n: number) => `Согласен со всеми, где уверен от 80 % (${n})`,
+      keys: 'Enter — «Согласен» на верхнем, Shift+Enter — его карта',
     },
     who: (name: string, sex: 'm' | 'f', age: number) => `${name}, ${age} ${pluralRu(age, 'год', 'года', 'лет')}${sex === 'f' ? ', ж' : ', м'}`,
     office2: {
@@ -527,6 +554,12 @@ export const doctorRu = {
       /** решение нанятого врача у закрытого им приёма (spec 2026-10-discharged-card) */
       decided: 'Решение',
       ordered: (name: string, at: string) => `назначено: ${name} — будет к ${at}`,
+      /** решение ждёт главврача (spec docs/specs/2026-10-two-ways.md, F3) */
+      approve: (at: string) => `Решение ждёт вашего ответа до ${at}; не ответите — останется в силе`,
+      dischargeAsk: (at: string) => `Врач предлагает выписать — ответ до ${at}; не ответите — выпишет`,
+      /** «Ещё обследование» (F2): назначает главврач, делает врач */
+      orderHint: 'Ещё обследование — отметьте в бланке: назначит врач и решит уже с результатом',
+      orderedChief: 'назначено вами — сделает врач',
       talk: 'Опрос',
       exam: 'Осмотр и результаты',
       decide: 'Гипотезы и решение',
@@ -554,6 +587,8 @@ export const doctorRu = {
     },
     notices: {
       consult: (role: string) => `${role} просит посмотреть больного`,
+      /** решение на утверждении (spec docs/specs/2026-10-two-ways.md, F3) */
+      approve: (role: string) => `${role}: решение ждёт вашего ответа`,
       results: (name: string) => `${name}: готовы результаты — ждёт вас`,
       taken: (name: string) => `Случай ваш: ${name}`,
       /** позвали или взяли — идёт к вам; карта откроется, когда войдёт (spec 2026-10-owner-play-2) */

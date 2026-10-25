@@ -103,8 +103,10 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # «Поднять зарплату», «В другую смену», severance in «Уволить»; then growth: «вырос до
                                    # навыка 4» and back from study at the meeting with no scene rebuild, «Поднять зарплату»
                                    # in its row, «Отправить учиться» in the card; then orderlies: a patient on the gurney in
-                                   # front of the orderly, their cards, «Следить», the path, «Персонал», paramedics);
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|19` for one part
+                                   # front of the orderly, their cards, «Следить», the path, «Персонал», paramedics; then the
+                                   # chief approves: rule checkboxes, a decision in the list and on the map, its card with the
+                                   # «Ещё обследование» form, the path, Enter — «Согласен»);
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|20` for one part
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
@@ -114,6 +116,8 @@ npm run bench -- --mode desks --quick          # the same with Anamnez's appoint
 npm run bench -- --mode flow --day             # the whole day to 10:00 of day 2: day and night minutes, 08:00 meeting, 09:00 round
 npm run bench -- --mode flow --quick --flat    # flat arrivals by hour: the same patients as before the 24-hour day, to compare
 bun tools/bench/consults.ts                    # «Просят посмотреть»: share of hired doctors' cases that ask you (--probe: why these thresholds)
+bun tools/bench/approvals.ts                   # «Главврач утверждает»: decisions per hour awaiting approval and how many are wrong
+                                               # (`--rules below90,discharge`, `--answer silent`; next to it — the same day by default)
 bun tools/sim/economy.ts --seeds 1,2,3         # economy simulator: scripted hospitals for 7 days, cash, flow, reputation and the criteria
                                                # (`--days 14` — and who quits on their own: at most two in two weeks)
 bun tools/sim/halls.ts --flow 14               # the polyclinic under load: waiting halls by the offices vs at the entrance
@@ -193,6 +197,14 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   blue (window only, `m:` walkers) wheels each ambulance arrival in and leaves. The slice's `gurney` doing — admitted and
   still waiting for pickup (`pickupOf`); the path keeps the bed ride in `Journey.bed` and an exam ride in `gurney` of its
   exam step.
+- The chief approves (`docs/specs/2026-10-two-ways.md`, part 2): `shift/approve.ts` — the rule checkboxes (`meta.asks`, none
+  — «unsure» and «long case» as before) and whether a hired doctor's decision waits for the chief. The decision waits in
+  `ShiftPatient.approve` (the patient at the office door, no patience; the doctor calls the next); answers — the `approve`
+  command, the deadline — the `approve` event: silence closes the case with the doctor's plan at the minute he decided
+  (`closePatient(…, at)`), so silence changes nothing. «Ещё обследование» — the `order` command: `ShiftPatient.orders` the
+  doctor does first at his next step (`examStep`) and his next decision comes back to the chief (`chief`). Discharge is
+  asked at the morning round. Day totals — `DaySummary.chief`. In the window: `decisions` rows in the doctor state, the
+  «Просят посмотреть» tab (checkboxes, list, Enter / Shift+Enter), a read card with `order` gets the order form.
 - Saves (`docs/specs/2026-10-saves.md`): `src/engine/shift/migrate.ts` — the save schema number and the migration chain;
   `src/sim/packing.ts` — the file (header, engine snapshot, window view; JSON + gzip), written by the worker;
   `src/app/saves.ts` — slots (`auto-1…3` shifted each morning, `exit`, `manual-<n>`) over a disk: `electron/saves.cjs`

@@ -380,7 +380,8 @@ function RightTabs({ hud, actions }: P) {
   const tabs: [Tab, string][] = [
     ['patients', T.tabs.patients],
     ['staff', T.tabs.staff],
-    ['asks', T.doctor.asks.tab(hud.doctor?.state?.asks.length ?? 0)],
+    // просьбы и решения врачей на утверждении (spec docs/specs/2026-10-two-ways.md, F3): счётчик — в названии вкладки
+    ['asks', T.doctor.asks.tab((hud.doctor?.state?.asks.length ?? 0) + (hud.doctor?.state?.decisions.length ?? 0))],
     ['journal', T.tabs.journal],
     ['reports', T.tabs.reports],
     ['goals', T.tabs.goals],
@@ -512,6 +513,8 @@ function HirePick({ room, role, id, shift, options, actions }: { room: string; r
 /** Что делает пациент — для карточки: идёт — куда и к какому часу дойдёт; везут на каталке — откуда и куда. */
 function doingLine(info: Extract<PersonInfo, { kind: 'patient' }>, names: Names): string {
   if (info.gurney) return wheelLine(info.gurney, id => lowerFirst(names.room(id)));
+  // решение его врача ждёт главврача (spec docs/specs/2026-10-two-ways.md, F3): у двери кабинета или на своей койке
+  if (info.approve !== undefined) return T.card.approve(clock(info.approve));
   const what = info.door ? (info.walking ? T.card.toDoor : T.card.atDoor) : info.walking ? T.going[info.doing] : T.doing[info.doing];
   return info.arrive !== undefined ? `${what} · ${T.card.arrives(clock(info.arrive))}` : what;
 }

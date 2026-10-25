@@ -81,7 +81,7 @@ export function askLong(db: ContentDb, x: Pick<AskInput, 'candidates' | 'obs' | 
  * Уверенность по группам болезней: в группе диагноза `dx` (`p1`), самая вероятная другая группа (`other`, `p2`) и что врач
  * думает — его диагноз и лучшая болезнь второй группы с уверенностью во всей группе каждого.
  */
-function groupsOf(db: ContentDb, dx: Id, beliefs: readonly Belief[]): { p1: number; p2: number; other?: Id; lead: Belief[] } {
+export function groupsOf(db: ContentDb, dx: Id, beliefs: readonly Belief[]): { p1: number; p2: number; other?: Id; lead: Belief[] } {
   const group = (id: Id) => db.conditions[id]?.group ?? id;
   // уверенность в группе — сумма по её болезням; лучшая болезнь группы — первая: уверенности идут по убыванию
   const mass = new Map<Id, number>();

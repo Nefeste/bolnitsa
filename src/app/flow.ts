@@ -40,16 +40,19 @@ export interface Seen {
   /** до какого часа ждёт в общей очереди; -1 — не в ней или не уходит */
   limit: number;
   ask?: { at: number; until: number };
+  /** решение его врача ждёт главврача (spec docs/specs/2026-10-two-ways.md, F3) */
+  approve?: { at: number; until: number };
 }
 
-export type Mood = 'ask' | 'unhappy' | 'long';
+export type Mood = 'ask' | 'approve' | 'unhappy' | 'long';
 
 /** Ждёт: в очереди к врачу или своему врачу, у кабинета обследования, результатов. */
 export const waits = (p: Pick<Seen, 'status' | 'doing'>) => p.status === 'waiting' || p.doing === 'examQueue' || p.doing === 'results';
 
-/** Значок над человеком: врач просит вас посмотреть его; терпение на исходе; ждёт долго. */
-export function moodOf(p: Pick<Seen, 'status' | 'doing' | 'since' | 'limit' | 'ask'>, t: number): Mood | undefined {
+/** Значок над человеком: врач просит вас посмотреть его; решение врача ждёт вашего ответа; терпение на исходе; ждёт долго. */
+export function moodOf(p: Pick<Seen, 'status' | 'doing' | 'since' | 'limit' | 'ask' | 'approve'>, t: number): Mood | undefined {
   if (p.ask) return 'ask';
+  if (p.approve) return 'approve';
   if (p.limit >= 0 && t - p.since >= (p.limit - p.since) * UNHAPPY) return 'unhappy';
   // ждёт каталку (spec docs/specs/2026-10-orderlies.md) — тоже ожидание
   if ((waits(p) || p.doing === 'ambulance' || p.doing === 'gurney') && p.status !== 'inRoom' && t - p.since >= LONG_WAIT) return 'long';
@@ -95,7 +98,7 @@ export interface PatientRow {
 
 /** Строки списка: ждущие — сверху, дольше всех ждущий — первым; фильтры — срочность, место, долгое ожидание. */
 export function patientRows(
-  list: readonly (Pick<Seen, 'status' | 'triage' | 'doing' | 'since' | 'limit' | 'ask'> & { key: string; id: string; title: string })[],
+  list: readonly (Pick<Seen, 'status' | 'triage' | 'doing' | 'since' | 'limit' | 'ask' | 'approve'> & { key: string; id: string; title: string })[],
   t: number,
   f: PatientFilter,
 ): { rows: PatientRow[]; total: number } {
@@ -104,8 +107,9 @@ export function patientRows(
   picked.sort((a, b) => rank(a) - rank(b) || a.since - b.since || (a.id < b.id ? -1 : 1));
   const rows = picked.map(p => {
     const mood = moodOf(p, t);
-    // привезённый скорой лежит в смотровой: ждёт врача или врач у него
-    const doing = p.doing === 'ambulance' ? (p.status === 'waiting' ? T.flow.ambulanceWaits : T.flow.ambulanceSeen) : T.doing[p.doing];
+    // привезённый скорой лежит в смотровой: ждёт врача или врач у него; решение его врача ждёт вас (spec 2026-10-two-ways, F3)
+    const doing = p.approve ? T.flow.approveShort
+      : p.doing === 'ambulance' ? (p.status === 'waiting' ? T.flow.ambulanceWaits : T.flow.ambulanceSeen) : T.doing[p.doing];
     return { key: p.key, id: p.id, title: p.title, text: `${doing} — ${dur(t - p.since)}`, triage: p.triage, ...(mood ? { mood } : {}) };
   });
   return { rows, total: list.length };
@@ -220,7 +224,9 @@ export function pathCard(j: Journey, female: boolean, now: number, names: PathNa
           : g && stop < g.pick ? (g.busy ? T.flow.gurneyBusy(who, clock(g.pick)) : T.flow.gurneyComing(who, clock(g.pick)))
           : g?.busy && g.pick - from >= 60 ? T.flow.gurneyWas(who, !!g.nurse, clock(g.pick))
           : undefined;
-        lines.push({ at: clock(from), text: T.flow.exam(e.name, parts.join(', ')), ...(why ? { why } : {}), kind: 'do', ...(open && now < x.back ? mark : {}) });
+        // назначил главврач (spec docs/specs/2026-10-two-ways.md, F2)
+        const whyAll = [x.chief ? T.flow.chief : undefined, why].filter(Boolean).join('; ');
+        lines.push({ at: clock(from), text: T.flow.exam(e.name, parts.join(', ')), ...(whyAll ? { why: whyAll } : {}), kind: 'do', ...(open && now < x.back ? mark : {}) });
         // вернулся к врачу — снова у него до следующего шага
         const back = away ? x.end : x.back;
         if (!away && next - back >= 60) {
@@ -247,6 +253,19 @@ export function pathCard(j: Journey, female: boolean, now: number, names: PathNa
         waited += d;
         const late = !open && next >= x.until;
         lines.push({ at: clock(from), text: T.flow.ask(dur(d), clock(x.until)), ...(late ? { why: T.flow.askLate } : {}), kind: 'wait', ...mark });
+        break;
+      }
+      // решение врача ждёт главврача (spec docs/specs/2026-10-two-ways.md, F3): чем кончилось — по следующему шагу или концу пути
+      case 'approve': {
+        waited += d;
+        const nx = steps[i + 1];
+        const why = open ? T.flow.approveWait
+          : nx?.k === 'own' ? (nx.refer ? T.flow.approveRefer : T.flow.approveExam)
+          : nx?.k === 'queue' || (nx?.k === 'doctor' && nx.by === undefined) ? T.flow.approveTake
+          : j.end?.chief === 'agreed' ? T.flow.approveAgreed
+          : j.end?.chief === 'silent' ? T.flow.approveSilent
+          : undefined;
+        lines.push({ at: clock(from), text: T.flow.approve(dur(d), clock(x.until)), ...(why ? { why } : {}), kind: 'wait', ...mark });
         break;
       }
       // врач ушёл отдыхать (spec docs/specs/2026-10-staff-shifts.md, часть 2): ждёт его — почему и до какого часа

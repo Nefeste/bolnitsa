@@ -4,21 +4,22 @@
 // в срезе (`handle`), он не меняется, пока человек в больнице. Формат 2 (spec docs/specs/2026-10-flow-ui.md): у человека —
 // с какого момента он делает то, что делает, до какого часа ждёт в общей очереди и просьба нанятого врача о нём. Имя —
 // в строке, его даёт поток расчёта (spec docs/specs/2026-10-owner-play.md): окно не знает словарей имён. Формат 4 (spec
-// docs/specs/2026-10-door-benches.md): скамья, на которой он ждёт у двери кабинета.
+// docs/specs/2026-10-door-benches.md): скамья, на которой он ждёт у двери кабинета. Формат 5 (spec
+// docs/specs/2026-10-two-ways.md, F3): решение его врача ждёт главврача — с какого часа и до какого.
 import type { Patient } from '../engine/med/types';
 import type { Doing, PersonSlice, ShiftSlice } from '../engine/shift/slice';
 import type { ShiftState, Triage, VisitKind } from '../engine/shift/types';
 
 /** Заголовок: чисел (с частью 5б — касса за сутки и репутация, spec docs/specs/2026-10-economy.md). */
 export const HEADER = 14;
-/** На человека: чисел (формат 3, spec docs/specs/2026-10-walk.md: когда дойдёт; формат 4 — скамья у двери). */
-export const STRIDE = 14;
-export const FORMAT = 4;
+/** На человека: чисел (формат 3, spec docs/specs/2026-10-walk.md: когда дойдёт; формат 4 — скамья у двери; 5 — утверждение). */
+export const STRIDE = 16;
+export const FORMAT = 5;
 
 /** Поля заголовка. */
 export const H = { format: 0, t: 1, day: 2, dayOpen: 3, count: 4, arrived: 5, seen: 6, left: 7, cash: 8, lag: 9, queue: 10, reserved: 11, today: 12, reputation: 13 } as const;
 /** Поля человека. */
-export const P = { handle: 0, status: 1, triage: 2, room: 3, by: 4, doing: 5, bed: 6, flags: 7, since: 8, limit: 9, askAt: 10, askUntil: 11, arrive: 12, bench: 13 } as const;
+export const P = { handle: 0, status: 1, triage: 2, room: 3, by: 4, doing: 5, bed: 6, flags: 7, since: 8, limit: 9, askAt: 10, askUntil: 11, arrive: 12, bench: 13, approveAt: 14, approveUntil: 15 } as const;
 /** Нет времени: срока терпения, просьбы. */
 export const NO_TIME = -1;
 /** Кассы нет — в этом режиме движка нет экономики. */
@@ -133,6 +134,9 @@ export function packSlice(
     buf[o + P.arrive] = p.arrive ?? NO_TIME;
     // у двери на скамье (spec docs/specs/2026-10-door-benches.md): её клетка; нет — -1
     buf[o + P.bench] = p.bench ?? -1;
+    // решение его врача ждёт главврача (spec docs/specs/2026-10-two-ways.md, F3)
+    buf[o + P.approveAt] = p.approve ? p.approve.at : NO_TIME;
+    buf[o + P.approveUntil] = p.approve ? p.approve.until : NO_TIME;
   });
   handles.keep(present);
   return { buf, names };
@@ -160,6 +164,8 @@ export interface PersonView {
   arrive?: number;
   /** ждёт у двери кабинета на скамье: её клетка (spec docs/specs/2026-10-door-benches.md) */
   bench?: number;
+  /** решение его врача ждёт главврача: с какого часа и до какого (spec docs/specs/2026-10-two-ways.md, F3) */
+  approve?: { at: number; until: number };
 }
 
 export function personAt(buf: Int32Array, i: number): PersonView {
@@ -178,6 +184,7 @@ export function personAt(buf: Int32Array, i: number): PersonView {
     ...(buf[o + P.askUntil] !== NO_TIME ? { ask: { at: buf[o + P.askAt], until: buf[o + P.askUntil] } } : {}),
     ...(buf[o + P.arrive] !== NO_TIME ? { arrive: buf[o + P.arrive] } : {}),
     ...(buf[o + P.bench] >= 0 ? { bench: buf[o + P.bench] } : {}),
+    ...(buf[o + P.approveUntil] !== NO_TIME ? { approve: { at: buf[o + P.approveAt], until: buf[o + P.approveUntil] } } : {}),
   };
 }
 
