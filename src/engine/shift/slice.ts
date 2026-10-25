@@ -6,14 +6,16 @@
 import { examQueued, phaseOf } from './journey';
 import { REGISTRATION, type ShiftPatient, type ShiftState, TRIAGE, type Triage, type VisitKind } from './types';
 import { cashNow, dayNet } from './money';
+import { pickupOf } from './gurney';
 import { waitsAt } from './walking';
 
 /**
  * Что человек делает — то, что движок знает и без отрисовки, по правилам карты «Анамнеза» (`src/state/clinicMap.ts`
  * там): только что пришёл — у регистратора, потом у медсестры доврачебного кабинета; ждёт в зоне ожидания; у врача;
- * на обследовании в другом кабинете; ждёт обследования или результатов; лежит; на операции; привезла скорая.
+ * на обследовании в другом кабинете; ждёт обследования или результатов; лежит; на операции; привезла скорая; положили, а
+ * каталки ещё нет (spec docs/specs/2026-10-orderlies.md) — лежит на своём месте в смотровой или ждёт у двери кабинета.
  */
-export type Doing = 'registration' | 'triage' | 'waiting' | 'office' | 'exam' | 'examQueue' | 'results' | 'ward' | 'surgery' | 'ambulance';
+export type Doing = 'registration' | 'triage' | 'waiting' | 'office' | 'exam' | 'examQueue' | 'results' | 'ward' | 'surgery' | 'ambulance' | 'gurney';
 
 /** Где человек сейчас: номер помещения плана (`r12`); нет — в зоне ожидания, в пути или у входа. */
 export interface PersonSlice {
@@ -108,11 +110,16 @@ function doingOf(s: ShiftState, p: ShiftPatient, rooms: Map<string, string> | un
     if (!next) return { doing: 'results' };
     return { doing: examQueued(s, p, next.end) === false ? 'exam' : 'examQueue', room: next.room };
   }
-  // положили в стационар, а каталки ещё нет (spec docs/specs/2026-10-orderlies.md) — лежит на своём месте в смотровой
-  if (p.status === 'admitted' && p.bay) return { doing: 'ambulance', room: p.bay.room, bed: p.bay.bed };
-  // лежит; идёт операция — на операционном столе
+  // положили в стационар, а каталки ещё нет (spec docs/specs/2026-10-orderlies.md): привезённый скорой лежит на своём месте
+  // в смотровой; кого кладут в ПИТ или реанимацию от врача — ждёт у двери кабинета
+  if (p.status === 'admitted' && p.bay) return { doing: 'gurney', room: p.bay.room, bed: p.bay.bed };
+  if (p.status === 'admitted' && (s.rides || s.rideWait)) {
+    const from = pickupOf(s, p.id);
+    if (from !== undefined) return { doing: 'gurney', room: from };
+  }
+  // лежит; идёт операция — на операционном столе; на каталке — и после неё, пока его не увезли со стола
   const op = p.stay?.op;
-  if (op && !op.done && op.start !== undefined && op.start <= s.t && op.room) return { doing: 'surgery', room: op.room };
+  if (op && op.room && op.start !== undefined && op.start <= s.t && (!op.done || (op.carried && (op.off === undefined || s.t < op.off)))) return { doing: 'surgery', room: op.room };
   return { doing: 'ward', ...(p.stay ? { room: p.stay.room, bed: p.stay.bed } : {}) };
 }
 

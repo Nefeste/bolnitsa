@@ -10,7 +10,8 @@ import { hospitalOf } from '../../src/engine/hospital/site';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { ORDERLY, presetStaff, type StaffMember, withNightShift } from '../../src/engine/hospital/staff';
 import { apply, freeBays, hospitalCtx, newFlowShift, onTableIn, readyIn } from '../../src/engine/shift/engine';
-import { carriersOf, planRide } from '../../src/engine/shift/gurney';
+import { carriersOf, pickupOf, planRide } from '../../src/engine/shift/gurney';
+import { sliceOf } from '../../src/engine/shift/slice';
 import { migrate } from '../../src/engine/shift/migrate';
 import type { Ride, ShiftState } from '../../src/engine/shift/types';
 import { walkPc } from '../../src/engine/shift/walking';
@@ -123,6 +124,59 @@ describe('санитары и каталки', () => {
     expect(back.length).toBeGreaterThan(0);
     expect(busy).toBeGreaterThan(0);
   }, 180_000);
+
+  test('для окна (часть 2): ждёт каталку — там, где лежит; на столе — пока не увезли; перевозка — в пути пациента', () => {
+    const s = city(3, shifts, { perHour: 6, ambulancePerHour: 6 });
+    const n = { gurney: 0, table: 0, bed: 0, exam: 0 };
+    live(s, 30 * H, 60, x => {
+      const people = new Map(sliceOf(x).people.map(p => [p.id, p]));
+      for (const r of x.rides ?? []) {
+        const p = people.get(r.id);
+        const j = x.journeys?.of[r.id];
+        if (!p) continue;
+        // положили, а увезти ещё не успели: на своём месте в смотровой или у двери кабинета — «ждёт каталку»
+        if (r.why === 'bed' && x.t < r.off) {
+          expect(p).toMatchObject({ doing: 'gurney', room: r.from });
+          expect(pickupOf(x, r.id)).toBe(r.from);
+          n.gurney++;
+        }
+        if (r.why === 'bed' && x.t >= r.off) expect(pickupOf(x, r.id)).toBeUndefined();
+        // после операции — на столе, пока не увезли
+        if (r.why === 'back' && x.t < r.off) {
+          expect(p).toMatchObject({ doing: 'surgery', room: r.from });
+          n.table++;
+        }
+        // в пути: на койку — кто когда пришёл, повёз и довёз; на снимок — когда пришли и когда переложили к аппарату
+        if (r.why === 'bed' && j?.bed?.pick === r.pick) {
+          expect(j.bed).toMatchObject({ t: r.since, from: r.from, to: r.to, off: r.off, done: r.done });
+          n.bed++;
+        }
+        const step = j?.steps.find(q => q.k === 'exam' && q.gurney?.pick === r.pick);
+        if (r.why === 'exam' && step?.k === 'exam') {
+          expect(step).toMatchObject({ t: r.since, at: r.done, start: r.exam!.start, end: r.exam!.end, back: r.exam!.done });
+          n.exam++;
+        }
+      }
+    });
+    expect(n.gurney).toBeGreaterThan(0);
+    expect(n.table).toBeGreaterThan(0);
+    expect(n.bed).toBeGreaterThan(0);
+    expect(n.exam).toBeGreaterThan(0);
+  }, 180_000);
+
+  test('откуда повезут на койку: перевозка записана — пока не переложили; везти некому — откуда ждёт', () => {
+    const s = city(8);
+    const ride: Ride = { id: 'x', by: 's1', why: 'bed', since: s.t, from: 'r1', to: 'r2', go: s.t, pick: s.t + 300, off: s.t + 420, drop: s.t + 900, done: s.t + 1020, home: s.t + 1300 };
+    s.rides = [ride];
+    expect(pickupOf(s, 'x')).toBe('r1');
+    s.t = ride.off;
+    expect(pickupOf(s, 'x')).toBeUndefined();
+    delete s.rides;
+    s.rideWait = [{ id: 'x', why: 'bed', from: 'r3', to: 'r2', since: s.t }];
+    expect(pickupOf(s, 'x')).toBe('r3');
+    s.rideWait = [{ id: 'x', why: 'back', from: 'r4', to: 'r2', since: s.t }];
+    expect(pickupOf(s, 'x')).toBeUndefined();
+  });
 
   test('кто везёт: санитары смены; ни одного — медсестра того помещения, откуда везут; иначе ближайшая медсестра', () => {
     const s = city(4);

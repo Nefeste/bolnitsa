@@ -145,6 +145,16 @@ export function rideOf(s: ShiftState, id: string, why?: RideWhy): Ride | undefin
   return undefined;
 }
 
+/**
+ * Откуда лежачего `id` повезут на койку, пока его не увезли (spec «Как будет», 3: ждёт там, где лежит): перевозка записана,
+ * а переложить на каталку ещё не успели, — или везти некому. Нет — на койку его не ждут везти.
+ */
+export function pickupOf(s: ShiftState, id: string): string | undefined {
+  const r = rideOf(s, id, 'bed');
+  if (r) return s.t < r.off ? r.from : undefined;
+  return s.rideWait?.find(w => w.id === id && w.why === 'bed')?.from;
+}
+
 /** Тот, кто вёз, вернулся на место: перевозка кончилась — долой. */
 export function rideHome(s: ShiftState, id: string, by: string) {
   if (!s.rides) return;

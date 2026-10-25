@@ -94,6 +94,8 @@ export const economyRu = {
     room: (name: string, queue: number, wait: number, n: number) => `${lowerFirst(name)}: впереди до ${queue}, ожидание до ${dur(wait)} (${n} ${pluralRu(n, 'обследование', 'обследования', 'обследований')})`,
     door: (n: number) => `скорая у входа: до ${n} сразу — мест в смотровой не хватало`,
     beds: (peak: number, of: number) => `стационар: лежали до ${peak} из ${of} ${pluralRu(of, 'койки', 'коек', 'коек')}`,
+    /** каталка (spec docs/specs/2026-10-orderlies.md): лежачие ждали её дольше `over` минут */
+    gurney: (n: number, wait: number, over: number) => `каталку ждали дольше ${over} мин: ${n} ${pluralRu(n, 'раз', 'раза', 'раз')}, дольше всех — ${dur(wait)}`,
     broken: 'Сломалось с утра',
     brokenRow: (eq: string, room: string, rub: string) => `${eq} (${lowerFirst(room)}) — до завтра, ремонт ${rub}`,
     worse: 'Обход: стало хуже',

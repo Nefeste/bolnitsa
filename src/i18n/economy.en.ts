@@ -92,6 +92,7 @@ export const economyEn: EconomyStrings = {
     room: (name: string, queue: number, wait: number, n: number) => `${lowerFirst(name)}: up to ${queue} ahead, waits up to ${dur(wait)} (${n} ${pl(n, 'test', 'tests')})`,
     door: (n: number) => `ambulance at the door: up to ${n} at once — not enough emergency bays`,
     beds: (peak: number, of: number) => `inpatients: up to ${peak} of ${of} ${pl(of, 'bed', 'beds')}`,
+    gurney: (n: number, wait: number, over: number) => `waits for a gurney over ${over} min: ${n} ${pl(n, 'time', 'times')}, the longest — ${dur(wait)}`,
     broken: 'Broke down this morning',
     brokenRow: (eq: string, room: string, rub: string) => `${eq} (${lowerFirst(room)}) — until tomorrow, repair ${rub}`,
     worse: 'Round: worse',

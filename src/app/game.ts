@@ -11,12 +11,13 @@ import { type Block, DOCTOR, doctorRoom, openBlocks, type Problem, problemsOf, s
 import { demolishRefund, emptySite, furnishOf, hospitalOf, priceOf, readyCost, rulesOf, type Site, type SiteCommand, type SiteResult } from '../engine/hospital/site';
 import { siteOfPlan } from '../engine/hospital/site-plan';
 import { siteOfPreset } from '../engine/hospital/site-preset';
-import { dutyOf, onDuty, payOf, presetStaff, salaryOf, type Shift, shiftAt, type StaffMember, staffingOf, wageOf, withNightShift } from '../engine/hospital/staff';
+import { dutyOf, onDuty, ORDERLY, payOf, presetStaff, salaryOf, type Shift, shiftAt, type StaffMember, staffingOf, wageOf, withNightShift } from '../engine/hospital/staff';
 import type { CrewView } from '../engine/shift/crew';
 import { marketOf, type MoodView, raisedOf, severanceOf } from '../engine/shift/mood';
 import { mentorOf, stepsLeft } from '../engine/shift/growth';
 import type { Notice } from '../engine/shift/types';
 import { clock, genitive, type Lang, money, named, setLang, T } from '../i18n';
+import { lowerFirst } from '../i18n/case';
 import type { Walker } from '../render/crowd';
 import { ICONS } from '../render/icons';
 import { bakeLook, lodOf, packPeople, type People } from '../render/bake';
@@ -24,6 +25,7 @@ import { CATALOG, EXTRA_MODELS } from '../render/catalog';
 import { Crowd } from '../render/crowd';
 import { furnish, type Furnished } from '../render/furniture';
 import { Ghosts } from '../render/ghost';
+import { Gurneys } from '../render/gurney';
 import type { RoomRect } from '../render/highlight';
 import { type Layout, layoutOf } from '../render/layout';
 import { type Index, type Model, modelOf } from '../render/models';
@@ -42,7 +44,7 @@ import { Builder, objectName, whyText } from './build';
 import { Chips } from './chips';
 import { loadContent } from './content';
 import { Doctor } from './doctor';
-import { chipShown, dur, moodOf, pathCard, type PatientRow, patientRows, roomChip, roomLoads, tintOf } from './flow';
+import { chipShown, dur, medicLine, moodOf, pathCard, type PatientRow, patientRows, roomChip, roomLoads, tintOf, wheelLine } from './flow';
 import { type HintKey, hintOf } from './hints';
 import { HoverLabel } from './hover';
 import { Labels } from './labels';
@@ -177,6 +179,10 @@ export class Game {
   plan!: Plan;
   places!: Places;
   ghosts!: Ghosts;
+  /** каталки на карте (spec docs/specs/2026-10-orderlies.md) — и для сценария в браузере: сколько видно */
+  gurneys!: Gurneys;
+  /** кто вёз каталку в прошлом срезе — «Персонал» заново, когда изменилось */
+  private riding = '';
   readonly builder = new Builder(this);
   /** режим врача (spec docs/specs/2026-10-doctor-mode.md): карта пациента, окно врача, фигура */
   readonly doctor = new Doctor(this);
@@ -363,6 +369,9 @@ export class Game {
       this.stage = new Stage({ host: this.host, layout, furnished, people: this.people, quality, capacity: 600 });
       this.ghosts = new Ghosts(this.models);
       this.stage.scene.add(this.ghosts.group);
+      // каталки (spec docs/specs/2026-10-orderlies.md, «Что видно»): у санитаров и у фельдшеров скорой
+      this.gurneys = new Gurneys();
+      this.stage.scene.add(this.gurneys.group);
       this.labels = new Labels(this.stage);
       this.chips = new Chips(this.stage);
       this.hoverLabel = new HoverLabel();
@@ -435,9 +444,14 @@ export class Game {
         : [];
       // навык и отлучка (разделы 3–5): учится или болеет
       const away = m.away ? [m.away.why === 'study' ? T.card.studyShort : T.card.sickShort] : [];
+      // везёт каталку (spec docs/specs/2026-10-orderlies.md): до какого часа занят
+      const ride = this.pop.rideOf(m.id);
       return {
         key: `s:${m.id}`,
-        text: [this.staffWho(m), room, T.card.shifts[m.shift ?? 'both'], T.card.skillShort(m.skill), ...away, ...feel, ...(c ? [T.card.fatigueShort(c.f)] : []), ...(rest ? [rest] : [])].join(' · '),
+        text: [
+          this.staffWho(m), room, T.card.shifts[m.shift ?? 'both'], T.card.skillShort(m.skill), ...away, ...feel, ...(c ? [T.card.fatigueShort(c.f)] : []), ...(rest ? [rest] : []),
+          ...(ride ? [T.card.rideShort(clock(ride.home))] : []),
+        ].join(' · '),
         ...(onDuty(db, m, this.t) ? { on: true as const } : {}),
         ...(mood && (mood.quit !== undefined || mood.go !== undefined) ? { bad: true as const } : {}),
       };
@@ -640,8 +654,13 @@ export class Game {
     }
     // настроение (spec docs/specs/2026-10-staff-mood.md): «Персонал» и карточка — заново
     if (s.moods) this.moods = new Map(s.moods.map(m => [m.id, m]));
-    if (s.crew || s.moods) this.store.set({ staffList: this.staffRows() });
+    // перевозки на каталке (spec docs/specs/2026-10-orderlies.md): санитар идёт за больным и везёт его; кто везёт — в
+    // «Персонале», когда перевозка началась или кончилась
+    if (s.rides) this.pop.setRides(s.rides);
     this.pop.sync(s.buf, s.names);
+    const riding = this.pop.ridingNow;
+    if (s.crew || s.moods || riding !== this.riding) this.store.set({ staffList: this.staffRows() });
+    this.riding = riding;
     for (const n of s.notices) {
       if (n.kind === 'site' && n.cmd === 'office') this.doctor.onOffice(n);
       else if (n.kind === 'site') {
@@ -787,6 +806,7 @@ export class Game {
     this.crowd.rate = this.crowd.speed * GAME_PER_REAL;
     this.crowd.t = this.t;
     this.crowd.update(this.speed === 0 && !this.ff ? 0 : dt);
+    this.gurneys.frame(this.pop.gurneys());
     // «Следить» (spec 2026-10-owner-play-2): камера — за человеком; ушёл с карты — остаётся, где он был
     if (this.following !== undefined) {
       const w = this.crowd.walkers.get(this.following);
@@ -899,6 +919,16 @@ export class Game {
     },
     exam: (id: Id) => ({ name: named(this.db.exams[id]?.name, id), kind: this.db.exams[id]?.kind ?? 'lab' }),
     role: (id: Id) => named(this.db.roles[id]?.name, id),
+    room: (id: string) => {
+      const r = this.plan.rooms.find(x => x.id === id);
+      return lowerFirst(r ? named(this.db.rooms[r.type]?.name, r.type) : id);
+    },
+    nextShift: (t: number) => {
+      const [a, b] = this.db.economy.staff.shifts?.day ?? [8, 20];
+      const day = Math.floor(t / 86400) * 86400;
+      for (const h of [a, b, a + 24]) if (day + h * 3600 > t) return day + h * 3600;
+      return day + 86400 + a * 3600;
+    },
   };
 
   /** 10 раз в секунду: значки и цвет пола помещений, вкладка «Пациенты», «Приняты», «Ушли», путь выбранного. */
@@ -988,7 +1018,10 @@ export class Game {
       const info = this.pop.info(u.key);
       if (!info) return this.hoverLabel.set();
       if (info.kind === 'staff') return this.hoverLabel.set(named(db.roles[info.role]?.name, info.role), info.room ? this.names().room(info.room) : undefined);
-      const what = info.door ? (info.walking ? T.card.toDoor : T.card.atDoor) : info.walking ? T.going[info.doing] : T.doing[info.doing];
+      if (info.kind === 'medic') return this.hoverLabel.set(T.card.medic, medicLine(info));
+      const what = info.gurney
+        ? wheelLine(info.gurney, id => lowerFirst(this.names().room(id)))
+        : info.door ? (info.walking ? T.card.toDoor : T.card.atDoor) : info.walking ? T.going[info.doing] : T.doing[info.doing];
       return this.hoverLabel.set(T.card.patient(info.sex, info.age, info.name), what);
     }
     const r = this.layout.plan.rooms[u.room];
@@ -1267,7 +1300,7 @@ export class Game {
         const m = shift === 'both' ? both : all.find(x => x.shift === shift);
         const pay = (x: Id) => money(payOf(db, salaryOf(db, x, 3), shift === 'both' ? undefined : shift));
         return {
-          role, shift, name, salary: pay(hire),
+          role, shift, name, salary: pay(hire), ...(db.roles[role]?.optional ? { optional: T.card.optional } : {}),
           ...(m
             ? {
                 who: `${named(db.roles[m.role]?.name, m.role)} · ${m.skill}${m.away ? ` · ${m.away.why === 'study' ? T.card.studyShort : T.card.sickShort}` : ''}`,
@@ -1281,9 +1314,12 @@ export class Game {
       });
     });
     const f = furnishOf(db, site, id);
+    // каталка ночью (spec docs/specs/2026-10-orderlies.md, «Что видно»): у помещения с санитаром, когда в ночной смене есть
+    // люди, а санитара — ни одного во всей больнице: лежачих повезут медсёстры
+    const night = t.staff.includes(ORDERLY) && this.staff.some(m => m.shift === 'night') && !this.staff.some(m => m.role === ORDERLY && m.shift !== 'day');
     return {
       ...base, size: `${r.w} × ${r.h}`, ok: why.length === 0, state: why.length ? T.problem.down(this.problemText(why[0])) : T.problem.works,
-      problems: why.map(p => this.problemText(p)), needs, posts,
+      problems: why.map(p => this.problemText(p)), needs, posts, ...(night ? { note: T.card.nightCarrier } : {}),
       furnish: f.ok ? { ok: true, text: T.card.furnish(money(f.cost)) } : { ok: false, text: whyText(db, site, f.error) },
       demolish: T.card.demolish(money(demolishRefund(db, room))),
       catalog: [

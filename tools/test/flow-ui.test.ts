@@ -3,8 +3,9 @@
 // Чистые функции src/app/flow.ts — без DOM и Three.js; строки — русские (язык по умолчанию).
 import { describe, expect, test } from 'bun:test';
 import {
-  chipShown, dur, LONG_WAIT, moodOf, NO_FILTER, pathCard, type PathNames, patientRows, roomChip, roomLoads, type Seen, tintOf, UNHAPPY, WAIT_BAD, WAIT_OK,
+  chipShown, dur, LONG_WAIT, moodOf, NO_FILTER, pathCard, type PathNames, patientRows, rideLine, roomChip, roomLoads, type Seen, tintOf, UNHAPPY, WAIT_BAD, WAIT_OK, wheelLine,
 } from '../../src/app/flow';
+import { slowOf } from '../../src/app/money';
 import type { Plan } from '../../src/engine/hospital/build';
 import type { Journey } from '../../src/engine/shift/journey';
 import { setLang } from '../../src/i18n';
@@ -15,6 +16,8 @@ const names: PathNames = {
   doctor: id => (id === 's1' ? 'терапевта' : 'врача'),
   exam: id => (id === 'exam.xray' ? { name: 'Рентгенография', kind: 'imaging' } : { name: 'Общий анализ крови', kind: 'lab' }),
   role: id => (id === 'role.radiographer' ? 'Рентгенолаборант' : 'Медсестра'),
+  room: id => (id === 'r2' ? 'смотровая приёмного' : 'палата'),
+  nextShift: t => (Math.floor(t / 86400) * 86400 + 20 * 3600 > t ? Math.floor(t / 86400) * 86400 + 20 * 3600 : Math.floor(t / 86400) * 86400 + 32 * 3600),
 };
 
 describe('путь пациента в карточке', () => {
@@ -124,6 +127,52 @@ describe('путь пациента в карточке', () => {
     expect(text[5]).toBe('у врача — 4 мин');
     expect(c.lines[6]).toMatchObject({ text: 'врач просит вас посмотреть — ждёт ответа 30 мин (до 13:40)', why: 'ответа не было — врач решил сам' });
     expect(c.lines[7]).toMatchObject({ text: 'направлен в стационар другой больницы', why: 'свободных мест не было: палаты, ПИТ' });
+  });
+
+  // spec docs/specs/2026-10-orderlies.md, «Что видно»: лежачего везут на каталке — ждал её, почему и как везли
+  test('каталка: на снимок — «ожидание каталки», «на каталке»; на койку — после решения: ждёт её, почему, откуда и куда', () => {
+    const exam: Journey = {
+      kind: 'ambulance', at: H(10),
+      steps: [
+        { t: H(10, 2), k: 'doctor' },
+        { t: H(10, 10), k: 'exam', exam: 'exam.xray', room: 'r9', at: H(10, 28), start: H(10, 30), end: H(10, 40), back: H(10, 52), ready: H(11), gurney: { pick: H(10, 18), busy: true } },
+      ],
+    };
+    const waiting = pathCard(exam, false, H(10, 14), names).lines.at(-1)!;
+    expect(waiting).toMatchObject({ text: 'Рентгенография: ожидание каталки 4 мин', why: 'санитар везёт другого — будет к 10:18', now: true });
+    const done = pathCard(exam, false, H(10, 55), names).lines;
+    expect(done[2]).toMatchObject({ text: 'Рентгенография: ожидание каталки 8 мин, на каталке 10 мин, очередь 2 мин, процедура 10 мин, на каталке обратно 12 мин', why: 'кабинет был занят до 10:30' });
+    const nurse: Journey = { ...exam, steps: [exam.steps[0], { ...(exam.steps[1] as Extract<Journey['steps'][number], { k: 'exam' }>), start: H(10, 28), gurney: { pick: H(10, 18), busy: true, nurse: true } }] };
+    expect(pathCard(nurse, false, H(10, 55), names).lines[2].why).toBe('медсестра везла другого — пришла в 10:18');
+    // на койку: ждёт — некому везти; везут; довезли
+    const bed: Journey = { kind: 'ambulance', at: H(18), steps: [{ t: H(18, 2), k: 'doctor' }], end: { t: H(18, 30), how: 'stay', setting: 'icu', room: 'r5' }, bed: { t: H(18, 30), from: 'r2', to: 'r5' } };
+    expect(pathCard(bed, true, H(19), names).lines.at(-1)).toMatchObject({ text: 'ожидание каталки — 30 мин', why: 'в смене нет ни санитара, ни медсестры — до пересменки в 20:00', kind: 'wait', now: true });
+    const going: Journey = { ...bed, bed: { t: H(18, 30), from: 'r2', to: 'r5', pick: H(20, 5), off: H(20, 7), done: H(20, 20), none: true } };
+    const lines = pathCard(going, true, H(20, 10), names).lines;
+    expect(lines.at(-2)).toMatchObject({ text: 'ожидание каталки — 1 ч 35 мин', why: 'в смене не было ни санитара, ни медсестры — повезли с пересменки или после найма' });
+    expect(lines.at(-1)).toMatchObject({ text: 'на каталке: смотровая приёмного → палата', now: true });
+    expect(pathCard(going, true, H(20, 30), names).lines.at(-1)).toMatchObject({ text: 'на каталке: смотровая приёмного → палата — 15 мин' });
+    // пришли сразу — ожидания нет
+    const quick: Journey = { ...bed, bed: { t: H(18, 30), from: 'r2', to: 'r5', pick: H(18, 30), off: H(18, 32), done: H(18, 40) } };
+    expect(pathCard(quick, true, H(19), names).lines.slice(-2).map(l => l.text)).toEqual(['положена в палату интенсивной терапии', 'на каталке: смотровая приёмного → палата — 10 мин']);
+  });
+
+  test('каталка в карточках: что делает тот, кто везёт, и что с тем, кого везут', () => {
+    const room = (id: string) => (id === 'r2' ? 'смотровая приёмного' : 'КТ');
+    const r = { from: 'r2', to: 'r9', who: 'Иванов Пётр' };
+    expect(rideLine({ ...r, phase: 'go' }, room)).toBe('идёт с каталкой за больным: Иванов Пётр');
+    expect(rideLine({ ...r, phase: 'carry' }, room)).toBe('везёт на каталке: Иванов Пётр, смотровая приёмного → КТ');
+    expect(rideLine({ ...r, phase: 'carryBack' }, room)).toBe('везёт на каталке: Иванов Пётр, КТ → смотровая приёмного');
+    expect(rideLine({ ...r, phase: 'wait' }, room)).toBe('ждёт у аппарата: Иванов Пётр, КТ');
+    expect(rideLine({ from: 'r2', to: 'r9', phase: 'home' }, room)).toBe('возвращается с каталкой на место');
+    expect(wheelLine({ ...r, phase: 'load' }, room)).toBe('перекладывают на каталку');
+    expect(wheelLine({ ...r, phase: 'carry' }, room)).toBe('везут на каталке: смотровая приёмного → КТ');
+    expect(wheelLine({ ...r, phase: 'wait' }, room)).toBe('на обследовании: КТ');
+  });
+
+  test('планёрка: лежачие ждали каталку — узкое место', () => {
+    expect(slowOf({ queue: 0, wait: 0, gurney: { n: 3, wait: 47 } })).toEqual([{ kind: 'gurney', n: 3, wait: 47 }]);
+    expect(slowOf({ queue: 0, wait: 0 })).toEqual([]);
   });
 
   test('длительность: минуты и часы', () => {

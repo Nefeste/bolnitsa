@@ -6,16 +6,18 @@
 import * as THREE from 'three';
 import type { ContentDb, Id } from '../content/types';
 import type { RoomInstance } from '../engine/hospital/build';
-import { onDuty, type StaffMember } from '../engine/hospital/staff';
+import { onDuty, ORDERLY, type StaffMember } from '../engine/hospital/staff';
 import type { CrewView } from '../engine/shift/crew';
 import type { Doing } from '../engine/shift/slice';
-import type { Rest, Triage } from '../engine/shift/types';
+import type { Rest, Ride, Triage } from '../engine/shift/types';
 import { DOINGS, H, HEADER, KINDS, type NameRow, NO_TIME, P, STATUSES, STRIDE, TRIAGES } from '../sim/pack';
 import type { Look } from './bake';
-import { CLOTHES, COAT, GOWN, lookSpec, OLD_AGE, roleColor, SKIN } from './cast';
-import type { Crowd, Walker } from './crowd';
+import { CLOTHES, COAT, GOWN, lookSpec, OLD_AGE, PARAMEDIC, roleColor, SKIN } from './cast';
+import { type Crowd, GURNEY_AHEAD, type Walker } from './crowd';
+import type { GurneyAt } from './gurney';
 import type { Layout } from './layout';
-import { doorInside, nearestWalk, type Places, type Spot, standAt } from './place';
+import { doorInside, gurneyStop, gurneyYaw, nearestWalk, type Places, type Spot, standAt } from './place';
+import { carrierGoal, riderAt, type RidePhase, ridesNow } from './rides';
 
 /** Ваша фигура на карте (spec docs/specs/2026-10-doctor-mode.md, «Вы на карте»): врач в белом халате с меткой. */
 export const YOU = 'you';
@@ -47,6 +49,11 @@ export type PersonInfo =
        * какого часа; «Отправить учиться» — на сколько суток и за сколько
        */
       skill?: number; steps?: number; mentor?: string; away?: { why: 'study' | 'sick'; until: number }; study?: { days: number; cost: number };
+      /**
+       * перевозка на каталке (spec docs/specs/2026-10-orderlies.md, «Что видно»): что с ней сейчас, кого везут (имя), откуда и
+       * куда (номера помещений плана); санитар без перевозки — `free`: ждёт у каталки
+       */
+      ride?: { phase: RidePhase; who?: string; from: string; to: string }; free?: true;
     }
   | {
       kind: 'patient'; id: string; name?: string; sex: 'm' | 'f'; age: number; complaint?: Id; triage: Triage; doing: Doing; room?: string; by?: Id; visit: string; gone?: true;
@@ -57,7 +64,14 @@ export type PersonInfo =
       arrive?: number;
       /** следующий к врачу — ждёт у двери его кабинета (spec 2026-10-walk) */
       door?: true;
-    };
+      /** везут на каталке (spec docs/specs/2026-10-orderlies.md): что с перевозкой сейчас, откуда и куда */
+      gurney?: { phase: RidePhase; from: string; to: string };
+    }
+  /**
+   * фельдшер скорой (spec docs/specs/2026-10-orderlies.md, «Что видно»): кого привёз; ждёт с ним у входа — мест в смотровой
+   * нет; передал и уходит к машине
+   */
+  | { kind: 'medic'; who?: string; wait?: true; leaving?: true };
 
 /** Что окно знает о пациенте из среза (часть 3): как `Seen` в src/app/flow.ts. */
 export interface PatientNow {
@@ -82,6 +96,14 @@ export interface PatientNow {
 const ROWS = 2000;
 
 const LYING: ReadonlySet<Doing> = new Set(['ward', 'surgery', 'ambulance']);
+
+/** Места перевозки на экране (spec docs/specs/2026-10-orderlies.md): откуда взять больного, куда довезти — и где встать у них с каталкой. */
+interface Leg {
+  from?: Spot;
+  fromStop?: Spot;
+  to?: Spot;
+  toStop?: Spot;
+}
 
 export class Population {
   /** вид — по полу и возрасту; номера видов в `looks` */
@@ -114,6 +136,28 @@ export class Population {
   private crew = new Map<string, CrewView>();
   /** куда ушёл человек штата: «вид:помещение:вышел»; изменилось — он идёт туда или на своё место */
   private going = new Map<string, string>();
+  /** перевозки на каталке (spec docs/specs/2026-10-orderlies.md, «Что видно»): как прислал поток расчёта */
+  private rides: Ride[] = [];
+  /**
+   * кто везёт каталку: номер человека штата → куда он идёт сейчас («место:срок»). Пока он везёт, его место назначает перевозка,
+   * и он в больнице, даже если смена кончилась: довозит
+   */
+  private riding = new Map<string, string>();
+  /** что сейчас с перевозкой у того, кто везёт, — для карточки; и у того, кого везут (по номеру больного в движке) */
+  private phases = new Map<string, { r: Ride; ph: RidePhase }>();
+  private riders = new Map<string, { r: Ride; ph: RidePhase }>();
+  /** места перевозок: по перевозке («больной:кто:вышел») */
+  private legs = new Map<string, Leg>();
+  /** больные, чьё место на экране сейчас назначает перевозка: на каталке, у аппарата, только что довезли */
+  private held = new Set<string>();
+  /** место каждого пациента по последнему срезу — от него считаются места перевозки и фельдшера */
+  private spots = new Map<string, Spot>();
+  /** каталка санитара у его места, пока он никого не везёт: номер человека → где она */
+  private parked = new Map<string, GurneyAt>();
+  /** привезённый скорой на каталке бригады (spec 2026-10-orderlies, «Что видно»): ключ больного → ключ фельдшера */
+  private medics = new Map<string, string>();
+  /** где фельдшер встал с каталкой: ключ больного → у какого места и где — заново, только когда место больного другое */
+  private medicStops = new Map<string, { at: string; stop: Spot }>();
 
   constructor(
     private db: ContentDb,
@@ -139,9 +183,12 @@ export class Population {
     return list[Math.abs(seed) % list.length];
   }
 
-  /** В больнице ли человек штата (spec 2026-10-staff-shifts): в смене часов среза или доводит начатые приёмы. */
+  /**
+   * В больнице ли человек штата (spec 2026-10-staff-shifts): в смене часов среза, доводит начатые приёмы или довозит
+   * больного на каталке (spec 2026-10-orderlies).
+   */
   private present(m: StaffMember): boolean {
-    return onDuty(this.db, m, this.t) || this.late.has(m.id);
+    return onDuty(this.db, m, this.t) || this.late.has(m.id) || this.riding.has(m.id);
   }
 
   /** Кто из штата не в смене, а ещё в больнице (номера в списке штата) — как прислал поток расчёта. */
@@ -152,6 +199,11 @@ export class Population {
   /** Усталость и перерывы врачей в смене (spec 2026-10-staff-shifts, часть 2) — как прислал поток расчёта. */
   setCrew(rows: readonly CrewView[]) {
     this.crew = new Map(rows.map(r => [r.id, r]));
+  }
+
+  /** Перевозки на каталке (spec docs/specs/2026-10-orderlies.md) — как прислал поток расчёта. */
+  setRides(rows: readonly Ride[]) {
+    this.rides = [...rows];
   }
 
   /** Перерыв, на который человек ушёл со своего места: идёт туда или уже там; пошёл назад или отдыхает в кабинете — нет. */
@@ -166,7 +218,19 @@ export class Population {
     if (!room) return undefined;
     const role = this.db.roles[m.role]?.stands ?? m.role;
     const cell = room.staff[role] ?? room.staff[m.role];
-    return cell ? this.places.staffSpot(m, () => cell, taken) : undefined;
+    const spot = cell ? this.places.staffSpot(m, () => cell, taken) : undefined;
+    return spot ? this.orderlyPost(m, spot) : undefined;
+  }
+
+  /**
+   * Санитар на своём месте (spec docs/specs/2026-10-orderlies.md, «Ждёт на своём месте у каталки»): стоит лицом туда, где перед
+   * ним встанет его каталка, не упираясь в стену; каталка — там, пока он никого не везёт.
+   */
+  private orderlyPost(m: StaffMember, spot: Spot): Spot {
+    if (m.role !== ORDERLY || spot.pose !== 'stand') return spot;
+    const yaw = gurneyYaw(this.layout, spot.cell, spot.yaw);
+    this.parked.set(m.id, { x: spot.x + Math.sin(yaw) * GURNEY_AHEAD, z: spot.z + Math.cos(yaw) * GURNEY_AHEAD, yaw });
+    return { ...spot, yaw };
   }
 
   /**
@@ -188,6 +252,8 @@ export class Population {
         this.going.delete(m.id);
         continue;
       }
+      // везёт каталку (spec 2026-10-orderlies): отдыхать пойдёт, когда вернётся
+      if (this.riding.has(m.id)) continue;
       const r = this.away(m);
       const now = r ? `${r.kind}:${r.room}:${r.from}` : '';
       if (now === (this.going.get(m.id) ?? '')) continue;
@@ -218,6 +284,7 @@ export class Population {
     const taken = new Set<number>();
     const keep = new Set<string>();
     this.here = this.staff.map(m => (this.present(m) ? 1 : 0)).join('');
+    this.parked.clear();
     for (const m of this.staff) {
       if (!this.present(m)) continue;
       const room = this.layout.plan.rooms.find(r => r.id === m.room);
@@ -225,15 +292,17 @@ export class Population {
       const role = this.db.roles[m.role]?.stands ?? m.role;
       const cell = room.staff[role] ?? room.staff[m.role];
       if (!cell) continue;
-      const spot = this.places.staffSpot(m, () => cell, taken);
-      if (!spot) continue;
+      const at = this.places.staffSpot(m, () => cell, taken);
+      if (!at) continue;
+      const spot = this.orderlyPost(m, at);
       taken.add(spot.cell);
       const key = `s:${m.id}`;
       keep.add(key);
       const w = this.crowd.walkers.get(key);
       if (w) {
-        // на перерыве (spec 2026-10-staff-shifts, часть 2) — не на посту: место за ним, назад приведёт `rests`
-        if (!w.leaving && this.going.get(m.id)) continue;
+        // на перерыве (spec 2026-10-staff-shifts, часть 2) или везёт каталку (spec 2026-10-orderlies) — не на посту: место за
+        // ним, назад приведут `rests` и `ridesStep`
+        if (!w.leaving && (this.going.get(m.id) || this.riding.has(m.id))) continue;
         if (w.leaving) this.crowd.stay(w, spot);
         else if (w.at?.key !== spot.key && !(shift && w.goals.some(g => g.key === spot.key))) this.crowd.settle(w, spot);
         continue;
@@ -244,7 +313,8 @@ export class Population {
       this.paints.set(key, { clothes: new THREE.Color(roleColor(m.role)), skin: new THREE.Color(SKIN[m.seed % SKIN.length]) });
     }
     for (const [key, w] of [...this.crowd.walkers]) {
-      if (!w.staff || keep.has(key) || key === YOU) continue;
+      // фельдшеры скорой (`m:`) — не штат: уходят сами
+      if (!w.staff || keep.has(key) || key === YOU || key.startsWith('m:')) continue;
       // ушёл со сменой — к выходу; уволен, снесено помещение — сразу
       if (shift && this.staff.some(m => `s:${m.id}` === key)) this.crowd.leave(w);
       else this.crowd.remove(key);
@@ -290,6 +360,9 @@ export class Population {
     this.places = places;
     this.staff = staff;
     this.roomIndex = rooms.map(r => layout.plan.rooms.findIndex(p => p.id === r.id));
+    // перевозки — по новым клеткам: места заново, тот, кто везёт, идёт к ним
+    this.legs.clear();
+    for (const k of this.riding.keys()) this.riding.set(k, '');
     this.placeStaff();
     this.dirty = true;
   }
@@ -357,20 +430,28 @@ export class Population {
       this.byId.set(row.id, now);
       const spot: Spot = this.places.spot({ key, doing, room, bed: buf[o + P.bed] }, taken);
       if (spot.pose === 'stand') taken.add(spot.cell);
+      this.spots.set(key, spot);
       const w = this.crowd.walkers.get(key);
       if (!w) {
         const look = this.pick('patient', row.sex, row.age >= OLD_AGE, row.seed);
         this.paints.set(key, { clothes: new THREE.Color(CLOTHES[row.seed % CLOTHES.length]), skin: new THREE.Color(SKIN[(row.seed >>> 3) % SKIN.length]) });
-        // привезённый скорой — через вход для скорой
-        this.crowd.add(key, look, spot, false, KINDS[buf[o + P.flags]] === 'ambulance', due);
+        // привезённый скорой — через вход для скорой, на каталке бригады: её везёт фельдшер (spec 2026-10-orderlies)
+        const ambulance = KINDS[buf[o + P.flags]] === 'ambulance';
+        const pw = this.crowd.add(key, look, spot, false, ambulance, due);
+        if (ambulance && doing === 'ambulance') this.medic(key, pw, row.seed, spot, taken);
         continue;
       }
+      // его место назначает перевозка или фельдшер скорой (spec 2026-10-orderlies)
+      if (this.held.has(key) || this.medics.has(key)) continue;
       // к врачу зовут — идёт сразу, без остановок; после стройки — к новому месту (то же место — тот же ключ: не встаёт)
       // у двери сел на скамью или встал с неё — тоже к новому месту
       if (this.dirty || !prev || prev.doing !== doing || prev.room !== room || prev.seat !== now.seat || w.goals.length === 0) this.crowd.retarget(w, spot, doing === 'office' && prev?.doing !== 'office', due);
       else w.due = due;
     }
     this.dirty = false;
+    for (const key of this.spots.keys()) if (!present.has(key)) this.spots.delete(key);
+    this.ridesStep(taken);
+    this.medicsStep(taken);
     for (const [key, w] of this.crowd.walkers) {
       if (w.staff || present.has(key)) continue;
       if (!w.leaving) this.crowd.leave(w);
@@ -378,6 +459,169 @@ export class Population {
     }
     // дошли до выхода — значок больше не нужен
     for (const key of this.angry) if (!this.crowd.walkers.has(key)) this.angry.delete(key);
+  }
+
+  /**
+   * Перевозки на каталке (spec docs/specs/2026-10-orderlies.md, «Что видно»): тот, кто везёт, идёт за больным с пустой каталкой,
+   * перекладывает его, везёт, у аппарата ждёт, везёт назад и возвращается на своё место — к часам перевозки из движка; больной
+   * лежит на каталке перед ним. Пока перевозка ведёт больного, его место на экране назначает она, а не срез; кончилась — он
+   * там, где говорит срез.
+   */
+  private ridesStep(taken: ReadonlySet<number>) {
+    if (this.rides.length === 0 && this.riding.size === 0 && this.held.size === 0) return;
+    const now = ridesNow(this.rides, this.t);
+    const held = new Set<string>();
+    const legs = new Map<string, Leg>();
+    for (const [by, { r, ph }] of now) {
+      const cw = this.crowd.walkers.get(`s:${by}`);
+      const m = this.staff.find(x => x.id === by);
+      if (!cw || cw.leaving || !m) continue;
+      const pk = this.keyOf(r.id);
+      const pw = pk ? this.crowd.walkers.get(pk) : undefined;
+      const id = `${r.id}:${r.by}:${r.go}`;
+      const leg = this.legs.get(id) ?? {};
+      legs.set(id, leg);
+      // откуда — где больной был, когда за ним пошли
+      if (!leg.from && pk) leg.from = (pw && pw.carry === undefined && pw.goals.length === 0 && pw.at) || this.spots.get(pk);
+      if (leg.from && !leg.fromStop) leg.fromStop = gurneyStop(this.layout, leg.from, taken);
+      // куда: на койку — та, что в срезе (когда его взяли, срез говорит, где его койка); на стол, к аппарату — по помещению
+      if (!leg.to && pk && ph !== 'go') leg.to = this.destOf(r, pk, taken);
+      if (leg.to && !leg.toStop) leg.toStop = gurneyStop(this.layout, leg.to, taken);
+      const g = carrierGoal(r, ph);
+      const goal = g.at === 'from' ? leg.fromStop : g.at === 'to' ? (leg.toStop ?? this.doorOf(r.to)) : this.postOf(m, taken);
+      const k = goal ? `${goal.key}:${g.due}` : '';
+      if (goal && this.riding.get(by) !== k) this.crowd.retarget(cw, goal, true, g.due);
+      this.riding.set(by, k);
+      if (!pk || !pw) continue;
+      let lay = riderAt(ph, leg.to?.pose === 'lie');
+      if (lay === 'slice') continue;
+      // перекладывают, когда тот, кто везёт, уже встал у кровати: пока идёт — больной лежит где лежал; довёз, а ещё в пути (на
+      // ×12 кадр длиннее) — больной на каталке, пока не дойдёт
+      const there = (stop: Spot | undefined) => !!stop && cw.at?.key === stop.key && cw.goals.length === 0 && cw.state !== 'walk';
+      if (ph === 'load' && !there(leg.fromStop) && pw.carry !== cw.key) lay = 'from';
+      if (ph === 'loadBack' && !there(leg.toStop) && pw.carry !== cw.key) lay = 'to';
+      if ((ph === 'unload' || ph === 'wait') && lay === 'to' && !there(leg.toStop) && pw.carry === cw.key) lay = 'gurney';
+      if (ph === 'unloadBack' && !there(leg.fromStop) && pw.carry === cw.key) lay = 'gurney';
+      held.add(pk);
+      if (lay === 'gurney') {
+        if (pw.carry !== cw.key) this.crowd.carry(pw, cw.key);
+        continue;
+      }
+      const spot = lay === 'to' ? leg.to : leg.from;
+      if (!spot) continue;
+      if (pw.carry !== undefined) this.crowd.release(pw, spot);
+      else if (pw.at?.key !== spot.key) this.crowd.settle(pw, spot);
+    }
+    this.phases = now;
+    this.riders = new Map([...now.values()].map(x => [x.r.id, x]));
+    // кончилась перевозка: тот, кто вёз, — на своё место (на ×12 мог не дойти); больного, которого она вела, — на место по срезу
+    for (const by of [...this.riding.keys()]) {
+      if (now.has(by)) continue;
+      this.riding.delete(by);
+      const m = this.staff.find(x => x.id === by);
+      const cw = this.crowd.walkers.get(`s:${by}`);
+      const post = m && cw && !cw.leaving ? this.postOf(m, taken) : undefined;
+      if (cw && post) this.crowd.retarget(cw, post, true);
+    }
+    for (const pk of this.held) {
+      if (held.has(pk)) continue;
+      const pw = this.crowd.walkers.get(pk);
+      const spot = this.spots.get(pk);
+      if (!pw) continue;
+      if (pw.carry !== undefined) {
+        if (spot) this.crowd.release(pw, spot);
+        else delete pw.carry;
+      } else if (spot && pw.at?.key !== spot.key && pw.goals.length === 0) this.crowd.retarget(pw, spot);
+    }
+    this.held = held;
+    this.legs = legs;
+  }
+
+  /** Куда везут: на койку — та, что в срезе, когда срез уже говорит «лежит»; на операцию — стол; к аппарату — его место. */
+  private destOf(r: Ride, key: string, taken: ReadonlySet<number>): Spot | undefined {
+    const room = this.layout.plan.rooms.findIndex(x => x.id === r.to);
+    if (room < 0) return undefined;
+    if (r.why === 'op') return this.places.spot({ key, doing: 'surgery', room, bed: -1 }, taken);
+    if (r.why === 'exam') return this.places.spot({ key, doing: 'exam', room, bed: -1 }, taken);
+    const l = this.last.get(key);
+    return l && l.doing === 'ward' && l.room === room ? this.spots.get(key) : undefined;
+  }
+
+  /** У двери помещения изнутри — куда идти с каталкой, пока не знаешь, к какой койке. */
+  private doorOf(roomId: string): Spot | undefined {
+    const room = this.layout.plan.rooms.findIndex(x => x.id === roomId);
+    return room >= 0 ? standAt(this.layout, nearestWalk(this.layout, doorInside(this.layout, room)), 'go', 0) : undefined;
+  }
+
+  /**
+   * Привезённый скорой (spec docs/specs/2026-10-orderlies.md, «Что видно»): его ввозит фельдшер скорой в синем на каталке
+   * бригады — от входа для скорой.
+   */
+  private medic(key: string, pw: Walker, seed: number, spot: Spot, taken: ReadonlySet<number>) {
+    const mk = `m:${key.slice(2)}`;
+    const sex = seed % 2 === 0 ? 'm' : 'f';
+    const look = this.pick('staff', sex, false, seed >>> 2);
+    const stop = gurneyStop(this.layout, spot, taken);
+    this.medicStops.set(key, { at: spot.key, stop });
+    this.crowd.add(mk, look, stop, true, true, NaN, true);
+    this.paints.set(mk, { clothes: new THREE.Color(PARAMEDIC), skin: new THREE.Color(SKIN[(seed >>> 5) % SKIN.length]) });
+    this.crowd.carry(pw, mk, true);
+    this.medics.set(key, mk);
+  }
+
+  /**
+   * Фельдшер скорой довозит привезённого до его места в смотровой, перекладывает и уходит к машине; места нет — ждёт с ним у
+   * входа, пока место не освободится. Больного уже ведут не в смотровую — отпускает его и уходит.
+   */
+  private medicsStep(taken: ReadonlySet<number>) {
+    for (const [pk, mk] of [...this.medics]) {
+      const mw = this.crowd.walkers.get(mk);
+      const pw = this.crowd.walkers.get(pk);
+      const l = this.last.get(pk);
+      const spot = this.spots.get(pk);
+      if (!mw || mw.leaving || !pw || !l || !spot || l.doing !== 'ambulance') {
+        if (pw?.carry === mk) {
+          if (spot) this.crowd.release(pw, spot);
+          else delete pw.carry;
+        }
+        if (mw && !mw.leaving) this.crowd.leave(mw, true);
+        this.medics.delete(pk);
+        this.medicStops.delete(pk);
+        continue;
+      }
+      let at = this.medicStops.get(pk);
+      if (at?.at !== spot.key) this.medicStops.set(pk, (at = { at: spot.key, stop: gurneyStop(this.layout, spot, taken) }));
+      const stop = at.stop;
+      const goal = mw.goals[mw.goals.length - 1] ?? mw.at;
+      if (goal?.key !== stop.key) this.crowd.retarget(mw, stop, true);
+      else if (spot.pose === 'lie' && mw.goals.length === 0 && mw.state === 'idle') {
+        // довёз: переложил на место в смотровой и ушёл
+        this.crowd.release(pw, spot);
+        this.crowd.leave(mw, true);
+        this.medics.delete(pk);
+        this.medicStops.delete(pk);
+      }
+    }
+  }
+
+  /**
+   * Каталки этого кадра (spec docs/specs/2026-10-orderlies.md, «Что видно»): перед тем, кто везёт, и перед фельдшером скорой; у
+   * места санитара в смене — его каталка, пока он никого не везёт.
+   */
+  gurneys(): GurneyAt[] {
+    const out: GurneyAt[] = [];
+    const ahead = (w: Walker): GurneyAt => ({ x: w.x + Math.sin(w.heading) * GURNEY_AHEAD, z: w.z + Math.cos(w.heading) * GURNEY_AHEAD, yaw: w.heading });
+    for (const id of this.riding.keys()) {
+      const w = this.crowd.walkers.get(`s:${id}`);
+      if (w) out.push(ahead(w));
+    }
+    for (const [key, w] of this.crowd.walkers) if (key.startsWith('m:')) out.push(ahead(w));
+    for (const [id, at] of this.parked) {
+      if (this.riding.has(id)) continue;
+      const w = this.crowd.walkers.get(`s:${id}`);
+      if (w && !w.leaving) out.push(at);
+    }
+    return out;
   }
 
   /** Пациент ушёл, не дождавшись (извещение `left`): к выходу — со значком «недоволен». */
@@ -435,6 +679,14 @@ export class Population {
 
   /** Что о человеке сказать в панели. */
   info(key: string): PersonInfo | undefined {
+    if (key.startsWith('m:')) {
+      const w = this.crowd.walkers.get(key);
+      if (!w) return undefined;
+      const pk = `p:${key.slice(2)}`;
+      const who = this.names.get(Number(key.slice(2)))?.name;
+      const wait = !w.leaving && this.medics.get(pk) === key && w.state === 'idle' && w.goals.length === 0 && this.spots.get(pk)?.pose !== 'lie';
+      return { kind: 'medic', ...(who ? { who } : {}), ...(wait ? { wait: true as const } : {}), ...(w.leaving ? { leaving: true as const } : {}) };
+    }
     if (key.startsWith('s:')) {
       const m = this.staff.find(x => x.id === key.slice(2));
       if (!m) return undefined;
@@ -444,11 +696,16 @@ export class Population {
       const f = this.db.economy.staff.fatigue;
       const worn = c && f ? (c.f >= f.tired ? 'blur' : c.f >= f.slow ? 'slow' : undefined) : undefined;
       const r = c?.rest;
+      // везёт каталку (spec docs/specs/2026-10-orderlies.md): кого, откуда и куда; санитар в смене без перевозки — свободен
+      const ride = this.phases.get(m.id);
+      const free = !ride && !r && m.role === ORDERLY && this.present(m) && !m.away;
       return {
         kind: 'staff', role: m.role, ...(m.room ? { room: m.room } : {}), sex: m.sex, id: m.id,
         ...(m.shift && hours ? { shift: m.shift, hours } : {}), ...(this.present(m) ? {} : { home: true as const }),
         ...(c ? { fatigue: c.f } : {}), ...(worn ? { worn } : {}),
         ...(r ? { rest: { kind: r.kind, until: r.until, phase: this.t >= r.back ? 'back' : this.t < r.at ? 'go' : 'there' } } : {}),
+        ...(ride ? { ride: { phase: ride.ph, ...(this.rows.get(ride.r.id)?.name ? { who: this.rows.get(ride.r.id)!.name } : {}), from: ride.r.from, to: ride.r.to } } : {}),
+        ...(free ? { free: true as const } : {}),
       };
     }
     const l = this.last.get(key);
@@ -461,12 +718,27 @@ export class Population {
     const coming = l.arrive !== NO_TIME && l.arrive > this.t;
     const walking = coming || (!!w && w.state === 'walk' && w.goals.length > 0);
     const door = l.doing === 'waiting' && l.room >= 0 && this.layout.plan.rooms[l.room]?.type !== 'room.waiting';
+    // везут на каталке (spec docs/specs/2026-10-orderlies.md): перекладывают, везут, у аппарата
+    const g = this.riders.get(l.row.id);
+    const wheeled = g && g.ph !== 'go' && g.ph !== 'home' ? { gurney: { phase: g.ph, from: g.r.from, to: g.r.to } } : {};
     return {
+      ...wheeled,
       kind: 'patient', id: l.row.id, ...(l.row.name ? { name: l.row.name } : {}), sex: l.row.sex, age: l.row.age, ...(l.row.complaint ? { complaint: l.row.complaint } : {}), triage: l.triage, doing: l.doing,
       ...(l.row.to ? { to: l.row.to } : {}),
       ...(room ? { room } : {}), ...(by ? { by } : {}), visit: ['appointment', 'walkIn', 'return', 'ambulance'][Number(l.kind)] ?? 'walkIn',
       ...(walking ? { walking: true as const } : {}), ...(coming ? { arrive: l.arrive } : {}), ...(door ? { door: true as const } : {}),
     };
+  }
+
+  /** Кто сейчас везёт каталку — номера через запятую: изменилось — «Персонал» заново. */
+  get ridingNow(): string {
+    return [...this.riding.keys()].join();
+  }
+
+  /** Перевозка человека штата сейчас (spec docs/specs/2026-10-orderlies.md): что с ней и до какого часа он занят; нет — не везёт. */
+  rideOf(staffId: string): { phase: RidePhase; home: number } | undefined {
+    const x = this.phases.get(staffId);
+    return x ? { phase: x.ph, home: x.r.home } : undefined;
   }
 
   /** Срочность пациента — для значка над головой. */

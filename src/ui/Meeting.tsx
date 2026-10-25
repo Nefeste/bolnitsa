@@ -3,6 +3,7 @@
 // кто собирается уйти и кто уходит (spec docs/specs/2026-10-staff-mood.md), подсказка, часы приёма, кредит. Данные — из окна (src/app/money.ts), слова — здесь, при отрисовке.
 import { type ReactNode, useState } from 'react';
 import { PAYERS } from '../engine/economy/economy';
+import { GURNEY_WAIT } from '../engine/shift/meeting';
 import type { RepChange } from '../engine/economy/economy';
 import { money, T } from '../i18n';
 import { type EconomyHud, type MeetingView, type Raise, slowOf, type Tip } from '../app/money';
@@ -154,7 +155,15 @@ export function MeetingBody({ m, e, actions }: { m: MeetingView; e: EconomyHud; 
         <ul>
           {slow.map((x, i) => (
             <li key={i}>
-              {x.kind === 'doctors' ? t.doctors(x.queue, x.wait) : x.kind === 'room' ? t.room(m.rooms[x.id] ?? x.id, x.queue, x.wait, x.n) : x.kind === 'door' ? t.door(x.n) : t.beds(x.peak, x.of)}
+              {x.kind === 'doctors'
+                ? t.doctors(x.queue, x.wait)
+                : x.kind === 'room'
+                  ? t.room(m.rooms[x.id] ?? x.id, x.queue, x.wait, x.n)
+                  : x.kind === 'door'
+                    ? t.door(x.n)
+                    : x.kind === 'gurney'
+                      ? t.gurney(x.n, x.wait, GURNEY_WAIT)
+                      : t.beds(x.peak, x.of)}
             </li>
           ))}
         </ul>

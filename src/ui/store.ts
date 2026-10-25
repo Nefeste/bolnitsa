@@ -57,10 +57,14 @@ export interface RoomCard {
    * docs/specs/2026-10-specialists.md); смены (spec docs/specs/2026-10-staff-shifts.md): строка на смену, `both` — человек
    * без смены, на обеих
    */
+  /** заметка под должностями: «в ночную смену санитара нет — лежачих повезут медсёстры» (spec 2026-10-orderlies) */
+  note?: string;
   posts?: {
     role: Id; name: string; who?: string; staffId?: string; salary: string; you?: boolean; shift?: 'day' | 'night' | 'both';
     /** «Уволить» — подсказка с выплатой за три смены (spec docs/specs/2026-10-staff-mood.md) */
     fire?: string;
+    /** должность, без которой помещение работает (санитар, spec docs/specs/2026-10-orderlies.md): что без неё будет */
+    optional?: string;
     options?: { role: Id; name: string; salary: string; hint: string }[];
   }[];
   furnish?: { ok: boolean; text: string };
