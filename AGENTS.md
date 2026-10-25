@@ -125,6 +125,8 @@ npm run bench -- --mode desks --quick          # the same with Anamnez's appoint
 npm run bench -- --mode flow --day             # the whole day to 10:00 of day 2: day and night minutes, 08:00 meeting, 09:00 round
 npm run bench -- --mode flow --quick --flat    # flat arrivals by hour: the same patients as before the 24-hour day, to compare
 bun tools/bench/consults.ts                    # «Просят посмотреть»: share of hired doctors' cases that ask you (--probe: why these thresholds)
+bun tools/bench/referrals.ts                   # referral to a specialist (#62): the same patients from one moment — the therapist
+                                               # decides, referred, referred with the profile prior (`--every`, `--second`)
 bun tools/bench/approvals.ts                   # «Главврач утверждает»: decisions per hour awaiting approval and how many are wrong
                                                # (`--rules below90,discharge`, `--answer silent`; next to it — the same day by default)
 bun tools/sim/economy.ts --seeds 1,2,3         # economy simulator: scripted hospitals for 7 days, cash, flow, reputation and the criteria
