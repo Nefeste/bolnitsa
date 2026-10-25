@@ -178,22 +178,36 @@ describe('санитары и каталки', () => {
     expect(pickupOf(s, 'x')).toBeUndefined();
   });
 
-  test('кто везёт: санитары смены; ни одного — медсестра того помещения, откуда везут; иначе ближайшая медсестра', () => {
+  test('кто везёт: санитары смены; ни одного — срочного везёт медсестра того помещения, откуда везут, иначе ближайшая', () => {
     const s = city(4);
     const ctx = hospitalCtx(db, s);
     const er = ctx.plan.rooms.find(r => r.type === 'room.emergency')!.id;
-    expect(carriersOf(ctx.plan, ctx.staff, er).every(m => m.role === ORDERLY)).toBe(true);
+    expect(carriersOf(ctx.plan, ctx.staff, er, false).every(m => m.role === ORDERLY)).toBe(true);
     const noOrderly = ctx.staff.filter(m => m.role !== ORDERLY);
-    expect(carriersOf(ctx.plan, noOrderly, er).map(m => [m.role, m.room])).toEqual([['role.nurse', er]]);
+    expect(carriersOf(ctx.plan, noOrderly, er, true).map(m => [m.role, m.room])).toEqual([['role.nurse', er]]);
     // медсестры смотровой нет — ближайшая
     const far = noOrderly.filter(m => !(m.role === 'role.nurse' && m.room === er));
-    const near = carriersOf(ctx.plan, far, er);
+    const near = carriersOf(ctx.plan, far, er, true);
     expect(near.length).toBe(1);
     const nurses = far.filter(m => m.role === 'role.nurse' && m.room !== undefined);
     expect(walkPc(ctx.plan, near[0].room, er)).toBe(Math.min(...nurses.map(m => walkPc(ctx.plan, m.room, er))));
     // никого — везти некому
-    expect(carriersOf(ctx.plan, far.filter(m => m.role !== 'role.nurse'), er)).toEqual([]);
-    expect(planRide(db, s, ctx.plan, far.filter(m => m.role !== 'role.nurse'), 'x', 'bed', er, er)).toBeUndefined();
+    expect(carriersOf(ctx.plan, far.filter(m => m.role !== 'role.nurse'), er, true)).toEqual([]);
+    expect(planRide(db, s, ctx.plan, far.filter(m => m.role !== 'role.nurse'), 'x', 'bed', er, er, { urgent: true })).toBeUndefined();
+  });
+
+  test('без санитара медсестра везёт только срочного (решение владельца #99): остальных — никто, ждут санитара', () => {
+    const s = city(4);
+    const ctx = hospitalCtx(db, s);
+    const rooms = ctx.plan.rooms;
+    const er = rooms.find(r => r.type === 'room.emergency')!.id;
+    const ward = rooms.find(r => r.type === 'room.ward')!.id;
+    const noOrderly = ctx.staff.filter(m => m.role !== ORDERLY);
+    expect(carriersOf(ctx.plan, noOrderly, er, false)).toEqual([]);
+    expect(planRide(db, s, ctx.plan, noOrderly, 'x', 'bed', er, ward)).toBeUndefined();
+    expect(planRide(db, s, ctx.plan, noOrderly, 'x', 'bed', er, ward, { urgent: true })!.by).toBe(carriersOf(ctx.plan, noOrderly, er, true)[0].id);
+    // санитар в смене — везёт он, срочного и не срочного
+    expect(planRide(db, s, ctx.plan, ctx.staff, 'x', 'bed', er, ward)!.by).toBe(planRide(db, s, ctx.plan, ctx.staff, 'x', 'bed', er, ward, { urgent: true })!.by);
   });
 
   test('два санитара — везёт тот, кто раньше будет у больного; занят — тот, кто освободится раньше', () => {
