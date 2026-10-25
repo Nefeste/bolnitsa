@@ -114,10 +114,13 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # suit colour by role — read from the picture, people sit down, stand up and lie; then
                                    # scenario 1: «Кампания» on the start screen, the mentor's letters at the start and to the
                                    # hint states while building, the scenario's build catalog, your own office, the first three
-                                   # patients set by the scenario, «Цели» and «Без обучения», «Письма» at the meeting);
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|24` for one part
+                                   # patients set by the scenario, «Цели» and «Без обучения», «Письма» at the meeting; then the
+                                   # «Показатели» layer: columns over the rooms from «Слои», taller where people are, numbers,
+                                   # hover and click on a column, «Ожидание» with M, remembered after a reload);
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|25` for one part
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
-                                                     # (`-- --people rb` — with Rocketbox people)
+                                                     # (`-- --people rb` — with Rocketbox people, `-- --metric load` —
+                                                     # with the «Показатели» layer)
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
 npm run assets -- <sources dir>    # rebuild assets/models/*.glb from the CC0 packs (byte-identical; see assets/LICENSES.md)
@@ -250,7 +253,10 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   frame loop, clock, input, build tools (`build.ts`), room labels (`labels.ts`), auto-bench (`bench.ts`), the player's
   settings (`settings.ts`: walls, camera, quality «auto», kept in page storage, not in saves — bench and build change the
   view through `showWalls`/`showQuality`, which do not write them); people and flow:
-  pure window logic (`flow.ts` — path lines, room load and state, patient rows) and room status chips (`chips.ts`).
+  pure window logic (`flow.ts` — path lines, room load and state, patient rows) and room status chips (`chips.ts`). The
+  «Показатели» layer (`docs/specs/2026-10-metrics-layer.md`): `metrics.ts` — a room's column from its load (`columnOf`: height,
+  colour, the hover line, the number), `collabels.ts` — numbers over the columns, `src/render/columns.ts` — one instanced mesh
+  of shaded boxes, picked by a ray; the chosen metric is a player setting (`metric`), M cycles it, `?metric=load` for bench.
 - `src/render/` — the 3D view (Three.js): `layout.ts` places template items on the engine plan, `catalog.ts` maps
   engine items to CC0 models or code-made ones, `world.ts` floors and cut walls, `doors.ts`, `lamps.ts`, `post.ts`
   (MSAA + GTAO), `stage.ts`, build ghosts `ghost.ts`; people: `bake.ts` (animations baked into a texture), `cast.ts`

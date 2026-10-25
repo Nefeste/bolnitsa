@@ -41,7 +41,8 @@
     .top .warn { color: var(--yellow); }
     .notice { color: var(--muted); font-size: 12px; padding: 3px 10px; max-width: 100%; box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .label { color: var(--muted); margin: 0 2px 0 8px; }
-    .left { position: absolute; left: 8px; top: 56px; width: 150px; display: flex; flex-direction: column; gap: 6px; padding: 8px; }
+    /* над окном врача: раскрытое меню «Слои» доходит до него и не должно уходить под него */
+    .left { position: absolute; left: 8px; top: 56px; width: 150px; display: flex; flex-direction: column; gap: 6px; padding: 8px; z-index: 4; }
     .left .hint { color: var(--muted); font-size: 12px; }
     .right { position: absolute; right: 8px; top: 56px; width: 280px; display: flex; flex-direction: column; gap: 6px; }
     .right .tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px; }
@@ -174,6 +175,9 @@
     .start button.on span { color: #0b1a1e; opacity: .8; }
     /* люди и поток (docs/specs/2026-10-flow-ui.md): значки помещений, вкладка «Пациенты», путь пациента, слои */
     .roomchips { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+    /* числа над столбиками слоя «Показатели» (docs/specs/2026-10-metrics-layer.md) */
+    .collabels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+    .collabel { position: absolute; left: 0; top: 0; padding: 1px 6px; border-radius: 4px; background: rgba(14, 20, 23, 0.82); color: #fff; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .roomchip { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 4px; padding: 1px 6px 1px 4px; border-radius: 10px; background: rgba(22,30,34,.82); border: 1px solid rgba(255,255,255,.18); font-size: 11px; line-height: 16px; white-space: nowrap; color: #8fe3b4; }
     .roomchip svg { flex: none; }
     .roomchip.t-busy { color: #8fd3ff; }
@@ -213,6 +217,10 @@
     .card .psum { margin-top: 4px; font-size: 12px; }
     .layers { display: flex; flex-direction: column; gap: 3px; }
     .layers button { text-align: left; }
+    /* слой «Показатели» (docs/specs/2026-10-metrics-layer.md): выбор показателя рядком */
+    .layers .metrics { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+    .layers .metrics .row { display: flex; flex-wrap: wrap; gap: 3px; }
+    .layers .metrics .row button { text-align: center; flex: 1 1 auto; }
     .layers .hint { margin: 2px 0 0; }
     /* режим врача (docs/specs/2026-10-doctor-mode.md): окно врача, карта пациента, «Просят посмотреть» */
     .small { font-size: 12px; }

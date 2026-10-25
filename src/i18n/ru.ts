@@ -568,6 +568,23 @@ export const ru = {
     layerSoon: 'позже',
     legend: (a: number, b: number) => `Пол: зелёный — ждут меньше ${a} мин, жёлтый — ${a}–${b} мин, красный — ${b} мин и дольше; палаты — по занятым койкам.`,
   },
+  /** слой «Показатели» (spec docs/specs/2026-10-metrics-layer.md): столбики над помещениями */
+  metrics: {
+    title: 'Показатели',
+    hint: 'M — столбики над помещениями',
+    name: { load: 'Загрузка', wait: 'Ожидание', revenue: 'Выручка', profit: 'Прибыль' },
+    soon: 'деньги по помещениям — следующей частью',
+    off: 'Выключить',
+    legend: {
+      load: (a: number, b: number) => `Высота — люди у помещения: ждут и внутри; у палат — занятые койки. Цвет — самое долгое ожидание: меньше ${a} мин, ${a}–${b}, ${b} и дольше.`,
+      wait: (a: number, b: number) => `Высота — самое долгое ожидание сейчас, до часа. Цвет: меньше ${a} мин, ${a}–${b}, ${b} и дольше.`,
+    },
+    load: (queue: number, busy: boolean) => [queue > 0 ? `ждут ${queue}` : '', busy ? 'внутри занято' : ''].filter(Boolean).join(' · '),
+    beds: (used: number, all: number) => `койки: занято ${used} из ${all}`,
+    free: 'свободно',
+    wait: (queue: number, longest: string) => `ждут ${queue}, самое долгое — ${longest}`,
+    noWait: 'никто не ждёт',
+  },
   // режим врача (spec docs/specs/2026-10-doctor-mode.md): карта пациента и разбор — `case`, окно врача — `doctor`
   ...doctorRu,
   // энциклопедия (spec docs/specs/2026-10-encyclopedia.md): статьи из базы — `encyclopedia`

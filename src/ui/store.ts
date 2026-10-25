@@ -14,6 +14,7 @@ import type { SaveRow } from '../app/saves';
 import type { Role } from '../app/roles';
 import type { QualityMode } from '../app/settings';
 import type { ScenarioAction, ScenarioHud } from '../app/scenario';
+import type { Metric } from '../app/metrics';
 
 /** Скорость игры (spec docs/specs/2026-10-walk.md): ×1, ×3, ×12; 0 — пауза. */
 export type Speed = 0 | 1 | 3 | 12;
@@ -131,8 +132,8 @@ export interface Hud {
   seenAll: number;
   /** «Путь пациента» выбранного: лента, итог, почему ушёл; `none` — пути нет (пришёл до этой версии) */
   path?: { lines: PathLine[]; summary: string; left?: string } | { none: true };
-  /** слои карты: меню открыто; «Очереди и загрузка» включён */
-  layers: { open: boolean; queues: boolean };
+  /** слои карты: меню, «Очереди и загрузка», «Показатели» — включённый показатель (spec docs/specs/2026-10-metrics-layer.md) */
+  layers: { open: boolean; queues: boolean; metric: Metric | null };
   /** вкладка «Персонал»: `on` — сейчас в смене (spec docs/specs/2026-10-staff-shifts.md) */
   /** «Персонал»: строка человека; `on` — в смене; `bad` — собирается уйти или уходит (spec docs/specs/2026-10-staff-mood.md) */
   staffList: { key: string; text: string; on?: true; bad?: true }[];
@@ -197,7 +198,7 @@ export const initial: Hud = {
   gone: [],
   seenRows: [],
   seenAll: 0,
-  layers: { open: false, queues: false },
+  layers: { open: false, queues: false, metric: null },
   staffList: [],
   debug: false,
   build: { on: false, withStaff: true, moving: false, spent: 0, undo: 0 },
@@ -281,6 +282,8 @@ export interface Actions {
   follow(): void;
   toggleLayers(): void;
   toggleQueues(): void;
+  /** слой «Показатели»: показатель или выключить (`null`) */
+  setMetric(m: Metric | null): void;
   /** режим врача (spec docs/specs/2026-10-doctor-mode.md) */
   doctor(a: DoctorAction): void;
   /** касса и планёрка (spec docs/specs/2026-10-economy.md): экран планёрки, автопауза, часы приёма, кредит */

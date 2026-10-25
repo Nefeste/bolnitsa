@@ -32,11 +32,13 @@
 // tools/app/e2e-owncard.mjs. Часть 23 — люди Rocketbox (`?people=rb`): шесть видов с атласом и маской, вид и цвет костюма по
 // должности, садятся, встают и лежат, tools/app/e2e-people.mjs. Часть 24 — сценарий 1 «Амбулатория»: «Кампания» на экране
 // начала, письма наставницы к состояниям подсказок и «в начале», каталог стройки сценария, свой кабинет, первые трое —
-// заданные, «Цели» и «Без обучения», «Письма» на планёрке, tools/app/e2e-scenario.mjs.
+// заданные, «Цели» и «Без обучения», «Письма» на планёрке, tools/app/e2e-scenario.mjs. Часть 25 — слой «Показатели»:
+// столбики над помещениями из меню «Слои», высота по людям, наведение и щелчок по столбику, «Ожидание», M по кругу,
+// показатель запомнен, tools/app/e2e-metrics.mjs.
 // Ошибок в консоли и запросов наружу нет.
 // Снимки — tools/app/out/e2e.png, e2e-build-*.png и e2e-flow-*.png; `--shots high` — снимки частей 2 и 3 в этом качестве
 // (на время снимка).
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|…|24] [--shots low|medium|high] [--port 8093]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|…|25] [--shots low|medium|high] [--port 8093]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -53,6 +55,7 @@ import { moodPart } from './e2e-mood.mjs';
 import { growthPart } from './e2e-growth.mjs';
 import { gurneyPart } from './e2e-gurney.mjs';
 import { findChromium } from './e2e-lib.mjs';
+import { metricsPart } from './e2e-metrics.mjs';
 import { ownerTwoPart } from './e2e-owner2.mjs';
 import { peoplePart } from './e2e-people.mjs';
 import { polyPart } from './e2e-poly.mjs';
@@ -168,6 +171,8 @@ try {
   if (run(23)) await peoplePart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   // часть 24 — сценарий 1 «Амбулатория» (spec docs/specs/2026-10-scenario-1.md, часть 2): tools/app/e2e-scenario.mjs
   if (run(24)) await scenarioPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  // часть 25 — слой «Показатели» (spec docs/specs/2026-10-metrics-layer.md, часть 1): tools/app/e2e-metrics.mjs
+  if (run(25)) await metricsPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);

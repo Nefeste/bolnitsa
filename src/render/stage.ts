@@ -11,6 +11,7 @@ import { GpuTimer } from './gpu';
 import { Highlight, type RoomRect } from './highlight';
 import { Icons } from './icons';
 import { buildLamps, type Lamps } from './lamps';
+import { Columns } from './columns';
 import { FloorTint } from './overlay';
 import { type Layout, roomAt } from './layout';
 import { type Paint, PeopleView } from './people';
@@ -61,6 +62,8 @@ export class Stage {
   iconOf: (w: Walker) => number = () => -1;
   /** слой «Очереди и загрузка»: цвет пола помещений */
   readonly tint = new FloorTint();
+  /** слой «Показатели» (spec docs/specs/2026-10-metrics-layer.md): столбики над помещениями */
+  readonly columns = new Columns();
   /** метка вашей фигуры */
   private you: THREE.Mesh;
   quality: Quality;
@@ -110,6 +113,8 @@ export class Stage {
     this.over.add(this.icons.mesh);
     this.tint.setLayout(layout);
     this.scene.add(this.tint.group);
+    this.columns.setLayout(layout);
+    this.scene.add(this.columns.group);
     // ваша фигура (spec docs/specs/2026-10-doctor-mode.md): синяя стрелка остриём вниз над головой
     this.you = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.34, 4).rotateX(Math.PI), new THREE.MeshBasicMaterial({ color: YOU_MARK }));
     this.you.visible = false;
@@ -150,6 +155,7 @@ export class Stage {
     this.furniture = batchMeshes(furnished.batch);
     for (const m of this.furniture) this.scene.add(m);
     this.tint.setLayout(layout);
+    this.columns.setLayout(layout);
     // свет пола и светильники — по часу заново
     this.hourShown = -1;
   }
@@ -186,6 +192,7 @@ export class Stage {
   frame(dt: number, hour: number, crowd: Crowd, paint: (w: Walker) => Paint, triageOf: (key: string) => string | undefined, selected?: string, pick?: { room: RoomRect | null; selRoom: RoomRect | null; under?: string }) {
     const cam = this.cam;
     cam.update(dt);
+    this.columns.frame(dt);
     const u = this.walls.uniforms;
     u.uFocus.value.set(cam.target.x, cam.target.z);
     u.uRadius.value = Math.max(6, cam.half * 0.55);
@@ -293,6 +300,13 @@ export class Stage {
       }
     }
     return best;
+  }
+
+  /** Помещение плана под курсором — по столбику слоя «Показатели»; слоя нет или мимо — -1. */
+  pickColumn(clientX: number, clientY: number): number {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    return this.columns.pick(ndc, this.cam.camera);
   }
 
   /** Клетка пола под курсором и помещение в ней (-1 — коридор). */

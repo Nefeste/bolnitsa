@@ -4,6 +4,7 @@
 // (tools/test/settings.test.ts).
 import type { Projection, Quality } from '../render/view';
 import type { WallMode } from '../render/world';
+import { type Metric, METRICS } from './metrics';
 
 /** Качество: «авто» — по первым секундам игры, или своё. */
 export type QualityMode = 'auto' | Quality;
@@ -13,10 +14,12 @@ export interface Settings {
   projection: Projection;
   quality: QualityMode;
   debug: boolean;
+  /** слой «Показатели» (spec docs/specs/2026-10-metrics-layer.md): включённый показатель; нет — слой выключен */
+  metric: Metric | null;
 }
 
 /** По умолчанию — вид владельца: стены вниз (решение #70), перспектива; качество — «авто». */
-export const DEFAULT_SETTINGS: Settings = { walls: 'down', projection: 'persp', quality: 'auto', debug: false };
+export const DEFAULT_SETTINGS: Settings = { walls: 'down', projection: 'persp', quality: 'auto', debug: false, metric: null };
 
 const KEY = 'bolnitsa.settings';
 const WALLS: readonly WallMode[] = ['full', 'cut', 'down'];
@@ -38,6 +41,7 @@ export function parseSettings(raw: string | null | undefined): Settings {
     projection: pick(PROJECTIONS, x.projection, DEFAULT_SETTINGS.projection),
     quality: pick(QUALITIES, x.quality, DEFAULT_SETTINGS.quality),
     debug: x.debug === true,
+    metric: METRICS.find(m => m === x.metric) ?? null,
   };
 }
 

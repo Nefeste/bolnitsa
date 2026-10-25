@@ -71,6 +71,7 @@ const actions: Actions = {
   follow: later('follow'),
   toggleLayers: later('toggleLayers'),
   toggleQueues: later('toggleQueues'),
+  setMetric: later('setMetric'),
   doctor: later('doctor'),
   money: later('money'),
   dismissHint: later('dismissHint'),
