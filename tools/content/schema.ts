@@ -844,6 +844,14 @@ export const economySchema = z.strictObject({
      * расстояния; от скольких % ниже или выше рынка зарплата — причина; очки за причины в сутки; порог «собирается уйти», сколько утр
      * подряд ниже него и сколько суток на ответ; разовые прибавки; шаг повышения, %; выплата при увольнении — смен
      */
+    /**
+     * рост, наставник, учёба, болезнь нанятых в смене (spec 2026-10-staff-mood, разделы 3–5): насколько быстрее растут с
+     * наставником, %; учёба — суток, цена в сменах, прибавка настроения; болеет — раз в столько смен в среднем
+     */
+    growth: z.strictObject({
+      mentor: z.number().int().min(100).max(400), studyDays: z.number().int().min(1).max(14), studyCost: z.number().int().min(0).max(30),
+      studyMood: pct, sick: z.number().int().min(2).max(10000),
+    }).optional(),
     mood: z.strictObject({
       start: pct, drift: z.number().int().min(1).max(100), market: z.number().int().min(1).max(50),
       below: z.number().int().min(-50).max(0), above: z.number().int().min(0).max(50), limit: z.number().int().min(-50).max(0),

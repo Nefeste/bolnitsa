@@ -4,7 +4,8 @@
 // своей смены. «Поднять зарплату» и «В другую смену» — прибавка сразу; уволить — с выплатой за три смены; отмена стройки
 // возвращает и выплату, и настроение. Те же зерно и команды — то же при любом шаге часов. Без смен настроения нет.
 import { describe, expect, test } from 'bun:test';
-import { db } from '../../src/content';
+import { db as base } from '../../src/content';
+import type { ContentDb } from '../../src/content/types';
 import { hospitalOf } from '../../src/engine/hospital/site';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { presetStaff, type StaffMember, wageOf, withNightShift } from '../../src/engine/hospital/staff';
@@ -15,6 +16,8 @@ import { marketOf, moodsOf, raisedOf } from '../../src/engine/shift/mood';
 import type { Notice, ShiftState, StaffNews } from '../../src/engine/shift/types';
 import { hash, site } from './site-kit';
 
+/** Без роста, учёбы и болезни (разделы 3–5 — tools/test/staff-growth.test.ts): здесь — только настроение. */
+const db: ContentDb = { ...base, economy: { ...base.economy, staff: { ...base.economy.staff, growth: undefined } } };
 const H = 3600;
 const DAY = 86400;
 const M = db.economy.staff.mood!;

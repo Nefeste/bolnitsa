@@ -85,6 +85,24 @@ function shift(r: Mood, d: number) {
   else delete r.d;
 }
 
+/**
+ * Прибавка без отмены (spec «Как будет», 4): вернулся с учёбы — `d` сразу, со стрелкой окна; выше порога — «собирается уйти»
+ * снято. Без настроения — ничего.
+ */
+export function boost(db: ContentDb, s: ShiftState, id: string, d: number) {
+  const m = s.staff?.find(x => x.id === id);
+  const n = m ? moodNumbers(db, s, m) : undefined;
+  if (!n) return;
+  const r = recordOf(n, s, id);
+  const v = clamp(r.v + d);
+  shift(r, v - r.v);
+  r.v = v;
+  if (r.quit !== undefined && v > n.quit) {
+    delete r.quit;
+    delete r.low;
+  }
+}
+
 /** Уволенного — запись прочь; что вернуть отменой — шаг. */
 export function moodOut(s: ShiftState, id: string): MoodStep | undefined {
   const was = s.moods?.[id];
@@ -147,7 +165,8 @@ export function moodMorning(db: ContentDb, s: ShiftState, toilet: boolean): Staf
     if (m.shift === undefined) continue;
     const r = recordOf(n, s, m.id);
     if (r.go !== undefined) continue;
-    const works = m.room !== undefined;
+    // работал: на месте, а не на учёбе и не болел (spec «Как будет», 4–5)
+    const works = m.room !== undefined && !m.away;
     if (works && m.shift === 'night') r.nights = (r.nights ?? 0) + 1;
     else delete r.nights;
     const causes: [MoodWhy, number][] = [];

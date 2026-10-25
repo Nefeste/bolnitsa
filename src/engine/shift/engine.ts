@@ -14,7 +14,7 @@ import {
 import { type CampaignProgress, campaignEvening, chapterOf, nextChapterOf, startChapter, tutorialDayOf } from '../campaign/campaign';
 import { build, emptyPlot, type HospitalState, type PlacedRoom, type Plan, planOf, presetHospital, sizeOf, UNDO_DEPTH, widenPlot } from '../hospital/build';
 import { bedsideIn, DOCTOR, doctorRoom, examWhere, NONE_BROKEN, openBlocks, type Problem, problemsOf, slotKey, type Staffing, workingRooms } from '../hospital/requirements';
-import { applicantsOf, doctorOf, dutyOf, grow, memberAt, onDuty, presetStaff, PROFILE_PRIOR, readingOf, type StaffMember, speedOf, staffingOf } from '../hospital/staff';
+import { applicantsOf, doctorOf, dutyOf, grow, memberAt, onDuty, presetStaff, PROFILE_PRIOR, readingOf, type StaffMember, speedOf, staffingOf, wageOf } from '../hospital/staff';
 import { metersBetween, WALK_SPEED, walkSeconds } from '../hospital/walk';
 import { log2 } from '../core/math';
 import { P_ONE, RNG_VERSION, Rng } from '../core/rng';
@@ -42,10 +42,11 @@ import { dueIn, type TargetPlace, targetResults } from './targets';
 import { occupied, siteCommand, siteFree } from './site';
 import { arrivalAfter, dayOf, hospitalDay, hoursOf, returnWindow, roundsAt, validHours } from './day';
 import { type Bed, daysIn, type StayEnd, stayNorm, wardCourse, wardState } from './ward';
-import { accrue, offerOf, openEconomy, payWorks, repay, shortOf, takeLoan } from './money';
+import { accrue, offerOf, openEconomy, payWorks, repay, shortOf, takeLoan, unpaidShift } from './money';
 import { ambulancePerHour, bookedPerHour, type Capacity, walkPerHour } from './inflow';
 import * as meeting from './meeting';
 import { depart, leaversDue, moodMorning } from './mood';
+import { backMorning, growMorning, sickMorning } from './growth';
 
 const MIN = 60;
 const TRIAGE_RANK: Record<Triage, number> = { red: 0, yellow: 1, green: 2 };
@@ -1199,9 +1200,16 @@ function morning(db: ContentDb, s: ShiftState, notices: Notice[]) {
   // настроение (spec 2026-10-staff-mood): ночная смена кончилась — дошёл ли до предела; санузел — как у репутации, сейчас;
   // ночной, что не дождался ответа, уходит сейчас (дневной — в 20:00, в пересменку)
   shiftEnded(db, s);
+  // рост (раздел 3): кто отработал прошедшие сутки — на смену ближе к навыку; до настроения — выросшему рынок уже выше
+  const grew = growMorning(db, s);
   const plan = hospitalCtx(db, s).plan;
-  const news = moodMorning(db, s, plan.rooms.some(r => r.type === 'room.toilet' && plan.connected[r.id]));
-  if (news?.leave) depart(s, occupied(db, s).staff);
+  const mood = moodMorning(db, s, plan.rooms.some(r => r.type === 'room.toilet' && plan.connected[r.id]));
+  if (mood?.leave) depart(s, occupied(db, s).staff);
+  // учёба и болезнь (разделы 4–5): вернувшиеся — с навыком и настроением; кто сегодня болеет, на смену не выйдет и денег за
+  // неё не получит
+  const back = backMorning(db, s);
+  const sick = sickMorning(db, s, m => wageOf(db, m), rub => unpaidShift(s, rub));
+  const news = mood || grew || back || sick ? { ...mood, ...(grew ? { grew } : {}), ...(back ? { back } : {}), ...(sick ? { sick } : {}) } : undefined;
   // аппараты, сломавшиеся с утра (FR-EQ-3): до следующего утра их нет
   const broken = breakdowns(db, s);
   if (broken.length > 0) s.broken = broken;

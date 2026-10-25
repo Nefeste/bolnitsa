@@ -12,8 +12,8 @@
 //              2026-10-specialists): у специалистов своя запись, пришедших сами берёт один терапевт.
 // Критерии: касса ни разу не ниже предела минуса (кредит не нужен); за 7 суток больница не окупается целиком — не богатеет
 // нелепо; поток за сутки — в ориентирах геймдизайна §5. Персонал (spec docs/specs/2026-10-staff-mood.md): кто собирался уйти
-// и кто ушёл сам, настроение в конце; с `--days 14` и больше — критерий: игрок ничего не делает, а уходят сами не больше двух
-// за две недели.
+// и кто ушёл сам, настроение в конце, кто вырос и сколько смен пропущено по болезни; с `--days 14` и больше — критерий: игрок
+// ничего не делает, а уходят сами не больше двух за две недели.
 // `--hall N` — сидя или стоя по своему залу не дальше N м (content/hospital/inflow.yaml, `hall`); `--hall 0` — по всей больнице.
 // `--bench N` — скамьи у дверей кабинетов не дальше N шагов (`bench`, spec docs/specs/2026-10-door-benches.md); `--bench 0` — без них.
 //   bun tools/sim/economy.ts [--days 7] [--seeds 1,2,3] [--only clinic,district,city,poly,polyspec] [--hall N] [--bench N] [--json]
@@ -136,6 +136,9 @@ interface Run {
   /** персонал (spec 2026-10-staff-mood): собирались уйти и ушли сами — сутки, должность, причины; настроение в конце */
   quits: { day: number; role: Id }[];
   leaves: { day: number; role: Id; why: string[] }[];
+  /** разделы 3–5: выросли (сутки, навык), смен пропущено по болезни */
+  grew: { day: number; skill: number }[];
+  sick: number;
   moods: { n: number; low: number; min: number; mean: number; why: Record<string, number> };
 }
 
@@ -168,12 +171,16 @@ function run(name: string, seed: number): Run {
   const lines: Record<string, number> = {};
   const quits: Run['quits'] = [];
   const leaves: Run['leaves'] = [];
+  const grew: Run['grew'] = [];
+  let sick = 0;
   const end = (DAYS * 24 + 8) * 3600;
   while (s.t < end) {
     for (const n of apply(db, s, { kind: 'advance', seconds: 300 })) {
       if (n.kind !== 'morning' || !n.staff) continue;
       for (const q of n.staff.quit ?? []) quits.push({ day: s.day, role: s.staff!.find(m => m.id === q.id)?.role ?? '' });
       for (const l of n.staff.leave ?? []) leaves.push({ day: s.day, role: l.role, why: l.why });
+      for (const g of n.staff.grew ?? []) grew.push({ day: s.day, skill: g.skill });
+      sick += n.staff.sick?.length ?? 0;
     }
     minCash = Math.min(minCash, cashNow(s)!);
   }
@@ -204,7 +211,7 @@ function run(name: string, seed: number): Run {
   }
   // прибыль — без стройки первых суток: сколько больница зарабатывает, когда построена
   const gain = (list: DayRow[]) => list.reduce((n, d, i) => n + d.income - d.expenses + (i === 0 ? d.works : 0), 0);
-  return { scenario: name, seed, start: first, value, minCash, profit: gain(days), week: gain(days.slice(0, 7)), days, lines, quits, leaves, moods };
+  return { scenario: name, seed, start: first, value, minCash, profit: gain(days), week: gain(days.slice(0, 7)), days, lines, quits, leaves, moods, grew, sick };
 }
 
 const fmt = (n: number) => Math.round(n).toLocaleString('ru-RU');
@@ -232,6 +239,8 @@ if (asJson) {
       const why = Object.entries(m.why).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ');
       const gone = r.leaves.map(l => `сутки ${l.day}: ${l.role.slice(5)} (${l.why.join(', ') || 'без причин'})`).join('; ');
       console.log(`    персонал: со сменой ${m.n}, настроение в конце ${m.min}–${Math.round(m.mean)} (ниже 30 — ${m.low}); причины ${why || 'нет'}; собирались уйти ${r.quits.length}, ушли сами ${r.leaves.length}${gone ? ` — ${gone}` : ''}`);
+      const up = r.grew.length ? ` (сутки ${Math.min(...r.grew.map(g => g.day))}–${Math.max(...r.grew.map(g => g.day))})` : '';
+      console.log(`    выросли ${r.grew.length}${up}; смен пропущено по болезни ${r.sick}`);
     }
     const low = rs.filter(r => r.minCash < -limit);
     const rich = rs.filter(r => r.week > r.value);
