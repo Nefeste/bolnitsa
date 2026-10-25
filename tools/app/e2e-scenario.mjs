@@ -112,7 +112,8 @@ export async function scenarioPart({ page, port, out, ok, fail, q, shots }) {
     ok(`каталог стройки по порядку: ${rows.map(r => `${r.step} ${r.id.slice(6)}`).join(', ')}; у первого — «${rows[0].why}» (снимок ${await shot('e2e-scenario-1b-guide.jpg')} КБ)`);
   } else fail(`порядок в каталоге: ${JSON.stringify(rows)}`);
   await page.click('#guide-toggle');
-  await until(() => window.__game.scenario.view?.guideOff === true, null, 5000).catch(() => {});
+  // отметка уходит в поток расчёта и приходит назад с видом сценария; каталог перерисует следующий кадр панели
+  await until(() => window.__game.scenario.view?.guideOff === true && !document.querySelector('#ready-types .gstep'), null, 5000).catch(() => {});
   rows = await readyRows();
   const names = await page.$$eval('#ready-types > li button span', els => els.map(e => e.textContent ?? ''));
   const sorted = [...names].sort((a, b) => a.localeCompare(b, 'ru'));
