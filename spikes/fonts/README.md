@@ -5,8 +5,8 @@
 табличными цифрами и своим курсивом, плотную для карты больного и планёрки.
 
 **Коротко.** Проверено двенадцать гарнитур из Google Fonts, все под OFL и с кириллицей. На снимках игры — четыре разные по
-характеру: IBM Plex Sans, Golos Text, Manrope, Inter. Рекомендация — IBM Plex Sans. Отчёт, таблица и листы сравнения —
-[`docs/reports/2026-10-fonts.md`](../../docs/reports/2026-10-fonts.md).
+характеру: IBM Plex Sans, Golos Text, Manrope, Inter. Рекомендация — IBM Plex Sans; вопрос владельцу — #107. Отчёт, таблица и листы
+сравнения — [`docs/reports/2026-10-fonts.md`](../../docs/reports/2026-10-fonts.md).
 
 ## Что здесь
 
