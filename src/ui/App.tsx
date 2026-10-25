@@ -450,7 +450,6 @@ function Posts({ r, actions }: { r: RoomCard; actions: Actions }) {
           <div key={role} className="post">
             <span className="prole" data-enc={role} title={rows[0].optional}>
               {rows[0].name}
-              {rows[0].optional ? <span className="muted optional"> — {rows[0].optional}</span> : null}
             </span>
             {rows.map(p => {
               // смены: строка ночной смены — свои номера кнопок
@@ -478,6 +477,8 @@ function Posts({ r, actions }: { r: RoomCard; actions: Actions }) {
                 </span>
               );
             })}
+            {/* должность по желанию (санитар, spec docs/specs/2026-10-orderlies.md): что без неё — строкой ниже */}
+            {rows[0].optional ? <span className="muted optional">{rows[0].optional}</span> : null}
           </div>
         );
       })}
