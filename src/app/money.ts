@@ -14,6 +14,7 @@ import { staffName } from './people';
 import { raisedOf } from '../engine/shift/mood';
 import type { StaffMember } from '../engine/hospital/staff';
 import type { ErrorList } from '../sim/doctor';
+import type { LetterRow } from './scenario';
 
 /** Нанятый врач на планёрке: должность, навык, приёмы за сутки. */
 export interface DoctorDay {
@@ -67,6 +68,8 @@ export interface MeetingView {
    * в `summary.chief`
    */
   errors?: ErrorList;
+  /** сценарий (spec docs/specs/2026-10-scenario-1.md): письма, пришедшие утром, и выполненные цели — словами */
+  scenario?: { letters: LetterRow[]; goals: string[] };
 }
 
 /** «Поднять зарплату» прямо в строке планёрки: с какой и до какой, ₽ за смену. */
@@ -205,9 +208,11 @@ export class Money {
       : undefined;
     // ошибки нанятых врачей (F5): поток расчёта присылает их вместе со срезом планёрки — за сутки до 08:00
     const errors = this.g.errors;
+    // сценарий (spec docs/specs/2026-10-scenario-1.md): письма утра и выполненные цели — разделом планёрки
+    const scenario = this.g.scenario.meetingOf(summary.campaign);
     return {
       summary, doctors, rooms, broken: out, worse, tip: tipOf(summary, rooms, worse.length > 0, doctors.some(d => d.idle), this.hud.limit),
-      ...(people ? { staff: people } : {}), ...(errors.total > 0 ? { errors } : {}),
+      ...(people ? { staff: people } : {}), ...(errors.total > 0 ? { errors } : {}), ...(scenario ? { scenario } : {}),
     };
   }
 
@@ -239,6 +244,8 @@ export class Money {
   private close() {
     if (!this.hud.open) return;
     this.hud.open = false;
+    // письма планёрки прочитаны: их текст был на её экране — карточкой они не вернутся
+    this.g.scenario.readAll(this.hud.meeting?.scenario?.letters.map(l => l.id) ?? []);
     // пауза до планёрки — не причина стоять после неё: часы пойдут ×1
     this.g.setSpeed(this.before || 1);
     this.before = null;

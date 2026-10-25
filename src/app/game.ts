@@ -47,7 +47,8 @@ import { loadContent } from './content';
 import { Doctor } from './doctor';
 import { chipShown, dur, medicLine, moodOf, pathCard, type PatientRow, patientRows, roomChip, roomLoads, tintOf, wheelLine } from './flow';
 import { type HintKey, hintOf } from './hints';
-import { DEFAULT_ROLE, type Role, startFor } from './roles';
+import { DEFAULT_ROLE, firstOffice, type Role, ROLE_SETS, startFor } from './roles';
+import { ScenarioDesk, scenarioTitle } from './scenario';
 import { AutoQuality, type QualityMode, readSettings, type Settings, writeSettings } from './settings';
 import { HoverLabel } from './hover';
 import { Labels } from './labels';
@@ -78,12 +79,15 @@ export type Start = 'empty' | 'preset' | 'poly';
  * Больница начала и её люди: поликлиника — по записи базы, той же функцией, что команда стройки `ready`. Со сменами (spec
  * docs/specs/2026-10-staff-shifts.md): все — дневная смена; городская работает и ночью — и с ночной сменой.
  */
-function hospitalAt(db: ContentDb, start: Start, role: Role): { site: Site; staff: StaffMember[] } {
-  if (start === 'empty') return { site: emptySite(), staff: [] };
-  if (start === 'poly') {
-    const p = siteOfPlan(db, db.sites![SCENE.poly]);
+function hospitalAt(db: ContentDb, start: Start, role: Role, scenario?: Id): { site: Site; staff: StaffMember[] } {
+  // сценарий кампании (spec docs/specs/2026-10-scenario-1.md): пустое здание или готовая больница его записи
+  const from = scenario ? db.scenarios?.[scenario]?.start : undefined;
+  if (start === 'empty' && (!from || from === 'empty')) return { site: emptySite(), staff: [] };
+  if (start === 'poly' || from) {
+    const id = from ?? SCENE.poly;
+    const p = siteOfPlan(db, db.sites![id]);
     // сборка базы проверяет, что план строится и всё в нём работает (tools/content/load.ts, checkSites)
-    if (!p.ok) throw new Error(`${SCENE.poly}: room ${p.room} — ${p.error.kind}`);
+    if (!p.ok) throw new Error(`${id}: room ${p.room} — ${p.error.kind}`);
     // роль без своего кабинета (spec docs/specs/2026-10-two-ways.md, F4): в кабинете игрока — нанятый врач
     const r = startFor(db, p.site, p.staff, role);
     return { site: r.site, staff: withNightShift(db, r.site.rooms, r.staff) };
@@ -188,7 +192,7 @@ function sameSpots(a: readonly StaffMember[], b: readonly StaffMember[]): boolea
  */
 function reopen(extra: Record<string, string>) {
   const q = new URLSearchParams(location.search);
-  for (const k of ['load', 'hospital', 'seed', 'flow', 'start', 'role']) q.delete(k);
+  for (const k of ['load', 'hospital', 'seed', 'flow', 'start', 'role', 'scenario']) q.delete(k);
   for (const [k, v] of Object.entries(extra)) q.set(k, v);
   location.search = q.toString();
 }
@@ -216,6 +220,12 @@ export class Game {
   readonly doctor = new Doctor(this);
   /** касса и планёрка (spec docs/specs/2026-10-economy.md) */
   readonly money = new Money(this);
+  /** сценарий кампании (spec docs/specs/2026-10-scenario-1.md): письма, цели, «Без обучения», «Сценарий пройден» */
+  readonly scenario = new ScenarioDesk(this);
+  /** сценарий новой игры; у сохранения — в его состоянии */
+  private scenarioId: Id | undefined;
+  /** «Врачу» в сценарии первый построенный кабинет врача — его: отметку ставим один раз за игру */
+  private officeAuto = false;
   /** поток: от больницы или числа (авто-бенч, снимки, `?flow=`) */
   flow: Flow = AUTO;
   /** стройка: потрачено и сколько действий можно отменить */
@@ -307,6 +317,7 @@ export class Game {
   /** `loaded` — открыть сохранение (spec docs/specs/2026-10-saves.md): больница, поток и вид — из него, часы на паузе. */
   static async create(
     host: HTMLElement, store: Store, version: string, quality: Quality, start: Start = 'preset', flow: Flow = AUTO, loaded?: SaveFile, role: Role = DEFAULT_ROLE,
+    scenario?: Id,
   ): Promise<Game> {
     const t0 = performance.now();
     store.set({ status: T.app.loading, version });
@@ -314,6 +325,10 @@ export class Game {
     const g = new Game(db, store, host, version);
     g.start = start;
     g.role = role;
+    // названия сценариев — строкам сохранений в меню игры (spec docs/specs/2026-10-scenario-1.md)
+    store.set({ scenarioNames: Object.fromEntries(Object.values(db.scenarios ?? {}).map(sc => [sc.id, scenarioTitle(sc)])) });
+    // сценарий — только из базы: неизвестный — пустое здание песочницы
+    g.scenarioId = scenario && db.scenarios?.[scenario] ? scenario : undefined;
     g.flow = loaded?.state.flow ?? flow;
     g.loaded = loaded;
     g.load.content = Math.round(performance.now() - t0);
@@ -350,7 +365,9 @@ export class Game {
       this.staff = saved.staff ?? [];
       this.hospital = saved.hospital;
     } else {
-      const { site, staff } = hospitalAt(db, this.start, this.role);
+      const { site, staff } = hospitalAt(db, this.start, this.role, this.scenarioId);
+      // свой кабинет «Врачу» сценария — первый построенный: в готовой больнице он уже отмечен
+      this.officeAuto = site.mine !== undefined;
       this.staff = staff;
       this.hospital = hospitalOf(db, site);
     }
@@ -364,7 +381,14 @@ export class Game {
     const seed = Number(new URLSearchParams(location.search).get('seed')) || SCENE.seed;
     // касса (spec docs/specs/2026-10-economy.md): пустое здание — бюджет песочницы, готовая больница и поликлиника — его доля
     if (saved) this.client.load(saved);
-    else this.client.start({ kind: 'start', seed, season: SCENE.season, hospital: this.hospital, staff: this.staff, flow: this.flow, economy: { cash: startCash(this.db, this.start) } });
+    else {
+      this.client.start({
+        kind: 'start', seed, season: SCENE.season, hospital: this.hospital, staff: this.staff, flow: this.flow, economy: { cash: startCash(this.db, this.start) },
+        ...(this.scenarioId ? { scenario: this.scenarioId } : {}),
+      });
+    }
+    // сохранение с больницей, где кабинет уже есть, — выбор игрока не трогаем
+    if (saved?.hospital?.site?.rooms.some(r => r.type === 'room.office')) this.officeAuto = true;
     this.applyView(this.loaded?.view);
     this.doctor.start();
     // роль (F4): у сохранения — из его вида окна, у новой игры — настройки роли
@@ -578,6 +602,7 @@ export class Game {
       closed: this.closedText(),
       night: this.nightText(),
       roomTypes: Object.values(db.rooms)
+        .filter(t => this.buildable(t.id))
         .map(t => {
           const r = rulesOf(db, t.id)!;
           return { id: t.id, name: named(t.name, t.id), min: T.build.from(r.smallest.w, r.smallest.h), price: T.build.perM2(money(r.smallest.cost / (r.smallest.w * r.smallest.h))) };
@@ -585,7 +610,7 @@ export class Game {
         .sort((a, b) => a.name.localeCompare(b.name, document.documentElement.lang || undefined)),
       // готовые помещения (spec docs/specs/2026-10-ready-rooms.md): образцы и цена готового целиком
       readyTypes: Object.values(db.rooms)
-        .filter(t => t.sizes.length > 0)
+        .filter(t => t.sizes.length > 0 && this.buildable(t.id))
         .map(t => {
           const sizes = t.sizes.map(z => ({ id: z.id, text: T.build.readySize(z.id, z.w, z.h, money(readyCost(db, t.id, z.id))) }));
           const low = Math.min(...t.sizes.map(z => readyCost(db, t.id, z.id)));
@@ -593,6 +618,13 @@ export class Game {
         })
         .sort((a, b) => a.name.localeCompare(b.name, document.documentElement.lang || undefined)),
     });
+  }
+
+  /** В каталоге стройки: у сценария — только помещения его списка (spec docs/specs/2026-10-scenario-1.md), остальных нет. */
+  private buildable(type: Id): boolean {
+    const id = this.scenario.view?.id ?? this.scenarioId;
+    const list = id ? this.db.scenarios?.[id]?.build : undefined;
+    return !list || list.includes(type);
   }
 
   /** Больница ПК закрыта — почему: первое, без чего не открыть приём (`openBlocks`). */
@@ -674,6 +706,23 @@ export class Game {
     this.setWorld(false);
   }
 
+  /**
+   * Сценарий (spec docs/specs/2026-10-scenario-1.md): «Врачу» первый построенный кабинет врача — его, как в главе «Анамнеза»:
+   * письма учат принимать самому. Один раз за игру — «Не принимаю» потом остаётся выбором игрока; ответ — `onOffice`.
+   */
+  private scenarioOffice() {
+    const site = this.hospital.site;
+    if (this.officeAuto || !this.scenario.view || !site || !ROLE_SETS[this.doctor.hud.role].office) return;
+    if (site.mine !== undefined) {
+      this.officeAuto = true;
+      return;
+    }
+    const room = firstOffice(site);
+    if (!room) return;
+    this.officeAuto = true;
+    this.client.command({ kind: 'site', cmd: { kind: 'office', room } });
+  }
+
   // ---------------------------------------------------------------- поток расчёта
 
   private onSlice(s: Slice) {
@@ -685,6 +734,18 @@ export class Game {
     // новая больница — раньше людей: номера помещений в срезе — по её списку
     if (s.broken) this.broken = new Set(s.broken);
     if (s.world) this.applyWorld(s.world);
+    // сценарий (spec docs/specs/2026-10-scenario-1.md): письма и цели — до планёрки этого среза; закрытые подсказки — из хода
+    // сценария, и после загрузки они не вернутся
+    if (s.scenario) {
+      // первый вид после загрузки — каталог стройки по списку сценария
+      const first = !this.scenario.view;
+      this.scenario.onView(s.scenario);
+      for (const k of s.scenario.hints) this.seenHints.add(k as HintKey);
+      if (first && !this.scenarioId) this.texts();
+    }
+    // первый пришедший (spec docs/specs/2026-10-scenario-1.md): письмо о его пути — когда он пришёл
+    if (this.scenario.view && s.buf[H.arrived] > 0) this.scenario.reach('look');
+    if (s.world || s.scenario) this.scenarioOffice();
     // пересменка (spec docs/specs/2026-10-staff-shifts.md): что работает — по новой смене; сломанные аппараты (в 08:00, при
     // загрузке) — причины «не работает» заново, сцена та же
     if (shiftAt(this.db, this.t) !== this.shift) this.onDuty();
@@ -798,7 +859,8 @@ export class Game {
    */
   save(kind: SaveMeta['kind']): Promise<SaveMeta | null> {
     const run = async () => {
-      const { bytes, meta } = await this.client.pack({ kind, savedAt: new Date().toISOString(), version: this.version, start: this.start }, this.viewOf());
+      const scenario = this.scenario.view?.id;
+      const { bytes, meta } = await this.client.pack({ kind, savedAt: new Date().toISOString(), version: this.version, start: this.start, ...(scenario ? { scenario } : {}) }, this.viewOf());
       if (kind === 'auto') await writeAuto(this.disk, bytes, meta);
       else await writeSlot(this.disk, kind === 'exit' ? 'exit' : await nextManual(this.disk), bytes, meta);
       await this.refreshSaves();
@@ -963,6 +1025,7 @@ export class Game {
       build: this.builder.hud(),
       room,
       hint: this.hintNow(),
+      scenario: this.scenario.hud(this.money.open),
       t: this.t, day: this.day, speed: this.speed, ff: this.ff,
       ...(s ? { arrived: s.buf[H.arrived], seen: s.buf[H.seen], left: s.buf[H.left], queue: s.buf[H.queue], lag: s.lag / 60, cash: s.buf[H.cash] === -2147483648 ? undefined : s.buf[H.cash] } : {}),
       notices: [...this.notices],
@@ -1174,6 +1237,9 @@ export class Game {
       this.seenHints,
     );
     if (!key) return undefined;
+    // сценарий: впервые наступило состояние — его письмо (spec docs/specs/2026-10-scenario-1.md); письмо «щёлкните по
+    // человеку» — о первом пришедшем: его приход отмечает срез, а не строка, — открытая при стройке карточка её гасит
+    if (key !== 'look') this.scenario.reach(key);
     const h = T.hints;
     const name = block ? named(db.rooms[block.room]?.name, block.room) : '';
     const text = key === 'furnish' ? h.furnish(name) : key === 'door' ? h.door(name) : key === 'hire' ? h.hire(name) : key === 'machine' ? h.machine(name) : h[key];
@@ -1353,10 +1419,14 @@ export class Game {
     },
     doctor: a => this.doctor.dispatch(a),
     money: a => this.money.dispatch(a),
+    scenario: a => this.scenario.dispatch(a),
     // подсказки первых минут (spec docs/specs/2026-10-aaa-polish.md)
     dismissHint: () => {
       const h = this.store.get().hint;
-      if (h) this.seenHints.add(h.key);
+      if (h) {
+        this.seenHints.add(h.key);
+        this.scenario.close(h.key);
+      }
       this.hud();
     },
   };

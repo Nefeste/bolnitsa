@@ -1,12 +1,15 @@
 // Строки игры по-английски: тот же вид, что ru.ts, — пропущенная строка не соберётся (tsc).
 import { doctorEn } from './doctor.en';
 import { economyEn } from './economy.en';
+import { scenarioEn } from './scenario.en';
 import { encyclopediaEn } from './encyclopedia.en';
 import type { Strings } from './ru';
 
 export const en: Strings = {
   // часть 5б (spec docs/specs/2026-10-economy.md)
   ...economyEn,
+  // сценарий кампании (spec docs/specs/2026-10-scenario-1.md, часть 2): письма, «Цели», «Сценарий пройден»
+  ...scenarioEn,
   app: {
     title: 'Hospital',
     loading: 'Loading…',

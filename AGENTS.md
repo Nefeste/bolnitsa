@@ -111,8 +111,11 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # an error's card; then the own-card mock-up with `?card=steps`: the timeline and the
                                    # steps, a question, an exam and a test go into the timeline, the result opens «Решение»;
                                    # then Rocketbox people with `?people=rb`: six looks with atlas and mask, the look and the
-                                   # suit colour by role — read from the picture, people sit down, stand up and lie);
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|23` for one part
+                                   # suit colour by role — read from the picture, people sit down, stand up and lie; then
+                                   # scenario 1: «Кампания» on the start screen, the mentor's letters at the start and to the
+                                   # hint states while building, the scenario's build catalog, your own office, the first three
+                                   # patients set by the scenario, «Цели» and «Без обучения», «Письма» at the meeting);
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|24` for one part
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
                                                      # (`-- --people rb` — with Rocketbox people)
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
@@ -234,7 +237,11 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   sim's `start` message begin it; goals and letters are counted at the 08:00 meeting (`morning`); the first walk-ins are its
   tutorial patients while your office works (`tutorialNext`, `taught`); the `site` command builds only its rooms (error
   `scenario`); the window's marks — a hint state reached, a hint closed, a letter read, a tip shown, «Без обучения» — are
-  the `mark` command, kept in `s.campaign` and so in the save.
+  the `mark` command, kept in `s.campaign` and so in the save. The window (part 2): the sim sends `ScenarioView` with the
+  slice when it changed (`src/sim/campaign.ts`: letters, goals with progress, the end, marks); `src/app/scenario.ts` turns it
+  into words and sends the marks (a hint state on first show, a closed hint, a read letter); `src/ui/Scenario.tsx` — the
+  letter card over the hint line, the «Цели» tab, «Сценарий пройден»; the meeting's «Письма» section; `?scenario=<id>` /
+  `--scenario <id>` starts one; the build catalog shows only its rooms and the first office becomes «Врач»'s own.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`), Web Worker
   (`worker.ts`) and its client in the window (`client.ts`). The window never runs the engine. The doctor mode
   (`docs/specs/2026-10-doctor-mode.md`): `caseView.ts` (a copy of Anamnez's player view of a case) and `doctor.ts` build the

@@ -30,11 +30,13 @@
 // «Главврач» и «Ошибки нанятых врачей», «Итог» в карте ошибки, tools/app/e2e-roles.mjs. Часть 22 — своя карта, макет
 // (`?card=steps`): лента «Ход приёма» и шаги, вопрос, осмотр и анализ уходят в ленту, результат — «Решение», разбор,
 // tools/app/e2e-owncard.mjs. Часть 23 — люди Rocketbox (`?people=rb`): шесть видов с атласом и маской, вид и цвет костюма по
-// должности, садятся, встают и лежат, tools/app/e2e-people.mjs.
+// должности, садятся, встают и лежат, tools/app/e2e-people.mjs. Часть 24 — сценарий 1 «Амбулатория»: «Кампания» на экране
+// начала, письма наставницы к состояниям подсказок и «в начале», каталог стройки сценария, свой кабинет, первые трое —
+// заданные, «Цели» и «Без обучения», «Письма» на планёрке, tools/app/e2e-scenario.mjs.
 // Ошибок в консоли и запросов наружу нет.
 // Снимки — tools/app/out/e2e.png, e2e-build-*.png и e2e-flow-*.png; `--shots high` — снимки частей 2 и 3 в этом качестве
 // (на время снимка).
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|…|23] [--shots low|medium|high] [--port 8093]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|…|24] [--shots low|medium|high] [--port 8093]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -57,6 +59,7 @@ import { polyPart } from './e2e-poly.mjs';
 import { dischargedPart } from './e2e-discharged.mjs';
 import { readyPart } from './e2e-ready.mjs';
 import { savesPart } from './e2e-saves.mjs';
+import { scenarioPart } from './e2e-scenario.mjs';
 import { shiftsPart } from './e2e-shifts.mjs';
 import { specialistsPart } from './e2e-specialists.mjs';
 import { serve } from './serve.mjs';
@@ -163,6 +166,8 @@ try {
   if (run(22)) await ownCardPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   // часть 23 — люди Rocketbox (spec docs/specs/2026-10-people.md, часть 1): tools/app/e2e-people.mjs
   if (run(23)) await peoplePart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  // часть 24 — сценарий 1 «Амбулатория» (spec docs/specs/2026-10-scenario-1.md, часть 2): tools/app/e2e-scenario.mjs
+  if (run(24)) await scenarioPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);

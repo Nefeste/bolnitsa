@@ -13,6 +13,7 @@ import type { HintKey } from '../app/hints';
 import type { SaveRow } from '../app/saves';
 import type { Role } from '../app/roles';
 import type { QualityMode } from '../app/settings';
+import type { ScenarioAction, ScenarioHud } from '../app/scenario';
 
 /** Скорость игры (spec docs/specs/2026-10-walk.md): ×1, ×3, ×12; 0 — пауза. */
 export type Speed = 0 | 1 | 3 | 12;
@@ -163,6 +164,12 @@ export interface Hud {
   /** экран начала: сохранения — «Продолжить» и «Загрузить»; `problem` — почему не открылось то, что выбрали */
   startSaves?: SaveRow[];
   startProblem?: string;
+  /** экран начала (spec docs/specs/2026-10-scenario-1.md): карточки «Кампании» — сценарии по порядку */
+  startScenarios?: { id: Id; title: string; about: string }[];
+  /** названия сценариев для строк сохранений: «Сценарий 1. Амбулатория» */
+  scenarioNames?: Record<Id, string>;
+  /** сценарий кампании (spec docs/specs/2026-10-scenario-1.md): письма, цели, «Сценарий пройден»; не сценарий — нет */
+  scenario?: ScenarioHud;
 }
 
 export const initial: Hud = {
@@ -264,7 +271,7 @@ export interface Actions {
    * начало игры: пустое здание, готовая больница или поликлиника и роль (spec docs/specs/2026-10-two-ways.md, F4); `{ load }`
    * — сохранение (spec 2026-10-saves)
    */
-  startGame(kind: 'empty' | 'preset' | 'poly' | { load: string }, role?: Role): void;
+  startGame(kind: 'empty' | 'preset' | 'poly' | { load: string } | { scenario: Id }, role?: Role): void;
   /** часть 3 (spec docs/specs/2026-10-flow-ui.md): фильтры «Пациентов», камера к человеку и выбор, слои карты */
   filterPatients(patch: Partial<PatientFilter>): void;
   focus(key: string): void;
@@ -280,6 +287,8 @@ export interface Actions {
   money(a: MoneyAction): void;
   /** подсказки первых минут (spec docs/specs/2026-10-aaa-polish.md) */
   dismissHint(): void;
+  /** сценарий кампании (spec docs/specs/2026-10-scenario-1.md): письмо прочитано, «Без обучения», «Продолжить здесь» */
+  scenario(a: ScenarioAction): void;
   /** «Настройки» (spec docs/specs/2026-10-settings.md): окно из меню игры */
   toggleSettings(): void;
   /** меню игры (spec docs/specs/2026-10-saves.md): раскрыть, сохранить, загрузить ячейку, удалить, новая игра */
