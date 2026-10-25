@@ -381,7 +381,19 @@ export const ru = {
     studyHint: 'После учёбы — навык на ступень выше и настроение +20. Пока идёт учёба, место в смене пустует.',
     demolish: (back: string) => `Снести — вернётся ${back}`,
     furnish: (cost: string) => `Обставить — ${cost}`,
-    reserve: (n: number) => `в резерве: ${n}`,
+    /** резерв (spec docs/specs/2026-10-staff-mood.md, часть 5; решение владельца #97) */
+    reserve: 'в резерве',
+    reserveWhere: 'в резерве — встанет на место того, кто заболеет или уйдёт учиться',
+    reserveHire: 'Нанять в резерв',
+    reserveHireHint:
+      'Без места и смены: сам встанет на место того, кто заболеет или уйдёт учиться, и вернётся в резерв, когда тот выйдет. Зарплата — каждый день, даже когда никого не замещает.',
+    reserveRole: (name: string, salary: string) => `${name} · ${salary}`,
+    reserveNone: 'Нанимать в резерв пока некого: на местах никого нет',
+    covers: 'Замещает',
+    coversLine: (who: string, why: string) => `${who} — ${why}`,
+    coversShort: (who: string) => `замещает: ${who}`,
+    coveredBy: 'Замена',
+    coveredByShort: (who: string) => `замена: ${who}`,
   },
   triage: { red: 'красный — сразу к врачу', yellow: 'жёлтый — срочно', green: 'зелёный — в порядке очереди' },
   doing: {
@@ -426,6 +438,9 @@ export const ru = {
     grew: (who: string, skill: number, sex: 'm' | 'f') => `${sex === 'f' ? 'выросла' : 'вырос'} до навыка ${skill}: ${who}`,
     back: (who: string, skill: number, sex: 'm' | 'f') => `${sex === 'f' ? 'вернулась' : 'вернулся'} с учёбы, навык ${skill}: ${who}`,
     sick: (who: string) => `болеет, на смену не выйдет: ${who}`,
+    /** резерв (часть 5) */
+    covered: (who: string, by: string) => `замена из резерва: ${who} → ${by}`,
+    returned: (who: string, sex: 'm' | 'f') => `${sex === 'f' ? 'вернулась' : 'вернулся'} в резерв: ${who}`,
     shiftEnd: 'приём закончен',
   },
   debug: {

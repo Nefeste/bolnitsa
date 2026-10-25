@@ -62,6 +62,9 @@ export interface MeetingView {
     grew: { id: string; who: string; sex: 'm' | 'f'; skill: number; raise?: Raise }[];
     back: { who: string; sex: 'm' | 'f'; skill: number }[];
     sick: string[];
+    /** резерв (часть 5; решение владельца #97): кто кого заменил, кто вернулся в резерв */
+    covered: { who: string; by: string }[];
+    returned: { who: string; sex: 'm' | 'f' }[];
   };
   /**
    * ошибки нанятых врачей за сутки (spec docs/specs/2026-10-two-ways.md, F5; решение владельца #66) — снимок утра; итог главврача —
@@ -204,6 +207,8 @@ export class Money {
           }),
           back: (news.back ?? []).flatMap(b => (member(b.id) ? [{ who: who(member(b.id)!), sex: member(b.id)!.sex, skill: b.skill }] : [])),
           sick: (news.sick ?? []).flatMap(id => (member(id) ? [who(member(id)!)] : [])),
+          covered: (news.covered ?? []).flatMap(c => (member(c.id) && member(c.by) ? [{ who: who(member(c.id)!), by: who(member(c.by)!) }] : [])),
+          returned: (news.returned ?? []).flatMap(id => (member(id) ? [{ who: who(member(id)!), sex: member(id)!.sex }] : [])),
         }
       : undefined;
     // ошибки нанятых врачей (F5): поток расчёта присылает их вместе со срезом планёрки — за сутки до 08:00

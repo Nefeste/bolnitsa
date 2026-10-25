@@ -1465,6 +1465,8 @@ export type SiteCommand =
   | { kind: 'reshift'; id: string }
   /** «Отправить учиться» (spec docs/specs/2026-10-staff-mood.md, раздел 4): несколько суток его нет, цена — его смены */
   | { kind: 'study'; id: string }
+  /** «Нанять в резерв» (spec docs/specs/2026-10-staff-mood.md, часть 5): без места — встаёт на место отсутствующего сам */
+  | { kind: 'reserve'; role: Id }
   | { kind: 'undo' }
   /** стройка закончена: перестраиваемое помещение открыто */
   | { kind: 'done' }

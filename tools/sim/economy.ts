@@ -17,11 +17,13 @@
 // тем, кто вырос и кто собирается уйти (как «Поднять зарплату» в строке планёрки): тогда уходят не больше двух за каждые две
 // недели всего срока, а в отчёте — сколько раз поднимали и как выросли зарплаты за сутки. Каталка (spec
 // docs/specs/2026-10-orderlies.md): сколько перевозок, сколько лежачие ждали её, сколько раз везла медсестра; `--no-orderly
-// night` — готовая больница без ночных санитаров, `--no-orderly all` — без санитаров вовсе.
+// night` — готовая больница без ночных санитаров, `--no-orderly all` — без санитаров вовсе. Резерв (spec
+// docs/specs/2026-10-staff-mood.md, часть 5): `--reserve registrar,nurse` — в начале по человеку в резерв на каждую должность
+// списка; в отчёте — сколько раз резерв встал на место заболевшего и сколько смен места стояли пустыми.
 // `--hall N` — сидя или стоя по своему залу не дальше N м (content/hospital/inflow.yaml, `hall`); `--hall 0` — по всей больнице.
 // `--bench N` — скамьи у дверей кабинетов не дальше N шагов (`bench`, spec docs/specs/2026-10-door-benches.md); `--bench 0` — без них.
 //   bun tools/sim/economy.ts [--days 7] [--seeds 1,2,3] [--only clinic,district,city,poly,polyspec] [--hall N] [--bench N] [--raise]
-//                            [--no-orderly night|all] [--json]
+//                            [--no-orderly night|all] [--reserve registrar,nurse] [--json]
 import type { ContentDb, Id } from '../../src/content/types';
 import { expensesOf, incomeOf } from '../../src/engine/economy/economy';
 import { DOOR_PRICE, emptySite, hospitalOf, priceOf, roomPrice, type Site, type SiteCommand } from '../../src/engine/hospital/site';
@@ -44,6 +46,8 @@ const ONLY = arg('only', '').split(',').filter(Boolean);
 const asJson = process.argv.includes('--json');
 const RAISE = process.argv.includes('--raise');
 const NO_ORDERLY = arg('no-orderly', '');
+/** Резерв (`--reserve`): должности — по человеку без места на каждую в начале. */
+const RESERVE = arg('reserve', '').split(',').filter(Boolean).map(r => (r.startsWith('role.') ? r : `role.${r}`));
 /** Готовая больница без ночных санитаров или без санитаров вовсе (`--no-orderly`). */
 const orderlies = (staff: StaffMember[]) =>
   NO_ORDERLY ? staff.filter(m => m.role !== 'role.orderly' || (NO_ORDERLY === 'night' && m.shift !== 'night')) : staff;
@@ -152,8 +156,10 @@ interface Run {
   leaves: { day: number; role: Id; why: string[] }[];
   /** разделы 3–5: выросли (сутки, навык), смен пропущено по болезни */
   grew: { day: number; skill: number }[];
-  /** кто болел: сутки и должность */
+  /** кто болел: сутки и должность; резерв (часть 5) — на чьё место встал; смен без замены — места пустовали */
   sick: { day: number; role: Id }[];
+  covered: { day: number; role: Id }[];
+  bare: number;
   /** `--raise`: сколько раз игрок поднял зарплату */
   raised: number;
   /** каталка (spec docs/specs/2026-10-orderlies.md): перевозки — зачем, сколько ждали (минут), везла ли медсестра */
@@ -184,6 +190,7 @@ function start(name: string, seed: number): ShiftState {
 
 function run(name: string, seed: number): Run {
   const s = start(name, seed);
+  for (const role of RESERVE) site(s, { kind: 'reserve', role });
   const first = s.economy!.cash;
   const value = valueOf(s.hospital!.site!);
   let minCash = cashNow(s)!;
@@ -192,6 +199,8 @@ function run(name: string, seed: number): Run {
   const leaves: Run['leaves'] = [];
   const grew: Run['grew'] = [];
   const sick: Run['sick'] = [];
+  const covered: Run['covered'] = [];
+  let bare = 0;
   let raised = 0;
   const rides: Run['rides'] = [];
   const seen = new Set<string>();
@@ -203,6 +212,10 @@ function run(name: string, seed: number): Run {
       for (const l of n.staff.leave ?? []) leaves.push({ day: s.day, role: l.role, why: l.why });
       for (const g of n.staff.grew ?? []) grew.push({ day: s.day, skill: g.skill });
       for (const id of n.staff.sick ?? []) sick.push({ day: s.day, role: s.staff!.find(m => m.id === id)?.role ?? '' });
+      // резерв: на чьё место встал; заболевший без замены — его место эту смену пустое
+      const cov = new Set((n.staff.covered ?? []).map(c => c.id));
+      for (const id of cov) covered.push({ day: s.day, role: s.staff!.find(m => m.id === id)?.role ?? '' });
+      bare += (n.staff.sick ?? []).filter(id => !cov.has(id)).length;
       if (!RAISE) continue;
       const ask = new Set([...(n.staff.grew ?? []).map(g => g.id), ...(n.staff.quit ?? []).map(q => q.id)]);
       for (const id of ask) if (apply(db, s, { kind: 'site', cmd: { kind: 'raise', id } }).some(x => x.kind === 'site' && x.ok)) raised++;
@@ -243,7 +256,7 @@ function run(name: string, seed: number): Run {
   }
   // прибыль — без стройки первых суток: сколько больница зарабатывает, когда построена
   const gain = (list: DayRow[]) => list.reduce((n, d, i) => n + d.income - d.expenses + (i === 0 ? d.works : 0), 0);
-  return { scenario: name, seed, start: first, value, minCash, profit: gain(days), week: gain(days.slice(0, 7)), days, lines, quits, leaves, moods, grew, sick, raised, rides };
+  return { scenario: name, seed, start: first, value, minCash, profit: gain(days), week: gain(days.slice(0, 7)), days, lines, quits, leaves, moods, grew, sick, covered, bare, raised, rides };
 }
 
 const fmt = (n: number) => Math.round(n).toLocaleString('ru-RU');
@@ -273,7 +286,10 @@ if (asJson) {
       console.log(`    персонал: со сменой ${m.n}, настроение в конце ${m.min}–${Math.round(m.mean)} (ниже 30 — ${m.low}); причины ${why || 'нет'}; собирались уйти ${r.quits.length}, ушли сами ${r.leaves.length}${gone ? ` — ${gone}` : ''}`);
       const up = r.grew.length ? ` (сутки ${Math.min(...r.grew.map(g => g.day))}–${Math.max(...r.grew.map(g => g.day))})` : '';
       const ill = r.sick.map(x => `${x.role.slice(5)} ${x.day}`).join(', ');
-      console.log(`    выросли ${r.grew.length}${up}; смен пропущено по болезни ${r.sick.length}${ill ? ` — ${ill}` : ''}`);
+      // резерв (часть 5): замещали — по должностям
+      const cov = r.covered.map(x => `${x.role.slice(5)} ${x.day}`).join(', ');
+      const res = RESERVE.length > 0 ? `; резерв (${RESERVE.map(x => x.slice(5)).join(', ')}) встал на место ${r.covered.length}${cov ? ` — ${cov}` : ''}` : '';
+      console.log(`    выросли ${r.grew.length}${up}; смен пропущено по болезни ${r.sick.length}${ill ? ` — ${ill}` : ''}${res}; места пустовали ${r.bare} смен`);
       if (r.rides.length > 0) {
         const by = (w: Ride['why']) => r.rides.filter(x => x.why === w).length;
         const waits = r.rides.map(x => x.wait).sort((a, b) => a - b);

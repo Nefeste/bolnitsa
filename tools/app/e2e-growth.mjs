@@ -3,7 +3,11 @@
 // (снимок движка); «До утра» — на планёрке «Персонал»: медсестра выросла до навыка 4, «Поднять зарплату» прямо в строке;
 // второй вернулся с учёбы; кто болеет — строкой. Сцена при этом не пересобирается. Карточка выросшей — «Навык 4 — до навыка 5:
 // 20 смен»; третьему — «Отправить учиться»: в карточке «на учёбе — вернётся утром дня 5», во вкладке «Персонал» — «учится».
-// Снимок — `e2e-growth-1-meeting.jpg`.
+// Резерв (часть 5, решение владельца #97): в снимке — по человеку в резерве на каждую должность дневной смены; к планёрке
+// вернувшегося с учёбы замещал резерв — «вернулся в резерв», заболевшего — «Замена из резерва»; сцена та же. «Нанять в
+// резерв» во вкладке «Персонал» — строка «в резерве»; учиться — на место сразу встаёт резерв: «замещает: …» в «Персонале»,
+// «Замена» в карточке учащегося, фигура на месте; второй из резерва — его карточка и «Уволить».
+// Снимки — `e2e-growth-1-meeting.jpg`, `e2e-growth-2-reserve.jpg`.
 import { join } from 'node:path';
 
 /** @param {{ page: import('playwright-core').Page, port: number, out: string, ok: (m: string) => void, fail: (m: string) => void, q: string, shots: string }} x */
@@ -34,11 +38,18 @@ export async function growthPart({ page, port, out, ok, fail, q, shots }) {
     const back = working.find(m => m !== nurse && m.role !== 'role.nurse');
     nurse.days = 19;
     back.away = { why: 'study', until: 32 * 3600 };
+    // резерв (часть 5): по человеку без места на каждую должность дневной смены — встанут на места отсутствующих
+    const roles = [...new Set(working.map(m => m.role))];
+    for (const role of roles) {
+      const n = s.nextStaff ?? 1;
+      s.nextStaff = n + 1;
+      s.staff.push({ id: `s${n}`, role, sex: n % 2 ? 'f' : 'm', seed: 7000 + n, skill: 3, salary: working.find(m => m.role === role).salary, days: 0 });
+    }
     g.client.load(s);
-    return { nurse: nurse.id, salary: nurse.salary, back: back.id, backSkill: back.skill };
+    return { nurse: nurse.id, salary: nurse.salary, back: back.id, backSkill: back.skill, roles: roles.length };
   });
   await until(id => window.__game.staff.find(m => m.id === id)?.away?.why === 'study', who.back);
-  ok(`медсестра ${who.nurse}: 19 смен с последней ступени; ${who.back} — на учёбе до первой планёрки`);
+  ok(`медсестра ${who.nurse}: 19 смен с последней ступени; ${who.back} — на учёбе до первой планёрки; в резерве — ${who.roles}`);
 
   // ---------------------------------------------------------------- «До утра»: планёрка, «Персонал»; сцена та же
   const layout = await page.evaluate(() => {
@@ -61,6 +72,10 @@ export async function growthPart({ page, port, out, ok, fail, q, shots }) {
   else fail(`нет «вернулся с учёбы»: «${staffText}»`);
   const sick = (staffText.match(/болеет — сегодня на смену не выйдет/g) ?? []).length;
   ok(`болеют сегодня: ${sick} (по зерну)`);
+  // резерв: вернувшегося с учёбы замещали с вечерней пересменки — замещавший вернулся в резерв; заболевших заменил резерв
+  const covered = (staffText.match(/Замена из резерва: [^→]+ → /g) ?? []).length;
+  if (/вернул(ся|ась) в резерв/.test(staffText) && covered === sick) ok(`планёрка: «вернулся в резерв», «Замена из резерва» — ${covered} из ${sick} заболевших`);
+  else fail(`резерв на планёрке: «${staffText}»`);
   const same = await page.evaluate(() => window.__game.layout === window.__layoutBefore);
   if (layout && same) ok('рост, учёба и болезнь — без пересборки сцены');
   else fail('сцена пересобрана из-за перемен в штате');
@@ -87,8 +102,31 @@ export async function growthPart({ page, port, out, ok, fail, q, shots }) {
   else fail(`карточка выросшей: «${card.slice(0, 300)}»`);
   await page.keyboard.press('Escape');
 
-  // ---------------------------------------------------------------- «Отправить учиться»
-  const student = await page.evaluate(([a, b]) => window.__game.staff.find(m => m.shift === 'day' && m.room !== undefined && m.skill < 5 && !m.away && m.id !== a && m.id !== b)?.id, [who.nurse, who.back]);
+  // ---------------------------------------------------------------- «Нанять в резерв» (часть 5)
+  const student = await page.evaluate(
+    ([a, b]) => window.__game.staff.find(m => m.shift === 'day' && m.room !== undefined && m.covers === undefined && m.skill < 5 && !m.away && m.id !== a && m.id !== b)?.id,
+    [who.nurse, who.back],
+  );
+  const role = await page.evaluate(id => window.__game.staff.find(m => m.id === id).role, student);
+  await page.evaluate(() => window.__game.actions.setTab('staff'));
+  await page.waitForSelector('#reserve-hire', { timeout: 10000 });
+  const hireBtn = `#reserve-hire button[data-role="${role}"]`;
+  const hireLabel = await text(hireBtn);
+  const before = await page.evaluate(() => window.__game.staff.length);
+  await page.evaluate(() => {
+    window.__layoutBefore = window.__game.layout;
+  });
+  await page.click(hireBtn);
+  await until(n => window.__game.staff.length === n + 1, before);
+  const hired = await page.evaluate(n => window.__game.staff[n], before);
+  const staffRows = async () => page.$$eval('#right .tabbody li', els => els.map(e => (e.textContent ?? '').replace(/\s+/g, ' ').trim()));
+  await until(() => [...document.querySelectorAll('#right .tabbody li')].some(e => / · в резерве · навык 3/.test(e.textContent ?? '')));
+  const reserveRow = (await staffRows()).find(x => x.includes(' · в резерве · ')) ?? '';
+  if (hired.room === undefined && hired.shift === undefined && hired.role === role) ok(`«Нанять в резерв: ${hireLabel}» — «Персонал»: «${reserveRow}»`);
+  else fail(`«Нанять в резерв»: ${JSON.stringify(hired)}`);
+  await page.evaluate(() => window.__game.actions.setTab(null));
+
+  // ---------------------------------------------------------------- «Отправить учиться» — резерв встаёт на место сразу
   await page.evaluate(id => window.__game.actions.select(`s:${id}`), student);
   await page.waitForSelector('#card-study', { timeout: 10000 });
   const studyLabel = await text('#card-study');
@@ -97,12 +135,37 @@ export async function growthPart({ page, port, out, ok, fail, q, shots }) {
   await until(() => /на учёбе — вернётся утром дня \d+/.test(document.getElementById('card')?.textContent ?? ''));
   const studyCard = flat(await page.textContent('#card'));
   ok(`«${studyLabel}» — «${studyCard.match(/на учёбе — вернётся утром дня \d+/)?.[0]}»`);
+  await until(id => window.__game.staff.some(m => m.covers === id), student);
+  const by = await page.evaluate(id => window.__game.staff.find(m => m.covers === id), student);
+  await until(() => /Замена/.test(document.getElementById('card')?.textContent ?? ''));
+  const coverCard = flat(await page.textContent('#card'));
+  if (by.room !== undefined && by.shift === 'day' && /Замена/.test(coverCard)) ok(`на место учащегося встал резерв: карточка — «${coverCard.match(/Замена.{0,40}/)?.[0]}»`);
+  else fail(`резерв не встал: ${JSON.stringify(by)} «${coverCard.slice(0, 300)}»`);
+  await until(id => window.__game.crowd.walkers.has(`s:${id}`), by.id);
+  const kept = await page.evaluate(() => window.__game.layout === window.__layoutBefore);
+  if (kept) ok('найм в резерв и замена — фигура на месте, сцена та же');
+  else fail('сцена пересобрана из-за резерва');
   await page.keyboard.press('Escape');
   await page.evaluate(() => window.__game.actions.setTab('staff'));
   await page.waitForSelector('#staff-on-duty');
-  const rows = await page.$$eval('#right .tabbody li', els => els.map(e => (e.textContent ?? '').replace(/\s+/g, ' ').trim()));
+  const rows = await staffRows();
   const row = rows.find(x => x.includes('учится')) ?? '';
   if (row && rows.some(x => x.includes('навык 4'))) ok(`«Персонал»: «${row}»`);
   else fail(`«Персонал»: ${JSON.stringify(rows.slice(0, 6))}`);
+  const covering = rows.find(x => x.includes('замещает: ')) ?? '';
+  if (covering) ok(`«Персонал»: «${covering}»`);
+  else fail(`нет «замещает» в «Персонале»: ${JSON.stringify(rows.slice(0, 8))}`);
+  ok(`снимок резерва: ${join(out, 'e2e-growth-2-reserve.jpg')} (${await shot('e2e-growth-2-reserve.jpg')} КБ)`);
   await page.evaluate(() => window.__game.actions.setTab(null));
+
+  // ---------------------------------------------------------------- второй из резерва: карточка и «Уволить»
+  const spare = await page.evaluate(r => window.__game.staff.find(m => m.role === r && m.room === undefined)?.id, role);
+  await page.evaluate(id => window.__game.actions.select(`s:${id}`), spare);
+  await page.waitForSelector('#card-dismiss', { timeout: 10000 });
+  const spareCard = flat(await page.textContent('#card'));
+  const fire = await text('#card-dismiss');
+  await page.click('#card-dismiss');
+  await until(id => !window.__game.staff.some(m => m.id === id), spare);
+  if (/в резерве — встанет на место того, кто заболеет или уйдёт учиться/.test(spareCard)) ok(`карточка резерва: «${spareCard.match(/в резерве[^У]*/)?.[0]}»; «${fire}» — уволен`);
+  else fail(`карточка резерва: «${spareCard.slice(0, 300)}»`);
 }

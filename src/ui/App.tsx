@@ -406,6 +406,17 @@ function RightTabs({ hud, actions }: P) {
         <label className="check">
           <input type="checkbox" id="staff-on-duty" checked={onDuty} onChange={e => setOnDuty(e.target.checked)} /> {T.card.onDutyOnly}
         </label>
+        {/* «Нанять в резерв» (spec docs/specs/2026-10-staff-mood.md, часть 5; решение владельца #97) */}
+        {hud.reserveHire.length > 0 ? (
+          <div className="reserve" id="reserve-hire" title={T.card.reserveHireHint}>
+            <span className="label">{T.card.reserveHire}</span>
+            {hud.reserveHire.map(r => (
+              <button key={r.role} type="button" className="small" data-role={r.role} title={T.card.reserveHireHint} onClick={() => actions.reserve(r.role)}>
+                {r.text}
+              </button>
+            ))}
+          </div>
+        ) : null}
         <ul>
           {hud.staffList
             .filter(p => !onDuty || p.on)
@@ -554,7 +565,10 @@ function personLines(info: PersonInfo, names: Names): [string, string][] {
       // имя и зарплата против рынка (spec docs/specs/2026-10-staff-mood.md); навык, до следующего и наставник (раздел 3)
       ...(info.name ? [[T.card.name, info.name] as [string, string]] : []),
       ...(info.skill !== undefined ? [[T.card.skill, T.card.skillLine(info.skill, info.steps, info.mentor)] as [string, string]] : []),
-      [T.card.where, info.home && h ? T.card.home(clock(h[0] * 3600)) : names.room(info.room)],
+      // резерв (spec docs/specs/2026-10-staff-mood.md, часть 5): без места; замещает — кого и почему его нет; у отсутствующего — замена
+      [T.card.where, info.reserve ? T.card.reserveWhere : info.home && h ? T.card.home(clock(h[0] * 3600)) : names.room(info.room)],
+      ...(info.covers ? [[T.card.covers, info.covers.away ? T.card.coversLine(info.covers.who, awayLine(info.covers.away, info.covers.sex)) : info.covers.who] as [string, string]] : []),
+      ...(info.coveredBy ? [[T.card.coveredBy, info.coveredBy] as [string, string]] : []),
       ...(info.shift && h ? [[T.card.shift, T.card.shiftLine(info.shift, clock(h[0] * 3600), clock(h[1] * 3600))] as [string, string]] : []),
       ...(info.pay ? [[T.card.salary, T.card.salaryLine(money(info.pay.now), money(info.pay.market))] as [string, string]] : []),
       ...(info.rest ? [[T.card.doing, restLine(info.rest)] as [string, string]] : []),
@@ -562,7 +576,7 @@ function personLines(info: PersonInfo, names: Names): [string, string][] {
       ...(info.ride ? [[T.card.doing, rideLine(info.ride, id => lowerFirst(names.room(id)))] as [string, string]] : []),
       ...(info.free ? [[T.card.doing, T.card.ride.free(info.sex === 'f')] as [string, string]] : []),
       // учится или болеет (разделы 4–5)
-      ...(info.away ? [[T.card.doing, info.away.why === 'study' ? T.card.awayStudy(Math.floor(info.away.until / 86400) + 1) : T.card.awaySick(info.sex)] as [string, string]] : []),
+      ...(info.away ? [[T.card.doing, awayLine(info.away, info.sex)] as [string, string]] : []),
     ];
   }
   // ушёл — на карте его нет: кто и как пришёл, остальное — в пути (spec 2026-10-flow-ui)
@@ -579,6 +593,11 @@ function personLines(info: PersonInfo, names: Names): [string, string][] {
     [T.card.by, info.by ? names.role(info.by) : T.card.byNobody],
     [T.card.visit, visit],
   ];
+}
+
+/** Учится или болеет (spec docs/specs/2026-10-staff-mood.md, разделы 4–5): до утра каких суток или сегодня не вышел. */
+function awayLine(away: { why: 'study' | 'sick'; until: number }, sex: 'm' | 'f'): string {
+  return away.why === 'study' ? T.card.awayStudy(Math.floor(away.until / 86400) + 1) : T.card.awaySick(sex);
 }
 
 /** Усталость полоской (spec docs/specs/2026-10-staff-shifts.md, часть 2): число и что оно значит. */
@@ -693,6 +712,14 @@ function BottomCard({ hud, actions, names }: P) {
         </dl>
         {info.kind === 'staff' && info.fatigue !== undefined ? <Fatigue value={info.fatigue} worn={info.worn} /> : null}
         {info.kind === 'staff' ? <Mood info={info} actions={actions} /> : null}
+        {/* в резерве (spec docs/specs/2026-10-staff-mood.md, часть 5): места с «Уволить» у него нет — здесь */}
+        {info.kind === 'staff' && info.fire !== undefined && info.id !== undefined ? (
+          <div className="row">
+            <button type="button" className="small" id="card-dismiss" onClick={() => actions.dismiss(info.id!)}>
+              {T.card.dismissHint(money(info.fire))}
+            </button>
+          </div>
+        ) : null}
         {/* ушедший — только карта, сутки (spec docs/specs/2026-10-discharged-card.md) */}
         {info.kind === 'patient' ? <TakeCase info={info} said={hud.doctor?.said} actions={actions} /> : null}
         {info.kind === 'patient' ? <PathSection hud={hud} /> : null}

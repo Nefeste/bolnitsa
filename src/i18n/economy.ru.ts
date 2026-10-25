@@ -108,6 +108,9 @@ export const economyRu = {
     staffGrew: (who: string, skill: number, sex: 'm' | 'f') => `${who} ${sex === 'f' ? 'выросла' : 'вырос'} до навыка ${skill} — зарплата прежняя, ниже рынка: поднимите`,
     staffBack: (who: string, skill: number, sex: 'm' | 'f') => `${who} ${sex === 'f' ? 'вернулась' : 'вернулся'} с учёбы — навык ${skill}`,
     staffSick: (who: string) => `${who} болеет — сегодня на смену не выйдет`,
+    /** резерв (spec docs/specs/2026-10-staff-mood.md, часть 5): кто кого заменил, кто вернулся в резерв */
+    staffCovered: (who: string, by: string) => `Замена из резерва: ${who} → ${by}`,
+    staffReturned: (who: string, sex: 'm' | 'f') => `${who} ${sex === 'f' ? 'вернулась' : 'вернулся'} в резерв`,
     /** итог главврача (spec docs/specs/2026-10-two-ways.md, F5): решения на утверждении за сутки и что из них вышло */
     chief: 'Главврач',
     chiefAsked: (n: number, discharges: number) =>

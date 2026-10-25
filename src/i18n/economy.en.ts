@@ -104,6 +104,9 @@ export const economyEn: EconomyStrings = {
     staffGrew: (who: string, skill: number, _sex: 'm' | 'f') => `${who} grew to skill ${skill} — the pay is the same, below the market: raise it`,
     staffBack: (who: string, skill: number, _sex: 'm' | 'f') => `${who} is back from study — skill ${skill}`,
     staffSick: (who: string) => `${who} is sick — will not come to the shift today`,
+    /** the reserve (spec docs/specs/2026-10-staff-mood.md, part 5) */
+    staffCovered: (who: string, by: string) => `Covered from the reserve: ${who} → ${by}`,
+    staffReturned: (who: string, _sex: 'm' | 'f') => `${who} is back in the reserve`,
     chief: 'Chief doctor',
     chiefAsked: (n: number, discharges: number) => `${n} doctors' ${pl(n, 'decision', 'decisions')} came for approval${discharges > 0 ? ` (discharges — ${discharges})` : ''}`,
     chiefAnswers: (agreed: number, silent: number, changed: number) => `you agreed — ${agreed}, no answer — ${silent}, changed — ${changed}`,
