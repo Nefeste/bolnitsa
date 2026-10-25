@@ -164,6 +164,11 @@ interface Run {
   raised: number;
   /** каталка (spec docs/specs/2026-10-orderlies.md): перевозки — зачем, сколько ждали (минут), везла ли медсестра */
   rides: { why: Ride['why']; wait: number; nurse: boolean }[];
+  /**
+   * лежачие, кого некому было везти (решение владельца #99: не срочного медсестра не везёт): сколько их было, сколько ждут к
+   * концу прогона и дольше всех, минут, — до выхода из очереди (повезли, выписали, умер) с точностью до шага прогона
+   */
+  stuck: { n: number; now: number; longest: number };
   moods: { n: number; low: number; min: number; mean: number; why: Record<string, number> };
 }
 
@@ -204,6 +209,7 @@ function run(name: string, seed: number): Run {
   let raised = 0;
   const rides: Run['rides'] = [];
   const seen = new Set<string>();
+  const waited = new Map<string, { since: number; until?: number }>();
   const end = (DAYS * 24 + 8) * 3600;
   while (s.t < end) {
     for (const n of apply(db, s, { kind: 'advance', seconds: 300 })) {
@@ -221,6 +227,10 @@ function run(name: string, seed: number): Run {
       for (const id of ask) if (apply(db, s, { kind: 'site', cmd: { kind: 'raise', id } }).some(x => x.kind === 'site' && x.ok)) raised++;
     }
     minCash = Math.min(minCash, cashNow(s)!);
+    // каталка: кого некому везти — с какого часа ждёт и до какого (повезли, выписали, умер)
+    const queue = new Set((s.rideWait ?? []).map(w => `${w.id}:${w.why}`));
+    for (const w of s.rideWait ?? []) if (!waited.has(`${w.id}:${w.why}`)) waited.set(`${w.id}:${w.why}`, { since: w.since });
+    for (const [key, x] of waited) if (x.until === undefined && !queue.has(key)) x.until = s.t;
     // каталка: новые записанные перевозки
     for (const r of s.rides ?? []) {
       const key = `${r.id}:${r.by}:${r.pick}`;
@@ -229,6 +239,10 @@ function run(name: string, seed: number): Run {
       rides.push({ why: r.why, wait: Math.round((r.pick - r.since) / 60), nurse: s.staff?.find(m => m.id === r.by)?.role !== 'role.orderly' });
     }
   }
+  // ждали каталку, потому что некому везти: до того, как вышли из очереди (повезли, выписали, умер), или до конца прогона
+  let longest = 0;
+  for (const x of waited.values()) longest = Math.max(longest, Math.round(((x.until ?? s.t) - x.since) / 60));
+  const stuck = { n: waited.size, now: (s.rideWait ?? []).length, longest };
   // настроение в конце: у кого есть смена
   const vs = (s.staff ?? []).filter(m => m.shift !== undefined).map(m => s.moods?.[m.id]?.v ?? db.economy.staff.mood?.start ?? 70);
   const why: Record<string, number> = {};
@@ -256,7 +270,7 @@ function run(name: string, seed: number): Run {
   }
   // прибыль — без стройки первых суток: сколько больница зарабатывает, когда построена
   const gain = (list: DayRow[]) => list.reduce((n, d, i) => n + d.income - d.expenses + (i === 0 ? d.works : 0), 0);
-  return { scenario: name, seed, start: first, value, minCash, profit: gain(days), week: gain(days.slice(0, 7)), days, lines, quits, leaves, moods, grew, sick, covered, bare, raised, rides };
+  return { scenario: name, seed, start: first, value, minCash, profit: gain(days), week: gain(days.slice(0, 7)), days, lines, quits, leaves, moods, grew, sick, covered, bare, raised, rides, stuck };
 }
 
 const fmt = (n: number) => Math.round(n).toLocaleString('ru-RU');
@@ -297,6 +311,8 @@ if (asJson) {
         console.log(
           `    каталка: перевозок ${r.rides.length} (на койку ${by('bed')}, на операцию ${by('op')}, назад ${by('back')}, на обследование ${by('exam')}), ждали в среднем ${mean.toFixed(1)} мин, 9 из 10 — не дольше ${waits[Math.floor(waits.length * 0.9)]}, дольше всех ${waits[waits.length - 1]}; везла медсестра ${r.rides.filter(x => x.nurse).length}; скорая у входа — до ${Math.max(...r.days.map(d => d.door))} сразу`,
         );
+        // некому везти (#99): не срочного медсестра не везёт — ждёт санитара
+        if (r.stuck.n > 0) console.log(`    некому везти: ${r.stuck.n} раз, к концу ждут ${r.stuck.now}, дольше всех ${r.stuck.longest} мин`);
       }
       if (RAISE) {
         // зарплаты за сутки: первые и последние семь (или все, если суток меньше)

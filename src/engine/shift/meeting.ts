@@ -75,10 +75,17 @@ export function lying(s: ShiftState) {
 
 /**
  * К планёрке (до смены суток): дольше всего ждали врача — у пришедших за сутки и вызванных — до вызова, у ждущих — до
- * сейчас (ушедших записал `left`); коек в стационаре сейчас — `beds`. Узких мест не было — итог без них.
+ * сейчас (ушедших записал `left`); коек в стационаре сейчас — `beds`; лежачие, кого некому везти, — сколько ждут дольше
+ * `GURNEY_WAIT` минут и сколько (решение владельца #99). Узких мест не было — итог без них.
  */
 export function closeLoad(s: ShiftState, beds: number) {
   const l = loadOf(s);
+  const stuck = (s.rideWait ?? []).map(w => Math.round((s.t - w.since) / MIN)).filter(m => m >= GURNEY_WAIT);
+  if (stuck.length > 0) {
+    const g = (l.gurney ??= { n: 0, wait: 0 });
+    g.now = stuck.length;
+    g.wait = Math.max(g.wait, ...stuck);
+  }
   let wait = l.wait;
   for (const p of [...Object.values(s.patients), ...(s.gone ?? [])]) {
     if (p.calledT !== undefined) {

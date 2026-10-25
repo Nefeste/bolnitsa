@@ -525,6 +525,9 @@ export const en: Strings = {
     gurneyWas: (who: string, _nurse: boolean, at: string) => `${who} was wheeling someone else — came at ${at}`,
     gurneyNone: (at: string) => `no orderly and no nurse on this shift — until the shift change at ${at}`,
     gurneyNoneWas: 'no orderly and no nurse on the shift — wheeled after the shift change or a hire',
+    /** a non-urgent patient is wheeled only by an orderly (owner's decision #99) */
+    gurneyNoOrderly: (at: string) => `no orderly on this shift, and a nurse wheels only urgent patients — until the shift change at ${at}`,
+    gurneyNoOrderlyWas: 'no orderly on the shift, and a nurse wheels only urgent patients — wheeled after the shift change or a hire',
     gurneyRide: (from: string, to: string, d?: string) => `on a gurney: ${from} → ${to}${d ? ` — ${d}` : ''}`,
     whyLeft: 'Why they left',
     room: {

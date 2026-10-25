@@ -3027,7 +3027,7 @@ function examRide(db: ContentDb, s: ShiftState, ctx: HospitalCtx, p: ShiftPatien
 
 /**
  * Срочный лежачий — кого везут первым, когда некому было везти, и кого без санитара везёт медсестра (решение владельца
- * #99): красный, в ПИТ или реанимацию; на операцию — тоже (`carry`).
+ * #99): красный, в ПИТ или реанимацию; на операцию и назад со стола — тоже (`carry`): иначе операционная стоит занятой.
  */
 const urgentRide = (p: ShiftPatient): boolean => p.triage === 'red' || p.stay?.plan.setting === 'icu' || p.stay?.plan.setting === 'ricu';
 
@@ -3038,10 +3038,11 @@ const urgentRide = (p: ShiftPatient): boolean => p.triage === 'red' || p.stay?.p
  */
 function carry(db: ContentDb, s: ShiftState, p: ShiftPatient, why: 'bed' | 'op' | 'back', from: string, to: string, since = s.t): Ride | undefined {
   const ctx = hospitalCtx(db, s);
-  const ride = planRide(db, s, ctx.plan, ctx.staff, p.id, why, from, to, { since, urgent: why === 'op' || urgentRide(p) });
+  const urgent = why !== 'bed' || urgentRide(p);
+  const ride = planRide(db, s, ctx.plan, ctx.staff, p.id, why, from, to, { since, urgent });
   if (!ride) {
-    if (why !== 'op') (s.rideWait ??= []).push({ id: p.id, why, from, to, since, ...(urgentRide(p) ? { urgent: true as const } : {}) });
-    if (why === 'bed') journey.bedRide(s, p, { since, from, to });
+    if (why !== 'op') (s.rideWait ??= []).push({ id: p.id, why, from, to, since, ...(urgent ? { urgent: true as const } : {}) });
+    if (why === 'bed') journey.bedRide(s, p, { since, from, to }, false, !urgent);
     return undefined;
   }
   startRide(db, s, ride);
