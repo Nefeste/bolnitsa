@@ -39,7 +39,7 @@ export type ToSim =
    * файл сохранения (spec docs/specs/2026-10-saves.md): снимок, шапка и вид окна — в сжатые байты, здесь, а не в окне;
    * день, час и кассу шапки поток берёт из снимка
    */
-  | { kind: 'pack'; meta: Omit<SaveMeta, 'day' | 't' | 'cash'>; view?: unknown }
+  | { kind: 'pack'; meta: Omit<SaveMeta, 'day' | 't' | 'cash' | 'manage' | 'soft'>; view?: unknown }
   /**
    * путь пациента (spec docs/specs/2026-10-flow-ui.md): окно показывает путь этого пациента (номер в движке) — поток кладёт
    * его в срез (`path`), когда он изменился; null — никого
