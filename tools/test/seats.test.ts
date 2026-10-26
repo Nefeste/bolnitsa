@@ -51,9 +51,10 @@ describe('сиденья', () => {
         expect(Math.abs(a.x - 5.5)).toBeLessThan(e.fit.w / 2 + 0.05);
         expect(Math.abs(a.z - 5.5)).toBeLessThan(Math.max(e.fit.w, e.fit.d) / 2 + 0.05);
         for (const look of people.looks) {
-          // корень сидящего — так, чтобы опора таза пришлась на точку посадки (crowd.ts, seatRoot)
+          // корень сидящего — так, чтобы опора таза пришлась на точку посадки (crowd.ts, seatRoot): ступни (на полу в позе
+          // «сидит») не уходят под пол больше чем на 1 см и висят над ним не больше чем на 3 см (bake.ts, seatTo)
           const lift = a.y - look.seat.y;
-          expect([k, look.name, lift >= -0.01 && lift <= 0.07]).toEqual([k, look.name, true]);
+          expect([k, look.name, lift >= -0.01 && lift <= 0.03]).toEqual([k, look.name, true]);
         }
       }
     }

@@ -4,7 +4,6 @@
 // docs/specs/2026-10-flow-ui.md): значки над людьми и помещениями, вкладка «Пациенты», путь выбранного, слой очередей.
 import * as THREE from 'three';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { MeshoptSimplifier } from 'three/addons/libs/meshopt_simplifier.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { Cell, ContentDb, Id, Season } from '../content/types';
 import { type HospitalState, type Plan, planOf } from '../engine/hospital/build';
@@ -21,7 +20,8 @@ import { clock, genitive, type Lang, money, named, setLang, T } from '../i18n';
 import { lowerFirst } from '../i18n/case';
 import type { Walker } from '../render/crowd';
 import { ICONS } from '../render/icons';
-import { bakeLook, lodOf, packPeople, type People, type RawLook } from '../render/bake';
+import { fromWire, packPeople, type People, type RawLook } from '../render/bake';
+import type { BakeTask, Baked } from '../render/bake-worker';
 import { CATALOG, EXTRA_MODELS } from '../render/catalog';
 import { Crowd } from '../render/crowd';
 import { furnish, type Furnished } from '../render/furniture';
@@ -163,24 +163,45 @@ async function loadGltf(url: string) {
 }
 
 /**
- * Люди Rocketbox (spec docs/specs/2026-10-people.md, часть 1 — за ключом адреса `?people=rb`; tools/app/people.mjs): вид —
- * glb с атласом и маска рядом.
+ * Люди Rocketbox (spec docs/specs/2026-10-people.md; tools/app/people.mjs): вид — glb с атласом и маска рядом. Виды
+ * грузятся и запекаются в потоках запекания (src/render/bake-worker.ts) — по числу ядер без одного, не больше четырёх;
+ * маски тем временем грузит окно.
  */
 async function rocketbox(base: string): Promise<RawLook[]> {
   const { looks } = (await (await fetch(`${base}/rocketbox/index.json`)).json()) as { looks: string[] };
+  const dir = new URL(`${base}/rocketbox`, location.href).href;
   const images = new THREE.TextureLoader();
-  return Promise.all(
-    looks.map(async n => {
-      const [gltf, mask] = await Promise.all([loadGltf(`${base}/rocketbox/${n}.glb`), images.loadAsync(`${base}/rocketbox/${n}.mask.png`)]);
-      // развёртка glTF — сверху вниз; маска — данные, не цвет
-      mask.flipY = false;
-      mask.colorSpace = THREE.NoColorSpace;
-      mask.needsUpdate = true;
-      const r = bakeLook(gltf, n);
-      r.mask = mask;
-      return r;
-    }),
+  const masks = Promise.all(looks.map(n => images.loadAsync(`${dir}/${n}.mask.png`)));
+  const threads = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 2) - 1));
+  const baked = new Map<string, RawLook>();
+  await Promise.all(
+    Array.from({ length: threads }, (_, i) => looks.filter((_, k) => k % threads === i)).map(
+      names =>
+        new Promise<void>((resolve, reject) => {
+          const w = new Worker('./bake.js');
+          w.onmessage = (e: MessageEvent<Baked>) => {
+            const m = e.data;
+            if (m.kind === 'look') baked.set(m.look.name, fromWire(m.look));
+            else if (m.kind === 'error') reject(new Error(`${m.name}: ${m.message}`));
+            else {
+              w.terminate();
+              resolve();
+            }
+          };
+          w.onerror = e => reject(new Error(e.message));
+          w.postMessage({ base: dir, names } satisfies BakeTask);
+        }),
+    ),
   );
+  return (await masks).map((mask, i) => {
+    // развёртка glTF — сверху вниз; маска — данные, не цвет
+    mask.flipY = false;
+    mask.colorSpace = THREE.NoColorSpace;
+    mask.needsUpdate = true;
+    const r = baked.get(looks[i])!;
+    r.mask = mask;
+    return r;
+  });
 }
 
 /**
@@ -365,10 +386,7 @@ export class Game {
     await Promise.all(names.map(async n => models.set(n, modelOf(await loadGltf(`${base}/${n}.glb`), n))));
     this.load.furniture = Math.round(performance.now() - tf);
     const tp = performance.now();
-    await MeshoptSimplifier.ready;
-    const rb = new URLSearchParams(location.search).get('people') === 'rb';
-    const raws = rb ? await rocketbox(base) : await Promise.all(index.people.map(async n => bakeLook(await loadGltf(`${base}/people/${n}.glb`), n)));
-    this.people = packPeople(raws, raws.map(r => lodOf(r, 0.25, MeshoptSimplifier)));
+    this.people = packPeople(await rocketbox(base));
     this.load.people = Math.round(performance.now() - tp);
 
     store.set({ status: T.app.loadingWorld });

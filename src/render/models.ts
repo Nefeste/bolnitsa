@@ -25,7 +25,6 @@ export interface Model {
 export interface Index {
   kenney: string[];
   kaykit: string[];
-  people: string[];
 }
 
 /** Части модели из разобранного glTF: геометрия каждой группы материала — в координатах модели. */
