@@ -25,6 +25,7 @@ import {
   type TipSrc, tipSchema, type TreatmentSrc, treatmentSchema, versionSchema, type AchievementSrc, achievementSchema, type ScoreSrc, scoreSchema,
   type RuleSrc, ruleSchema, type TargetSrc, targetSchema, type SkillSrc, skillSchema,
   type ConsultsSrc, consultsSchema, type DaySrc, daySchema, type InflowSrc, inflowSchema, type MoneySrc, moneySchema,
+  type DifficultySrc, difficultySchema,
 } from './schema';
 
 export const CONTENT_DIR = join(import.meta.dir, '../../content');
@@ -55,6 +56,31 @@ export function dayErrors(day: DaySrc): string[] {
  * ориентира при репутации 50 и часах приёма по умолчанию (`day.yaml`) получает в сутки сами и скорая вместе — в `day`, скорая —
  * в `ambulance`. Сами — `walkIn` в час на кабинет по форме `walk` в часы приёма, скорая — `ambulance` в сутки на место.
  */
+/**
+ * Уровни «Управления» (spec docs/specs/2026-10-difficulty.md): у «Спокойно» каждое число не труднее «Обычно», у «Трудно» — не
+ * легче, и хоть одно у каждого — другое: поток и поломки — меньше или больше, терпение, предел минуса и касса начала —
+ * наоборот. Зарплаты — дешевле на «Спокойно», дороже на «Трудно». `overdraft` и `budgets` — «Обычно» из money.yaml и
+ * economy.yaml.
+ */
+export function difficultyErrors(d: DifficultySrc, overdraft: number, budgets: Record<'modest' | 'normal' | 'generous', number>): string[] {
+  const out: string[] = [];
+  const f = 'hospital/difficulty.yaml';
+  const n = { inflow: 100, patience: 100, salary: 100, breakdown: 100, overdraft, budget: budgets.normal };
+  const of = (l: DifficultySrc['calm']) => ({ ...l, budget: budgets[l.budget] });
+  // больше — легче: терпение, предел минуса, касса начала; меньше — легче: поток, зарплаты, поломки
+  const easier = (k: keyof typeof n, a: number, b: number) => (k === 'patience' || k === 'overdraft' || k === 'budget' ? a >= b : a <= b);
+  for (const [level, l, sign] of [['calm', of(d.calm), 1], ['hard', of(d.hard), -1]] as const) {
+    let same = true;
+    for (const k of Object.keys(n) as (keyof typeof n)[]) {
+      if (l[k] !== n[k]) same = false;
+      const ok = sign > 0 ? easier(k, l[k], n[k]) : easier(k, n[k], l[k]);
+      if (!ok) out.push(`${f}: ${level}.${k} ${l[k]} — ${sign > 0 ? 'труднее' : 'легче'} «Обычно» (${n[k]})`);
+    }
+    if (same) out.push(`${f}: ${level} — те же числа, что «Обычно»`);
+  }
+  return out;
+}
+
 export function inflowErrors(inflow: InflowSrc, day: DaySrc): string[] {
   const out: string[] = [];
   const f = 'hospital/inflow.yaml';
@@ -207,6 +233,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   let day: DaySrc | undefined;
   let inflow: InflowSrc | undefined;
   let money: MoneySrc | undefined;
+  let difficulty: DifficultySrc | undefined;
   let contentVersion = 0;
 
   for (const file of files) {
@@ -279,6 +306,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       inflow = check(inflowSchema);
     } else if (rel === 'hospital/money.yaml') {
       money = check(moneySchema);
+    } else if (rel === 'hospital/difficulty.yaml') {
+      difficulty = check(difficultySchema);
     } else if (top === 'campaign' && rel.split('/')[1] === 'characters') {
       const c = check(characterSchema);
       if (c) { expectId(c.id, 'char'); put(characters, c); }
@@ -307,7 +336,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       const x = check(skillSchema);
       if (x) { expectId(x.id, 'skill'); put(skills, x); }
     } else {
-      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, people/professions, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/sites, hospital/economy.yaml, hospital/consults.yaml, hospital/day.yaml, hospital/inflow.yaml, hospital/money.yaml, campaign/characters, campaign/chapters, campaign/scenarios, campaign/tips, achievements, scores, rules, targets, career/skills)`);
+      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, people/professions, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/sites, hospital/economy.yaml, hospital/consults.yaml, hospital/day.yaml, hospital/inflow.yaml, hospital/money.yaml, hospital/difficulty.yaml, campaign/characters, campaign/chapters, campaign/scenarios, campaign/tips, achievements, scores, rules, targets, career/skills)`);
     }
   }
   if (!contentVersion) errors.push('version.yaml: нет contentVersion');
@@ -322,6 +351,9 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   if (!inflow) errors.push('hospital/inflow.yaml: нет чисел потока от больницы');
   else if (day) errors.push(...inflowErrors(inflow, day));
   if (!money) errors.push('hospital/money.yaml: нет предела минуса и кредита');
+  // ось «Управление» (spec 2026-10-difficulty): «Спокойно» легче «Обычно», «Трудно» — труднее
+  if (!difficulty) errors.push('hospital/difficulty.yaml: нет уровней «Управления»');
+  else if (money && economy) errors.push(...difficultyErrors(difficulty, money.overdraft, economy.sandbox.budgets));
 
   // --- ссылки ---
   const hasF = (id: string) => id in findings;
@@ -969,6 +1001,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     // поток от больницы и касса ПК (spec 2026-10-economy): без файлов — ошибка сборки выше
     ...(inflow ? { inflow } : {}),
     ...(money ? { money } : {}),
+    // ось «Управление» (spec 2026-10-difficulty): без файла — ошибка сборки выше
+    ...(difficulty ? { manage: difficulty } : {}),
     // готовые больницы из готовых помещений (spec 2026-10-real-hospital); проверка — checkSites ниже
     ...(Object.keys(sites).length ? { sites: Object.fromEntries(Object.values(sites).sort((a, b) => (a.id < b.id ? -1 : 1)).map(p => [p.id, { id: p.id, rooms: p.rooms.map(r => ({ ...r })), ...(p.benches.length ? { benches: p.benches.map(([x, y]) => [x, y] as [number, number]) } : {}) }])) } : {}),
     revealedBy,

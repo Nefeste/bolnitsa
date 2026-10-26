@@ -8,7 +8,7 @@ import type { CrewView } from '../engine/shift/crew';
 import type { MoodView } from '../engine/shift/mood';
 import type { HospitalState } from '../engine/hospital/build';
 import type { StaffMember } from '../engine/hospital/staff';
-import type { Id, Season } from '../content/types';
+import type { Id, Manage, Season } from '../content/types';
 import type { Lang } from '../i18n';
 import type { Difficulty } from '../engine/shift/types';
 import type { ScenarioView } from './campaign';
@@ -19,7 +19,11 @@ import type { SaveMeta } from './packing';
 export type ToSim =
   /** новая смена с потоком для ПК; `economy` — касса начала (spec docs/specs/2026-10-economy.md), нет — без кассы */
   /** начать смену с потоком; `scenario` — сценарий кампании ПК (spec docs/specs/2026-10-scenario-1.md): его ход и касса */
-  | { kind: 'start'; seed: number; season: Season; hospital: HospitalState; staff: StaffMember[]; flow: Flow; economy?: { cash: number }; scenario?: Id }
+  | {
+      kind: 'start'; seed: number; season: Season; hospital: HospitalState; staff: StaffMember[]; flow: Flow; economy?: { cash: number }; scenario?: Id;
+      /** уровень «Управления» и мягкий режим (spec docs/specs/2026-10-difficulty.md); нет — «Обычно», без мягкого режима */
+      manage?: Manage; soft?: boolean;
+    }
   /** открыть сохранение — снимок состояния */
   | { kind: 'load'; state: ShiftState }
   /** действие игрока: вопрос, обследование, стройка, найм… — как `apply` */

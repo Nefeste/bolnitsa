@@ -220,11 +220,17 @@ export function payOf(db: ContentDb, salary: number, shift?: Shift): number {
   return shift === 'night' ? Math.round((salary * (db.economy.staff.shifts?.night ?? 100)) / 100) : salary;
 }
 
-/** Зарплата человека за сутки, ₽: дневная смена и без смены — зарплата; ночная — с надбавкой. */
-export const wageOf = (db: ContentDb, m: StaffMember): number => payOf(db, m.salary, m.shift);
+/**
+ * Зарплата человека за сутки, ₽: дневная смена и без смены — зарплата; ночная — с надбавкой. `pct` — зарплаты уровня
+ * «Управления» (spec 2026-10-difficulty), %: так платят; в человеке — зарплата «Обычно», по ней судят о рынке.
+ */
+export function wageOf(db: ContentDb, m: StaffMember, pct = 100): number {
+  const w = payOf(db, m.salary, m.shift);
+  return pct === 100 ? w : Math.round((w * pct) / 100);
+}
 
-/** Зарплаты штата за сутки, ₽ (spec 2026-10-staff-shifts): по сменам, ночная — с надбавкой. */
-export const wagesOf = (db: ContentDb, staff: readonly StaffMember[]): number => staff.reduce((n, m) => n + wageOf(db, m), 0);
+/** Зарплаты штата за сутки, ₽ (spec 2026-10-staff-shifts): по сменам, ночная — с надбавкой; `pct` — как у `wageOf`. */
+export const wagesOf = (db: ContentDb, staff: readonly StaffMember[], pct = 100): number => staff.reduce((n, m) => n + wageOf(db, m, pct), 0);
 
 /** Санитар (spec docs/specs/2026-10-orderlies.md): возит лежачих; помещение работает и без него. */
 export const ORDERLY: Id = 'role.orderly';
