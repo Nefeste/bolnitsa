@@ -3,7 +3,7 @@
 // извещением; лежащие живут ночь по часам — сутки в стационаре сменяются в 08:00, нанятые врачи обходят своих в 09:00,
 // операционная оперирует ночью, смерть «в ночь этих суток» — в 08:00; детерминизм при любом шаге времени и в потоке
 // расчёта; смены «Анамнеза» — как были.
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -18,6 +18,9 @@ import { createSim } from '../../src/sim/host';
 import { buildDb, CONTENT_DIR } from '../content/load';
 import { hospitalFor } from '../bench/hospital';
 import { hash, liveUntil } from './scenario';
+
+// испорченная копия базы собирается целиком — около 0,7 с, а копий в тесте семь: под нагрузкой пяти секунд не хватает
+setDefaultTimeout(60_000);
 
 const { db } = buildDb();
 const day = db.day!;
@@ -331,7 +334,6 @@ describe('сутки целиком — в базе', () => {
   }
   const has = (errors: string[], part: string) => errors.some(e => e.startsWith('hospital/day.yaml') && e.includes(part));
 
-  // семь сборок базы — около 5 с, впритык к пределу по умолчанию; под нагрузкой он кончался раньше сборок
   test('часы, среднее, «утром больше», «вечером больше», нет файла — сборка не проходит', () => {
     expect(has(broken(t => t.replace(/^hours: .*$/m, 'hours: [20, 8]')), 'открытие не раньше закрытия')).toBe(true);
     expect(has(broken(t => t.replace(/^walk: \[10, /m, 'walk: [10, ').replace(' 150, 160,', ' 150, 170,')), 'должно быть ровно 100')).toBe(true);
@@ -341,7 +343,7 @@ describe('сутки целиком — в базе', () => {
     expect(has(broken(t => t.replace(/^ambulance: .*$/m, `ambulance: [${Array(24).fill(100).join(', ')}]`)), 'вечером не больше')).toBe(true);
     expect(has(broken(t => t.replace(/^rounds: .*$/m, 'rounds: 24')), 'rounds')).toBe(true);
     expect(broken(() => null)).toContain('hospital/day.yaml: нет часов приёма и формы потока по часам');
-  }, 60_000);
+  });
 
   test('настоящая база: часы приёма по умолчанию — 08:00–20:00 (геймдизайн §2), форма — 24 часа, обход утром', () => {
     expect(day.hours).toEqual([8, 20]);
