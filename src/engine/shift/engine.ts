@@ -1442,7 +1442,7 @@ export function capacityOf(db: ContentDb, s: ShiftState, at = s.t): Capacity {
  * Поток от больницы на сутки `s.day` (spec docs/specs/2026-10-why.md): по часам суток — с теми, кто в этот час в смене, сами
  * и по записи — в часы приёма и пока больница открыта, как их считает `flowRate`; что его задаёт — кабинеты, специалисты и
  * места смотровой в начале суток, репутация сейчас; на одного — кабинет и специалиста все часы приёма, место смотровой.
- * Средние, до десятых.
+ * Всё — на множитель потока уровня «Управления», как у `flowRate`. Средние, до десятых.
  */
 function inflowDay(db: ContentDb, s: ShiftState): InflowDay {
   const base = (s.day - 1) * DAY;
@@ -1466,9 +1466,11 @@ function inflowDay(db: ContentDb, s: ShiftState): InflowDay {
     book += (bookedPerHour(db, reputation) * c.booked.length * day.walk[h]) / 100;
   }
   const now = capacityOf(db, s, base + SHIFT_START + HOUR / 2);
-  const tenth = (x: number) => Math.round(x * 10) / 10;
+  // ось «Управление» (spec 2026-10-difficulty): тот же множитель уровня, что у самого потока (`flowRate`)
+  const k = manageOf(db, s).inflow;
+  const tenth = (x: number) => Math.round(scaled(x, k) * 10) / 10;
   return {
-    offices: now.offices, booked: now.booked.length, bays: now.bays, pct: tenth(reputationPct(db, reputation)),
+    offices: now.offices, booked: now.booked.length, bays: now.bays, pct: Math.round(reputationPct(db, reputation) * 10) / 10,
     walk: tenth(walk), book: tenth(book), amb: tenth(amb),
     perOffice: tenth(walkPerHour(db, one, reputation) * hours), perDoctor: tenth(bookedPerHour(db, reputation) * hours), perBay: tenth(ambulancePerHour(db, one) * 24),
   };

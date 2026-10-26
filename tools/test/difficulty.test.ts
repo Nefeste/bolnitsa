@@ -93,6 +93,19 @@ describe('ось «Управление»', () => {
     expect(arrived({ manage: 'calm', dbx: only('inflow', 10) })).toBeLessThan(normal / 2);
   }, 120_000);
 
+  // «Почему?» у цифр планёрки (spec docs/specs/2026-10-why.md): прогноз потока на сутки — с тем же множителем, что сам поток
+  test('прогноз потока на планёрке — на множитель уровня, как сам поток', () => {
+    for (const manage of ['calm', 'normal', 'hard'] as const) {
+      const s = city({ seed: 2, manage });
+      live(s, 32, 600);
+      const f = s.history[0].inflow!;
+      const k = levelOf(db, manage).inflow;
+      // место смотровой — скорых в сутки по базе на множитель; кабинет — 2,5 в час × 12 часов с поправкой репутации
+      expect([manage, f.perBay]).toEqual([manage, Math.round((db.inflow!.ambulance * k) / 10) / 10]);
+      expect([manage, Math.abs(f.perOffice - (2.5 * 12 * f.pct * k) / 10000) <= 0.5]).toEqual([manage, true]);
+    }
+  }, 60_000);
+
   test('терпение: те же пришедшие — каждый во столько раз терпеливее', () => {
     const dbx = only('patience', 150);
     const a = city();
