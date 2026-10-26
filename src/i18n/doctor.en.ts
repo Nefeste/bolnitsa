@@ -546,6 +546,11 @@ export const doctorEn: DoctorStrings = {
       dischargeAsk: (at: string) => `The doctor proposes discharge — answer by ${at}; no answer — discharged`,
       orderHint: 'One more test — tick it on the form: the doctor orders it and decides with the result',
       orderedChief: 'ordered by you — the doctor will do it',
+      refer: 'Refer to …',
+      referTo: (role: string, skill: number) => `${role}, skill ${skill}`,
+      referHint:
+        "To a specialist who is seeing patients now: they call this patient first when free and go on with everything learned. They see diseases of their field better, but may also lead someone who doesn't have one into them",
+      referWait: 'You can refer once the results are in and the patient is back with you',
       steps: {
         title: { talk: 'History', examine: 'Examination', order: 'Tests', decide: 'Decision' } as Record<string, string>,
         asked: (n: number) => `asked: ${n}`,
@@ -591,6 +596,7 @@ export const doctorEn: DoctorStrings = {
       results: (name: string) => `${name}: results ready — waiting for you`,
       taken: (name: string) => `The case is yours: ${name}`,
       coming: (name: string) => `${name} is on the way to you — the card opens when they come in`,
+      referred: (name: string, who: string, _f: boolean) => `${name} is referred to ${who}`,
       reached: (name: string) => `${name} is in your office`,
       reachedSomeone: 'Your patient is in your office',
     },

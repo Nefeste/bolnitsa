@@ -29,6 +29,13 @@ export const STATUSES: PersonSlice['status'][] = ['waiting', 'inRoom', 'away', '
 export const TRIAGES: Triage[] = ['green', 'yellow', 'red'];
 export const DOINGS: Doing[] = ['registration', 'triage', 'waiting', 'office', 'exam', 'examQueue', 'results', 'ward', 'surgery', 'ambulance', 'gurney'];
 export const KINDS: VisitKind[] = ['appointment', 'walkIn', 'return', 'ambulance'];
+/**
+ * В `P.flags` поверх вида визита: направлен к тому, кто его ведёт (spec docs/specs/2026-10-specialists.md, часть 2) —
+ * «направлен к гастроэнтерологу» в карточке и в «Пациентах».
+ */
+export const REFERRED = 4;
+/** Вид визита из `P.flags`. */
+export const kindOf = (flags: number): VisitKind => KINDS[flags & 3] ?? 'walkIn';
 
 /** Новый человек в срезе: строки — один раз. */
 export interface NameRow {
@@ -124,7 +131,8 @@ export function packSlice(
     buf[o + P.by] = p.by !== undefined ? (staff.get(p.by) ?? -1) : -1;
     buf[o + P.doing] = DOINGS.indexOf(p.doing);
     buf[o + P.bed] = p.bed ?? -1;
-    buf[o + P.flags] = KINDS.indexOf(p.kind);
+    const sp = s.patients[p.id];
+    buf[o + P.flags] = KINDS.indexOf(p.kind) | (sp?.ref !== undefined && sp.ref === sp.by ? REFERRED : 0);
     // часть 3 (spec docs/specs/2026-10-flow-ui.md): время текущего занятия, терпение, просьба врача
     buf[o + P.since] = p.since ?? slice.t;
     buf[o + P.limit] = p.limit ?? NO_TIME;
@@ -166,6 +174,8 @@ export interface PersonView {
   bench?: number;
   /** решение его врача ждёт главврача: с какого часа и до какого (spec docs/specs/2026-10-two-ways.md, F3) */
   approve?: { at: number; until: number };
+  /** направлен к тому, кто его ведёт (spec docs/specs/2026-10-specialists.md, часть 2) */
+  ref?: true;
 }
 
 export function personAt(buf: Int32Array, i: number): PersonView {
@@ -178,7 +188,8 @@ export function personAt(buf: Int32Array, i: number): PersonView {
     by: buf[o + P.by],
     doing: DOINGS[buf[o + P.doing]],
     bed: buf[o + P.bed],
-    kind: KINDS[buf[o + P.flags]],
+    kind: kindOf(buf[o + P.flags]),
+    ...(buf[o + P.flags] & REFERRED ? { ref: true as const } : {}),
     since: buf[o + P.since],
     limit: buf[o + P.limit],
     ...(buf[o + P.askUntil] !== NO_TIME ? { ask: { at: buf[o + P.askAt], until: buf[o + P.askUntil] } } : {}),

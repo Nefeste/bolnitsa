@@ -121,8 +121,10 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # «Показатели» layer: columns over the rooms from «Слои», taller where people are, numbers,
                                    # hover and click on a column, «Ожидание» with M, remembered after a reload; «Выручка» and
                                    # «Прибыль» with service rooms in grey, «До утра» — a past day on the slider, the room
-                                   # card's chart by day);
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|25` for one part
+                                   # card's chart by day; then referral to a specialist: «Направить к …» in your own card's
+                                   # «Решение» — the specialists on duty, the card closes, «направлен к гастроэнтерологу» in
+                                   # «Пациенты», the patient card and the path);
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|26` for one part
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
                                                      # (`-- --people rb` — with Rocketbox people, `-- --metric load` —
                                                      # with the «Показатели» layer)
@@ -136,8 +138,9 @@ npm run bench -- --mode desks --quick          # the same with Anamnez's appoint
 npm run bench -- --mode flow --day             # the whole day to 10:00 of day 2: day and night minutes, 08:00 meeting, 09:00 round
 npm run bench -- --mode flow --quick --flat    # flat arrivals by hour: the same patients as before the 24-hour day, to compare
 bun tools/bench/consults.ts                    # «Просят посмотреть»: share of hired doctors' cases that ask you (--probe: why these thresholds)
-bun tools/bench/referrals.ts                   # referral to a specialist (#62): the same patients from one moment — the therapist
-                                               # decides, referred, referred with the profile prior (`--every`, `--second`)
+bun tools/bench/referrals.ts                   # referral to a specialist (#62, #112): the same patients from one moment — the
+                                               # therapist decides or the specialist leads with the prior ×N (`--x 1,2,3,5,10`); the
+                                               # whole day with the engine's rule (`--every`, `--lead`)
 bun tools/bench/approvals.ts                   # «Главврач утверждает»: decisions per hour awaiting approval and how many are wrong
                                                # (`--rules below90,discharge`, `--answer silent`; next to it — the same day by default)
 bun tools/bench/departments.ts                 # departments (spec): how often a registrar routing walk-ins by complaint would pick
@@ -226,6 +229,14 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   blue (window only, `m:` walkers) wheels each ambulance arrival in and leaves. The slice's `gurney` doing — admitted and
   still waiting for pickup (`pickupOf`); the path keeps the bed ride in `Journey.bed` and an exam ride in `gurney` of its
   exam step.
+- Referral to a specialist (`docs/specs/2026-10-specialists.md`, part 2; owner's decision #112): `shift/refer.ts` —
+  `priorOf` (booked to the specialist — ×`PROFILE_PRIOR`, referred to them — ×`consults.refer`) and `referTo` (the leading
+  hypothesis in nobody's profile, the second in the profile of a specialist on duty). In `engine.ts` a hired therapist who
+  would ask you refers instead (`referOf`, `sendOn`; with «не уверен» unticked too: referring does not call you), you refer
+  from your own office with the `refer` command (`referOwn`), and every hand-over to another doctor — the answer to a
+  consult or an approval, a referral — goes through `handOver`, which sets `ShiftPatient.ref`. The path's `own` step with
+  `refer` (and `from` when a doctor referred) is never dropped as a zero wait; the slice marks the referred with the
+  `REFERRED` bit of `P.flags` (`kindOf` reads the visit kind).
 - The chief approves (`docs/specs/2026-10-two-ways.md`, part 2): `shift/approve.ts` — the rule checkboxes (`meta.asks`, none
   — «unsure» and «long case» as before) and whether a hired doctor's decision waits for the chief. The decision waits in
   `ShiftPatient.approve` (the patient at the office door, no patience; the doctor calls the next); answers — the `approve`
