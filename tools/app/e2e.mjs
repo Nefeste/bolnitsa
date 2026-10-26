@@ -374,6 +374,32 @@ async function settingsPart() {
   else fail(`«авто» и вид по умолчанию: ${JSON.stringify(d)}`);
   await page.click('#settings-close');
   if (await page.$('#settings')) fail('«✕» не закрыл «Настройки»');
+  await iconsCheck();
+}
+
+/**
+ * Значки окна (решение владельца #139, docs/reports/2026-10-icons.md): Carbon вместо символов Юникода и эмодзи — в тексте
+ * окна их нет, ни в игре, ни в стройке; кнопки — со своими значками.
+ */
+async function iconsCheck() {
+  const OLD = /[✕✓✗▸▾☰▦⚙↶⚠⏭❚○✖▣▭▪▯▬]|[\u{1F300}-\u{1FAFF}]/u;
+  const look = () => page.evaluate(() => ({
+    text: document.getElementById('ui').innerText,
+    icons: [...document.querySelectorAll('#ui svg.icon')].map(s => s.dataset.icon),
+    sized: [...document.querySelectorAll('#ui svg.icon')].every(s => Math.round(s.getBoundingClientRect().width) === 16 || s.closest('.gstep')),
+  }));
+  const game = await look();
+  const want = ['pause', 'morning', 'menu', 'build', 'layers'];
+  if (!OLD.test(game.text) && want.every(n => game.icons.includes(n)) && game.sized) ok(`значки Carbon в игре: ${want.join(', ')} — по 16 точек; символов Юникода и эмодзи в окне нет`);
+  else fail(`значки в игре: ${JSON.stringify({ old: game.text.match(OLD)?.[0], icons: game.icons, sized: game.sized })}`);
+  await page.click('#build');
+  await page.waitForSelector('#tool-ready');
+  const build = await look();
+  const tools = ['ready', 'room', 'item', 'door', 'door2', 'bench', 'demolish', 'undo', 'done', 'close'];
+  if (!OLD.test(build.text) && tools.every(n => build.icons.includes(n)) && build.sized) ok(`значки стройки: ${tools.join(', ')} — двери и скамья свои, в рисунке Carbon`);
+  else fail(`значки стройки: ${JSON.stringify({ old: build.text.match(OLD)?.[0], icons: build.icons, sized: build.sized })}`);
+  await page.click('#build');
+  await page.waitForSelector('#game-menu-open');
 }
 
 async function partTwo() {

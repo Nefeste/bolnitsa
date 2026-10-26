@@ -18,6 +18,7 @@ import { Meeting, Reports, signed } from './Meeting';
 import { Layers, PathSection, PatientsTab } from './flow';
 import { byGuide, GoalsTab, GuideToggle, LetterCard, ScenarioDone, StepMark } from './Scenario';
 import { type Actions, type Hud, type RoomCard, type Speed, type Store, type Tab, type Tool, useHud } from './store';
+import { Icon, type IconName } from './icons';
 
 /** Названия из базы: помещения, должности, признаки. */
 export interface Names {
@@ -49,7 +50,7 @@ function TopBar({ hud, actions }: P) {
       </span>
       <span className="group">
         <Btn id="speed-0" on={hud.speed === 0} onClick={() => actions.setSpeed(0)} title="Space">
-          ❚❚ {T.top.pause}
+          <Icon name="pause" /> {T.top.pause}
         </Btn>
         {speeds.map((s, i) => (
           <Btn key={s} id={`speed-${s}`} on={hud.speed === s && !hud.ff} onClick={() => actions.setSpeed(s)} title={String(i + 1)}>
@@ -57,7 +58,7 @@ function TopBar({ hud, actions }: P) {
           </Btn>
         ))}
         <Btn id="speed-ff" on={hud.ff} onClick={actions.untilMorning} title={`4 — ${T.top.morningSoon}`}>
-          ⏭ {T.top.morning}
+          <Icon name="morning" /> {T.top.morning}
         </Btn>
       </span>
       <Money hud={hud} />
@@ -118,7 +119,7 @@ function Money({ hud }: { hud: Hud }) {
     );
   const below = hud.cash < -e.limit;
   const rep = e.meeting?.summary.economy?.reputation;
-  const arrow = rep && rep.to > rep.from ? ' ↑' : rep && rep.to < rep.from ? ' ↓' : '';
+  const arrow = rep && rep.to > rep.from ? <> <Icon name="up" /></> : rep && rep.to < rep.from ? <> <Icon name="down" /></> : null;
   return (
     <>
       <span className={`stat${below ? ' bad' : ''}`} id="cash" title={below ? T.money.below(money(e.limit)) : T.money.cashHint(money(e.limit))}>
@@ -162,7 +163,7 @@ function SettingsPanel({ hud, actions }: P) {
       <div className="row">
         <b id="settings-title">{t.title}</b>
         <button type="button" className="close" id="settings-close" onClick={actions.toggleSettings} title="Esc">
-          ✕
+          <Icon name="close" />
         </button>
       </div>
       <div className="label">{T.view.walls}</div>
@@ -216,21 +217,21 @@ function LeftTools({ hud, actions }: P) {
       <div className="left panel" id="left">
         {/* меню игры (spec docs/specs/2026-10-saves.md): сохранить, загрузить, новая игра */}
         <button type="button" id="game-menu-open" className={hud.menu.open ? 'on' : undefined} title={T.saves.menuHint} onClick={actions.toggleMenu}>
-          ☰ {T.saves.menu}
+          <Icon name="menu" /> {T.saves.menu}
         </button>
         <button type="button" id="build" onClick={actions.toggleBuild} title="B">
-          🏗 {T.left.build}
+          <Icon name="build" /> {T.left.build}
         </button>
         <Layers hud={hud} actions={actions} />
       </div>
     );
-  const tools: [Tool, string, string][] = [
-    ['room', '▭', T.build.room],
-    ['item', '▪', T.build.item],
-    ['door', '▯', T.build.door],
-    ['door2', '▯▯', T.build.door2],
-    ['bench', '▬', T.build.bench],
-    ['demolish', '✖', T.build.demolish],
+  const tools: [Tool, IconName, string][] = [
+    ['room', 'room', T.build.room],
+    ['item', 'item', T.build.item],
+    ['door', 'door', T.build.door],
+    ['door2', 'door2', T.build.door2],
+    ['bench', 'bench', T.build.bench],
+    ['demolish', 'demolish', T.build.demolish],
   ];
   let body: ReactNode = null;
   // порядок стройки сценария (решение владельца #114): шаги — первыми, с номером; у следующего — зачем он
@@ -317,25 +318,25 @@ function LeftTools({ hud, actions }: P) {
       <div className="row">
         <b>{T.build.on}</b>
         <button type="button" id="build" className="close" onClick={actions.toggleBuild} title={`B — ${T.build.off}`}>
-          ✕
+          <Icon name="close" />
         </button>
       </div>
       <button type="button" id="tool-ready" className={`wide${b.tool === 'ready' ? ' on' : ''}`} onClick={() => actions.setTool(b.tool === 'ready' ? undefined : 'ready')} title={T.build.readyHint}>
-        ▣ {T.build.ready}
+        <Icon name="ready" /> {T.build.ready}
       </button>
       <div className="tools">
         {tools.map(([t, icon, name]) => (
           <button key={t} type="button" id={`tool-${t}`} className={b.tool === t ? 'on' : undefined} onClick={() => actions.setTool(b.tool === t ? undefined : t)}>
-            {icon} {name}
+            <Icon name={icon} /> {name}
           </button>
         ))}
       </div>
       <div className="row">
         <button type="button" id="undo" disabled={b.undo === 0} onClick={actions.undo} title="Ctrl+Z">
-          ↶ {T.build.undo} ({b.undo})
+          <Icon name="undo" /> {T.build.undo} ({b.undo})
         </button>
         <button type="button" id="done" onClick={actions.done} title={T.build.doneHint}>
-          ✓ {T.build.done}
+          <Icon name="done" /> {T.build.done}
         </button>
       </div>
       <div className="spent">
@@ -386,7 +387,7 @@ function SiteCard({ r, actions, hud }: { r: RoomCard; actions: Actions; hud: Hud
           <dd>
             {r.needs?.map(n => (
               <span key={n.name} className={n.have >= n.need ? 'need ok' : 'need bad'}>
-                {n.have >= n.need ? '✓' : '✗'} {n.name}
+                <Icon name={n.have >= n.need ? 'done' : 'wrong'} /> {n.name}
                 {n.need > 1 ? ` ${Math.min(n.have, n.need)}/${n.need}` : ''}
               </span>
             ))}
@@ -751,7 +752,7 @@ function HintStrip({ hud, actions }: P) {
     <div className="hintstrip panel" id="hint" data-key={h.key}>
       <span id="hint-text">{h.text}</span>
       <button type="button" className="close small" id="hint-close" onClick={actions.dismissHint} title={T.hints.close}>
-        ✕
+        <Icon name="close" />
       </button>
     </div>
   );
@@ -775,7 +776,7 @@ function BottomCard({ hud, actions, names }: P) {
             </button>
           )}
           <button type="button" className="close" onClick={() => actions.select(undefined)} title="Esc">
-            ✕
+            <Icon name="close" />
           </button>
         </div>
         <dl>
@@ -813,7 +814,7 @@ function BottomCard({ hud, actions, names }: P) {
             </b>
             <span className="muted">{r.id}</span>
             <button type="button" className="close" onClick={() => actions.select(undefined)} title="Esc">
-              ✕
+              <Icon name="close" />
             </button>
           </div>
           <SiteCard r={r} actions={actions} hud={hud} />
@@ -827,7 +828,7 @@ function BottomCard({ hud, actions, names }: P) {
           </b>
           <span className="muted">{r.id}</span>
           <button type="button" className="close" onClick={() => actions.select(undefined)} title="Esc">
-            ✕
+            <Icon name="close" />
           </button>
         </div>
         <dl>
@@ -934,7 +935,7 @@ function GameMenu({ hud, actions }: P) {
       <div className="row">
         <b>{T.saves.title}</b>
         <button type="button" className="close" onClick={actions.toggleMenu} title="Esc">
-          ✕
+          <Icon name="close" />
         </button>
       </div>
       <button type="button" id="save-new" className="on" title={T.saves.saveHint} onClick={actions.saveGame}>
@@ -959,7 +960,7 @@ function GameMenu({ hud, actions }: P) {
           actions.toggleSettings();
         }}
       >
-        ⚙ {T.settings.open}
+        <Icon name="settings" /> {T.settings.open}
       </button>
     </div>
   );
@@ -983,7 +984,7 @@ function RoleChooser({ start, actions, back }: { start: 'empty' | 'preset' | 'po
         </button>
       ))}
       <button type="button" id="start-back" className="small" onClick={back}>
-        ← {T.start.back}
+        <Icon name="back" /> {T.start.back}
       </button>
     </div>
   );

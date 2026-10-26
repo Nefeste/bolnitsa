@@ -5,6 +5,7 @@ import type { Id } from '../content/types';
 import type { GoalRow, GuideRow, LetterRow, ScenarioHud } from '../app/scenario';
 import { T } from '../i18n';
 import type { Actions } from './store';
+import { Icon } from './icons';
 
 /** Письмо: значок с инициалами вместо портрета, от кого и кто он, текст; в списке — и когда пришло. */
 export function Letter({ l, day = false }: { l: LetterRow; day?: boolean }) {
@@ -38,7 +39,7 @@ export function LetterCard({ s, actions }: { s: ScenarioHud | undefined; actions
   return (
     <div className="lettercard panel" id="letter" data-letter={l.id}>
       <button type="button" className="close small" id="letter-skip" onClick={read} title={T.scenario.skip}>
-        ✕
+        <Icon name="close" />
       </button>
       <Letter l={l} />
       <div className="row">
@@ -65,7 +66,7 @@ function Goal({ g }: { g: GoalRow }) {
   const t = T.scenario;
   return (
     <li id={`goal-${g.id}`} className={g.done ? 'ok' : undefined}>
-      <span className="gmark">{g.done ? '✓' : '○'}</span> {g.text}{' '}
+      <span className="gmark">{g.done ? <Icon name="done" /> : <Icon name="todo" />}</span> {g.text}{' '}
       <small className="muted">
         — {g.done ? t.doneMark : t.progress(g.value, g.target)}
         {g.accuracy !== undefined && g.value > 0 ? `, ${t.accuracy(g.accuracy)}` : ''}
@@ -118,7 +119,7 @@ export function GuideList({ steps }: { steps: readonly GuideRow[] }) {
         {steps.map(x => (
           <li key={x.type} className={x.done ? 'done' : x.next ? 'next' : undefined} data-room={x.type}>
             <span className="gstep" aria-hidden="true">
-              {x.done ? '✓' : x.n}
+              {x.done ? <Icon name="done" /> : x.n}
             </span>
             <span>
               <b>{x.name}</b> — {x.why}
@@ -157,7 +158,7 @@ export function StepMark({ step }: { step?: GuideRow }) {
   if (!step) return null;
   return (
     <span className={`gstep${step.done ? ' done' : ''}`} aria-hidden="true">
-      {step.done ? '✓' : step.n}
+      {step.done ? <Icon name="done" /> : step.n}
     </span>
   );
 }

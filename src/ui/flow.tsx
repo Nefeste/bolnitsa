@@ -7,6 +7,7 @@ import { METRICS, MONEY_METRICS } from '../app/metrics';
 import type { Triage } from '../engine/shift/types';
 import { T } from '../i18n';
 import type { Actions, Hud } from './store';
+import { Icon } from './icons';
 
 interface P {
   hud: Hud;
@@ -186,7 +187,7 @@ export function Layers({ hud, actions }: P) {
   return (
     <>
       <button type="button" id="layers" className={hud.layers.open || hud.layers.queues || metric ? 'on' : undefined} onClick={actions.toggleLayers} title="L">
-        ▦ {T.flow.layers}
+        <Icon name="layers" /> {T.flow.layers}
       </button>
       {hud.layers.open ? (
         <div className="layers" id="layers-menu">

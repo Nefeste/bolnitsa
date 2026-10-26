@@ -35,5 +35,7 @@ copyFileSync(bundle, join(out, 'content.json'));
 cpSync(join(root, 'assets/models'), join(out, 'assets/models'), { recursive: true });
 // шрифт игры (решение владельца #107): файлы IBM Plex Sans и текст лицензии OFL — рядом, в каждой копии
 cpSync(join(root, 'assets/fonts'), join(out, 'assets/fonts'), { recursive: true });
+// значки окна Carbon (решение владельца #139): текст лицензии Apache 2.0 — в каждой копии
+cpSync(join(root, 'assets/licenses'), join(out, 'assets/licenses'), { recursive: true });
 copyFileSync(join(root, 'assets/LICENSES.md'), join(out, 'LICENSES.md'));
 console.log(`dist/ — версия ${version}`);
