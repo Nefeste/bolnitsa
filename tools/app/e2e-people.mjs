@@ -1,13 +1,15 @@
-// Сценарий в браузере, часть 23 — люди Rocketbox (spec docs/specs/2026-10-people.md, часть 1, «Проверки»). С ключом
-// `?people=rb` городская больница грузится без ошибок; у людей — шесть видов набора, у каждого атлас и маска; к 09:30
-// медсёстры, санитары, хирурги и анестезиологи — в костюмах своих видов, остальной персонал — в халатах, пациенты — в своей
-// одежде; цвет костюма — по должности: снимок с человеком и без него, разница — его цвета (медсестра — голубая,
+// Сценарий в браузере, часть 23 — люди Rocketbox (spec docs/specs/2026-10-people.md, части 1 и 2, «Проверки»). Городская
+// больница грузится без ошибок; у людей — 59 видов набора (решение владельца #109), у каждого атлас и маска; к 09:30
+// медсёстры, санитары, хирурги, анестезиологи и рентгенолаборанты — в своих видах, остальной персонал — в халатах,
+// регистратура — в деловой одежде, фельдшеры — в синей форме, пациенты — в своей одежде, в каске и спецодежде — только своих
+// профессий; цвет костюма — по должности: снимок с человеком и без него, разница — его цвета (медсестра — голубая,
 // анестезиолог и операционная сестра — бирюзовые), у врача халат белый; люди садятся и встают, лежащие — на постели или
 // каталке, а не на полу. Снимки — `e2e-people-*.jpg`.
 import { join } from 'node:path';
 
-const LOOKS = ['Medical_Male_03', 'Medical_Female_02', 'Medical_Female_01', 'Medical_Male_04', 'Male_Adult_08', 'Female_Adult_09'];
-/** Должности со своими видами (src/render/cast.ts, RB_LOOKS): костюм в цвете должности. */
+/** Сколько видов в игре (src/render/cast.ts, LOOKS). */
+const LOOKS = 59;
+/** Должности со своими видами (src/render/cast.ts, `roles`): костюм в цвете должности. */
 const SUITS = ['role.nurse', 'role.or_nurse', 'role.orderly', 'role.surgeon', 'role.anesthetist'];
 
 /** @param {{ page: import('playwright-core').Page, port: number, out: string, ok: (m: string) => void, fail: (m: string) => void, q: string, shots: string }} x */
@@ -37,7 +39,10 @@ export async function peoplePart({ page, port, out, ok, fail, q, shots }) {
     page.evaluate(() => {
       const g = window.__game;
       const role = new Map(g.staff.map(m => [`s:${m.id}`, m.role]));
-      return [...g.crowd.walkers.values()].map(w => ({ key: w.key, look: g.people.looks[w.look].name, role: role.get(w.key) ?? '', state: w.state, x: w.x, y: w.y, z: w.z, lie: w.lie }));
+      return [...g.crowd.walkers.values()].map(w => {
+        const id = w.key.startsWith('p:') ? w.key.slice(2) : '';
+        return { key: w.key, look: g.people.looks[w.look].name, spec: g.people.looks[w.look].spec, role: role.get(w.key) ?? '', job: g.pop.rows.get(id)?.job ?? '', state: w.state, x: w.x, y: w.y, z: w.z, lie: w.lie };
+      });
     });
   /**
    * Цвет человека в кадре: снимок 320 × 180 с ним и без него (отодвинут за край карты), точки, где кадры разные, — его и
@@ -79,15 +84,16 @@ export async function peoplePart({ page, port, out, ok, fail, q, shots }) {
       return { n, blue: pc(blue), teal: pc(teal), white: pc(white) };
     }, key);
 
-  await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&hospital=preset&seed=3&flow=6,1&people=rb`);
+  await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&hospital=preset&seed=3&flow=6,1`);
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
 
-  // ---------------------------------------------------------------- шесть видов набора, атлас и маска
-  const looks = await page.evaluate(() => window.__game.people.looks.map(l => ({ name: l.name, map: !!l.map, mask: !!l.mask, walk: l.walk })));
-  const names = looks.map(l => l.name);
-  if (names.length === LOOKS.length && LOOKS.every(n => names.includes(n)) && looks.every(l => l.map && l.mask)) {
-    ok(`люди Rocketbox: ${names.length} видов, у каждого атлас и маска; шаг ${looks.map(l => l.walk.toFixed(2)).join(', ')} м/с`);
-  } else fail(`виды людей: ${JSON.stringify(looks)}`);
+  // ---------------------------------------------------------------- 59 видов набора, атлас и маска
+  const looks = await page.evaluate(() => window.__game.people.looks.map(l => ({ name: l.name, spec: l.spec, map: !!l.map, mask: !!l.mask, walk: l.walk })));
+  const load = await page.evaluate(() => window.__game.load);
+  const walks = looks.map(l => l.walk);
+  if (looks.length === LOOKS && new Set(looks.map(l => l.name)).size === LOOKS && looks.every(l => l.map && l.mask && l.spec)) {
+    ok(`люди Rocketbox: ${looks.length} видов, у каждого атлас и маска; шаг ${Math.min(...walks).toFixed(2)}–${Math.max(...walks).toFixed(2)} м/с; загрузка людей ${Math.round(load.people)} мс из ${Math.round(load.total)}`);
+  } else fail(`виды людей: ${JSON.stringify(looks.filter(l => !l.map || !l.mask || !l.spec).map(l => l.name))}, всего ${looks.length}`);
 
   // ---------------------------------------------------------------- к 09:30: кто в чём; садятся и встают
   await page.keyboard.press('Digit3');
@@ -103,18 +109,24 @@ export async function peoplePart({ page, port, out, ok, fail, q, shots }) {
   if (['sitDown', 'sit', 'standUp', 'walk', 'lie'].every(s => seen.has(s))) ok(`люди садятся, сидят, встают, идут и лежат: ${[...seen].sort().join(', ')}`);
   else fail(`состояния людей: ${[...seen].sort().join(', ')}`);
   const all = await people();
-  const staffLooks = new Set(['Medical_Male_03', 'Medical_Female_02']);
-  const suitLooks = new Set(['Medical_Female_01', 'Medical_Male_04']);
-  const patientLooks = new Set(['Male_Adult_08', 'Female_Adult_09']);
+  // вид — по таблице cast.ts: должность со своими видами своего пола — один из них; без них — халат (регистратура —
+  // деловая одежда); фельдшер — синяя форма; пациент — своя одежда, спецодежда — только своей профессии
+  const own = (role, sex) => looks.some(l => l.spec.sex === sex && l.spec.roles?.includes(role));
   const wrong = all.filter(w => {
-    if (w.key.startsWith('p:')) return !patientLooks.has(w.look);
-    if (w.role && SUITS.includes(w.role)) return !suitLooks.has(w.look);
-    if (w.role) return !staffLooks.has(w.look);
-    return false;
+    const s = w.spec;
+    if (w.key.startsWith('p:')) return s.use !== 'patient' || (s.jobs && !s.jobs.includes(w.job));
+    if (w.key.startsWith('m:')) return s.use !== 'paramedic';
+    if (!w.role) return false;
+    if (own(w.role, s.sex)) return !s.roles?.includes(w.role);
+    return !!s.roles || s.use !== (w.role === 'role.registrar' ? 'registrar' : 'staff');
   });
   const suits = all.filter(w => SUITS.includes(w.role)).length;
-  if (!wrong.length && suits > 0) ok(`вид по должности: ${suits} в костюмах (сёстры, санитары, хирурги), остальной персонал — в халатах, пациенты — в своём`);
-  else fail(`вид по должности: ${JSON.stringify(wrong.slice(0, 5))}`);
+  const kinds = new Set(all.map(w => w.look)).size;
+  const work = all.filter(w => w.key.startsWith('p:') && w.spec.jobs).length;
+  const medics = all.filter(w => w.key.startsWith('m:')).length;
+  if (!wrong.length && suits > 0) {
+    ok(`вид по должности и профессии: на карте ${all.length} человек ${kinds} видов, ${suits} в костюмах (сёстры, санитары, хирурги), в спецодежде — ${work}, фельдшеров — ${medics}; остальной персонал — в халатах, регистратура — в деловом`);
+  } else fail(`вид по должности: ${JSON.stringify(wrong.slice(0, 5).map(w => [w.key, w.look, w.role, w.job]))}`);
   const lying = all.filter(w => w.state === 'lie');
   if (lying.length && lying.every(w => w.y > 0.3 && w.y < 0.9)) ok(`лежат на постели или каталке: ${lying.length}, высота ${lying.map(w => w.y.toFixed(2)).join(', ')} м`);
   else fail(`лежащие: ${JSON.stringify(lying.map(w => [w.key, w.y]))}`);

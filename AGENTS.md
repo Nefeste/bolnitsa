@@ -112,8 +112,9 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # window, hints by role, the chief's line and the doctors' errors at the meeting, «Итог» in
                                    # an error's card; then the own card in steps (owner's decision #104): the timeline and the
                                    # steps, a question, an exam and a test go into the timeline, the result opens «Решение»;
-                                   # then Rocketbox people with `?people=rb`: six looks with atlas and mask, the look and the
-                                   # suit colour by role — read from the picture, people sit down, stand up and lie; then
+                                   # then the people: 59 Rocketbox looks with atlas and mask, the look by role, profession
+                                   # and paramedic, the suit colour by role — read from the picture, people sit down, stand
+                                   # up and lie; then
                                    # scenario 1: «Кампания» on the start screen, the mentor's letters at the start and to the
                                    # hint states while building, the scenario's build catalog, your own office, the first three
                                    # patients set by the scenario, «Цели» and «Без обучения», «Письма» at the meeting, the
@@ -126,13 +127,14 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # «Пациенты», the patient card and the path);
                                    # screenshots in tools/app/out/; `-- --only 1|2|…|26` for one part
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
-                                                     # (`-- --people rb` — with Rocketbox people, `-- --metric load` —
-                                                     # with the «Показатели» layer)
+                                                     # (`-- --flow 40,4` — a bigger crowd, about 180 people,
+                                                     # `-- --metric load` — with the «Показатели» layer)
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
 npm run assets -- <sources dir>    # rebuild assets/models/*.glb from the CC0 packs (byte-identical; see assets/LICENSES.md)
 node tools/app/people.mjs --fetch <dir>   # Rocketbox people (MIT): download the pinned sources, check SHA-256
 node tools/app/people.mjs <dir>    # then rebuild assets/models/rocketbox/ (glb + mask, byte-identical; docs/specs/2026-10-people.md)
+bun tools/app/people-licenses.ts   # then the Rocketbox tables of assets/LICENSES.md from sources.json and cast.ts
 npm run bench -- --mode flow --quick           # engine: time per game minute at 50/100/200/300 patients (PC flow)
 npm run bench -- --mode desks --quick          # the same with Anamnez's appointment slots
 npm run bench -- --mode flow --day             # the whole day to 10:00 of day 2: day and night minutes, 08:00 meeting, 09:00 round
@@ -290,9 +292,12 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   engine items to CC0 models or code-made ones, `world.ts` floors and cut walls, `doors.ts`, `lamps.ts`, `post.ts`
   (MSAA + GTAO), `stage.ts`, build ghosts `ghost.ts`; people: `bake.ts` (animations baked into a texture), `cast.ts`
   (the one table of heights, role colours and looks), `place.ts`, `path.ts`, `crowd.ts`, `population.ts`. People exist
-  only in rendering: the engine never sees them. Realistic people (`docs/specs/2026-10-people.md`): with `?people=rb` the
-  game loads the Rocketbox looks (`RB_LOOKS` in `cast.ts`; a look of its own per role — `roles`) — an atlas and a clothes
-  mask instead of vertex colours, the suit tinted by the mask (`people.ts`), walk and run speed per look (`bake.ts`).
+  only in rendering: the engine never sees them. People are Microsoft Rocketbox looks (`docs/specs/2026-10-people.md`):
+  59 in `LOOKS` of `cast.ts` (a look of its own per role — `roles`; hard hats and workwear only for patients of their
+  professions — `jobs`, `NameRow.job`), an atlas and a clothes mask, the suit tinted by the mask (`people.ts`). `bake.ts`
+  bakes them in the bake workers (`bake-worker.ts` → `dist/bake.js`; `toWire`/`fromWire` hand them over without a copy):
+  feet stay planted in walk and run (`lockFeet`, a two-bone leg reach), the seated pose sits on a chair of `SEAT`
+  (`catalog.ts`; `seatTo`), walk and run speed per look.
   Icons above heads — `icons.ts` (drawn after the frame); the queues overlay floor tint — `overlay.ts`.
 - `src/ui/` — panels (React) and their store; `src/ui/doctor/` — the patient card window, the doctor's panel and the
   «Просят посмотреть» tab, driven by `src/app/doctor.ts` (your own card — the timeline «Ход приёма» and one open step of

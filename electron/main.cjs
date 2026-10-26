@@ -224,8 +224,6 @@ app.whenReady().then(async () => {
     return i > 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : null;
   };
   if (v('q')) q.set('q', v('q'));
-  // люди Rocketbox (spec docs/specs/2026-10-people.md, часть 1): --people rb
-  if (v('people')) q.set('people', v('people'));
   await win.loadURL(`app://game/index.html${q.size ? `?${q}` : ''}`);
 });
 
