@@ -174,6 +174,32 @@ export type Projection = 'ortho' | 'persp';
 
 /** Сколько секунд масштаб доходит до цели почти целиком (каждое мгновение — доля оставшегося пути). */
 const ZOOM_RATE = 14;
+/** Скольжение после протяжки: скорость гаснет в e раз за столько секунд — путь скольжения равен скорости руки × 0,22 с. */
+const GLIDE_TAU = 0.22;
+/** Скольжение кончается медленнее стольких высот кадра в секунду; быстрее стольких — не начинается быстрее. */
+const GLIDE_STOP = 0.02;
+const GLIDE_MAX = 2.5;
+
+/** Сдвиг протяжкой: точки экрана и время события, мс. */
+export type DragSample = { t: number; dx: number; dy: number };
+
+/**
+ * Скорость руки при отпускании, точек экрана в секунду, — по сдвигам последних 80 мс; если рука перед отпусканием стояла
+ * (последний сдвиг старше 50 мс), скольжения нет.
+ */
+export function releaseVelocity(samples: readonly DragSample[], now: number): { x: number; y: number } | null {
+  const last = samples[samples.length - 1];
+  if (!last || now - last.t > 50) return null;
+  const recent = samples.filter(s => now - s.t <= 80);
+  const span = Math.max(16, now - recent[0].t);
+  let x = 0;
+  let y = 0;
+  for (const s of recent) {
+    x += s.dx;
+    y += s.dy;
+  }
+  return { x: (x * 1000) / span, y: (y * 1000) / span };
+}
 
 /** Камера сверху под углом: точка взгляда на земле, поворот на 45° + k·90°, наклон 52°. */
 export class IsoCamera {
@@ -193,6 +219,8 @@ export class IsoCamera {
   aspect = 16 / 9;
   /** куда камера летит (вкладка «Пациенты»: клик — к человеку); сдвиг, масштаб, общий план — отменяют */
   private fly: { x: number; z: number; half: number } | null = null;
+  /** скольжение после протяжки, м/с по земле; сдвиг, масштаб, полёт, «Следить» и общий план — отменяют */
+  private glide = { x: 0, z: 0 };
 
   constructor(
     private w: number,
@@ -209,10 +237,11 @@ export class IsoCamera {
     return this._half;
   }
 
-  /** Масштаб сразу, без плавности (снимки, сценарий, бенч, общий план). */
+  /** Масштаб сразу, без плавности и скольжения (снимки, сценарий, бенч, общий план). */
   set half(v: number) {
     this._half = this.halfTo = v;
     this.anchor = null;
+    this.stopGlide();
   }
 
   /** Наименьший и наибольший масштаб: крупный план человека и весь участок. */
@@ -241,12 +270,39 @@ export class IsoCamera {
   /** Сдвиг точки взгляда на dx, dy точек экрана (высота экрана — hPx). */
   pan(dxPx: number, dyPx: number, hPx: number) {
     this.fly = null;
+    this.stopGlide();
+    this.target.add(this.onGround(dxPx, dyPx, hPx));
+    this.clampTarget();
+  }
+
+  /** Сдвиг по земле, м, от сдвига на dx, dy точек экрана: карта идёт за рукой. */
+  private onGround(dxPx: number, dyPx: number, hPx: number): THREE.Vector3 {
     const k = (2 * this._half) / hPx;
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
-    this.target.addScaledVector(right, -dxPx * k);
-    this.target.addScaledVector(fwd, (dyPx * k) / Math.sin(this.pitch));
-    this.clampTarget();
+    return right.multiplyScalar(-dxPx * k).addScaledVector(fwd, (dyPx * k) / Math.sin(this.pitch));
+  }
+
+  /**
+   * Скольжение после протяжки (spec 2026-10-aaa-polish, «Камера»): отпущенная карта идёт дальше со скоростью руки — vx, vy
+   * точек экрана в секунду, как у `pan`, но не быстрее 2,5 высот кадра в секунду, — и останавливается трением.
+   */
+  glideFrom(vxPx: number, vyPx: number, hPx: number) {
+    const v = Math.hypot(vxPx, vyPx);
+    const s = v > GLIDE_MAX * hPx ? (GLIDE_MAX * hPx) / v : 1;
+    const g = this.onGround(vxPx * s, vyPx * s, hPx);
+    this.glide.x = g.x;
+    this.glide.z = g.z;
+    this.fly = null;
+  }
+
+  stopGlide() {
+    this.glide.x = this.glide.z = 0;
+  }
+
+  /** Скользит ли камера после протяжки. */
+  get gliding(): boolean {
+    return this.glide.x !== 0 || this.glide.z !== 0;
   }
 
   private clampTarget() {
@@ -260,6 +316,8 @@ export class IsoCamera {
    */
   zoom(k: number, anchor?: { x: number; z: number } | null) {
     this.fly = null;
+    // скольжение увело бы точку под курсором
+    this.stopGlide();
     const [lo, hi] = this.halfRange;
     this.halfTo = THREE.MathUtils.clamp(this.halfTo * k, lo, hi);
     this.anchor = anchor ?? null;
@@ -282,6 +340,7 @@ export class IsoCamera {
   flyTo(x: number, z: number, half = 9) {
     this.fly = { x, z, half: Math.min(this._half, half) };
     this.anchor = null;
+    this.stopGlide();
   }
 
   /**
@@ -291,6 +350,7 @@ export class IsoCamera {
   track(x: number, z: number, dt: number) {
     this.fly = null;
     this.anchor = null;
+    this.stopGlide();
     const k = Math.min(1, dt * 6);
     this.target.x += (x - this.target.x) * k;
     this.target.z += (z - this.target.z) * k;
@@ -333,6 +393,19 @@ export class IsoCamera {
         this.clampTarget();
       }
       if (!this.zooming) this.anchor = null;
+    }
+    if (this.gliding) {
+      // скорость гаснет как e^(−t/τ); путь за кадр — точный интеграл, и он один при любой частоте кадров
+      const f = Math.exp(-dt / GLIDE_TAU);
+      const x0 = this.target.x + this.glide.x * GLIDE_TAU * (1 - f);
+      const z0 = this.target.z + this.glide.z * GLIDE_TAU * (1 - f);
+      this.target.x = x0;
+      this.target.z = z0;
+      this.clampTarget();
+      // у края участка — стоп по этой оси, без отскока
+      this.glide.x = this.target.x === x0 ? this.glide.x * f : 0;
+      this.glide.z = this.target.z === z0 ? this.glide.z * f : 0;
+      if (Math.hypot(this.glide.x, this.glide.z) < GLIDE_STOP * 2 * this._half) this.stopGlide();
     }
     const d = this.yawTo - this.yaw;
     this.yaw += Math.abs(d) < 1e-3 ? d : d * Math.min(1, dt * 10);
