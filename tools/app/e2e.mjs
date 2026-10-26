@@ -9,7 +9,7 @@
 // летит к человеку, в карточке — путь с причиной ожидания; «Ушли» — путь ушедшего и почему; слой «Очереди и загрузка» (L);
 // ушедший, не дождавшись, идёт к выходу со значком. Часть 4 — режим врача: tools/app/e2e-doctor.mjs. Часть 5 — касса,
 // планёрка, обход: tools/app/e2e-economy.mjs. Часть 6 — готовые помещения: tools/app/e2e-ready.mjs. Часть 7 — поликлиника
-// по нормам проектирования, начало с экрана выбора: tools/app/e2e-poly.mjs. Часть 8 — специалисты: найм с должностью и
+// по нормам проектирования, с живого экрана начала: tools/app/e2e-poly.mjs. Часть 8 — специалисты: найм с должностью и
 // запись к ним, tools/app/e2e-specialists.mjs. Часть 9 — игра владельца 18.10: «Открыть карту» у любого, «Ход приёма»,
 // «Следить», «Позвать» — карта, когда вошёл, tools/app/e2e-owner2.mjs. Часть 10 — сохранения: сохранить,
 // «Продолжить», загрузить, удалить, испорченный файл, tools/app/e2e-saves.mjs. Часть 11 — карта ушедшего: «Приняты»,
@@ -38,7 +38,7 @@
 // Ошибок в консоли и запросов наружу нет.
 // Снимки — tools/app/out/e2e.png, e2e-build-*.png и e2e-flow-*.png; `--shots high` — снимки частей 2 и 3 в этом качестве
 // (на время снимка).
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|…|25] [--shots low|medium|high] [--port 8093]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|…|26 или 7,10,11] [--shots low|medium|high] [--port 8093]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -124,8 +124,9 @@ const PROTO = [
   ['room.lab', 36, 6, 6, 7, ['role.lab_tech']],
 ];
 
-const only = arg('only', '');
-const run = n => !only || only === String(n);
+// одна часть или несколько через запятую — подряд на одной странице, как в полном прогоне
+const only = arg('only', '').split(',').filter(Boolean);
+const run = n => only.length === 0 || only.includes(String(n));
 try {
   if (run(1)) await partOne();
   if (run(2)) await partTwo();

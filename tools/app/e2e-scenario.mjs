@@ -63,7 +63,9 @@ export async function scenarioPart({ page, port, out, ok, fail, q, shots }) {
   };
 
   // ---------------------------------------------------------------- экран начала
-  await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&seed=5&flow=6,1`);
+  // экран начала без живой сцены (spec docs/specs/2026-10-aaa-polish.md): её проверяет часть 7; здесь уходят со страницы, пока
+  // она грузится, и загрузчик моделей пишет в консоль об оборванной загрузке
+  await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&seed=5&flow=6,1&backdrop=0`);
   await page.waitForSelector('#start-scenario-ambulatory', { timeout: 60000 });
   const heads = await page.$$eval('#start h2', els => els.map(e => e.textContent ?? ''));
   const cardText = flat(await page.innerText('#start-scenario-ambulatory'));
