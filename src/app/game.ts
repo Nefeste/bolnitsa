@@ -26,6 +26,7 @@ import type { BakeTask, Baked } from '../render/bake-worker';
 import { CATALOG, EXTRA_MODELS } from '../render/catalog';
 import { Crowd } from '../render/crowd';
 import { furnish, type Furnished } from '../render/furniture';
+import { Thumbs } from '../render/thumbs';
 import { Ghosts } from '../render/ghost';
 import { Gurneys } from '../render/gurney';
 import type { RoomRect } from '../render/highlight';
@@ -45,6 +46,7 @@ import type { Actions, Hud, RoomCard, Speed, Store, Tab } from '../ui/store';
 import { Builder, objectName, whyText } from './build';
 import { Chips } from './chips';
 import { colorOf, css, layerColors, legendOf, NO_DEPT, patientDept, planDepts, stripeColors } from './departments';
+import { grouped, groupOf, groupOrder } from './groups';
 import { loadContent } from './content';
 import { Doctor } from './doctor';
 import { chipShown, dur, medicLine, moodOf, pathCard, type PatientRow, patientRows, roomChip, roomLoads, tintOf, wheelLine } from './flow';
@@ -57,6 +59,7 @@ import { ColumnLabels } from './collabels';
 import { applyText, AutoQuality, type QualityMode, readSettings, type Settings, type TextScale, writeSettings } from './settings';
 import { HoverLabel } from './hover';
 import { Labels } from './labels';
+import { ThumbQueue, thumbKey } from './thumbs';
 import { Money } from './money';
 import { staffName } from './people';
 import { startCash } from '../engine/shift/money';
@@ -257,6 +260,8 @@ export class Game {
   ghosts!: Ghosts;
   /** каталки на карте (spec docs/specs/2026-10-orderlies.md) — и для сценария в браузере: сколько видно */
   gurneys!: Gurneys;
+  /** миниатюры каталога стройки (spec docs/specs/2026-10-catalog.md) */
+  thumbs!: ThumbQueue;
   /** кто вёз каталку в прошлом срезе — «Персонал» заново, когда изменилось */
   private riding = '';
   readonly builder = new Builder(this);
@@ -525,6 +530,8 @@ export class Game {
       this.stage = new Stage({ host: this.host, layout, furnished, people: this.people, quality, capacity: 600 });
       this.ghosts = new Ghosts(this.models);
       this.stage.scene.add(this.ghosts.group);
+      // миниатюры каталога стройки (spec docs/specs/2026-10-catalog.md): тем же отрисовщиком, по одной за раз
+      this.thumbs = new ThumbQueue(db, this.models, new Thumbs(this.stage.renderer, this.stage.floorTex, this.stage.aniso), done => this.store.set({ thumbs: Object.fromEntries(done) }));
       // каталки (spec docs/specs/2026-10-orderlies.md, «Что видно»): у санитаров и у фельдшеров скорой
       this.gurneys = new Gurneys();
       this.stage.scene.add(this.gurneys.group);
@@ -757,7 +764,10 @@ export class Game {
         .filter(t => this.buildable(t.id))
         .map(t => {
           const r = rulesOf(db, t.id)!;
-          return { id: t.id, name: named(t.name, t.id), min: T.build.from(r.smallest.w, r.smallest.h), price: T.build.perM2(money(r.smallest.cost / (r.smallest.w * r.smallest.h))) };
+          return {
+            id: t.id, name: named(t.name, t.id), group: groupOf(db, t.id), min: T.build.from(r.smallest.w, r.smallest.h),
+            price: T.build.perM2(money(r.smallest.cost / (r.smallest.w * r.smallest.h))),
+          };
         })
         .sort((a, b) => a.name.localeCompare(b.name, document.documentElement.lang || undefined)),
       // готовые помещения (spec docs/specs/2026-10-ready-rooms.md): образцы и цена готового целиком
@@ -766,10 +776,22 @@ export class Game {
         .map(t => {
           const sizes = t.sizes.map(z => ({ id: z.id, text: T.build.readySize(z.id, z.w, z.h, money(readyCost(db, t.id, z.id))) }));
           const low = Math.min(...t.sizes.map(z => readyCost(db, t.id, z.id)));
-          return { id: t.id, name: named(t.name, t.id), sizes, price: sizes.length === 1 ? sizes[0].text : T.build.readyFrom(money(low)) };
+          return { id: t.id, name: named(t.name, t.id), group: groupOf(db, t.id), sizes, price: sizes.length === 1 ? sizes[0].text : T.build.readyFrom(money(low)) };
         })
         .sort((a, b) => a.name.localeCompare(b.name, document.documentElement.lang || undefined)),
+      // группы каталога (spec docs/specs/2026-10-catalog.md): отделения по записи, затем служба и общие
+      catalogGroups: groupOrder(db).map(g =>
+        g === 'service' ? { id: g, name: T.build.groupService } : g === 'common' ? { id: g, name: T.build.groupCommon } : { id: g, name: this.deptName(g), color: css(colorOf(g)) },
+      ),
     });
+  }
+
+  /** Миниатюры каталога «Готовое помещение» по порядку групп; у выбранного помещения — его образец, и он первым. */
+  private thumbKeys(): string[] {
+    const sel = this.builder.ready;
+    const rows = grouped(this.db, this.store.get().readyTypes).flatMap(g => g.rows);
+    const keys = rows.map(r => thumbKey(r.id, sel?.type === r.id ? sel.size : r.sizes[0].id));
+    return sel ? [thumbKey(sel.type, sel.size), ...keys] : keys;
   }
 
   /** В каталоге стройки: у сценария — только помещения его списка (spec docs/specs/2026-10-scenario-1.md), остальных нет. */
@@ -1112,6 +1134,11 @@ export class Game {
     const b = performance.now();
     this.pickUnder();
     this.stage.frame(dt, (this.t % 86400) / 3600, this.crowd, this.pop.paint, k => this.pop.triageOf(k), this.ringKey(), this.pickOf());
+    // миниатюры каталога (spec docs/specs/2026-10-catalog.md) — пока открыто «Готовое помещение», по одной за раз
+    if (this.builder.on && this.builder.tool === 'ready') {
+      this.thumbs.ask(this.thumbKeys());
+      this.thumbs.step();
+    }
     // подписи помещений — в стройке и в слое «Отделения» (spec docs/specs/2026-10-departments.md, часть 2); значки — вместо них
     this.labels.visible = this.builder.on || this.store.get().layers.depts;
     this.labels.frame();

@@ -97,6 +97,8 @@ export interface RoomCard {
 export interface RoomTypeRow {
   id: Id;
   name: string;
+  /** группа каталога (spec docs/specs/2026-10-catalog.md): отделение, `service` или `common` */
+  group: string;
   min: string;
   price: string;
 }
@@ -105,6 +107,7 @@ export interface RoomTypeRow {
 export interface ReadyTypeRow {
   id: Id;
   name: string;
+  group: string;
   sizes: { id: RoomSizeId; text: string }[];
   /** у одного образца — его размер и цена; у нескольких — «от» самой низкой цены */
   price: string;
@@ -172,6 +175,10 @@ export interface Hud {
   build: BuildHud;
   roomTypes: RoomTypeRow[];
   readyTypes: ReadyTypeRow[];
+  /** группы каталога стройки по порядку (spec docs/specs/2026-10-catalog.md); у отделения — его цвет */
+  catalogGroups: { id: string; name: string; color?: string }[];
+  /** миниатюры готовых помещений (spec docs/specs/2026-10-catalog.md): `вид|образец` → PNG адресом `blob:`; пусто — не вышла */
+  thumbs: Record<string, string>;
   /** больница ПК закрыта — почему (пациенты не приходят) */
   closed?: string;
   /** не та смена (spec docs/specs/2026-10-staff-shifts.md): пришедших сами не примут до утра — спокойной строкой */
@@ -260,6 +267,8 @@ export const initial: Hud = {
   build: { on: false, withStaff: true, moving: false, spent: 0, undo: 0 },
   roomTypes: [],
   readyTypes: [],
+  catalogGroups: [],
+  thumbs: {},
   fps: 0,
   cpuMs: 0,
   gpuMs: null,
