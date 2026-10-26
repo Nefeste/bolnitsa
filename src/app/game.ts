@@ -34,7 +34,7 @@ import { Paths } from '../render/path';
 import { Places } from '../render/place';
 import { type PersonInfo, Population, YOU } from '../render/population';
 import { Stage } from '../render/stage';
-import type { Projection, Quality } from '../render/view';
+import { type DragSample, type Projection, type Quality, releaseVelocity } from '../render/view';
 import type { WallMode } from '../render/world';
 import type { ErrorList, SeenList } from '../sim/doctor';
 import { H, kindOf, REFERRED } from '../sim/pack';
@@ -70,6 +70,10 @@ import { type Disk, listSlots, nextManual, pageDisk, removeSlot, type ShellSaves
 export const SCENE = { preset: 'preset.city', poly: 'site.polyclinic', seed: 1, season: 'winter' as Season, flow: { perHour: 6, ambulancePerHour: 1 } };
 /** Поток от больницы (spec docs/specs/2026-10-economy.md): кабинеты, места смотровой, репутация. */
 export const AUTO: Flow = { perHour: 0, auto: true };
+
+/** Сдвиг камеры клавишами и краями окна: точек экрана в секунду; доля оставшейся скорости, что набирается за секунду. */
+const PAN_SPEED = 700;
+const PAN_EASE = 12;
 
 /**
  * С чего начать (spec docs/specs/2026-10-build.md, «Начало игры»): пустое здание, готовая больница 2а или поликлиника из
@@ -343,6 +347,10 @@ export class Game {
   readonly frames: { interval: number[]; sim: number[]; draw: number[] } = { interval: [], sim: [], draw: [] };
   onFrame: ((ts: number) => void) | null = null;
   private mouse = { x: 0, y: 0, inside: false, drag: null as null | { x: number; y: number; moved: number; button: number }, keys: new Set<string>() };
+  /** сдвиги протяжки за последние 100 мс — скорость руки при отпускании (скольжение камеры) */
+  private dragSamples: DragSample[] = [];
+  /** скорость сдвига клавишами и краями окна, точек экрана в секунду: набирается и гаснет плавно */
+  private keyPan = { x: 0, y: 0 };
 
   constructor(
     readonly db: ContentDb,
@@ -1713,6 +1721,9 @@ export class Game {
     el.addEventListener('pointerdown', e => {
       if (e.button === 2 || e.button === 1) {
         this.mouse.drag = { x: e.clientX, y: e.clientY, moved: 0, button: e.button };
+        this.dragSamples = [];
+        // взятая рукой карта останавливается
+        this.stage.cam.stopGlide();
         el.setPointerCapture(e.pointerId);
       } else if (e.button === 0) {
         // стройка: поставить, протянуть, взять
@@ -1747,6 +1758,9 @@ export class Game {
       if (dx || dy) this.unfollow();
       this.stage.cam.pan(dx, dy, el.clientHeight);
       this.mouse.drag = { x: e.clientX, y: e.clientY, moved: this.mouse.drag.moved + Math.abs(dx) + Math.abs(dy), button: this.mouse.drag.button };
+      const now = performance.now();
+      this.dragSamples.push({ t: now, dx, dy });
+      while (this.dragSamples.length && now - this.dragSamples[0].t > 100) this.dragSamples.shift();
     });
     el.addEventListener('pointerup', e => {
       if (e.button === 0 && this.builder.on) {
@@ -1756,8 +1770,14 @@ export class Game {
       const d = this.mouse.drag;
       if (!d || d.button !== e.button) return;
       this.mouse.drag = null;
-      // ПКМ без протяжки — отменить (геймдизайн §12); с протяжкой — сдвиг камеры
+      // ПКМ без протяжки — отменить (геймдизайн §12); с протяжкой — сдвиг камеры, и отпущенная карта скользит дальше
+      // (spec 2026-10-aaa-polish, «Камера»)
       if (e.button === 2 && d.moved < 5) this.cancel();
+      else {
+        const v = releaseVelocity(this.dragSamples, performance.now());
+        if (v) this.stage.cam.glideFrom(v.x, v.y, el.clientHeight);
+      }
+      this.dragSamples = [];
     });
     el.addEventListener('pointerleave', () => {
       this.mouse.inside = false;
@@ -1819,31 +1839,44 @@ export class Game {
     window.addEventListener('keyup', e => this.mouse.keys.delete(e.code));
   }
 
-  /** Сдвиг краями окна (курсор ближе 10 точек к краю) и клавишами WASD и стрелками. */
+  /**
+   * Сдвиг краями окна (курсор ближе 10 точек к краю) и клавишами WASD и стрелками — 700 точек экрана в секунду; скорость
+   * набирается и гаснет плавно, за десятую долю секунды (spec 2026-10-aaa-polish, «Камера»).
+   */
   private edgePan(dt: number) {
-    if (this.mouse.drag) return;
+    const cam = this.stage.cam;
     const el = this.stage.renderer.domElement;
     const w = el.clientWidth;
     const h = el.clientHeight;
-    const v = 700 * dt;
-    let dx = 0;
-    let dy = 0;
+    let ax = 0;
+    let ay = 0;
     const keys = this.mouse.keys;
-    if (keys.has('KeyA') || keys.has('ArrowLeft')) dx += v;
-    if (keys.has('KeyD') || keys.has('ArrowRight')) dx -= v;
-    if (keys.has('KeyW') || keys.has('ArrowUp')) dy += v;
-    if (keys.has('KeyS') || keys.has('ArrowDown')) dy -= v;
-    if (this.mouse.inside && !dx && !dy) {
-      const m = 10;
-      if (this.mouse.x < m) dx = v;
-      else if (this.mouse.x > w - m) dx = -v;
-      if (this.mouse.y < m) dy = v;
-      else if (this.mouse.y > h - m) dy = -v;
+    if (!this.mouse.drag) {
+      if (keys.has('KeyA') || keys.has('ArrowLeft')) ax += 1;
+      if (keys.has('KeyD') || keys.has('ArrowRight')) ax -= 1;
+      if (keys.has('KeyW') || keys.has('ArrowUp')) ay += 1;
+      if (keys.has('KeyS') || keys.has('ArrowDown')) ay -= 1;
+      if (this.mouse.inside && !ax && !ay) {
+        const m = 10;
+        if (this.mouse.x < m) ax = 1;
+        else if (this.mouse.x > w - m) ax = -1;
+        if (this.mouse.y < m) ay = 1;
+        else if (this.mouse.y > h - m) ay = -1;
+      }
     }
-    if (dx || dy) {
-      this.unfollow();
-      this.stage.cam.pan(dx, dy, h);
+    const held = ax !== 0 || ay !== 0;
+    // протяжка, полёт к человеку и «Следить» ведут камеру сами: хвост сдвига им не мешает
+    if (!held && (this.mouse.drag || cam.flying || this.following !== undefined)) {
+      this.keyPan.x = this.keyPan.y = 0;
+      return;
     }
+    const k = Math.min(1, dt * PAN_EASE);
+    this.keyPan.x += (ax * PAN_SPEED - this.keyPan.x) * k;
+    this.keyPan.y += (ay * PAN_SPEED - this.keyPan.y) * k;
+    if (!ax && Math.abs(this.keyPan.x) < 5) this.keyPan.x = 0;
+    if (!ay && Math.abs(this.keyPan.y) < 5) this.keyPan.y = 0;
+    if (held) this.unfollow();
+    if (this.keyPan.x || this.keyPan.y) cam.pan(this.keyPan.x * dt, this.keyPan.y * dt, h);
   }
 
   /** Названия из базы — для панелей. */
