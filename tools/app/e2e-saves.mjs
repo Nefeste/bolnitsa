@@ -57,7 +57,9 @@ export async function savesPart({ page, port, out, ok, fail, q, shots }) {
   ok(`снимок: ${join(out, 'e2e-saves-1-menu.jpg')} (${await shot('e2e-saves-1-menu.jpg')} КБ)`);
 
   // экран начала: «Продолжить» — то же день и час; продолжили — та же больница, касса, часы на паузе
-  await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru`);
+  // экран начала без живой сцены (spec docs/specs/2026-10-aaa-polish.md): её проверяет часть 7; здесь уходят со страницы, пока
+  // она грузится, и загрузчик моделей пишет в консоль об оборванной загрузке
+  await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&backdrop=0`);
   await page.waitForSelector('#start-continue', { timeout: 60000 });
   const cont = ((await page.textContent('#start-continue')) ?? '').replace(/\s+/g, ' ').trim();
   ok(`снимок: ${join(out, 'e2e-saves-2-start.jpg')} (${await shot('e2e-saves-2-start.jpg')} КБ)`);
@@ -102,7 +104,7 @@ export async function savesPart({ page, port, out, ok, fail, q, shots }) {
     await put('manual-9.save', 'это не сохранение');
     await put('manual-9.meta.json', JSON.stringify({ kind: 'manual', savedAt: '2099-01-01T00:00:00.000Z', version: '0.7.0', start: 'poly', day: 1, t: 36000 }));
   });
-  await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru`);
+  await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&backdrop=0`);
   await page.waitForSelector('#start-continue', { timeout: 60000 });
   await page.click('#start-continue');
   const problem = await page.waitForSelector('#start-problem', { timeout: 30000 }).then(e => e.textContent(), () => '');

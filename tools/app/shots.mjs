@@ -80,7 +80,9 @@ try {
   if (run(1)) {
     await page.goto(url(''));
     await page.waitForSelector('#start', { timeout: 60000 });
-    await page.waitForTimeout(300);
+    // живая сцена за экраном начала (spec docs/specs/2026-10-aaa-polish.md) — когда проявилась
+    await page.waitForSelector('#view.shown', { timeout: 120000 });
+    await page.waitForFunction(() => getComputedStyle(document.getElementById('view'), '::after').opacity === '0', null, { timeout: 15000 });
     await shot('1-start');
   }
   // 2–3. готовая больница днём: общий план и зал ожидания крупно
