@@ -28,6 +28,7 @@ import {
 } from './caseView';
 import { confidenceWord, noteText, riskName, suggestedTreatments, treatmentGroupsFor } from './caseView';
 import { lowerFirst } from '../i18n/case';
+import { cardTips, type CardTips } from './tips';
 
 /** Уровни медицины (геймдизайн §10) — от лёгкого к трудному; по умолчанию — «Студент» (spec «Сложность»). */
 export const LEVELS: readonly Difficulty[] = ['trainee', 'student', 'resident', 'doctor'];
@@ -212,6 +213,11 @@ export interface CardView extends VisitView {
   approve?: { until: number; discharge?: true };
   /** «верно или нет» у закрытого случая нанятого врача (решение владельца #66) — и у лежащего */
   verdict?: CaseVerdict;
+  /**
+   * подсказки наставника в сценарии (spec docs/specs/2026-10-scenario-1.md, часть 2б): ваш приём — на шагах и на «Решении»,
+   * ваш закрытый — на разборе; каждая один раз, «Без обучения» — нет
+   */
+  tips?: CardTips;
   /**
    * «Направить к …» (spec docs/specs/2026-10-specialists.md, часть 2; решение владельца #112): ваш у вас в кабинете — к кому
    * из специалистов, которые сейчас принимают; `wait` — ждёт результатов или вышел на обследование: пока нельзя
@@ -799,6 +805,8 @@ export function cardView(db: ContentDb, s: ShiftState, id: string, level: Diffic
   // «верно или нет» (spec 2026-10-two-ways, F1; решение владельца #66): правда — только у закрытого
   const verdict = c?.by ? verdictOf(db, p, c) : undefined;
   const take = !mine && !p.closed && yours === undefined && takeCommand(db, s, id).cmd !== undefined;
+  const active = mine && !p.closed && coming === undefined;
+  const tips = cardTips(db, s, p, active);
   // «Направить к …» (spec 2026-10-specialists, часть 2): ваш у вас в кабинете, не лежит в смотровой — к специалисту, который
   // сейчас принимает
   const specialists = mine && here && !p.closed && coming === undefined && s.flow && !p.bay ? colleaguesOf(db, s).filter(m => db.roles[m.role]?.profile) : [];
@@ -809,11 +817,12 @@ export function cardView(db: ContentDb, s: ShiftState, id: string, level: Diffic
     }
     : undefined;
   return {
-    ...view, id, active: mine && !p.closed && coming === undefined, ...(where ? { where } : {}), ...(coming !== undefined ? { coming } : {}), ...(where === 'waiting' && !s.current ? { callable: true } : {}), ...(round ? { round } : {}),
+    ...view, id, active, ...(where ? { where } : {}), ...(coming !== undefined ? { coming } : {}), ...(where === 'waiting' && !s.current ? { callable: true } : {}), ...(round ? { round } : {}),
     ...(lead ? { lead } : {}), ...(decided ? { decided } : {}), ...(take ? { take: true as const } : {}),
     ...(order ? { order: true as const } : {}),
     ...(p.approve && here ? { approve: { until: p.approve.until, ...(p.approve.plan ? {} : { discharge: true as const }) } } : {}),
     ...(verdict ? { verdict } : {}),
+    ...(tips ? { tips } : {}),
     ...(refer ? { refer } : {}),
   };
 }
@@ -940,6 +949,8 @@ function cardKey(s: ShiftState, id: string): string {
     p.phase?.diagnosis ?? '', p.phase?.confidence ?? '', p.approve?.until ?? '', (p.orders ?? []).join(','),
     // обход (spec 2026-10-economy): сменили лечение, операция пошла
     p.stay ? `${p.stay.replans}:${p.stay.op?.start ?? ''}:${p.stay.op?.done ?? ''}` : '',
+    // подсказки наставника (spec 2026-10-scenario-1, часть 2б): показали одну, «Без обучения»
+    JSON.stringify(s.campaign?.tips ?? ''),
   ].join('|');
 }
 

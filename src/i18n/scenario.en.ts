@@ -12,6 +12,7 @@ export const scenarioEn: ScenarioStrings = {
     off: 'No tutorial',
     offHint: 'No more letters on how to build and see patients, and no tips in the chart; goals and occasion letters stay',
     letterDay: (day: number) => (day === 0 ? 'at the start' : `day ${day}`),
+    tipSee: 'In the encyclopedia',
     main: 'Main goals',
     extra: 'Optional',
     progress: (value: number, target: number) => `${value} of ${target}`,
