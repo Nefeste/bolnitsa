@@ -521,6 +521,8 @@ export const en: Strings = {
     wanted: (what: string) => `wanted ${what} — the place was taken`,
     left: (_f: boolean, waited: string, patience: string) => `left without being seen: waited for a doctor ${waited}, was ready to wait ${patience}`,
     leftEnd: (_f: boolean) => 'left without being seen',
+    leftNone: (_f: boolean) => 'by the time they left, no doctor on the shift would see them',
+    leftRest: (_f: boolean) => 'the doctor they were assigned to went on a break',
     patience: (_f: boolean, d: string) => `out of patience: was ready to wait ${d}`,
     unseen: 'the day ended — not seen in time',
     lost: 'the path broke off',
