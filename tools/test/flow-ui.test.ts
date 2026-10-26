@@ -14,6 +14,8 @@ setLang('ru');
 const H = (h: number, m = 0) => h * 3600 + m * 60;
 const names: PathNames = {
   doctor: id => (id === 's1' ? 'терапевта' : 'врача'),
+  dat: id => (id === 's2' ? 'гастроэнтерологу' : 'врачу'),
+  who: id => (id === 's1' ? 'Терапевт' : 'Врач'),
   exam: id => (id === 'exam.xray' ? { name: 'Рентгенография', kind: 'imaging' } : { name: 'Общий анализ крови', kind: 'lab' }),
   role: id => (id === 'role.radiographer' ? 'Рентгенолаборант' : 'Медсестра'),
   room: id => (id === 'r2' ? 'смотровая приёмного' : 'палата'),
@@ -123,10 +125,22 @@ describe('путь пациента в карточке', () => {
     // анализ: забор и результат; назад к врачу не возвращался — отпустили ждать результатов
     expect(text[2]).toBe('Общий анализ крови: дорога 1 мин, процедура 5 мин, результат к 12:56');
     expect(c.lines[3]).toMatchObject({ text: 'ожидание результатов — 40 мин', why: 'анализ готовит лаборатория' });
-    expect(text[4]).toBe('направлен к другому врачу, ожидание — 10 мин');
+    // направлен к врачу (spec docs/specs/2026-10-specialists.md, часть 2): к кому и кто направил
+    expect(c.lines[4]).toMatchObject({ text: 'направлен к гастроэнтерологу, ожидание — 10 мин', why: 'вы направили; врач принимает другого больного' });
     expect(text[5]).toBe('у врача — 4 мин');
     expect(c.lines[6]).toMatchObject({ text: 'врач просит вас посмотреть — ждёт ответа 30 мин (до 13:40)', why: 'ответа не было — врач решил сам' });
     expect(c.lines[7]).toMatchObject({ text: 'направлен в стационар другой больницы', why: 'свободных мест не было: палаты, ПИТ' });
+  });
+
+  // spec docs/specs/2026-10-specialists.md, часть 2: терапевт направил сам — строка и без ожидания, кто направил и почему
+  test('направлен терапевтом: к кому и почему; специалист позвал сразу — строка без ожидания', () => {
+    const j: Journey = {
+      kind: 'walkIn', at: H(11),
+      steps: [{ t: H(11, 5), k: 'doctor', by: 's1' }, { t: H(11, 40), k: 'own', by: 's2', refer: true, from: 's1' }, { t: H(11, 40), k: 'doctor', by: 's2' }],
+    };
+    const c = pathCard(j, true, H(12), names);
+    expect(c.lines.map(l => l.text)).toEqual(['пришла сама', 'у терапевта — 35 мин', 'направлена к гастроэнтерологу', 'у врача — 20 мин']);
+    expect(c.lines[2].why).toBe('направил терапевт: не уверен, а вторая гипотеза — по профилю специалиста');
   });
 
   // spec docs/specs/2026-10-orderlies.md, «Что видно»: лежачего везут на каталке — ждал её, почему и как везли
@@ -324,7 +338,7 @@ describe('главврач утверждает в окне (spec docs/specs/202
     expect(line(decided({ t: H(10, 31), how: 'home', setting: 'home', chief: 'agreed' }), H(11)).why).toBe('вы согласились');
     expect(line(decided({ t: H(10, 55), how: 'home', setting: 'home', chief: 'silent' }), H(11)).why).toBe('ответа не было — решение врача в силе');
     expect(line(decided(undefined, [{ t: H(10, 30), k: 'own', by: 's1' }]), H(10, 40)).why).toBe('вы назначили ещё обследование');
-    expect(line(decided(undefined, [{ t: H(10, 30), k: 'own', by: 's2', refer: true }]), H(10, 40)).why).toBe('вы направили к другому врачу');
+    expect(line(decided(undefined, [{ t: H(10, 30), k: 'own', by: 's2', refer: true }]), H(10, 40)).why).toBe('вы направили к гастроэнтерологу');
     expect(line(decided(undefined, [{ t: H(10, 30), k: 'doctor' }]), H(10, 40)).why).toBe('вы взяли случай');
     // обследование, которое назначил главврач, — в строке обследования
     const j = decided(undefined, [
