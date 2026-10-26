@@ -7,6 +7,7 @@
 // нет. «До утра» — на планёрке раздел «Письма» и выполненная цель; закрыли планёрку — её письма прочитаны. Часть 2в (решения
 // владельца #114, #115): в каталоге стройки — порядок стройки, шаги с номером, у следующего — «зачем»; «Порядок стройки»
 // выключается и включается; во «Целях» — построенное с галочкой, следующий шаг — санузел; строки «Кто вы» в окне врача нет.
+// Часть 2б: в карте первого больного — подсказки наставницы по одной: расспрос, осмотр, «Решение», разбор; «Понятно» и ✕.
 // Снимки — `e2e-scenario-*.jpg`.
 import { join } from 'node:path';
 
@@ -159,6 +160,105 @@ export async function scenarioPart({ page, port, out, ok, fail, q, shots }) {
   // пришёл первый — письмо о его пути; ждёт вас — «Позвать»
   await letter('look');
   await letter('call');
+
+  // ---------------------------------------------------------------- подсказки наставницы в карте (часть 2б)
+  // первый у вас — ОРВИ: «Позвать», вошёл — карта; «Сначала — расспрос», после двух вопросов — «Теперь — осмотр», на «Решении»
+  // — своя, после «Завершить приём» — «Разбор»; каждая один раз, отметка — в ходе сценария
+  await page.evaluate(() => window.__game.actions.setSpeed(0));
+  const first = (await state()).patients;
+  const arvi = Object.values(first).find(p => p.taught && p.status === 'waiting');
+  if (!arvi) fail(`ждущего вас заданного больного нет: ${JSON.stringify(Object.values(first).map(p => [p.id, p.status, !!p.taught]))}`);
+  else {
+    const tipNow = () => page.evaluate(() => {
+      const el = document.getElementById('dcard-tip');
+      return el ? { id: el.dataset.tip, text: el.innerText.replace(/\s+/g, ' '), see: [...el.querySelectorAll('.tipsee button')].map(b => b.dataset.enc) } : null;
+    });
+    const waitTip = id => until(x => document.getElementById('dcard-tip')?.dataset.tip === x, id, 10000).then(() => true, () => false);
+    const noTip = () => until(() => !document.getElementById('dcard-tip'), null, 5000).then(() => true, () => false);
+    const cardVersion = () => page.evaluate(() => window.__game.store.get().doctor?.card?.version ?? 0);
+    const fresher = v => until(prev => (window.__game.store.get().doctor?.card?.version ?? 0) > prev, v, 10000);
+    const call = page.locator(`#dr-${arvi.id} button`, { hasText: 'Позвать' });
+    if (await call.count()) await call.click();
+    else await page.evaluate(id => window.__game.actions.doctor({ kind: 'take', id }), arvi.id);
+    await page.evaluate(() => window.__game.actions.setSpeed(3));
+    // пока он идёт — часы ×3; автопауза окна врача может их поставить — снова ×3, пока карта не откроется
+    const tw = Date.now();
+    while (!(await page.$('#dcard:not(.read)')) && Date.now() - tw < 90000) {
+      const sp = await page.evaluate(() => ({ speed: window.__game.speed, card: !!document.getElementById('dcard') }));
+      if (sp.speed === 0 && !sp.card) await page.evaluate(() => window.__game.actions.setSpeed(3));
+      await page.waitForTimeout(200);
+    }
+    const t1 = (await waitTip('start')) ? await tipNow() : null;
+    if (t1 && /Сначала — расспрос/.test(t1.text) && /Мира Холм/.test(t1.text) && t1.see.includes('exam.ask_onset')) {
+      ok(`карта своего больного — подсказка «${t1.text.slice(0, 90)}…» (снимок ${await shot('e2e-scenario-5-tip.jpg')} КБ)`);
+    } else fail(`подсказка «Сначала — расспрос»: ${JSON.stringify(t1)}`);
+    await page.click('#tip-ok');
+    const gone1 = await noTip();
+    /** Показанные подсказки в ходе сценария — снимком движка из потока расчёта; ждать, пока там появится `id`. */
+    const shownWith = async id => {
+      for (let i = 0; i < 25; i++) {
+        const list = (await state()).campaign?.tips?.shown ?? [];
+        if (list.includes(id)) return list;
+        await page.waitForTimeout(200);
+      }
+      return (await state()).campaign?.tips?.shown ?? [];
+    };
+    const marked = (await shownWith('start')).includes('start');
+    if (gone1 && marked) ok('«Понятно» — подсказки нет, в ходе сценария она показана');
+    else fail(`«Понятно»: ушла — ${gone1}, отметка — ${marked}`);
+    // два вопроса — «Теперь — осмотр»; ✕ — пропустить
+    for (let i = 0; i < 2; i++) {
+      const v = await cardVersion();
+      await page.click('#stepbody-talk button.q:not([disabled])');
+      await fresher(v);
+    }
+    const t2 = (await waitTip('examine')) ? await tipNow() : null;
+    if (t2 && /Теперь — осмотр/.test(t2.text)) ok('два вопроса — «Теперь — осмотр»');
+    else fail(`после двух вопросов: ${JSON.stringify(t2)}`);
+    await page.click('#tip-skip');
+    if (await noTip()) ok('✕ «Пропустить» — подсказки нет');
+    else fail(`✕: ${JSON.stringify(await tipNow())}`);
+    // осмотр, затем шаг «Решение» — своя подсказка
+    await page.click('#step-examine');
+    const ex = await page.waitForSelector('#stepbody-examine button.xrow:not([disabled])', { timeout: 5000 }).catch(() => null);
+    if (ex) {
+      const v = await cardVersion();
+      await ex.click();
+      await fresher(v);
+    }
+    await page.click('#step-decide');
+    const t3 = (await waitTip('decision')) ? await tipNow() : null;
+    if (t3 && /Решение — в два шага/.test(t3.text)) ok('шаг «Решение» — «Решение — в два шага…»');
+    else fail(`на «Решении»: ${JSON.stringify(t3)}`);
+    await page.click('#tip-ok');
+    await noTip();
+    // диагноз, «Завершить приём» — разбор и «Разбор»
+    const c = await page.evaluate(() => window.__game.store.get().doctor.card);
+    const dx = c.hints[0]?.id ?? c.diagnoses[0].items[0].id;
+    let v = await cardVersion();
+    // как в части 22: вероятная — в гипотезы, затем диагнозом
+    if (c.hints[0]) {
+      await page.click(`#likely-${dx.replace(/\./g, '_')}`);
+      await fresher(v);
+      v = await cardVersion();
+    }
+    await page.click(`#dx-${dx.replace(/\./g, '_')}`);
+    await fresher(v);
+    v = await cardVersion();
+    await page.click('#dcard-finish');
+    await fresher(v);
+    const t4 = (await waitTip('review')) ? await tipNow() : null;
+    if (t4 && /разумный врач/.test(t4.text) && (await page.$('#review'))) ok(`разбор — «${t4.text.slice(0, 60)}…» (снимок ${await shot('e2e-scenario-6-review-tip.jpg')} КБ)`);
+    else fail(`на разборе: ${JSON.stringify(t4)}`);
+    await page.click('#tip-ok');
+    await noTip();
+    const shown = await shownWith('review');
+    if (JSON.stringify(shown) === JSON.stringify(['start', 'examine', 'decision', 'review'])) ok(`показаны по одной, каждая один раз: ${shown.join(', ')}`);
+    else fail(`показанные подсказки: ${JSON.stringify(shown)}`);
+    await page.keyboard.press('Escape');
+    await until(() => !document.getElementById('dcard'), null, 5000).catch(() => {});
+    await page.evaluate(() => window.__game.actions.setSpeed(12));
+  }
   // первые трое у вас — заданные: ждём, пока придут (движок — снимком из потока расчёта)
   let st = await state();
   for (let i = 0; i < 120 && (st.campaign?.taught ?? 0) < 3; i++) {

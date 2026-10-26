@@ -3,7 +3,8 @@
 // его видом потока расчёта (`ScenarioView`) и шлёт отметки командой `mark` — наступившее состояние подсказки, закрытая
 // подсказка, прочитанное письмо, «Без обучения». Слова писем и целей — из записи сценария в базе, на языке интерфейса. Письмо
 // приходит без паузы: часы идут, как шли (решение владельца #116). Порядок стройки (решение владельца #114): шаги из записи
-// сценария, сделан ли шаг — от потока; выключают его отметкой `guide`.
+// сценария, сделан ли шаг — от потока; выключают его отметкой `guide`. Подсказки наставницы в карте больного (часть 2б) поток
+// присылает с видом карты; показанную окно отмечает здесь же (`tip`).
 import type { ContentDb, Id, Scenario } from '../content/types';
 import { named, T } from '../i18n';
 import type { GoalView, ScenarioView } from '../sim/campaign';
@@ -65,6 +66,8 @@ export interface ScenarioHud {
 export type ScenarioAction =
   /** «Понятно» и ✕ «Пропустить»: письмо прочитано */
   | { kind: 'read'; id: string }
+  /** подсказка наставницы в карте больного (часть 2б) показана: «Понятно» или ✕ */
+  | { kind: 'tip'; id: string }
   /** «Без обучения»: писем к состояниям и подсказок в карте больше нет; `on: false` — обучение снова */
   | { kind: 'off'; on: boolean }
   /** «Сценарий пройден» — «Продолжить здесь» */
@@ -180,6 +183,9 @@ export class ScenarioDesk {
     switch (a.kind) {
       case 'read':
         this.read(a.id);
+        break;
+      case 'tip':
+        if (this.view) this.g.client.command({ kind: 'mark', what: 'tip', id: a.id });
         break;
       case 'off':
         if (this.view) this.g.client.command({ kind: 'mark', what: 'off', on: a.on });
