@@ -94,6 +94,7 @@ function Toasts({ hud, actions }: P) {
           key={n.at}
           className={`notice panel toast${n.tone ? ` ${n.tone}` : ''}${n.who ? ' go' : ''}`}
           style={{ opacity }}
+          data-who={n.who}
           title={n.who ? T.top.toastFind : undefined}
           onClick={n.who ? () => actions.find(n.who!) : undefined}
         >
