@@ -142,7 +142,9 @@ bun tools/bench/referrals.ts                   # referral to a specialist (#62):
 bun tools/bench/approvals.ts                   # «Главврач утверждает»: decisions per hour awaiting approval and how many are wrong
                                                # (`--rules below90,discharge`, `--answer silent`; next to it — the same day by default)
 bun tools/sim/economy.ts --seeds 1,2,3         # economy simulator: scripted hospitals for 7 days, cash, flow, reputation and the criteria
-                                               # (`--days 14` — and who quits on their own: at most two in two weeks)
+                                               # (`--days 14` — and who quits on their own: at most two in two weeks; `--only
+                                               # ambulatory` — scenario 1 with its cash and build order for 10 days, the goal
+                                               # «Пять суток с кассой в плюсе» by day 10)
 bun tools/sim/halls.ts --flow 14               # the polyclinic under load: waiting halls by the offices vs at the entrance
                                                # (both: `--hall 0` — seats of the whole hospital, `--bench 0` — no door benches)
 bun --cpu-prof --cpu-prof-dir=tools/bench/out/prof tools/bench/bench.ts --mode flow --only 200 --quick --until 11
