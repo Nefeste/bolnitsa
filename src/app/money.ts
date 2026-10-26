@@ -231,6 +231,8 @@ export class Money {
    * скорости вернёт «Продолжить».
    */
   private show(was: Speed) {
+    // живая сцена экрана начала: планёрки там не открыть — и часы она не останавливает
+    if (this.g.backdrop) return;
     if (this.g.doctor.holding) {
       this.pending = true;
       return;

@@ -147,6 +147,8 @@ declare global {
   interface Window {
     shell?: ShellBridge;
     __game?: Game;
+    /** живая сцена экрана начала (spec docs/specs/2026-10-aaa-polish.md, «Экран начала на живой сцене») — для проверок */
+    __backdrop?: Game;
     __ready?: boolean;
     __benchResult?: unknown;
     __benchError?: string;
@@ -356,6 +358,11 @@ export class Game {
   }
   /** часы игры, которые бенч и снимки двигают сами */
   manual = false;
+  /**
+   * живая сцена за экраном начала (spec docs/specs/2026-10-aaa-polish.md, «Экран начала на живой сцене»): больница идёт
+   * сама — без ввода, сохранений, автопауз, значков и чипов; игрой она не считается (`__ready` не ставит)
+   */
+  backdrop = false;
   /** последние кадры: интервал, CPU кадра (толпа + отрисовка) — для полосы отладки и бенча */
   readonly frames: { interval: number[]; sim: number[]; draw: number[] } = { interval: [], sim: [], draw: [] };
   onFrame: ((ts: number) => void) | null = null;
@@ -376,12 +383,13 @@ export class Game {
   /** `loaded` — открыть сохранение (spec docs/specs/2026-10-saves.md): больница, поток и вид — из него, часы на паузе. */
   static async create(
     host: HTMLElement, store: Store, version: string, quality: Quality, start: Start = 'preset', flow: Flow = AUTO, loaded?: SaveFile, role: Role = DEFAULT_ROLE,
-    scenario?: Id,
+    scenario?: Id, opts: { backdrop?: boolean } = {},
   ): Promise<Game> {
     const t0 = performance.now();
     store.set({ status: T.app.loading, version });
     const db = await loadContent();
     const g = new Game(db, store, host, version);
+    g.backdrop = opts.backdrop === true;
     g.start = start;
     g.role = role;
     // названия сценариев — строкам сохранений в меню игры (spec docs/specs/2026-10-scenario-1.md)
@@ -453,8 +461,10 @@ export class Game {
     // пустое здание — часы стоят, пока игрок не пустит их; сохранение — тоже: осмотреться
     if (this.start === 'empty' || saved) this.speed = 0;
     this.loaded = undefined;
-    void this.refreshSaves();
-    this.bindInput();
+    if (!this.backdrop) {
+      void this.refreshSaves();
+      this.bindInput();
+    }
     window.addEventListener('resize', () => this.stage.resize());
     // настройки (spec docs/specs/2026-10-settings.md): стены, камера, «Отладка»; качество задали снаружи — адрес или «авто»
     const p = this.prefs;
@@ -463,7 +473,8 @@ export class Game {
     // слой «Показатели» (spec docs/specs/2026-10-metrics-layer.md): из адреса (`?metric=load` — бенч и снимки) или как в
     // настройках игрока; выручки и прибыли пока нет — слой выключен
     const asked = METRICS.find(m => m === new URLSearchParams(location.search).get('metric'));
-    const metric = [asked, p.metric].find((m): m is Metric => !!m && METRICS_READY.includes(m)) ?? null;
+    // живая сцена экрана начала — без слоя: она показывает больницу, а не числа
+    const metric = this.backdrop ? null : ([asked, p.metric].find((m): m is Metric => !!m && METRICS_READY.includes(m)) ?? null);
     store.set({ ready: true, status: '', quality, qualityMode: p.quality, debug: p.debug, speed: this.speed, layers: { ...store.get().layers, metric } });
     requestAnimationFrame(this.loop);
   }
@@ -506,7 +517,7 @@ export class Game {
       this.chips = new Chips(this.stage);
       this.colLabels = new ColumnLabels(this.stage);
       this.hoverLabel = new HoverLabel();
-      this.stage.iconOf = w => this.iconOf(w);
+      this.stage.iconOf = w => (this.backdrop ? -1 : this.iconOf(w));
     } else {
       places.carry(this.places);
       this.stage.setLayout(layout, furnished);
@@ -993,6 +1004,7 @@ export class Game {
    * новую свою. Записи — строго по очереди; не вышло — строка в извещениях, игра идёт дальше.
    */
   save(kind: SaveMeta['kind']): Promise<SaveMeta | null> {
+    if (this.backdrop) return Promise.resolve(null);
     const run = async () => {
       const scenario = this.scenario.view?.id;
       const { bytes, meta } = await this.client.pack({ kind, savedAt: new Date().toISOString(), version: this.version, start: this.start, ...(scenario ? { scenario } : {}) }, this.viewOf());
@@ -1077,7 +1089,7 @@ export class Game {
     // подписи помещений — в стройке и в слое «Отделения» (spec docs/specs/2026-10-departments.md, часть 2); значки — вместо них
     this.labels.visible = this.builder.on || this.store.get().layers.depts;
     this.labels.frame();
-    this.chips.visible = !this.labels.visible;
+    this.chips.visible = !this.labels.visible && !this.backdrop;
     this.chips.frame();
     this.colLabels.frame();
     // карта вашего больного — когда его фигура вошла (замечание владельца 25.10.2026)
@@ -1088,8 +1100,11 @@ export class Game {
     this.push(this.frames.draw, c - b);
     if (!this.firstFrameMs) {
       this.firstFrameMs = Math.round(c);
-      window.shell?.firstFrame(this.firstFrameMs);
-      window.__ready = true;
+      // живая сцена — не игра: время до первого кадра и готовность — у игры, что откроется после выбора
+      if (!this.backdrop) {
+        window.shell?.firstFrame(this.firstFrameMs);
+        window.__ready = true;
+      }
     }
     if (ts - this.hudAt > 100) {
       this.hudAt = ts;

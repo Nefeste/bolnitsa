@@ -10,6 +10,7 @@
 //   продолжает. ?role=doctor|chief|manager — кто вы (spec docs/specs/2026-10-two-ways.md, F4); с ?hospital= без роли —
 //   «Врач», как играли до ролей. В Electron — --role chief. ?scenario=scenario.ambulatory — сценарий кампании (spec
 //   docs/specs/2026-10-scenario-1.md): его больница, «Врач»; в Electron — --scenario scenario.ambulatory.
+//   ?backdrop=0 — экран начала без живой сцены за ним (spec docs/specs/2026-10-aaa-polish.md, «Экран начала на живой сцене»).
 import { createRoot } from 'react-dom/client';
 import { named, setLang, systemLang, T, type Lang } from '../i18n';
 import type { Quality } from '../render/view';
@@ -20,6 +21,7 @@ import type { Flow } from '../engine/shift/types';
 import { SaveError } from '../engine/shift/migrate';
 import type { SaveFile } from '../sim/packing';
 import { AUTO, diskOf, Game, SCENE, type Start } from './game';
+import { ringOf, TOUR_HALF, TOUR_SPEED, tourAt, tourOf } from './backdrop';
 import { loadContent } from './content';
 import { listSlots, readSlot } from './saves';
 import { scenarioTitle } from './scenario';
@@ -92,15 +94,12 @@ const actions: Actions = {
   loadGame: later('loadGame'),
   deleteGame: later('deleteGame'),
   newGame: later('newGame'),
-  startGame: (kind, role) => {
-    store.set({ choose: false });
-    // сценарий (spec docs/specs/2026-10-scenario-1.md): учит режиму врача — «Врач»; роль меняют в окне врача
-    chosen?.(typeof kind === 'string' ? { start: kind, role: role ?? DEFAULT_ROLE } : 'scenario' in kind ? { start: 'empty', role: DEFAULT_ROLE, scenario: kind.scenario } : kind);
-  },
+  // выбор на экране начала — та же страница с его ключами (`go`); сценарий (spec docs/specs/2026-10-scenario-1.md) учит
+  // режиму врача — «Врач», роль меняют в окне врача
+  startGame: (kind, role) => go(typeof kind === 'string' ? { hospital: kind, role: role ?? DEFAULT_ROLE } : kind),
 };
 /** С чего начать: новая больница и кто вы (spec docs/specs/2026-10-two-ways.md, F4) — или сохранение (ячейка). */
 type Begin = { start: Start; role: Role; scenario?: string } | { load: string };
-let chosen: ((kind: Begin) => void) | undefined;
 const names: Names = {
   room: id => game?.names().room(id) ?? id ?? '—',
   role: id => game?.names().role(id) ?? id ?? '—',
@@ -130,8 +129,11 @@ async function startOf(): Promise<Begin> {
   return choose();
 }
 
-/** Экран начала: новая больница, «Продолжить» или «Загрузить» (spec docs/specs/2026-10-saves.md). */
-async function choose(problem?: string): Promise<Begin> {
+/**
+ * Экран начала: новая больница, «Продолжить» или «Загрузить» (spec docs/specs/2026-10-saves.md), за ним — живая сцена.
+ * Выбор открывает страницу заново (`go`), поэтому ответа здесь не ждут.
+ */
+async function choose(problem?: string): Promise<never> {
   const saves = await listSlots(diskOf()).catch(() => []);
   // «Кампания» (spec docs/specs/2026-10-scenario-1.md): сценарии базы по порядку; база не прочиталась — карточек нет
   const db = await loadContent().catch(() => undefined);
@@ -141,9 +143,84 @@ async function choose(problem?: string): Promise<Begin> {
     startScenarios: scenarios.map(sc => ({ id: sc.id, title: scenarioTitle(sc), about: named(sc.about) })),
     scenarioNames: Object.fromEntries(scenarios.map(sc => [sc.id, scenarioTitle(sc)])),
   });
-  return new Promise<Begin>(resolve => {
-    chosen = resolve;
+  backdrop();
+  return new Promise<never>(() => {});
+}
+
+/**
+ * Выбор на экране начала (spec docs/specs/2026-10-aaa-polish.md, «Экран начала на живой сцене») — та же страница с новым
+ * адресом, как загрузка из меню игры: за экраном идёт живая сцена, а игра открывается начисто. Остальные ключи адреса —
+ * качество, язык, зерно, поток, час — остаются: с ними открывали экран начала.
+ */
+function go(extra: Record<string, string>) {
+  leaving = true;
+  const p = new URLSearchParams(location.search);
+  for (const k of ['load', 'hospital', 'role', 'scenario']) p.delete(k);
+  for (const [k, v] of Object.entries(extra)) p.set(k, v);
+  location.search = p.toString();
+}
+
+/** Час живой сцены: утренний приём в разгаре — залы полны, врачи принимают. */
+const BACKDROP_HOUR = 10;
+let scene = false;
+/** Страница уходит (выбор на экране начала, другой адрес): недогруженная живая сцена обрывается, и это не ошибка. */
+let leaving = false;
+addEventListener('pagehide', () => {
+  leaving = true;
+});
+
+/**
+ * Живая сцена за экраном начала (spec docs/specs/2026-10-aaa-polish.md, «Экран начала на живой сцене»): готовая городская
+ * больница с потоком сцены, вы — «Управляющий»: больных ведут нанятые врачи, и больница живёт сама. Своё хранилище — панели
+ * экрана начала она не трогает; вид проявляется, когда часы дошли до приёма. Не вышло — экран начала как прежде.
+ */
+function backdrop() {
+  if (scene || q.get('backdrop') === '0') return;
+  scene = true;
+  const view = document.getElementById('view')!;
+  view.classList.add('backdrop');
+  // качество — как задано; «авто» — среднее: за панелью и размытием высокое не разглядеть
+  void Game.create(view, new Store(), __VERSION__, fixed ?? (prefs === 'auto' ? 'medium' : prefs), 'preset', SCENE.flow, undefined, 'manager', undefined, { backdrop: true })
+    .then(async g => {
+      window.__backdrop = g;
+      const { fastForward } = await import('./bench');
+      await fastForward(g, Math.floor(g.t / 86400) * 86400 + BACKDROP_HOUR * 3600);
+      fly(g);
+      // проявить, когда кадр облёта уже нарисован: первый кадр нового вида — самый долгий (шейдеры, люди на местах)
+      await frames(3);
+      view.classList.add('shown');
+    })
+    // сцена — вид, не игра: не открылась (нет WebGL, страница ушла раньше, чем догрузилась) — экран начала как прежде
+    .catch(e => {
+      if (!leaving) console.warn('start screen backdrop:', e);
+    });
+}
+
+/** Дождаться `n` кадров страницы. */
+function frames(n: number): Promise<void> {
+  return new Promise(resolve => {
+    const step = () => (--n <= 0 ? resolve() : requestAnimationFrame(step));
+    requestAnimationFrame(step);
   });
+}
+
+/**
+ * Облёт: точка взгляда идёт по кругу над помещениями, `TOUR_SPEED` м/с; масштаб — кадр облёта. «Меньше движения» в системе
+ * — камера стоит: люди ходят, кадр нет.
+ */
+function fly(g: Game) {
+  const tour = tourOf(ringOf(g.plan.rooms));
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const cam = g.stage.cam;
+  cam.half = TOUR_HALF;
+  let s = 0;
+  let last = 0;
+  g.onFrame = ts => {
+    if (last && !still) s += Math.min(0.1, (ts - last) / 1000) * TOUR_SPEED;
+    last = ts;
+    const p = tourAt(tour, s);
+    cam.target.set(p.x, 0, p.z);
+  };
 }
 
 /**

@@ -1114,6 +1114,8 @@ export function App({ store, actions, names }: { store: Store; actions: Actions;
   if (hud.choose)
     return (
       <>
+        {/* живая сцена за экраном начала (spec docs/specs/2026-10-aaa-polish.md): к краям темнее — панель читается, сцена видна */}
+        <div className="startveil" />
         <StartChooser {...p} />
         <Encyclopedia />
       </>

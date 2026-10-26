@@ -34,7 +34,9 @@ export async function rolesPart({ page, port, out, ok, fail, q, shots }) {
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
   // ---------------------------------------------------------------- экран начала: «Кто вы» — «Управляющий»
-  await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&seed=11&flow=6,1`);
+  // экран начала без живой сцены (spec docs/specs/2026-10-aaa-polish.md): её проверяет часть 7; здесь уходят со страницы, пока
+  // она грузится, и загрузчик моделей пишет в консоль об оборванной загрузке
+  await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&seed=11&flow=6,1&backdrop=0`);
   await page.waitForSelector('#start-preset', { timeout: 60000 });
   await page.click('#start-preset');
   await page.waitForSelector('#start-role-manager', { timeout: 10000 });
