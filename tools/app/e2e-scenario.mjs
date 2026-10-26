@@ -8,6 +8,7 @@
 // владельца #114, #115): в каталоге стройки — порядок стройки, шаги с номером, у следующего — «зачем»; «Порядок стройки»
 // выключается и включается; во «Целях» — построенное с галочкой, следующий шаг — санузел; строки «Кто вы» в окне врача нет.
 // Часть 2б: в карте первого больного — подсказки наставницы по одной: расспрос, осмотр, «Решение», разбор; «Понятно» и ✕.
+// Сложность (spec docs/specs/2026-10-difficulty.md, часть 2): у сценария свой второй шаг — сложность и «Начать», без «Кто вы».
 // Снимки — `e2e-scenario-*.jpg`.
 import { join } from 'node:path';
 
@@ -73,6 +74,18 @@ export async function scenarioPart({ page, port, out, ok, fail, q, shots }) {
     ok(`экран начала: «Кампания» — «${cardText}», под ней «Песочница» (снимок ${await shot('e2e-scenario-1-start.jpg')} КБ)`);
   } else fail(`экран начала: ${JSON.stringify({ heads, cardText })}`);
   await page.click('#start-scenario-ambulatory');
+  // второй шаг сценария (spec docs/specs/2026-10-difficulty.md, часть 2): сложность — «Обычно», кассы в числах нет: она своя
+  await page.waitForSelector('#start-scenario #difficulty', { timeout: 10000 });
+  const step = await page.evaluate(() => ({
+    title: document.querySelector('#start-scenario h2')?.textContent ?? '',
+    on: ['calm', 'normal', 'hard'].filter(m => document.getElementById(`manage-${m}`)?.classList.contains('on')),
+    numbers: document.getElementById('manage-numbers')?.textContent ?? '',
+    roles: document.querySelectorAll('#start-scenario [id^="start-role-"]').length,
+  }));
+  if (step.title === 'Сценарий 1. Амбулатория' && JSON.stringify(step.on) === '["normal"]' && step.numbers && !step.numbers.includes('касса') && step.roles === 0) {
+    ok(`второй шаг сценария: «${step.title}», сложность «Обычно», без строки «Кто вы» и без кассы в числах уровня`);
+  } else fail(`второй шаг сценария: ${JSON.stringify(step)}`);
+  await page.click('#start-go');
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
   await until(x => window.__game.scenario.view?.id === x, SC);
   const cash = await until(() => window.__game.store.get().economy?.cash).then(h => h.jsonValue());

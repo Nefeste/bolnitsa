@@ -129,8 +129,12 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # «Прибыль» with service rooms in grey, «До утра» — a past day on the slider, the room
                                    # card's chart by day; then referral to a specialist: «Направить к …» in your own card's
                                    # «Решение» — the specialists on duty, the card closes, «направлен к гастроэнтерологу» in
-                                   # «Пациенты», the patient card and the path);
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|26` for one part, `-- --only 7,10,11` —
+                                   # «Пациенты», the patient card and the path; then difficulty: «Сложность» on the start
+                                   # screen's second step — «Обычно» and soft mode off by default, the level's numbers, «Спокойно»
+                                   # and soft mode open the game with `manage=calm&soft=1`, the engine, the start cash, the
+                                   # overdraft limit and the room card's wages on that level, «Трудно» in «Настройки» from that
+                                   # minute, the level in the save row);
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|27` for one part, `-- --only 7,10,11` —
                                    # several in a row on one page, as in the full run
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
                                                      # (`-- --flow 40,4` — a bigger crowd, about 180 people,
@@ -205,7 +209,12 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   (`flowRate`), an arrival's patience, wages when paid (`wageOf`/`wagesOf` take the level's percent; `StaffMember.salary`
   stays the «Обычно» pay, so the market and the mood do not change with the level), the breakdown chance, the overdraft
   limit and the start cash (`startCash`); the `manage` command takes effect from that minute; the numbers —
-  `content/hospital/difficulty.yaml` (only «Спокойно» and «Трудно»; the content build checks their direction).
+  `content/hospital/difficulty.yaml` (only «Спокойно» and «Трудно»; the content build checks their direction). The window
+  (part 2): «Сложность» on the start screen's second step (a scenario has its own second step) and in «Настройки»
+  (`Difficulty` in `src/ui/App.tsx`), the URL keys `?manage=calm|hard` and `?soft=1` (`main.tsx`), `Game.manage`/`soft` —
+  the window's copy of `meta.manage`/`meta.soft`, set at start or from the save and changed only by the `manage` and
+  `soft` commands it sends; every salary the window shows goes through `Game.paid` (the level's percent, `wageOf`'s
+  rounding); the save header carries `manage` and `soft` from the snapshot (`worker.ts`) for the save row.
 - Staff shifts (`docs/specs/2026-10-staff-shifts.md`): a hired person works the day (08:00–20:00) or the night shift
   (`shift` in `hospital/staff.ts`; none — round the clock, saves before 0.9.0); who is on duty — `dutyOf`, and
   `hospitalCtx(db, s, at)` builds the hospital from them; the `duty` event at 08:00 and 20:00 in `engine.ts` hands queued

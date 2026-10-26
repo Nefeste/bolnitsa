@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import type { Cell, ContentDb, Id, Season } from '../content/types';
+import type { Cell, ContentDb, Id, Manage, Season } from '../content/types';
 import { type HospitalState, type Plan, planOf } from '../engine/hospital/build';
 import { type Block, DOCTOR, doctorRoom, openBlocks, type Problem, problemsOf, standInOf, standInsOf, type Staffing, workingRooms } from '../engine/hospital/requirements';
 import { demolishRefund, emptySite, furnishOf, hospitalOf, priceOf, readyCost, rulesOf, type Site, type SiteCommand, type SiteResult } from '../engine/hospital/site';
@@ -58,6 +58,7 @@ import { Labels } from './labels';
 import { Money } from './money';
 import { staffName } from './people';
 import { startCash } from '../engine/shift/money';
+import { levelOf, scaledInt } from '../engine/shift/manage';
 import { GAME_PER_REAL } from '../engine/shift/walking';
 import type { Flow } from '../engine/shift/types';
 import type { SaveFile, SaveMeta } from '../sim/packing';
@@ -233,7 +234,7 @@ function sameSpots(db: ContentDb, a: readonly StaffMember[], b: readonly StaffMe
  */
 function reopen(extra: Record<string, string>) {
   const q = new URLSearchParams(location.search);
-  for (const k of ['load', 'hospital', 'seed', 'flow', 'start', 'role', 'scenario']) q.delete(k);
+  for (const k of ['load', 'hospital', 'seed', 'flow', 'start', 'role', 'scenario', 'manage', 'soft']) q.delete(k);
   for (const [k, v] of Object.entries(extra)) q.set(k, v);
   location.search = q.toString();
 }
@@ -274,6 +275,12 @@ export class Game {
   start: Start = 'preset';
   /** кто вы на старте новой игры (spec docs/specs/2026-10-two-ways.md, F4): больница строится под роль */
   private role: Role = DEFAULT_ROLE;
+  /**
+   * Сложность этой игры (spec docs/specs/2026-10-difficulty.md, часть 2): уровень «Управления» и мягкий режим — копия
+   * `meta.manage` и `meta.soft` движка; меняет их только окно (`setManage`, `setSoft`), так что копия верна.
+   */
+  manage: Manage = 'normal';
+  soft = false;
   /** настройки игрока (spec docs/specs/2026-10-settings.md; решение владельца #70): вид и качество — с этого компьютера */
   private prefs: Settings = readSettings();
   /** качество «авто»: по первым секундам игры — ступенью ниже, пока кадр медленный */
@@ -379,7 +386,7 @@ export class Game {
   /** `loaded` — открыть сохранение (spec docs/specs/2026-10-saves.md): больница, поток и вид — из него, часы на паузе. */
   static async create(
     host: HTMLElement, store: Store, version: string, quality: Quality, start: Start = 'preset', flow: Flow = AUTO, loaded?: SaveFile, role: Role = DEFAULT_ROLE,
-    scenario?: Id, opts: { backdrop?: boolean } = {},
+    scenario?: Id, opts: { backdrop?: boolean; manage?: Manage; soft?: boolean } = {},
   ): Promise<Game> {
     const t0 = performance.now();
     store.set({ status: T.app.loading, version });
@@ -393,6 +400,10 @@ export class Game {
     // сценарий — только из базы: неизвестный — пустое здание песочницы
     g.scenarioId = scenario && db.scenarios?.[scenario] ? scenario : undefined;
     g.flow = loaded?.state.flow ?? flow;
+    // сложность (spec docs/specs/2026-10-difficulty.md, часть 2): у сохранения — его, у новой игры — выбранная на экране начала
+    g.manage = (loaded ? loaded.state.meta.manage : opts.manage) ?? 'normal';
+    g.soft = loaded ? loaded.state.meta.soft === true : opts.soft === true;
+    store.set({ manage: g.manage, soft: g.soft });
     g.loaded = loaded;
     g.load.content = Math.round(performance.now() - t0);
     await g.build(quality);
@@ -442,9 +453,13 @@ export class Game {
     // касса (spec docs/specs/2026-10-economy.md): пустое здание — бюджет песочницы, готовая больница и поликлиника — его доля
     if (saved) this.client.load(saved);
     else {
+      // касса начала и сложность (spec docs/specs/2026-10-difficulty.md): бюджет песочницы — по уровню «Управления»
       this.client.start({
-        kind: 'start', seed, season: SCENE.season, hospital: this.hospital, staff: this.staff, flow: this.flow, economy: { cash: startCash(this.db, this.start) },
+        kind: 'start', seed, season: SCENE.season, hospital: this.hospital, staff: this.staff, flow: this.flow,
+        economy: { cash: startCash(this.db, this.start, this.manage) },
         ...(this.scenarioId ? { scenario: this.scenarioId } : {}),
+        ...(this.manage !== 'normal' ? { manage: this.manage } : {}),
+        ...(this.soft ? { soft: true } : {}),
       });
     }
     // сохранение с больницей, где кабинет уже есть, — выбор игрока не трогаем
@@ -609,7 +624,17 @@ export class Game {
     const { db } = this;
     if (!this.hospital.site || !this.staff.some(m => m.shift !== undefined)) return [];
     const roles = [...new Set(this.staff.flatMap(m => (m.room !== undefined && db.roles[m.role]?.hire ? [m.role] : [])))];
-    return roles.map(role => ({ role, text: T.card.reserveRole(named(db.roles[role]?.name, role), money(payOf(db, salaryOf(db, role, 3)))) }));
+    return roles.map(role => ({ role, text: T.card.reserveRole(named(db.roles[role]?.name, role), money(this.paid(payOf(db, salaryOf(db, role, 3))))) }));
+  }
+
+  /** Зарплаты уровня «Управления», % (spec docs/specs/2026-10-difficulty.md): так их платит касса. */
+  get salaryPct(): number {
+    return levelOf(this.db, this.manage).salary;
+  }
+
+  /** Зарплата «Обычно» — как её платят на этом уровне, ₽: то же округление, что у `wageOf` движка. */
+  paid(n: number): number {
+    return scaledInt(n, this.salaryPct);
   }
 
   /** Человек штата словами (spec docs/specs/2026-10-staff-mood.md): «Медсестра Петрова Анна». */
@@ -635,7 +660,7 @@ export class Game {
     const g = db.economy.staff.growth;
     const steps = stepsLeft(db, this.staff, m);
     const mentor = m.shift !== undefined && m.skill < 5 ? mentorOf(this.staff, m) : undefined;
-    const study = g && m.shift !== undefined && m.skill < 5 && !m.away && !leaving && this.hospital.site ? { days: g.studyDays, cost: g.studyCost * wageOf(db, m) } : undefined;
+    const study = g && m.shift !== undefined && m.skill < 5 && !m.away && !leaving && this.hospital.site ? { days: g.studyDays, cost: g.studyCost * wageOf(db, m, this.salaryPct) } : undefined;
     // резерв (часть 5): в резерве — уволить отсюда, места с кнопкой у него нет; замещает — кого и почему; у отсутствующего —
     // кто за него; замещающему «В другую смену» нельзя — его смена та, что у отсутствующего
     const absent = m.covers !== undefined ? this.staff.find(x => x.id === m.covers) : undefined;
@@ -644,9 +669,10 @@ export class Game {
       ...info, name: staffName(m), skill: m.skill, ...(steps !== undefined ? { steps } : {}), ...(mentor ? { mentor: this.staffWho(mentor) } : {}),
       ...(m.away ? { away: { ...m.away } } : {}), ...(study ? { study } : {}),
       ...(mood ? { mood: { v: mood.v, ...(mood.d ? { d: mood.d } : {}), ...(mood.why ? { why: mood.why.map(w => T.card.moodWhy[w] ?? w) } : {}), ...(mood.quit !== undefined ? { quit: mood.quit } : {}), ...(mood.go !== undefined ? { go: mood.go } : {}) } } : {}),
-      pay: { now: m.salary, market: marketOf(db, m), ...(leaving || !this.hospital.site ? {} : { raise: raisedOf(db, m) }) },
+      // зарплаты — как их платят на уровне «Управления» (spec 2026-10-difficulty): у человека и у рынка — те же проценты
+      pay: { now: this.paid(m.salary), market: this.paid(marketOf(db, m)), ...(leaving || !this.hospital.site ? {} : { raise: this.paid(raisedOf(db, m)) }) },
       ...(to && !leaving && this.hospital.site && m.covers === undefined ? { reshift: { to, ...(other ? { with: this.staffWho(other) } : {}) } } : {}),
-      ...(m.room === undefined ? { reserve: true as const, ...(this.hospital.site ? { fire: severanceOf(db, m) } : {}) } : {}),
+      ...(m.room === undefined ? { reserve: true as const, ...(this.hospital.site ? { fire: severanceOf(db, m, this.salaryPct) } : {}) } : {}),
       ...(absent ? { covers: { who: this.staffWho(absent), sex: absent.sex, ...(absent.away ? { away: { ...absent.away } } : {}) } } : {}),
       ...(sub ? { coveredBy: this.staffWho(sub) } : {}),
       ...(said ? { said } : {}),
@@ -1535,6 +1561,22 @@ export class Game {
     reserve: role => this.command({ kind: 'reserve', role }),
     // начало выбирают до игры (main.tsx)
     startGame: () => {},
+    // сложность в игре (spec docs/specs/2026-10-difficulty.md, часть 2; решение владельца #136): в любой момент, в обе стороны;
+    // движок считает новое с этой минуты, окно — предел минуса и зарплаты в карточках сразу
+    setManage: level => {
+      if (level === this.manage || this.backdrop) return;
+      this.manage = level;
+      this.client.command({ kind: 'manage', level });
+      this.store.set({ manage: level });
+      this.money.level();
+      this.texts();
+    },
+    setSoft: on => {
+      if (on === this.soft || this.backdrop) return;
+      this.soft = on;
+      this.client.command({ kind: 'soft', on });
+      this.store.set({ soft: on });
+    },
     // часть 3 (spec docs/specs/2026-10-flow-ui.md)
     filterPatients: patch => {
       this.store.set({ patientFilter: { ...this.store.get().patientFilter, ...patch } });
@@ -1664,20 +1706,20 @@ export class Game {
     const posts = t.staff.flatMap((role): NonNullable<RoomCard['posts']> => {
       const hire = role === DOCTOR ? (standInOf(db, DOCTOR) ?? role) : role;
       const name = named(db.roles[hire]?.name, hire);
-      if (role === DOCTOR && mine) return [{ role, name, salary: money(salaryOf(db, hire, 3)), you: true }];
+      if (role === DOCTOR && mine) return [{ role, name, salary: money(this.paid(salaryOf(db, hire, 3))), you: true }];
       const all = here.filter(x => post(x) === role);
       const both = all.find(x => x.shift === undefined);
       return (both ? (['both'] as const) : (['day', 'night'] as const)).map(shift => {
         // резерв (spec docs/specs/2026-10-staff-mood.md, часть 5): место — за отсутствующим, замена — рядом с ним
         const m = shift === 'both' ? both : (all.find(x => x.shift === shift && x.covers === undefined) ?? all.find(x => x.shift === shift));
         const sub = m?.away ? all.find(x => x.covers === m.id) : undefined;
-        const pay = (x: Id) => money(payOf(db, salaryOf(db, x, 3), shift === 'both' ? undefined : shift));
+        const pay = (x: Id) => money(this.paid(payOf(db, salaryOf(db, x, 3), shift === 'both' ? undefined : shift)));
         return {
           role, shift, name, salary: pay(hire), ...(db.roles[role]?.optional ? { optional: T.card.optional } : {}),
           ...(m
             ? {
                 who: `${named(db.roles[m.role]?.name, m.role)} · ${m.skill}${m.away ? ` · ${m.away.why === 'study' ? T.card.studyShort : T.card.sickShort}` : ''}${sub ? ` · ${T.card.coveredByShort(staffName(sub))}` : ''}`,
-                staffId: m.id, fire: T.card.dismissHint(money(severanceOf(db, m))),
+                staffId: m.id, fire: T.card.dismissHint(money(severanceOf(db, m, this.salaryPct))),
               }
             : {}),
           ...(role === DOCTOR && doctors.length > 1

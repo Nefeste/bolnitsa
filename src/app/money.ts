@@ -12,6 +12,7 @@ import type { Speed } from '../ui/store';
 import type { Game } from './game';
 import { staffName } from './people';
 import { raisedOf } from '../engine/shift/mood';
+import { levelOf } from '../engine/shift/manage';
 import type { StaffMember } from '../engine/hospital/staff';
 import type { ErrorList } from '../sim/doctor';
 import type { LetterRow } from './scenario';
@@ -123,13 +124,25 @@ export class Money {
     this.hud = { open: false, autopause: true, hours: [8, 20], limit: 0, loan: { fee: 0, days: 1 } };
   }
 
-  /** Игра началась: часы приёма, предел минуса и кредит — из базы (поля игры при создании окна ещё пусты). */
+  /**
+   * Игра началась: часы приёма, предел минуса и кредит — из базы (поля игры при создании окна ещё пусты); предел минуса —
+   * уровня «Управления» (spec docs/specs/2026-10-difficulty.md).
+   */
   start() {
     const db = this.g.db;
     this.hud = {
-      ...this.hud, hours: [...(db.day?.hours ?? [8, 20])] as [number, number], limit: db.money?.overdraft ?? 0,
+      ...this.hud, hours: [...(db.day?.hours ?? [8, 20])] as [number, number], limit: this.limitOf(),
       loan: { fee: db.money?.loan.fee ?? 0, days: db.money?.loan.days ?? 1 },
     };
+  }
+
+  /** Уровень «Управления» сменили в «Настройках» (spec docs/specs/2026-10-difficulty.md, часть 2): предел минуса — сразу. */
+  level() {
+    this.hud = { ...this.hud, limit: this.limitOf() };
+  }
+
+  private limitOf(): number {
+    return levelOf(this.g.db, this.g.manage).overdraft ?? 0;
   }
 
   // ---------------------------------------------------------------- из потока
@@ -197,7 +210,7 @@ export class Money {
     const going = new Set((news?.leave ?? []).map(l => l.id));
     const asked = new Set((news?.quit ?? []).map(q => q.id));
     const raise = (m: StaffMember): { raise?: Raise } =>
-      this.g.hospital.site && db.economy.staff.mood && !going.has(m.id) ? { raise: { from: m.salary, to: raisedOf(db, m) } } : {};
+      this.g.hospital.site && db.economy.staff.mood && !going.has(m.id) ? { raise: { from: this.g.paid(m.salary), to: this.g.paid(raisedOf(db, m)) } } : {};
     const people = news
       ? {
           low: (news.low ?? []).flatMap(id => (member(id) ? [who(member(id)!)] : [])),

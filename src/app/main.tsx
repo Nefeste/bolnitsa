@@ -11,12 +11,17 @@
 //   «Врач», как играли до ролей. В Electron — --role chief. ?scenario=scenario.ambulatory — сценарий кампании (spec
 //   docs/specs/2026-10-scenario-1.md): его больница, «Врач»; в Electron — --scenario scenario.ambulatory.
 //   ?backdrop=0 — экран начала без живой сцены за ним (spec docs/specs/2026-10-aaa-polish.md, «Экран начала на живой сцене»).
+//   ?manage=calm|hard и ?soft=1 — сложность новой игры (spec docs/specs/2026-10-difficulty.md, часть 2): уровень «Управления»
+//   (нет — «Обычно») и мягкий режим; в Electron — --manage calm, --soft.
 import { createRoot } from 'react-dom/client';
 import { named, setLang, systemLang, T, type Lang } from '../i18n';
 import type { Quality } from '../render/view';
 import { App, type Names } from '../ui/App';
 import { installEncyclopediaKeys } from '../ui/Encyclopedia';
-import { type Actions, Store } from '../ui/store';
+import { type Actions, type Level, type LevelRow, Store } from '../ui/store';
+import type { ContentDb, Manage } from '../content/types';
+import { levelOf } from '../engine/shift/manage';
+import { startCash } from '../engine/shift/money';
 import type { Flow } from '../engine/shift/types';
 import { SaveError } from '../engine/shift/migrate';
 import type { SaveFile } from '../sim/packing';
@@ -92,11 +97,25 @@ const actions: Actions = {
   deleteGame: later('deleteGame'),
   newGame: later('newGame'),
   // выбор на экране начала — та же страница с его ключами (`go`); сценарий (spec docs/specs/2026-10-scenario-1.md) учит
-  // режиму врача — «Врач», роль меняют в окне врача
-  startGame: (kind, role) => go(typeof kind === 'string' ? { hospital: kind, role: role ?? DEFAULT_ROLE } : kind),
+  // режиму врача — «Врач», роль меняют в окне врача; сложность — ключами `manage` и `soft` (spec 2026-10-difficulty)
+  startGame: (kind, role, level) =>
+    go(typeof kind === 'string' ? { hospital: kind, role: role ?? DEFAULT_ROLE, ...levelKeys(level) } : 'scenario' in kind ? { ...kind, ...levelKeys(level) } : kind),
+  setManage: later('setManage'),
+  setSoft: later('setSoft'),
 };
-/** С чего начать: новая больница и кто вы (spec docs/specs/2026-10-two-ways.md, F4) — или сохранение (ячейка). */
-type Begin = { start: Start; role: Role; scenario?: string } | { load: string };
+/**
+ * С чего начать: новая больница и кто вы (spec docs/specs/2026-10-two-ways.md, F4), сложность (spec
+ * docs/specs/2026-10-difficulty.md, часть 2) — или сохранение (ячейка).
+ */
+type Begin = { start: Start; role: Role; scenario?: string; manage?: Manage; soft?: boolean } | { load: string };
+
+/** Сложность — в ключи адреса: «Обычно» и выключенный мягкий режим — без ключей, как играли до сложности. */
+function levelKeys(level?: Level): Record<string, string> {
+  return { ...(level && level.manage !== 'normal' ? { manage: level.manage } : {}), ...(level?.soft ? { soft: '1' } : {}) };
+}
+
+/** Уровень «Управления» из ключа: только известный; нет — «Обычно». */
+const manageOfKey = (v: string | null): Manage | undefined => (v === 'calm' || v === 'hard' ? v : undefined);
 const names: Names = {
   room: id => game?.names().room(id) ?? id ?? '—',
   role: id => game?.names().role(id) ?? id ?? '—',
@@ -120,9 +139,12 @@ async function startOf(): Promise<Begin> {
   const val = arg('hospital');
   if (has('bench') || has('shot')) return { start: 'preset', role: DEFAULT_ROLE };
   if (q.get('load')) return { load: q.get('load')! };
+  // сложность (spec docs/specs/2026-10-difficulty.md, часть 2): нет ключей — «Обычно», мягкий режим выключен (#137)
+  const manage = manageOfKey(arg('manage'));
+  const level = { ...(manage ? { manage } : {}), ...(has('soft') ? { soft: true } : {}) };
   const scenario = arg('scenario');
-  if (scenario) return { start: 'empty', role: roleOf(arg('role')) ?? DEFAULT_ROLE, scenario };
-  if (val === 'empty' || val === 'preset' || val === 'poly') return { start: val, role: roleOf(arg('role')) ?? DEFAULT_ROLE };
+  if (scenario) return { start: 'empty', role: roleOf(arg('role')) ?? DEFAULT_ROLE, scenario, ...level };
+  if (val === 'empty' || val === 'preset' || val === 'poly') return { start: val, role: roleOf(arg('role')) ?? DEFAULT_ROLE, ...level };
   return choose();
 }
 
@@ -139,9 +161,22 @@ async function choose(problem?: string): Promise<never> {
     choose: true, startSaves: saves, startProblem: problem,
     startScenarios: scenarios.map(sc => ({ id: sc.id, title: scenarioTitle(sc), about: named(sc.about) })),
     scenarioNames: Object.fromEntries(scenarios.map(sc => [sc.id, scenarioTitle(sc)])),
+    ...(db ? { startLevels: levelsOf(db) } : {}),
   });
   backdrop();
   return new Promise<never>(() => {});
+}
+
+/** Числа уровней «Управления» для второго шага экрана начала (spec docs/specs/2026-10-difficulty.md, часть 2). */
+function levelsOf(db: ContentDb): Record<Manage, LevelRow> {
+  const row = (m: Manage): LevelRow => {
+    const l = levelOf(db, m);
+    return {
+      inflow: l.inflow, patience: l.patience, salary: l.salary, breakdown: l.breakdown, ...(l.overdraft !== undefined ? { overdraft: l.overdraft } : {}),
+      cash: { empty: startCash(db, 'empty', m), preset: startCash(db, 'preset', m), poly: startCash(db, 'poly', m) },
+    };
+  };
+  return { calm: row('calm'), normal: row('normal'), hard: row('hard') };
 }
 
 /**
@@ -152,7 +187,7 @@ async function choose(problem?: string): Promise<never> {
 function go(extra: Record<string, string>) {
   leaving = true;
   const p = new URLSearchParams(location.search);
-  for (const k of ['load', 'hospital', 'role', 'scenario']) p.delete(k);
+  for (const k of ['load', 'hospital', 'role', 'scenario', 'manage', 'soft']) p.delete(k);
   for (const [k, v] of Object.entries(extra)) p.set(k, v);
   location.search = p.toString();
 }
@@ -224,7 +259,7 @@ function fly(g: Game) {
  * Что открыть: новая больница — как есть; сохранение — прочитать и пройти миграции. Не открылось — снова экран начала,
  * со словом почему.
  */
-async function begin(): Promise<{ start: Start; role: Role; scenario?: string; loaded?: SaveFile }> {
+async function begin(): Promise<{ start: Start; role: Role; scenario?: string; manage?: Manage; soft?: boolean; loaded?: SaveFile }> {
   let b = await startOf();
   for (;;) {
     if ('start' in b) return b;
@@ -263,7 +298,9 @@ async function flowOf(): Promise<Flow> {
 }
 
 begin()
-  .then(async ({ start, role, scenario, loaded }) => Game.create(document.getElementById('view')!, store, __VERSION__, quality, start, await flowOf(), loaded, role, scenario))
+  .then(async ({ start, role, scenario, manage, soft, loaded }) =>
+    Game.create(document.getElementById('view')!, store, __VERSION__, quality, start, await flowOf(), loaded, role, scenario, { manage, soft }),
+  )
   .then(async g => {
     game = g;
     window.__game = g;
