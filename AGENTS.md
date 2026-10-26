@@ -195,7 +195,9 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   `docs/specs/2026-10-ready-rooms.md`), `hospital/site-preset.ts` (the preset as a lot), `hospital/site-plan.ts` (a
   hospital of ready rooms from a `content/hospital/sites/` record — the polyclinic,
   `docs/specs/2026-10-real-hospital.md`) and `shift/site.ts` (the `site` command: deferred removal, undo, hiring) —
-  `docs/specs/2026-10-build.md`. The whole 24-hour day of the PC flow is ours as well: `shift/day.ts` (outpatient hours,
+  `docs/specs/2026-10-build.md`. Undo reopens the room a rebuilding step changed; a step that rebuilds nothing (hire,
+  dismissal, pay, shift, reserve, «Мой кабинет», a corridor bench, a department mark — `keep` in the undo step, `KEEPS`)
+  leaves the rebuild as it is. The whole 24-hour day of the PC flow is ours as well: `shift/day.ts` (outpatient hours,
   arrivals by hour of day), the 08:00 meeting and the morning round in `engine.ts`, shapes in `content/hospital/day.yaml`
   — `docs/specs/2026-10-day.md`. Who left the state (`evict`) keeps their card in `s.past` for a day, at most 600, like
   their path — read-only, for «Открыть карту» and «Приняты» (`docs/specs/2026-10-discharged-card.md`).
