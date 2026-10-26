@@ -30,6 +30,8 @@ export interface Spot {
   dwell: number;
   /** предмет раскладки, на котором сидит или лежит */
   thing?: number;
+  /** лежит на кровати — под одеялом */
+  bed?: true;
 }
 
 /** Анкеры предметов (furniture.ts): куда садятся и куда ложатся. */
@@ -107,7 +109,7 @@ export function spotOn(l: Layout, a: Anchors, t: number, kind: LegKind, dwell: n
   const seat = a.seats[t];
   if (seat) return { key: `seat:${at}`, cell, pose: 'sit', x: seat.x, y: seat.y, z: seat.z, yaw: seat.yaw, kind, dwell, thing: t };
   const lie = a.lies[t];
-  if (lie) return { key: `lie:${at}`, cell, pose: 'lie', x: lie.x, y: lie.y, z: lie.z, yaw: lie.yaw, kind, dwell, thing: t };
+  if (lie) return { key: `lie:${at}`, cell, pose: 'lie', x: lie.x, y: lie.y, z: lie.z, yaw: lie.yaw, kind, dwell, thing: t, ...(lie.bed ? { bed: true as const } : {}) };
   return standAt(l, cell, kind, dwell);
 }
 

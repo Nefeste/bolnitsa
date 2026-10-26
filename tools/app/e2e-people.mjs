@@ -4,7 +4,8 @@
 // регистратура — в деловой одежде, фельдшеры — в синей форме, пациенты — в своей одежде, в каске и спецодежде — только своих
 // профессий; цвет костюма — по должности: снимок с человеком и без него, разница — его цвета (медсестра — голубая,
 // анестезиолог и операционная сестра — бирюзовые), у врача халат белый; люди садятся и встают, лежащие — на постели или
-// каталке, а не на полу. Снимки — `e2e-people-*.jpg`.
+// каталке, а не на полу. Часть 2б: маска на видеокарте — в два канала; у людей одного вида — разные волосы и кожа, и оттенок
+// виден в кадре: снимок с оттенком человека и с волосами «как у вида» разные. Снимки — `e2e-people-*.jpg`.
 import { join } from 'node:path';
 
 /** Сколько видов в игре (src/render/cast.ts, LOOKS). */
@@ -41,7 +42,7 @@ export async function peoplePart({ page, port, out, ok, fail, q, shots }) {
       const role = new Map(g.staff.map(m => [`s:${m.id}`, m.role]));
       return [...g.crowd.walkers.values()].map(w => {
         const id = w.key.startsWith('p:') ? w.key.slice(2) : '';
-        return { key: w.key, look: g.people.looks[w.look].name, spec: g.people.looks[w.look].spec, role: role.get(w.key) ?? '', job: g.pop.rows.get(id)?.job ?? '', state: w.state, x: w.x, y: w.y, z: w.z, lie: w.lie };
+        return { key: w.key, look: g.people.looks[w.look].name, spec: g.people.looks[w.look].spec, role: role.get(w.key) ?? '', job: g.pop.rows.get(id)?.job ?? '', state: w.state, x: w.x, y: w.y, z: w.z, lie: w.lie, tone: [...g.pop.paint(w).tone] };
       });
     });
   /**
@@ -88,12 +89,19 @@ export async function peoplePart({ page, port, out, ok, fail, q, shots }) {
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
 
   // ---------------------------------------------------------------- 59 видов набора, атлас и маска
-  const looks = await page.evaluate(() => window.__game.people.looks.map(l => ({ name: l.name, spec: l.spec, map: !!l.map, mask: !!l.mask, walk: l.walk })));
+  const looks = await page.evaluate(() =>
+    window.__game.people.looks.map(l => ({ name: l.name, spec: l.spec, map: !!l.map, mask: !!l.mask, walk: l.walk, hair: l.hair, rg: l.mask?.format === 1030, size: [l.map?.image?.width, l.mask?.image?.width] })),
+  );
   const load = await page.evaluate(() => window.__game.load);
   const walks = looks.map(l => l.walk);
   if (looks.length === LOOKS && new Set(looks.map(l => l.name)).size === LOOKS && looks.every(l => l.map && l.mask && l.spec)) {
     ok(`люди Rocketbox: ${looks.length} видов, у каждого атлас и маска; шаг ${Math.min(...walks).toFixed(2)}–${Math.max(...walks).toFixed(2)} м/с; загрузка людей ${Math.round(load.people)} мс из ${Math.round(load.total)}`);
   } else fail(`виды людей: ${JSON.stringify(looks.filter(l => !l.map || !l.mask || !l.spec).map(l => l.name))}, всего ${looks.length}`);
+  // видеопамять: атлас RGBA и маска RG с мипмапами (×4/3)
+  const mb = looks.reduce((a, l) => a + ((l.size[0] ** 2 * 4 + l.size[1] ** 2 * 2) * 4) / 3, 0) / 1e6;
+  const haired = looks.filter(l => l.hair > 0).length;
+  if (looks.every(l => l.rg) && haired >= 48) ok(`маска — два канала на видеокарте: атласы и маски ${Math.round(mb)} МБ; волосы в маске — у ${haired} видов из ${looks.length}`);
+  else fail(`маска: ${JSON.stringify(looks.filter(l => !l.rg).map(l => l.name))}, волосы — у ${haired}`);
 
   // ---------------------------------------------------------------- к 09:30: кто в чём; садятся и встают
   await page.keyboard.press('Digit3');
@@ -160,5 +168,49 @@ export async function peoplePart({ page, port, out, ok, fail, q, shots }) {
   if (lie) {
     await look(lie.x, lie.z, 2.6);
     ok(`лежащий на постели — снимок ${await shot('e2e-people-4.jpg')} КБ`);
+  }
+
+  // ---------------------------------------------------------------- оттенки волос и кожи (часть 2б)
+  const hairOf = w => (w.tone[0] < 0 ? 'как у вида' : w.tone.slice(0, 3).map(v => Math.round(v * 255)).join(','));
+  const byLook = new Map();
+  for (const w of all) byLook.set(w.look, [...(byLook.get(w.look) ?? []), w]);
+  const repeated = [...byLook.values()].filter(list => list.length >= 2);
+  const varied = repeated.filter(list => new Set(list.map(w => `${hairOf(w)}|${w.tone[3].toFixed(3)}`)).size === list.length);
+  const colours = new Set(all.map(hairOf));
+  if (colours.size >= 4 && varied.length >= Math.ceil(repeated.length * 0.8)) {
+    ok(`оттенки: волос ${colours.size} цветов у ${all.length} человек; из ${repeated.length} видов, что встречаются не раз, у ${varied.length} все люди разные`);
+  } else fail(`оттенки: ${JSON.stringify({ colours: [...colours], repeated: repeated.length, varied: varied.length })}`);
+  // в кадре: тот же человек с оттенком и с волосами «как у вида» — разница в точках его головы
+  const dyed = all.find(w => w.key.startsWith('p:') && w.tone[0] >= 0 && still(w));
+  if (!dyed) fail('нет перекрашенного пациента на месте');
+  else {
+    await look(dyed.x, dyed.z, 1.2);
+    const diff = await page.evaluate(async k => {
+      const g = window.__game;
+      const w = g.crowd.walkers.get(k);
+      const grab = async () => {
+        const img = new Image();
+        img.src = g.stage.shot(320, 180, g.crowd, g.pop.paint, x => g.pop.triageOf(x), 12);
+        await img.decode();
+        const c = document.createElement('canvas');
+        c.width = 320;
+        c.height = 180;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        return ctx.getImageData(0, 0, 320, 180).data;
+      };
+      const a = await grab();
+      const p = g.pop.paint(w);
+      const tone = [...p.tone];
+      p.tone = [-1, 0, 0, tone[3]];
+      const b = await grab();
+      p.tone = tone;
+      let n = 0;
+      for (let i = 0; i < a.length; i += 4) if (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]) >= 30) n++;
+      return n;
+    }, dyed.key);
+    const n5 = await shot('e2e-people-5.jpg');
+    if (diff >= 15) ok(`оттенок виден: у ${dyed.look} волосы ${hairOf(dyed)} вместо своих — ${diff} точек кадра другие (снимок ${n5} КБ)`);
+    else fail(`оттенок не виден: ${diff} точек, ${dyed.look}, ${hairOf(dyed)}`);
   }
 }

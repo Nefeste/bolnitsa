@@ -113,3 +113,70 @@ export const COAT = 0xf2f4f4;
 
 /** Цвет одежды по должности. */
 export const roleColor = (role: Id): number => ROLE_COLOR[role] ?? COAT;
+
+/**
+ * Цвета волос (spec docs/specs/2026-10-people.md, часть 2б) — природные, sRGB. Шейдер (people.ts) кладёт цвет на яркость
+ * волос вида: пряди и тени между ними остаются, меняется цвет.
+ */
+export const HAIR = {
+  black: 0x2a2523,
+  dark: 0x45332a,
+  brown: 0x6a4c3a,
+  auburn: 0x7e4630,
+  light: 0x957657,
+  blonde: 0xc3a57e,
+  grey: 0x96938f,
+  white: 0xd2d0cc,
+} as const;
+export type HairName = keyof typeof HAIR;
+const NATURAL: HairName[] = ['black', 'dark', 'brown', 'auburn', 'light', 'blonde'];
+
+/** Яркость цвета sRGB (luma), 0–1 — в тех же числах, что яркость волос вида (tools/app/people.mjs). */
+export const lumaOf = (hex: number) => (0.2126 * ((hex >> 16) & 255) + 0.7152 * ((hex >> 8) & 255) + 0.0722 * (hex & 255)) / 255;
+
+/**
+ * Насколько цвет волос может уйти от своего у вида (по яркости): светлее — до ×5 (тёмные волосы в каштановые и русые
+ * выходят живыми), темнее — до ×0,45 (у светлых волос вида тёмный цвет лёг бы плоско, а место волос на голове у светлых
+ * найдено осторожнее — темнее красить нечего).
+ */
+export const HAIR_LIGHTER = 5;
+export const HAIR_DARKER = 0.45;
+/** Доля людей с волосами «как у вида»; доля седых: у пожилых, у пациентов с 50 лет, у остальных. */
+export const HAIR_AS_IS = 0.35;
+export const GREY = { old: 0.65, fifty: 0.3, other: 0.06 };
+/** Яркость кожи — множитель от и до: лица одного вида у разных людей чуть светлее или темнее. */
+export const SKIN = [0.9, 1.06] as const;
+
+/** Оттенок человека: цвет волос (sRGB) или null — «как у вида»; множитель яркости кожи. */
+export interface Tone {
+  hair: number | null;
+  skin: number;
+}
+
+/** Перемешать биты зерна (финализатор MurmurHash3): соседние зёрна — далёкие оттенки, и вид по зерну не подсказывает оттенок. */
+function mix(x: number): number {
+  x = Math.imul(x ^ (x >>> 16), 0x85ebca6b);
+  x = Math.imul(x ^ (x >>> 13), 0xc2b2ae35);
+  return (x ^ (x >>> 16)) >>> 0;
+}
+
+/**
+ * Оттенок человека по зерну (spec docs/specs/2026-10-people.md, часть 2б): у одного вида — разные волосы и кожа, и очередь из
+ * одинаковых людей перестаёт быть одинаковой. `hair` — яркость волос вида (0 — волос в маске нет: шапка, лысина); `age` —
+ * возраст пациента, у персонала — не знаем. Седые — пожилые и часть людей за 50; остальным — природный цвет, который не
+ * уходит от своего у вида дальше HAIR_LIGHTER и HAIR_DARKER.
+ */
+export function toneOf(seed: number, spec: Pick<LookSpec, 'age'>, hair: number, age?: number): Tone {
+  const a = mix(seed ^ 0x2545f491);
+  const b = mix(a);
+  const u1 = (a & 0xffff) / 0x10000;
+  const u2 = (a >>> 16) / 0x10000;
+  const skin = SKIN[0] + (SKIN[1] - SKIN[0]) * ((b & 0xffff) / 0x10000);
+  if (hair <= 0 || u1 < HAIR_AS_IS) return { hair: null, skin };
+  const old = spec.age === 'old' || (age !== undefined && age >= OLD_AGE);
+  const grey = old ? GREY.old : age !== undefined && age >= 50 ? GREY.fifty : GREY.other;
+  const v = (u1 - HAIR_AS_IS) / (1 - HAIR_AS_IS);
+  if (v < grey) return { hair: v < grey * 0.6 ? HAIR.grey : HAIR.white, skin };
+  const fits = NATURAL.filter(n => lumaOf(HAIR[n]) <= hair * HAIR_LIGHTER && lumaOf(HAIR[n]) >= hair * HAIR_DARKER);
+  return { hair: fits.length ? HAIR[fits[Math.floor(u2 * fits.length)]] : null, skin };
+}

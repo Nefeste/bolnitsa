@@ -4,13 +4,15 @@
 //
 //   node tools/app/people.mjs --fetch /путь/к/исходникам   # скачать недостающее, сверить суммы
 //   node tools/app/people.mjs /путь/к/исходникам           # собрать виды
+//   node tools/app/people.mjs /путь/к/исходникам --only Male_Adult_08,Female_Adult_04   # проба: только эти, без сумм
 //
 // Что делается с каждым видом:
 // - сетка: одинаковые вершины слиты (FBXLoader отдаёт каждую грань тремя своими вершинами); упрощённая — около 800
 //   треугольников, швы развёртки защищены (как в пробе spikes/realistic-people, src/rocketbox.ts, `lod`);
 // - скелет: 23 кости тела с именами людей Quaternius; веса пальцев отданы кисти, лица — голове;
-// - атлас 1024²: тело, голова, пряди, принадлежность (стетоскоп, шапочка с маской) — по 512²; цвет — WebP, маска — PNG:
-//   R — одежда, которая красится цветом должности, A — непрозрачность прядей;
+// - атлас 1024²: тело, голова, пряди, принадлежность (стетоскоп, шапочка с маской) — по 512²; цвет — WebP, в его альфе —
+//   непрозрачность прядей; маска — PNG: R — одежда, которая красится цветом должности, G — кожа (½) и волосы (1), их
+//   красит оттенок человека (spec, часть 2б);
 // - анимации набора: стоит, идёт, бежит, садится, встаёт; у ходьбы и бега корень — на месте, а скорость шага — в extras
 //   корня; посадка и вставание — с движением таза назад и вперёд, без неподвижного начала и конца.
 //
@@ -119,6 +121,21 @@ export const LOOKS = [
   { name: 'Construction_Male_02', folder: 'Professions', blank: { body: [[1726, 264, 20, 38], [1317, 1160, 20, 39]] } },
   { name: 'Chef_Female_01', folder: 'Professions' },
 ];
+
+/**
+ * Без волос в маске (spec, часть 2б): шапка нарисована на текстуре головы — колпак повара, вязаные шапки у Male_Adult_17,
+ * Wood_Male_01 и Delivery_Male_01, кепка у Male_Adult_18; волосы под каской (Construction_Male_01 — у него и «пряди» — сетка
+ * жилета, Construction_Male_02); лысина с щетиной (Business_Male_04, Business_Male_07). Оттенок волос им не нужен, а шапку
+ * он перекрасил бы.
+ */
+const NO_HAIR = new Set(['Chef_Female_01', 'Male_Adult_17', 'Wood_Male_01', 'Delivery_Male_01', 'Male_Adult_18', 'Construction_Male_01', 'Construction_Male_02', 'Business_Male_04', 'Business_Male_07']);
+
+/**
+ * Где на голове лицо (spec, часть 2б): развёртка головы у всех видов набора одна, и доля этих видов — тёмные волосы, светлая
+ * кожа, лицо открыто, — у которых точка головы цвета кожи, отделяет лицо, шею и уши от темени. Светлые волосы цветом близки к
+ * коже, и на лице их ищут только явные (брови, борода, чёлка).
+ */
+const FACE_REF = ['Medical_Female_02', 'Medical_Male_01', 'Male_Adult_08', 'Business_Female_01', 'Business_Female_03', 'Business_Male_01', 'Business_Male_02', 'Female_Adult_02', 'Female_Adult_05', 'Female_Adult_07', 'Male_Adult_01', 'Male_Adult_02'];
 
 /**
  * Анимации: имя в игре → файл набора (`{s}` — m или f). `root` — движение корня: `fixed` — стоит на месте, `loop` —
@@ -447,6 +464,21 @@ function convert(src, look) {
   const part = new Float32Array(n0);
   const groupOf = new Int8Array(n0);
   for (const gr of g0.groups) for (let i = gr.start; i < gr.start + gr.count; i++) groupOf[i] = gr.materialIndex;
+  // глаза — грани, все три вершины которых ведёт кость глаза: в маске головы они не кожа и не волосы (радужка цвета волос
+  // перекрасилась бы вместе с ними)
+  const eyeBone = new Set(skel.flatMap((b, i) => (/^Bip01_[LR]Eye$/.test(b.name) ? [i] : [])));
+  const lead = i => {
+    let best = -1;
+    let w = 0;
+    for (let k = 0; k < 4; k++) if (g0.attributes.skinWeight.getComponent(i, k) > w) [best, w] = [g0.attributes.skinIndex.getComponent(i, k), g0.attributes.skinWeight.getComponent(i, k)];
+    return best;
+  };
+  const eyeTris = [];
+  for (let i = 0; i + 2 < n0; i += 3) {
+    if (quad[groupOf[i]] !== QUADRANT.head || ![i, i + 1, i + 2].every(v => eyeBone.has(lead(v)))) continue;
+    eyeTris.push([i, i + 1, i + 2].map(v => [g0.attributes.uv.getX(v), 1 - g0.attributes.uv.getY(v)]));
+  }
+  const eyes = rasterize(PART, eyeTris);
   const v = new THREE.Vector3();
   for (let i = 0; i < n0; i++) {
     v.fromBufferAttribute(g0.attributes.position, i).applyMatrix4(bind).toArray(pos, i * 3);
@@ -619,16 +651,17 @@ function convert(src, look) {
     clips.push({ name: c.name, times: out, translation: tr, rotation: rot });
   }
 
-  return { root, sm, mats, code, parts, quad, half, bones, sex, geo, idx, lod, clips, speeds, look, seated };
+  return { root, sm, mats, code, parts, quad, half, bones, sex, geo, idx, lod, clips, speeds, look, seated, eyes, eyeTris: eyeTris.length };
 }
 
 // ---------------------------------------------------------------- атлас, маска, glb
 
-async function images(src, c) {
-  const { look, code, parts, quad, half, geo, idx } = c;
-  const atlas = Buffer.alloc(ATLAS * ATLAS * 3, 0);
-  const mask = Buffer.alloc(ATLAS * ATLAS * 4, 0);
-  for (let i = 0; i < ATLAS * ATLAS; i++) mask[i * 4 + 3] = 255;
+async function images(src, c, face) {
+  const { look, code, parts, quad, half, geo, idx, eyes } = c;
+  // атлас — RGBA: в альфе непрозрачность прядей, у остального — 255; маска — R одежда, G кожа и волосы
+  const atlas = Buffer.alloc(ATLAS * ATLAS * 4, 0);
+  for (let i = 0; i < ATLAS * ATLAS; i++) atlas[i * 4 + 3] = 255;
+  const cloth = new Uint8Array(ATLAS * ATLAS);
   let tintSum = 0;
   let tintN = 0;
   const imgs = [];
@@ -671,14 +704,14 @@ async function images(src, c) {
       for (let x = 0; x < PART; x++) {
         const s = (y * PART + x) * 4;
         const d = (oy + y) * ATLAS + ox + x;
-        atlas[d * 3] = img[s];
-        atlas[d * 3 + 1] = img[s + 1];
-        atlas[d * 3 + 2] = img[s + 2];
-        if (part === 'opacity') mask[d * 4 + 3] = img[s + 3];
+        atlas[d * 4] = img[s];
+        atlas[d * 4 + 1] = img[s + 1];
+        atlas[d * 4 + 2] = img[s + 2];
+        if (part === 'opacity') atlas[d * 4 + 3] = img[s + 3];
         // ткань тела без ступней и шапочка из принадлежностей (у хирурга — в четверти 3; маска на лице белая — не ткань)
-        const cloth = look.tint && ((q === 0 && !feet[y * PART + x]) || q === 3);
-        if (cloth && isCloth(look.tint, img[s], img[s + 1], img[s + 2])) {
-          mask[d * 4] = 255;
+        const isTint = look.tint && ((q === 0 && !feet[y * PART + x]) || q === 3);
+        if (isTint && isCloth(look.tint, img[s], img[s + 1], img[s + 2])) {
+          cloth[d] = 255;
           // яркость ткани (линейная) — от неё цвет должности получает складки
           const lin = c8 => (c8 / 255) ** 2.2;
           tintSum += 0.2126 * lin(img[s]) + 0.7152 * lin(img[s + 1]) + 0.0722 * lin(img[s + 2]);
@@ -687,10 +720,176 @@ async function images(src, c) {
       }
     }
   }
-  const webp = await sharp(atlas, { raw: { width: ATLAS, height: ATLAS, channels: 3 } }).webp({ quality: 85, effort: 6 }).toBuffer();
-  // маска: края ткани — мягче на точку
-  const png = await sharp(mask, { raw: { width: ATLAS, height: ATLAS, channels: 4 } }).png({ compressionLevel: 9 }).toBuffer();
-  return { webp, png, tintRef: tintN ? tintSum / tintN : 0, tinted: tintN };
+  const strands = parts.some((p, i) => p === 'opacity' && !look.drop?.includes(parts[i]));
+  const reg = regions(look, atlas, cloth, face, eyes, strands);
+  const mask = Buffer.alloc(ATLAS * ATLAS * 3, 0);
+  for (let i = 0; i < ATLAS * ATLAS; i++) {
+    mask[i * 3] = cloth[i];
+    mask[i * 3 + 1] = reg.g[i];
+  }
+  const webp = await sharp(atlas, { raw: { width: ATLAS, height: ATLAS, channels: 4 } }).webp({ quality: 85, alphaQuality: 100, effort: 6 }).toBuffer();
+  const png = await sharp(mask, { raw: { width: ATLAS, height: ATLAS, channels: 3 } }).png({ compressionLevel: 9 }).toBuffer();
+  return { webp, png, tintRef: tintN ? tintSum / tintN : 0, tinted: tintN, hair: reg.hair, hairN: reg.hairN, skinN: reg.skinN };
+}
+
+// ---------------------------------------------------------------- кожа и волосы (spec, часть 2б)
+
+/** sRGB 0–255 → Lab (D65). */
+function lab(r, g, b) {
+  const lin = c8 => (c8 <= 10.31 ? c8 / 255 / 12.92 : ((c8 / 255 + 0.055) / 1.055) ** 2.4);
+  const R = lin(r);
+  const G = lin(g);
+  const B = lin(b);
+  const f = t => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+  const fx = f((0.4124 * R + 0.3576 * G + 0.1805 * B) / 0.95047);
+  const fy = f(0.2126 * R + 0.7152 * G + 0.0722 * B);
+  const fz = f((0.0193 * R + 0.1192 * G + 0.9505 * B) / 1.08883);
+  return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+}
+/** Расстояние в Lab с весами: краснота (a) отличает кожу от светлых волос лучше яркости, яркость тени и блики меняют сильнее всего. */
+const LAB_W = [1 / 12, 1 / 2.5, 1 / 4];
+const far = (c, m) => Math.hypot((c[0] - m[0]) * LAB_W[0], (c[1] - m[1]) * LAB_W[1], (c[2] - m[2]) * LAB_W[2]);
+/** 0 до `a`, 1 после `b` (или наоборот, если a > b), между — плавно. */
+const smooth = (a, b, v) => {
+  const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+/** Медиана по каждому из трёх каналов. */
+function median3(list) {
+  if (!list.length) return null;
+  return [0, 1, 2].map(k => Float64Array.from(list, c => c[k]).sort()[list.length >> 1]);
+}
+/** Кожа вида — середина лица: щёки, нос, губы (развёртка головы у всех одна). */
+const FACE_BOX = [200, 150, 112, 80];
+const skinOf = (head, at) => {
+  const list = [];
+  const [x0, y0, w, h] = FACE_BOX;
+  for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) list.push(at(head, y * PART + x));
+  return median3(list);
+};
+/** Пороги: точка — кожа, волосы (дальше — уже нет); на лице волосы только явные — близко к волосам и далеко от кожи. */
+const SKIN = 3;
+const HAIR = 2.5;
+const FACE_HAIR = 1.5;
+const FACE_NOT_SKIN = 3;
+/** Угол развёртки головы, где рот изнутри и глаз (доли четверти: левее x, ниже y). */
+const MOUTH = [0.37, 0.6];
+/** Темя цвета кожи — лысина: волос на голове нет. */
+const BALD = 1.5;
+
+/** Где на голове лицо: доля видов FACE_REF, у кого точка головы — кожа, сглаженная на 6 точек (spec, часть 2б). */
+async function facePrior(src) {
+  const sum = new Float32Array(PART * PART);
+  const rgb = (img, i) => lab(img[i * 4], img[i * 4 + 1], img[i * 4 + 2]);
+  for (const name of FACE_REF) {
+    const look = LOOKS.find(l => l.name === name);
+    const { code, parts } = partsOf(fbx(src, fbxPath(look)));
+    const part = parts.find(p => QUADRANT[p] === QUADRANT.head) ?? parts.find(p => p.endsWith('_head'));
+    const head = await partImage(src, texPath(src, look, code, part));
+    const skin = skinOf(head, rgb);
+    for (let i = 0; i < PART * PART; i++) if (far(rgb(head, i), skin) < SKIN) sum[i] += 1 / FACE_REF.length;
+  }
+  return boxBlur(sum, PART, 6);
+}
+
+/** Сглаживание квадратом (2r + 1)² — двумя проходами скользящей суммы, края — повтором крайней точки. */
+function boxBlur(src, size, r) {
+  const tmp = new Float32Array(size * size);
+  const out = new Float32Array(size * size);
+  const at = v => Math.min(size - 1, Math.max(0, v));
+  for (let y = 0; y < size; y++) {
+    let s = 0;
+    for (let x = -r; x <= r; x++) s += src[y * size + at(x)];
+    for (let x = 0; x < size; x++) {
+      tmp[y * size + x] = s / (2 * r + 1);
+      s += src[y * size + at(x + r + 1)] - src[y * size + at(x - r)];
+    }
+  }
+  for (let x = 0; x < size; x++) {
+    let s = 0;
+    for (let y = -r; y <= r; y++) s += tmp[at(y) * size + x];
+    for (let y = 0; y < size; y++) {
+      out[y * size + x] = s / (2 * r + 1);
+      s += tmp[at(y + r + 1) * size + x] - tmp[at(y - r) * size + x];
+    }
+  }
+  return out;
+}
+
+/**
+ * Кожа и волосы вида в маске G (spec, часть 2б): кожа — ½, волосы — 1, смесь кожи и волос — между (доли мягкие и сглажены
+ * на точку, но не наружу: край кожи и одежды остаётся резким). Кожа — цвета середины лица: на голове, руках, ногах; одежда в
+ * цвет должности — не кожа. Волосы — пряди (кроме заколок и резинок — цвет далеко от прядей) и темя головы цвета темени; на
+ * лице — только явные. Глаза — ни то ни другое. `hair` — средняя яркость волос (sRGB, luma): от неё шейдер считает новый
+ * цвет.
+ */
+function regions(look, atlas, cloth, face, eyes, strands) {
+  const at = (buf, i) => lab(buf[i * 4], buf[i * 4 + 1], buf[i * 4 + 2]);
+  const q1 = i => ((i / PART) | 0) * ATLAS + PART + (i % PART);
+  const skin = skinOf(atlas, (buf, i) => at(buf, q1(i)));
+  const withHair = !NO_HAIR.has(look.name);
+  // волосы прядей и темени: пряди — непрозрачные точки четверти 2; темя — верх головы вне лица
+  const strandList = [];
+  if (withHair && strands) for (let y = PART; y < ATLAS; y++) for (let x = 0; x < PART; x++) {
+    const i = y * ATLAS + x;
+    if (atlas[i * 4 + 3] >= 128 && atlas[i * 4] + atlas[i * 4 + 1] + atlas[i * 4 + 2] > 6) strandList.push(at(atlas, i));
+  }
+  const strand = median3(strandList);
+  const scalpList = [];
+  if (withHair) for (let y = 0; y < PART * 0.45; y++) for (let x = 0; x < PART; x++) {
+    const i = y * ATLAS + PART + x;
+    if (face[y * PART + x] < 0.25 && atlas[i * 4] + atlas[i * 4 + 1] + atlas[i * 4 + 2] > 6) scalpList.push(at(atlas, i));
+  }
+  const scalp0 = median3(scalpList);
+  const scalp = scalp0 && far(scalp0, skin) >= BALD ? scalp0 : null;
+
+  const S = new Float32Array(ATLAS * ATLAS);
+  const H = new Float32Array(ATLAS * ATLAS);
+  for (let y = 0; y < ATLAS; y++) {
+    for (let x = 0; x < ATLAS; x++) {
+      const q = (x >= PART ? 1 : 0) + (y >= PART ? 2 : 0);
+      const i = y * ATLAS + x;
+      if (q === 3 || cloth[i]) continue;
+      const c = at(atlas, i);
+      if (q === 2) {
+        if (strand && atlas[i * 4 + 3] >= 8 && far(c, strand) < HAIR + 1) H[i] = 1;
+        continue;
+      }
+      if (atlas[i * 4] + atlas[i * 4 + 1] + atlas[i * 4 + 2] <= 6) continue;
+      const dS = far(c, skin);
+      // кожа — мягко: ближе 1,5 — вся, дальше 4,5 — нет
+      const sk = smooth(SKIN + 1.5, SKIN - 1.5, dS);
+      if (q === 0) {
+        S[i] = sk;
+        continue;
+      }
+      const h = y * PART + (x - PART);
+      if (eyes[h]) continue;
+      const dH = scalp ? far(c, scalp) : Infinity;
+      // на лице и в углу головы (рот изнутри, глаз) — волосы только явные; вне лица — доля волос по тому, к чему точка
+      // ближе: короткая стрижка, где сквозь волосы видна кожа, перекрашивается долями, а не пятнами
+      const strict = face[h] >= 0.5 || (x - PART < MOUTH[0] * PART && y > MOUTH[1] * PART);
+      const hr = strict ? (dH < FACE_HAIR && dS > FACE_NOT_SKIN ? 1 : 0) : dH < HAIR + 1.5 ? smooth(0.35, 0.65, dS / (dS + dH)) : 0;
+      H[i] = hr;
+      S[i] = Math.min(sk, 1 - hr);
+    }
+  }
+  const S2 = boxBlur(S, ATLAS, 1);
+  const H2 = boxBlur(H, ATLAS, 1);
+  const g = new Uint8Array(ATLAS * ATLAS);
+  let lum = 0;
+  let hairN = 0;
+  let skinN = 0;
+  for (let i = 0; i < ATLAS * ATLAS; i++) {
+    if (!S[i] && !H[i]) continue;
+    g[i] = Math.round(Math.min(1, 0.5 * S2[i] + H2[i]) * 255);
+    if (H[i] >= 0.5 && atlas[i * 4 + 3] >= 128) {
+      lum += (0.2126 * atlas[i * 4] + 0.7152 * atlas[i * 4 + 1] + 0.0722 * atlas[i * 4 + 2]) / 255;
+      hairN++;
+    }
+    if (S[i] >= 0.5) skinN++;
+  }
+  return { g, hair: hairN ? lum / hairN : 0, hairN, skinN };
 }
 
 function writeGlb(c, img) {
@@ -699,7 +898,7 @@ function writeGlb(c, img) {
   const scene = doc.createScene('scene');
   doc.createExtension(EXTTextureWebP).setRequired(true);
   const acc = (arr, type) => doc.createAccessor().setArray(arr).setType(type).setBuffer(buffer);
-  const top = doc.createNode('rocketbox').setExtras({ look: c.look.name, speeds: c.speeds, tintRef: Math.round(img.tintRef * 1e4) / 1e4 });
+  const top = doc.createNode('rocketbox').setExtras({ look: c.look.name, speeds: c.speeds, tintRef: Math.round(img.tintRef * 1e4) / 1e4, hair: Math.round(img.hair * 1e4) / 1e4 });
   scene.addChild(top);
 
   const nodes = {};
@@ -775,10 +974,15 @@ for (const [path, want] of Object.entries(sums.files)) {
 sums.looks = {};
 mkdirSync(OUT, { recursive: true });
 let total = 0;
+const face = await facePrior(SRC);
+// проба: только эти виды, без сумм и списка видов
+const only = process.argv.find(a => a.startsWith('--only'))?.split('=')[1] ?? process.argv[process.argv.indexOf('--only') + 1];
+const probe = process.argv.includes('--only') || process.argv.some(a => a.startsWith('--only='));
 for (const look of LOOKS) {
+  if (probe && !only.split(',').includes(look.name)) continue;
   const t0 = performance.now();
   const c = convert(SRC, look);
-  const img = await images(SRC, c);
+  const img = await images(SRC, c, face);
   const doc = writeGlb(c, img);
   await doc.transform(dedup(), resample(), meshopt({ encoder: MeshoptEncoder, level: 'medium', quantizePosition: 16, quantizationVolume: 'scene' }));
   const glb = await io.writeBinary(doc);
@@ -788,11 +992,12 @@ for (const look of LOOKS) {
   total += glb.byteLength + img.png.length;
   console.log(
     `${look.name.padEnd(18)} ${String(c.geo.attributes.position.count).padStart(5)} вершин, ${String(c.idx.length / 3).padStart(5)} / ${String(c.lod.length / 3).padStart(4)} треуг.; ` +
-      `glb ${Math.round(glb.byteLength / 1024)} КБ, маска ${Math.round(img.png.length / 1024)} КБ; одежда ${img.tinted} точек; ` +
+      `glb ${Math.round(glb.byteLength / 1024)} КБ, маска ${Math.round(img.png.length / 1024)} КБ; одежда ${img.tinted} точек, кожа ${img.skinN}, волосы ${img.hairN} (яркость ${img.hair.toFixed(3)}), глаза ${c.eyeTris} гр.; ` +
       `шаг ${(c.speeds.Walk / 100).toFixed(2)} м/с, бег ${(c.speeds.Run / 100).toFixed(2)} м/с; ` +
       `сидя — кадры ${c.seated.from}–${c.seated.end} из ${c.seated.of}, от посадки ${c.seated.gap.toFixed(3)}, шов ${c.seated.seam.toFixed(3)}, таз ${c.seated.y} см; ${Math.round(performance.now() - t0)} мс`,
   );
 }
+if (probe) process.exit(0);
 writeFileSync(join(OUT, 'index.json'), `${JSON.stringify({ looks: LOOKS.map(l => l.name) }, null, 1)}\n`);
 writeFileSync(SUMS, `${JSON.stringify(sums, null, 1)}\n`);
 console.log(`Всего: ${(total / 1048576).toFixed(2)} МБ`);
