@@ -51,7 +51,7 @@ import { DEFAULT_ROLE, firstOffice, type Role, ROLE_SETS, startFor } from './rol
 import { ScenarioDesk, scenarioTitle } from './scenario';
 import { columnOf, type Metric, METRICS, METRICS_READY, MONEY_METRICS, moneyColumnOf, moneyTop, serviceRoom } from './metrics';
 import { ColumnLabels } from './collabels';
-import { AutoQuality, type QualityMode, readSettings, type Settings, writeSettings } from './settings';
+import { applyText, AutoQuality, type QualityMode, readSettings, type Settings, type TextScale, writeSettings } from './settings';
 import { HoverLabel } from './hover';
 import { Labels } from './labels';
 import { Money } from './money';
@@ -1409,6 +1409,12 @@ export class Game {
     setProjection: p => {
       this.showProjection(p);
       this.remember({ projection: p });
+    },
+    // размер текста (spec docs/specs/2026-10-settings.md, «Размер текста»): панели и подписи на карте — сразу
+    setText: (k: TextScale) => {
+      applyText(k);
+      this.store.set({ text: k });
+      this.remember({ text: k });
     },
     toggleSettings: () => this.store.set({ settingsOpen: !this.store.get().settingsOpen }),
     overview: () => {
