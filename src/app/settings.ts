@@ -1,5 +1,5 @@
 // Настройки игрока (spec docs/specs/2026-10-settings.md; решение владельца #70): вид — стены и камера, качество — «авто» или
-// своё, «Отладка». Хранятся на этом компьютере — в хранилище страницы, в Electron тоже, — а не в сохранении игры: это
+// своё, «Отладка»; размер текста (spec docs/specs/2026-10-aaa-polish.md, «По этапам среза», 5). Хранятся на этом компьютере — в хранилище страницы, в Electron тоже, — а не в сохранении игры: это
 // настройки игрока, а не больницы. Чистые функции и выбор качества по времени кадра — их проверяют тесты
 // (tools/test/settings.test.ts).
 import type { Projection, Quality } from '../render/view';
@@ -9,6 +9,10 @@ import { type Metric, METRICS } from './metrics';
 /** Качество: «авто» — по первым секундам игры, или своё. */
 export type QualityMode = 'auto' | Quality;
 
+/** Размер текста панелей — множитель, как `TEXT_SCALES` «Анамнеза» (src/state/settings.ts): обычный, крупнее, крупный. */
+export const TEXT_SCALES = [1, 1.15, 1.3] as const;
+export type TextScale = (typeof TEXT_SCALES)[number];
+
 export interface Settings {
   walls: WallMode;
   projection: Projection;
@@ -16,10 +20,12 @@ export interface Settings {
   debug: boolean;
   /** слой «Показатели» (spec docs/specs/2026-10-metrics-layer.md): включённый показатель; нет — слой выключен */
   metric: Metric | null;
+  /** размер текста панелей и подписей на карте */
+  text: TextScale;
 }
 
 /** По умолчанию — вид владельца: стены вниз (решение #70), перспектива; качество — «авто». */
-export const DEFAULT_SETTINGS: Settings = { walls: 'down', projection: 'persp', quality: 'auto', debug: false, metric: null };
+export const DEFAULT_SETTINGS: Settings = { walls: 'down', projection: 'persp', quality: 'auto', debug: false, metric: null, text: 1 };
 
 const KEY = 'bolnitsa.settings';
 const WALLS: readonly WallMode[] = ['full', 'cut', 'down'];
@@ -42,6 +48,7 @@ export function parseSettings(raw: string | null | undefined): Settings {
     quality: pick(QUALITIES, x.quality, DEFAULT_SETTINGS.quality),
     debug: x.debug === true,
     metric: METRICS.find(m => m === x.metric) ?? null,
+    text: pick(TEXT_SCALES, x.text, DEFAULT_SETTINGS.text),
   };
 }
 
@@ -60,6 +67,14 @@ export function readSettings(store = storage()): Settings {
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
+}
+
+/**
+ * Размер текста — на страницу: множитель `--ui-k` масштабирует панели (`zoom` у `#ui`) и шрифт подписей на карте; места
+ * подписей считает сцена, они от него не зависят.
+ */
+export function applyText(k: TextScale): void {
+  if (typeof document !== 'undefined') document.documentElement.style.setProperty('--ui-k', String(k));
 }
 
 /** Записать; не вышло — игра идёт с ними до конца сеанса. */

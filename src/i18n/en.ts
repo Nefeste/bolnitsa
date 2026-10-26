@@ -234,12 +234,14 @@ export const en: Strings = {
   settings: {
     title: 'Settings',
     open: 'Settings',
-    openHint: 'Walls, camera, quality',
+    openHint: 'Walls, camera, quality, text size',
     auto: 'auto',
     autoChose: (q: string) => `auto: ${q}`,
     autoHint: 'By the first seconds of play: a slow frame — one step lower',
     keys: 'Q and E — rotate, wheel — closer and farther, Home — whole hospital',
     where: 'Remembered on this computer',
+    text: 'Text size',
+    textSize: ['normal', 'larger', 'large'],
   },
   card: {
     patient: (sex: 'm' | 'f', age: number, name?: string) => (name ? `${name}, ${age}` : `${sex === 'f' ? 'Female' : 'Male'} patient, ${age}`),

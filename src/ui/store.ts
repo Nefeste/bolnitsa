@@ -12,7 +12,7 @@ import type { EconomyHud, MoneyAction } from '../app/money';
 import type { HintKey } from '../app/hints';
 import type { SaveRow } from '../app/saves';
 import type { Role } from '../app/roles';
-import type { QualityMode } from '../app/settings';
+import type { QualityMode, TextScale } from '../app/settings';
 import type { ScenarioAction, ScenarioHud } from '../app/scenario';
 import type { Metric } from '../app/metrics';
 
@@ -122,6 +122,8 @@ export interface Hud {
   qualityMode: QualityMode;
   autoQuality?: Quality;
   projection: 'persp' | 'ortho';
+  /** размер текста (spec docs/specs/2026-10-settings.md, «Размер текста») */
+  text: TextScale;
   tab: Tab | null;
   selected?: { key: string; info: PersonInfo };
   /** «Следить» (spec docs/specs/2026-10-owner-play-2.md): камера идёт за выбранным */
@@ -202,6 +204,7 @@ export const initial: Hud = {
   quality: 'high',
   qualityMode: 'auto',
   projection: 'persp',
+  text: 1,
   tab: null,
   notices: [],
   patients: [],
@@ -252,6 +255,7 @@ export interface Actions {
   /** «Настройки»: качество «авто» или своё — запоминается */
   setQualityMode(m: QualityMode): void;
   setProjection(p: 'persp' | 'ortho'): void;
+  setText(k: TextScale): void;
   overview(): void;
   select(key: string | undefined): void;
   setTab(t: Tab | null): void;

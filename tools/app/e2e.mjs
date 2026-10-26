@@ -304,8 +304,9 @@ async function partOne() {
 
 /**
  * «Настройки» (spec docs/specs/2026-10-settings.md; решение владельца #70): кнопки «Вид» на экране нет; стены, камера и
- * качество — «Игра» → «Настройки», по умолчанию стены вниз и качество «авто»; выбор переживает перезагрузку. В конце —
- * снова как по умолчанию: следующие части начинают с вида игрока, как прежде.
+ * качество — «Игра» → «Настройки», по умолчанию стены вниз и качество «авто»; размер текста — три, по умолчанию обычный:
+ * «крупный» — панели в 1,3 раза больше, шрифт подписей на карте тоже; выбор переживает перезагрузку. В конце — снова как
+ * по умолчанию: следующие части начинают с вида игрока, как прежде.
  */
 async function settingsPart() {
   const view = () =>
@@ -317,8 +318,12 @@ async function settingsPart() {
         projection: g.stage.cam.projection,
         quality: g.stage.quality,
         auto: g.auto !== undefined,
-        buttons: { down: on('walls-down'), cut: on('walls-cut'), ortho: on('camera-ortho'), persp: on('camera-persp'), low: on('quality-low'), medium: on('quality-medium'), qauto: on('quality-auto') },
+        buttons: { down: on('walls-down'), cut: on('walls-cut'), ortho: on('camera-ortho'), persp: on('camera-persp'), low: on('quality-low'), medium: on('quality-medium'), qauto: on('quality-auto'), text0: on('text-0'), text2: on('text-2') },
         saved: localStorage.getItem('bolnitsa.settings'),
+        // размер текста: zoom панелей, ширина окна настроек на экране, шрифт подписи помещения на карте
+        zoom: getComputedStyle(document.getElementById('ui')).zoom,
+        width: Math.round(document.getElementById('settings')?.getBoundingClientRect().width ?? 0),
+        label: getComputedStyle(document.querySelector('.rlabel b') ?? document.body).fontSize,
       };
     });
   const open = async () => {
@@ -333,14 +338,19 @@ async function settingsPart() {
   await page.waitForTimeout(300);
   await page.screenshot({ path: join(out, 'settings.jpg'), type: 'jpeg', quality: 72 });
   const a = await view();
-  if (a.mode === 2 && a.buttons.down && a.buttons.persp && a.buttons.low && a.buttons.qauto === false && a.saved === null) ok('«Настройки»: по умолчанию стены вниз, перспектива; качество — заданное адресом (?q=low)');
+  if (a.mode === 2 && a.buttons.down && a.buttons.persp && a.buttons.low && a.buttons.qauto === false && a.buttons.text0 && a.zoom === '1' && a.saved === null) ok('«Настройки»: по умолчанию стены вниз, перспектива, текст обычный; качество — заданное адресом (?q=low)');
   else fail(`«Настройки» по умолчанию: ${JSON.stringify(a)}`);
   await page.click('#walls-cut');
   await page.click('#camera-ortho');
   await page.click('#quality-medium');
+  await page.click('#text-2');
+  await page.waitForTimeout(200);
   const b = await view();
-  if (b.mode === 1 && b.projection === 'ortho' && b.quality === 'medium' && b.buttons.cut && b.buttons.ortho && b.buttons.medium) ok('«Настройки»: стены «срез», камера «орто», качество «среднее» — сразу на карте');
-  else fail(`«Настройки» не применились: ${JSON.stringify(b)}`);
+  const grew = b.width / a.width;
+  if (b.mode === 1 && b.projection === 'ortho' && b.quality === 'medium' && b.buttons.cut && b.buttons.ortho && b.buttons.medium && b.buttons.text2 && b.zoom === '1.3' && Math.abs(grew - 1.3) < 0.02 && b.label === '15.6px') {
+    ok(`«Настройки»: стены «срез», камера «орто», качество «среднее», текст «крупный» — сразу: окно ×${grew.toFixed(2)}, подпись помещения ${a.label} → ${b.label}`);
+  } else fail(`«Настройки» не применились: ${JSON.stringify({ b, grew })}`);
+  await page.screenshot({ path: join(out, 'settings-text.jpg'), type: 'jpeg', quality: 72 });
   await page.keyboard.press('Escape');
   if (await page.$('#settings')) fail('Esc не закрыл «Настройки»');
   else ok('Esc закрывает «Настройки»');
@@ -349,14 +359,15 @@ async function settingsPart() {
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
   await open();
   const c = await view();
-  if (c.mode === 1 && c.projection === 'ortho' && c.quality === 'medium' && !c.auto && c.buttons.cut && c.buttons.ortho && c.buttons.medium) ok('после перезагрузки — те же стены, камера и качество');
+  if (c.mode === 1 && c.projection === 'ortho' && c.quality === 'medium' && !c.auto && c.buttons.cut && c.buttons.ortho && c.buttons.medium && c.buttons.text2 && c.zoom === '1.3') ok('после перезагрузки — те же стены, камера, качество и размер текста');
   else fail(`после перезагрузки: ${JSON.stringify(c)}`);
   // назад к виду по умолчанию; «авто» начинает с высокого и смотрит на кадр
   await page.click('#walls-down');
   await page.click('#camera-persp');
   await page.click('#quality-auto');
+  await page.click('#text-0');
   const d = await view();
-  if (d.mode === 2 && d.projection === 'persp' && d.quality === 'high' && d.auto && d.buttons.qauto && JSON.parse(d.saved ?? '{}').quality === 'auto') ok('качество «авто»: с высокого, по времени кадра; стены вниз и перспектива — снова');
+  if (d.mode === 2 && d.projection === 'persp' && d.quality === 'high' && d.auto && d.buttons.qauto && d.zoom === '1' && JSON.parse(d.saved ?? '{}').quality === 'auto') ok('качество «авто»: с высокого, по времени кадра; стены вниз, перспектива и обычный текст — снова');
   else fail(`«авто» и вид по умолчанию: ${JSON.stringify(d)}`);
   await page.click('#settings-close');
   if (await page.$('#settings')) fail('«✕» не закрыл «Настройки»');
