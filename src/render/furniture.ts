@@ -72,6 +72,8 @@ export interface LieAnchor {
   y: number;
   z: number;
   yaw: number;
+  /** постель — кровать: лежащего укрывает одеяло (people.ts) */
+  bed?: true;
 }
 
 /** Высота верха постели у моделей кодом, м. */
@@ -420,7 +422,7 @@ export function thingFrame(t: Thing): { cx: number; cz: number; m: THREE.Matrix4
 function lieAt(t: Thing, code: Code, cx: number, cz: number): LieAnchor {
   // середина постели — чуть к ногам от середины места: у изголовья подушка, у КТ и МРТ — тоннель
   const shift = code === 'ct' || code === 'mri' ? 0.25 : 0.05;
-  return { x: cx + Math.sin(t.yaw) * shift, y: LIE_TOP[code]!, z: cz + Math.cos(t.yaw) * shift, yaw: t.yaw };
+  return { x: cx + Math.sin(t.yaw) * shift, y: LIE_TOP[code]!, z: cz + Math.cos(t.yaw) * shift, yaw: t.yaw, ...(code === 'bed' ? { bed: true as const } : {}) };
 }
 
 export function furnish(layout: Layout, models: Map<string, Model>): Furnished {

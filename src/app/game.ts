@@ -199,9 +199,11 @@ async function rocketbox(base: string): Promise<RawLook[]> {
     ),
   );
   return (await masks).map((mask, i) => {
-    // развёртка glTF — сверху вниз; маска — данные, не цвет
+    // развёртка glTF — сверху вниз; маска — данные, не цвет: на видеокарте — два канала (R — одежда, G — кожа и волосы),
+    // вдвое меньше памяти, чем четыре (spec docs/specs/2026-10-people.md, часть 2б)
     mask.flipY = false;
     mask.colorSpace = THREE.NoColorSpace;
+    mask.format = THREE.RGFormat;
     mask.needsUpdate = true;
     const r = baked.get(looks[i])!;
     r.mask = mask;

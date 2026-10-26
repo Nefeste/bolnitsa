@@ -12,11 +12,11 @@ import type { Doing } from '../engine/shift/slice';
 import type { Rest, Ride, Triage } from '../engine/shift/types';
 import { DOINGS, H, HEADER, kindOf, type NameRow, NO_TIME, P, REFERRED, STATUSES, STRIDE, TRIAGES } from '../sim/pack';
 import type { Look } from './bake';
-import { COAT, OLD_AGE, PARAMEDIC, roleColor, WORKWEAR } from './cast';
+import { COAT, OLD_AGE, PARAMEDIC, roleColor, toneOf, WORKWEAR } from './cast';
 import { type Crowd, GURNEY_AHEAD, type Walker } from './crowd';
 import type { GurneyAt } from './gurney';
 import type { Layout } from './layout';
-import type { Paint } from './people';
+import { type Paint, toneVec } from './people';
 import { doorInside, gurneyStop, gurneyYaw, nearestWalk, type Places, type Spot, standAt } from './place';
 import { carrierGoal, riderAt, type RidePhase, ridesNow } from './rides';
 
@@ -209,6 +209,15 @@ export class Population {
   }
 
   /**
+   * Цвет человека: одежда (цвет должности; у пациентов — своя, из атласа) и оттенок волос и кожи по зерну (cast.ts, `toneOf`;
+   * spec docs/specs/2026-10-people.md, часть 2б). `age` — возраст пациента.
+   */
+  private paintOf(clothes: number, look: number, seed: number, age?: number): Paint {
+    const l = this.looks[look];
+    return { clothes: new THREE.Color(clothes), tone: toneVec(toneOf(seed, l.spec, l.hair, age)) };
+  }
+
+  /**
    * В больнице ли человек штата (spec 2026-10-staff-shifts): в смене часов среза, доводит начатые приёмы или довозит
    * больного на каталке (spec 2026-10-orderlies).
    */
@@ -335,7 +344,7 @@ export class Population {
       const use = m.role === 'role.registrar' ? 'registrar' : 'staff';
       const look = this.pick(use, m.sex, m.seed % 3 === 0, m.seed, m.role);
       this.crowd.add(key, look, spot, true, false, NaN, shift);
-      this.paints.set(key, { clothes: new THREE.Color(roleColor(m.role)) });
+      this.paints.set(key, this.paintOf(roleColor(m.role), look, m.seed));
     }
     for (const [key, w] of [...this.crowd.walkers]) {
       // фельдшеры скорой (`m:`) — не штат: уходят сами
@@ -367,8 +376,9 @@ export class Population {
       if (w.at?.key !== spot.key) this.crowd.retarget(w, spot, true);
       return;
     }
-    this.crowd.add(YOU, this.pick('staff', 'm', false, 7), spot, true);
-    this.paints.set(YOU, { clothes: new THREE.Color(COAT) });
+    const look = this.pick('staff', 'm', false, 7);
+    this.crowd.add(YOU, look, spot, true);
+    this.paints.set(YOU, this.paintOf(COAT, look, 7));
   }
 
   /**
@@ -462,7 +472,7 @@ export class Population {
       if (!w) {
         const look = this.pick('patient', row.sex, row.age >= OLD_AGE, row.seed, undefined, row.job);
         // своя одежда пациента — в атласе вида: маски одежды у пациентов нет, цвет экземпляра ни на что не ложится
-        this.paints.set(key, OWN);
+        this.paints.set(key, this.paintOf(OWN, look, row.seed, row.age));
         // привезённый скорой — через вход для скорой, на каталке бригады: её везёт фельдшер (spec 2026-10-orderlies)
         const ambulance = kindOf(buf[o + P.flags]) === 'ambulance';
         const pw = this.crowd.add(key, look, spot, false, ambulance, due);
@@ -593,7 +603,7 @@ export class Population {
     const stop = gurneyStop(this.layout, spot, taken);
     this.medicStops.set(key, { at: spot.key, stop });
     this.crowd.add(mk, look, stop, true, true, NaN, true);
-    this.paints.set(mk, { clothes: new THREE.Color(PARAMEDIC) });
+    this.paints.set(mk, this.paintOf(PARAMEDIC, look, seed >>> 2));
     this.crowd.carry(pw, mk, true);
     this.medics.set(key, mk);
   }
@@ -776,5 +786,5 @@ export class Population {
   }
 }
 
-/** Пациенты — в своей одежде из атласа. */
-const OWN: Paint = { clothes: new THREE.Color(1, 1, 1) };
+/** Пациенты — в своей одежде из атласа: цвет одежды экземпляра — белый, ни на что не ложится. */
+const OWN = 0xffffff;
