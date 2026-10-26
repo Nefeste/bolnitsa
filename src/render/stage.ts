@@ -104,6 +104,9 @@ export class Stage {
     for (const m of this.furniture) this.scene.add(m);
     this.view = new PeopleView(people, init.capacity);
     this.scene.add(this.view.group);
+    // атласы и маски людей (59 видов, spec docs/specs/2026-10-people.md) — на видеокарту при загрузке: иначе каждый уходит
+    // туда в тот кадр, когда вид впервые виден, и первые минуты игры дёргаются
+    for (const look of people.looks) for (const t of [look.map, look.mask]) if (t) this.renderer.initTexture(t);
     // значки срочности над головой и кольцо выделения у ног
     this.marks = new THREE.InstancedMesh(new THREE.OctahedronGeometry(0.13, 0), new THREE.MeshBasicMaterial({ color: 0xffffff }), init.capacity);
     this.marks.count = 0;

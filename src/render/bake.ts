@@ -1,38 +1,46 @@
-// из spikes/render-3d: src/assets.ts (люди: слияние частей, запекание анимаций, упрощение) — изменено: рост и пол — по
-// позе «стоит» после скелета, а не по связанной позе в сжатых координатах; точки опоры сидя и лёжа; цвет одежды и кожи —
-// на экземпляр; бег.
+// из spikes/render-3d: src/assets.ts (люди: запекание анимаций) — изменено: рост и пол — по позе «стоит» после скелета, а
+// не по связанной позе в сжатых координатах; точки опоры сидя и лёжа; бег; люди Rocketbox вместо частей Quaternius.
 //
-// Люди на видеокарте (spec docs/specs/2026-10-shell-3d.md, «Масштаб и опора»). При загрузке персонаж сливается в одну
-// геометрию, а анимации проигрываются один раз и запекаются: матрицы суставов на каждый кадр (30 к/с) всех видов лежат в
-// одной текстуре float. Вершинный шейдер (people.ts) смешивает кадры A и B. Чистый Three.js без DOM: то же запекание
-// проверяют тесты в Bun (tools/test/people.test.ts).
+// Люди на видеокарте (spec docs/specs/2026-10-shell-3d.md, «Масштаб и опора»). Анимации проигрываются один раз и
+// запекаются: матрицы суставов на каждый кадр (CLIP_FPS: 30 к/с, покой — 15) всех видов лежат в одной текстуре — по три
+// верхние строки матрицы (нижняя всегда 0 0 0 1), числа в половинной точности: у 59 видов 8,6 МБ вместо 24 (spec
+// docs/specs/2026-10-people.md, «Часть 2»). Вершинный шейдер (people.ts) смешивает кадры A и B. Чистый Three.js без DOM:
+// в игре запекают потоки запекания (bake-worker.ts), то же запекание проверяют тесты в Bun (tools/test/people.test.ts) —
+// по тем же числам, что уходят на видеокарту.
 //
-// Люди Rocketbox (spec docs/specs/2026-10-people.md; tools/app/people.mjs): одна сетка с атласом вместо частей с цветом в
-// вершинах, упрощённая — своя сетка из того же файла, скорость шага — в extras корня. Запекание то же.
+// Люди Rocketbox (spec docs/specs/2026-10-people.md; tools/app/people.mjs): сетка с атласом, упрощённая — своя сетка из
+// того же файла. Анимации набора сняты на одном скелете, а пропорции у видов свои: в шаге и беге ступня поправляется так,
+// чтобы стояла на полу (lockFeet), сидя — посадка под сиденье SEAT (seatTo); нет опоры — скорость по смещению корня из
+// extras.
 //
 // Почему опора — по позе после скелета. Модели сжаты (EXT_meshopt_compression, координаты — 16-битные целые): вершины
 // лежат в пределах −1…1, а переход к настоящим размерам спрятан в обратных связанных матрицах. Поза из анимации живёт в
 // других координатах, чем связанная поза. Проба мерила рост и пол по связанной позе — и люди выходили выше и висели над
 // полом. Здесь рост и пол меряются по кадру анимации «стоит» после скелета.
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { lookSpec, statureOf } from './cast';
+import { SEAT } from './catalog';
+import { type LookSpec, lookSpec, statureOf } from './cast';
 
-export type ClipName = 'Idle' | 'Walk' | 'Run' | 'SitDown' | 'StandUp';
-export const CLIP_NAMES: ClipName[] = ['Idle', 'Walk', 'Run', 'SitDown', 'StandUp'];
-/** Кадров в секунду при запекании анимаций. */
+/** Анимации вида; `Sit` — петля сидя, продолжает последнюю позу посадки (spec docs/specs/2026-10-people.md, «Анимации»). */
+export type ClipName = 'Idle' | 'Walk' | 'Run' | 'SitDown' | 'StandUp' | 'Sit';
+export const CLIP_NAMES: ClipName[] = ['Idle', 'Walk', 'Run', 'SitDown', 'StandUp', 'Sit'];
+/** Кадров в секунду при запекании анимаций: шаг и бег, посадка и вставание. */
 export const BAKE_FPS = 30;
-/** Ширина текстуры костей в текселях (кратна 4: матрица — 4 текселя подряд). */
-export const BONE_TEX_W = 1024;
-/** Скорость шага и бега в анимациях набора при ×1 проигрывания, м/с (подобрано по снимкам: ступня не скользит). */
-export const WALK_SPEED = 1.25;
-export const RUN_SPEED = 3.2;
+/**
+ * Кадров в секунду по анимациям: покой стоя и сидя — медленные, им хватает 15 (шейдер смешивает соседние кадры), и кадров
+ * запекания — на треть меньше: загрузка быстрее, текстура костей меньше.
+ */
+export const CLIP_FPS: Record<ClipName, number> = { Idle: 15, Walk: BAKE_FPS, Run: BAKE_FPS, SitDown: BAKE_FPS, StandUp: BAKE_FPS, Sit: 15 };
+/** Ширина текстуры костей в текселях (кратна 3: строки матрицы — 3 текселя подряд, в одной строке текстуры). */
+export const BONE_TEX_W = 1026;
 
 export interface Clip {
   /** первый кадр в общей текстуре */
   start: number;
   frames: number;
   duration: number;
+  /** кадров в секунду (CLIP_FPS) */
+  fps: number;
 }
 
 
@@ -40,10 +48,9 @@ export interface Look {
   name: string;
   /** женская модель (cast.ts) */
   female: boolean;
-  /**
-   * атлас и маска (Rocketbox): R — одежда, которая красится цветом должности, A — непрозрачность прядей; нет — цвет в
-   * вершинах (Quaternius)
-   */
+  /** кто вид в игре — строка таблицы cast.ts */
+  spec: LookSpec;
+  /** атлас и маска: R — одежда, которая красится цветом должности, A — непрозрачность прядей; в тестах без картинок — нет */
   map?: THREE.Texture;
   mask?: THREE.Texture;
   /** линейная яркость ткани, которую красим: цвет должности × (яркость точки / эта) — складки остаются */
@@ -60,7 +67,7 @@ export interface Look {
   lodTris: number;
   /** рост в позе «стоит», м (cast.ts, STATURE) */
   height: number;
-  /** во сколько раз рост больше головы: у людей обычных пропорций — 7–8, у мультяшных — около 3 */
+  /** во сколько раз рост больше головы: у людей обычных пропорций — 7–8 */
   headRatio: number;
   /** ширина плеч и таза сидя против стоя: около 1 — сустав не «схлопывается» */
   collapse: { shoulders: number; hips: number };
@@ -71,6 +78,8 @@ export interface Look {
   seat: { y: number; z: number };
   /** лёжа на спине (поза «стоит», повёрнутая на 90°): на сколько корень над поверхностью и где середина тела */
   lie: { back: number; mid: number };
+  /** подошвы обуви — вершины костей стопы ниже 12 см в позе «стоит», левая и правая: по ним опора шага (lockFeet) и её проверка */
+  soles: number[][];
 }
 
 export interface People {
@@ -79,8 +88,8 @@ export interface People {
   /** шаг суставов в текстуре (максимум по видам) */
   jointStride: number;
   totalFrames: number;
-  /** запечённые матрицы — для проверок на CPU (skinnedY) */
-  data: Float32Array;
+  /** то, что лежит в текстуре (половинная точность) — для проверок на CPU (frameData, skinnedY) */
+  data: Uint16Array;
 }
 
 /** Все атрибуты — в Float32 (после meshopt они целые нормированные), без чередования. */
@@ -88,7 +97,15 @@ export function toFloat(g: THREE.BufferGeometry): THREE.BufferGeometry {
   const out = new THREE.BufferGeometry();
   for (const [name, a] of Object.entries(g.attributes)) {
     const arr = new Float32Array(a.count * a.itemSize);
-    for (let i = 0; i < a.count; i++) for (let k = 0; k < a.itemSize; k++) arr[i * a.itemSize + k] = a.getComponent(i, k);
+    const src = a.array;
+    if ((a as THREE.InterleavedBufferAttribute).isInterleavedBufferAttribute) {
+      for (let i = 0; i < a.count; i++) for (let k = 0; k < a.itemSize; k++) arr[i * a.itemSize + k] = a.getComponent(i, k);
+    } else if (a.normalized) {
+      // как THREE.MathUtils.denormalize, без вызова на каждое число
+      const [k, signed] =
+        src instanceof Int16Array ? [1 / 32767, true] : src instanceof Uint16Array ? [1 / 65535, false] : src instanceof Int8Array ? [1 / 127, true] : src instanceof Uint8Array ? [1 / 255, false] : [1, false];
+      for (let i = 0; i < arr.length; i++) arr[i] = signed ? Math.max(src[i] * k, -1) : src[i] * k;
+    } else arr.set(src);
     out.setAttribute(name, new THREE.BufferAttribute(arr, a.itemSize));
   }
   if (g.index) out.setIndex(new THREE.BufferAttribute(new Uint32Array(g.index.array), 1));
@@ -114,8 +131,8 @@ export interface RawLook {
   name: string;
   female: boolean;
   geometry: THREE.BufferGeometry;
-  /** упрощённая из файла (Rocketbox: свои вершины); нет — упрощается при загрузке (lodOf) */
-  lod?: THREE.BufferGeometry;
+  /** упрощённая — своя сетка из того же файла */
+  lod: THREE.BufferGeometry;
   map?: THREE.Texture;
   /** маска атласа (Rocketbox) — отдельным файлом рядом с glb; ставит тот, кто грузит */
   mask?: THREE.Texture;
@@ -124,13 +141,14 @@ export interface RawLook {
   run: number;
   /** матрицы суставов по кадрам: [кадр][сустав] — 16 чисел, уже с приведением к росту и полу */
   frames: Float32Array[];
-  clips: Record<ClipName, { first: number; frames: number; duration: number }>;
+  clips: Record<ClipName, { first: number; frames: number; duration: number; fps: number }>;
   joints: number;
   height: number;
   headRatio: number;
   collapse: { shoulders: number; hips: number };
   seat: { y: number; z: number };
   lie: { back: number; mid: number };
+  soles: number[][];
 }
 
 /** Позиции вершин в позе кадра `frame` (матрицы суставов `m`, 16 чисел на сустав) — то же, что делает шейдер. */
@@ -161,6 +179,35 @@ export function skinPositions(g: THREE.BufferGeometry, m: Float32Array, out = ne
   return out;
 }
 
+/** Позиции вершин `verts` в позе кадра `m`: по три числа подряд в порядке списка. */
+function skinVertices(g: THREE.BufferGeometry, m: Float32Array, verts: number[]): Float32Array {
+  const pos = g.attributes.position.array as Float32Array;
+  const si = g.attributes.skinIndex.array as ArrayLike<number>;
+  const sw = g.attributes.skinWeight.array as ArrayLike<number>;
+  const out = new Float32Array(verts.length * 3);
+  for (let i = 0; i < verts.length; i++) {
+    const v = verts[i];
+    const x = pos[v * 3];
+    const y = pos[v * 3 + 1];
+    const z = pos[v * 3 + 2];
+    let ox = 0;
+    let oy = 0;
+    let oz = 0;
+    for (let k = 0; k < 4; k++) {
+      const w = sw[v * 4 + k];
+      if (w === 0) continue;
+      const o = si[v * 4 + k] * 16;
+      ox += w * (m[o] * x + m[o + 4] * y + m[o + 8] * z + m[o + 12]);
+      oy += w * (m[o + 1] * x + m[o + 5] * y + m[o + 9] * z + m[o + 13]);
+      oz += w * (m[o + 2] * x + m[o + 6] * y + m[o + 10] * z + m[o + 14]);
+    }
+    out[i * 3] = ox;
+    out[i * 3 + 1] = oy;
+    out[i * 3 + 2] = oz;
+  }
+  return out;
+}
+
 /** Матрицы суставов кадра: мировая матрица кости × обратная связанная, слева — приведение `norm`. */
 function frameMatrices(skeleton: THREE.Skeleton, norm: THREE.Matrix4): Float32Array {
   const joints = skeleton.bones.length;
@@ -173,18 +220,13 @@ function frameMatrices(skeleton: THREE.Skeleton, norm: THREE.Matrix4): Float32Ar
   return arr;
 }
 
-/**
- * Вершины тела по главной кости: `re` — имена костей. Окрашиваемая одежда (халат врача, рубашка) не берётся: пола халата
- * свисает ниже таза, а рубашка — не спина.
- */
+/** Вершины тела по главной кости: `re` — имена костей. */
 function bodyVertices(g: THREE.BufferGeometry, bones: THREE.Bone[], re: RegExp): number[] {
   const want = new Set(bones.map((b, i) => (re.test(b.name) ? i : -1)).filter(i => i >= 0));
   const si = g.attributes.skinIndex.array as ArrayLike<number>;
   const sw = g.attributes.skinWeight.array as ArrayLike<number>;
-  const tint = g.attributes.aTint?.array as ArrayLike<number> | undefined;
   const out: number[] = [];
   for (let v = 0; v < g.attributes.position.count; v++) {
-    if (tint && tint[v * 2] > 0) continue;
     let best = 0;
     let joint = -1;
     for (let k = 0; k < 4; k++) {
@@ -199,72 +241,10 @@ function bodyVertices(g: THREE.BufferGeometry, bones: THREE.Bone[], re: RegExp):
 }
 
 /**
- * Части Quaternius → одна геометрия: позиция, нормаль, цвет в вершинах, индексы и веса костей, признаки окраски (x —
- * одежда, y — кожа).
+ * Тело и упрощённая (tools/app/people.mjs) — свои сетки одного скелета, развёртка — в атлас. Атрибуты — в осях после
+ * привязки; скорость шага и бега — из extras корня (единицы набора в секунду).
  */
-function colorParts(name: string, skinned: THREE.SkinnedMesh[], skeleton: THREE.Skeleton, tintMats: string[]): THREE.BufferGeometry {
-  // Кожа набора — чёрная; под редкими прядями её не видно, а в живом тоне макушка просвечивает пятнами. Поэтому кожу
-  // выше глаз (материал Face) красим в цвет волос (как в пробе).
-  let faceTop = -Infinity;
-  let hair: THREE.Color | null = null;
-  for (const sm of skinned) {
-    const mats = Array.isArray(sm.material) ? sm.material : [sm.material];
-    const pos = sm.geometry.attributes.position;
-    const groups = sm.geometry.groups.length ? sm.geometry.groups : [{ start: 0, count: sm.geometry.index!.count, materialIndex: 0 }];
-    for (const gr of groups) {
-      const m = mats[gr.materialIndex ?? 0] as THREE.MeshStandardMaterial;
-      if (m.name === 'Hair') hair = m.color.clone();
-      if (m.name !== 'Face') continue;
-      const v = new THREE.Vector3();
-      for (let k = gr.start; k < gr.start + gr.count; k++) {
-        v.fromBufferAttribute(pos, sm.geometry.index!.getX(k)).applyMatrix4(sm.bindMatrix);
-        faceTop = Math.max(faceTop, v.y);
-      }
-    }
-  }
-
-  const geoms: THREE.BufferGeometry[] = [];
-  for (const sm of skinned) {
-    if (sm.skeleton !== skeleton) throw new Error(`${name}: parts with different skeletons`);
-    const base = toFloat(sm.geometry);
-    base.applyMatrix4(sm.bindMatrix);
-    const mats = Array.isArray(sm.material) ? sm.material : [sm.material];
-    const groups = sm.geometry.groups.length ? sm.geometry.groups : [{ start: 0, count: base.index!.count, materialIndex: 0 }];
-    for (const gr of groups) {
-      const m = mats[gr.materialIndex ?? 0] as THREE.MeshStandardMaterial;
-      const g = subset(base, gr.start, gr.count);
-      const n = g.attributes.position.count;
-      const col = new Float32Array(n * 3);
-      const tint = new Float32Array(n * 2);
-      const py = g.attributes.position;
-      const isSkin = m.name === 'Skin';
-      const scalp = isSkin && hair && faceTop > -Infinity;
-      const clothes = tintMats.includes(m.name);
-      for (let i = 0; i < n; i++) {
-        if (scalp && py.getY(i) > faceTop) hair!.toArray(col, i * 3);
-        else if (isSkin) {
-          col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = 1;
-          tint[i * 2 + 1] = 1;
-        } else m.color.toArray(col, i * 3);
-        if (clothes) tint[i * 2] = 1;
-      }
-      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-      // x — одежда красится цветом экземпляра, y — кожа
-      g.setAttribute('aTint', new THREE.BufferAttribute(tint, 2));
-      for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'color', 'skinIndex', 'skinWeight', 'aTint'].includes(k)) g.deleteAttribute(k);
-      geoms.push(g);
-    }
-  }
-  const geometry = mergeGeometries(geoms, false);
-  if (!geometry) throw new Error(`${name}: cannot merge parts`);
-  return geometry;
-}
-
-/**
- * Rocketbox (tools/app/people.mjs): тело и упрощённая — свои сетки одного скелета, развёртка — в атлас. Атрибуты — в осях
- * после привязки, как у частей Quaternius; скорость шага — из extras корня (единицы набора в секунду).
- */
-function texturedParts(root: THREE.Object3D, body: THREE.SkinnedMesh, lodMesh?: THREE.SkinnedMesh) {
+function texturedParts(root: THREE.Object3D, body: THREE.SkinnedMesh, lodMesh: THREE.SkinnedMesh) {
   const keep = ['position', 'normal', 'uv', 'skinIndex', 'skinWeight'];
   const own = (sm: THREE.SkinnedMesh) => {
     const g = toFloat(sm.geometry);
@@ -274,13 +254,10 @@ function texturedParts(root: THREE.Object3D, body: THREE.SkinnedMesh, lodMesh?: 
   };
   const extras = (root.getObjectByName('rocketbox')?.userData ?? {}) as { speeds?: { Walk?: number; Run?: number }; tintRef?: number };
   const map = (body.material as THREE.MeshStandardMaterial).map ?? undefined;
-  return { geometry: own(body), lod: lodMesh ? own(lodMesh) : undefined, map, tintRef: extras.tintRef ?? 0, speeds: extras.speeds ?? {} };
+  return { geometry: own(body), lod: own(lodMesh), map, tintRef: extras.tintRef ?? 0, speeds: extras.speeds ?? {} };
 }
 
-/**
- * Один персонаж: части тела → одна геометрия (позиция, нормаль, цвет, индексы и веса костей, признаки окраски),
- * анимации → матрицы суставов на каждый кадр с частотой BAKE_FPS, приведённые к росту и полу.
- */
+/** Один вид: сетка с атласом; анимации → матрицы суставов на каждый кадр с частотой CLIP_FPS, приведённые к росту и полу. */
 export function bakeLook(gltf: { scene: THREE.Object3D; animations: THREE.AnimationClip[] }, name: string): RawLook {
   const root = gltf.scene;
   root.updateMatrixWorld(true);
@@ -295,25 +272,32 @@ export function bakeLook(gltf: { scene: THREE.Object3D; animations: THREE.Animat
   if (!spec) throw new Error(`${name}: not in cast.ts LOOKS`);
   const female = spec.sex === 'f';
   const body = skinned.find(s => s.name === 'body');
-  const textured = body ? texturedParts(root, body, skinned.find(s => s.name === 'lod')) : null;
-  const geometry = textured?.geometry ?? colorParts(name, skinned, skeleton, spec.tint);
+  const lodMesh = skinned.find(s => s.name === 'lod');
+  if (!body || !lodMesh) throw new Error(`${name}: no body or lod mesh`);
+  const textured = texturedParts(root, body, lodMesh);
+  const geometry = textured.geometry;
 
   const mixer = new THREE.AnimationMixer(root);
-  // у Casual_Bald в наборе нет бега — бежит шагом
   const clipOf = (cn: ClipName) => {
-    const clip = gltf.animations.find(a => a.name === cn) ?? (cn === 'Run' ? gltf.animations.find(a => a.name === 'Walk') : undefined);
+    const clip = gltf.animations.find(a => a.name === cn);
     if (!clip) throw new Error(`${name}: no animation ${cn}`);
     return clip;
   };
+  let playing: THREE.AnimationAction | undefined;
+  // кости — от верхней кости скелета: выше неё в сцене ничего не движется
+  const top = skeleton.bones.find(b => !(b.parent as THREE.Bone | null)?.isBone)!;
   const pose = (cn: ClipName, t: number) => {
-    mixer.stopAllAction();
-    const action = mixer.clipAction(clipOf(cn));
-    // LoopOnce + clampWhenFinished: последний кадр SitDown — сидя, а не снова первый
-    action.setLoop(THREE.LoopOnce, 1);
-    action.clampWhenFinished = true;
-    action.reset().play();
+    const clip = clipOf(cn);
+    if (playing?.getClip() !== clip) {
+      mixer.stopAllAction();
+      playing = mixer.clipAction(clip);
+      // LoopOnce + clampWhenFinished: последний кадр SitDown — сидя, а не снова первый
+      playing.setLoop(THREE.LoopOnce, 1);
+      playing.clampWhenFinished = true;
+    }
+    playing.reset().play();
     mixer.setTime(t);
-    root.updateMatrixWorld(true);
+    top.updateMatrixWorld(true);
   };
 
   // рост и пол — по первому кадру «стоит» после скелета
@@ -331,41 +315,58 @@ export function bakeLook(gltf: { scene: THREE.Object3D; animations: THREE.Animat
 
   const frames: Float32Array[] = [];
   const clips = {} as RawLook['clips'];
-  // ступни Rocketbox: ноги вида длиннее или короче, чем у скелета анимации, и сидя ступня уходит под пол или висит —
-  // в каждом кадре посадки и вставания человек поднят или опущен так, чтобы ступня стояла на полу
-  const feet = textured ? bodyVertices(geometry, skeleton.bones, /^(Foot|Toes)[LR]$/) : [];
+  // ступни: ноги вида длиннее или короче, чем у скелета анимации, и сидя ступня уходит под пол или висит — в каждом кадре
+  // посадки, вставания и петли сидя человек поднят или опущен так, чтобы ступня стояла на полу; нижняя точка ступни — среди
+  // вершин подошвы (ниже 12 см стоя), верх ботинка не в счёт
+  const feet = bodyVertices(geometry, skeleton.bones, /^(Foot|Toes)[LR]$/).filter(v => (raw[v * 3 + 1] - minY) * s < 0.12);
   for (const cn of CLIP_NAMES) {
     const clip = clipOf(cn);
-    const n = Math.max(2, Math.round(clip.duration * BAKE_FPS) + 1);
-    clips[cn] = { first: frames.length, frames: n, duration: clip.duration };
+    const fps = CLIP_FPS[cn];
+    const n = Math.max(2, Math.round(clip.duration * fps) + 1);
+    clips[cn] = { first: frames.length, frames: n, duration: clip.duration, fps };
     for (let f = 0; f < n; f++) {
-      pose(cn, Math.min(clip.duration, f / BAKE_FPS));
+      pose(cn, Math.min(clip.duration, f / fps));
       const m = frameMatrices(skeleton, norm);
-      if (feet.length && (cn === 'SitDown' || cn === 'StandUp')) plant(geometry, m, feet);
+      if (feet.length && (cn === 'SitDown' || cn === 'StandUp' || cn === 'Sit')) plant(geometry, m, feet);
       frames.push(m);
     }
   }
 
   // сидя: самая нижняя точка таза и бёдер в последнем кадре SitDown и середина этой нижней полосы по глубине
   const sitFrame = frames[clips.SitDown.first + clips.SitDown.frames - 1];
-  const sitPos = skinPositions(geometry, sitFrame);
-  let sv = bodyVertices(geometry, skeleton.bones, /^(Hips|UpperLeg[LR])$/);
-  // полы халата Rocketbox — на тех же костях и свисают ниже бёдер: опора — не ниже колена без 12 см
-  if (textured) {
-    const knee = Math.min(jointY(skeleton, sitFrame, 'LowerLegL'), jointY(skeleton, sitFrame, 'LowerLegR'));
-    sv = sv.filter(v => sitPos[v * 3 + 1] > knee - 0.12);
-  }
-  let low = Infinity;
-  for (const v of sv) low = Math.min(low, sitPos[v * 3 + 1]);
-  let zs = 0;
-  let zn = 0;
-  for (const v of sv) {
-    if (sitPos[v * 3 + 1] <= low + 0.04) {
-      zs += sitPos[v * 3 + 2];
-      zn++;
+  const pelvis = bodyVertices(geometry, skeleton.bones, /^(Hips|UpperLeg[LR])$/);
+  const seatOf = (frame = sitFrame) => {
+    const p = skinVertices(geometry, frame, pelvis);
+    // полы халата — на тех же костях и свисают ниже бёдер: опора — не ниже колена без 12 см
+    const knee = Math.min(jointY(skeleton, frame, 'LowerLegL'), jointY(skeleton, frame, 'LowerLegR')) - 0.12;
+    let low = Infinity;
+    for (let i = 0; i < pelvis.length; i++) if (p[i * 3 + 1] > knee) low = Math.min(low, p[i * 3 + 1]);
+    let zs = 0;
+    let zn = 0;
+    for (let i = 0; i < pelvis.length; i++) {
+      if (p[i * 3 + 1] > knee && p[i * 3 + 1] <= low + 0.04) {
+        zs += p[i * 3 + 2];
+        zn++;
+      }
     }
+    return { y: low, z: zn ? zs / zn : 0 };
+  };
+  // опора сидя выше сиденья SEAT — посадка опускается, колени сгибаются сильнее (seatTo); опускание сгибает колени, бёдра
+  // поднимаются, и нижняя точка уходит вверх — насколько опустить, подбирается на последнем кадре посадки
+  const legs = legsOf(skeleton);
+  let lift = 0;
+  for (let i = 0; i < 8; i++) {
+    const m = sitFrame.slice();
+    lower(m, legs, lift);
+    const r = SEAT - seatOf(m).y;
+    if (r > -0.001) break;
+    lift += r;
   }
-  const seat = { y: low, z: zn ? zs / zn : 0 };
+  if (lift < 0) {
+    const hips = skeleton.bones.findIndex(b => b.name === 'Hips');
+    seatTo(frames, clips, legs, hips, new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().copy(skeleton.boneInverses[hips]).invert()), lift);
+  }
+  const seat = seatOf();
 
   // лёжа на спине — поза «стоит», повёрнутая вокруг X: на постель ложится спина (затылок большой головы чуть уходит в
   // подушку — так и лежат)
@@ -374,23 +375,26 @@ export function bakeLook(gltf: { scene: THREE.Object3D; animations: THREE.Animat
   for (const v of bodyVertices(geometry, skeleton.bones, /^(Torso|Abdomen|Hips)$/)) back = Math.min(back, idle[v * 3 + 2]);
   const lie = { back: -back, mid: height / 2 };
 
-  // голова — вершины кости Head в позе «стоит»; плечи и таз — расстояние между левым и правым суставом стоя и сидя. У
-  // Rocketbox пряди и шапочка — тоже на кости головы: они не в счёт (четверти атласа 2 и 3, tools/app/people.mjs)
-  let h0 = Infinity;
-  let h1 = -Infinity;
-  const uv = textured ? (geometry.attributes.uv.array as ArrayLike<number>) : null;
-  for (const v of bodyVertices(geometry, skeleton.bones, /^Head$/)) {
-    if (uv && uv[v * 2 + 1] >= 0.5) continue;
-    h0 = Math.min(h0, idle[v * 3 + 1]);
-    h1 = Math.max(h1, idle[v * 3 + 1]);
-  }
-  const headRatio = height / (h1 - h0);
   const jointAt = (f: Float32Array, n: string) => {
     const j = skeleton.bones.findIndex(b => b.name === n);
     // положение сустава: матрица кадра × связанное положение кости
     const bind = new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().copy(skeleton.boneInverses[j]).invert());
     return bind.applyMatrix4(new THREE.Matrix4().fromArray(f, j * 16));
   };
+  // голова — от подбородка до макушки в позе «стоит», по вершинам кости Head: подбородок — самая низкая из них впереди
+  // сустава головы больше чем на 7 см (хвост волос и капюшон — позади, шея — ближе); пряди и шапочка — тоже на кости
+  // головы: они не в счёт (четверти атласа 2 и 3, tools/app/people.mjs). Плечи и таз — расстояние между левым и правым
+  // суставом стоя и сидя
+  const neckless = jointAt(frames[clips.Idle.first], 'Head').z + 0.07;
+  let chin = Infinity;
+  let crown = -Infinity;
+  const uv = geometry.attributes.uv.array as ArrayLike<number>;
+  for (const v of bodyVertices(geometry, skeleton.bones, /^Head$/)) {
+    if (uv[v * 2 + 1] >= 0.5) continue;
+    crown = Math.max(crown, idle[v * 3 + 1]);
+    if (idle[v * 3 + 2] > neckless) chin = Math.min(chin, idle[v * 3 + 1]);
+  }
+  const headRatio = height / (crown - chin);
   const width = (f: Float32Array, a: string, b: string) => jointAt(f, a).distanceTo(jointAt(f, b));
   const stand = frames[clips.Idle.first];
   const collapse = {
@@ -398,10 +402,228 @@ export function bakeLook(gltf: { scene: THREE.Object3D; animations: THREE.Animat
     hips: width(sitFrame, 'UpperLegL', 'UpperLegR') / width(stand, 'UpperLegL', 'UpperLegR'),
   };
 
-  // скорость шага и бега: Rocketbox — по смещению корня за петлю (в масштабе вида), Quaternius — подобрана по снимкам
-  const walk = textured?.speeds.Walk ? textured.speeds.Walk * s : WALK_SPEED;
-  const run = textured?.speeds.Run ? textured.speeds.Run * s : RUN_SPEED;
-  return { name, female, geometry, lod: textured?.lod, map: textured?.map, tintRef: textured?.tintRef ?? 0, walk, run, frames, clips, joints, height, headRatio, collapse, seat, lie };
+  // шаг и бег: опорная ступня стоит на полу (lockFeet); нет опоры в клипе — скорость по смещению корня
+  if (!textured.speeds.Walk || !textured.speeds.Run) throw new Error(`${name}: no walk or run speed`);
+  const soles = (['L', 'R'] as const).map(side => bodyVertices(geometry, skeleton.bones, new RegExp(`^(Foot|Toes)${side}$`)).filter(v => idle[v * 3 + 1] < 0.12));
+  const walk = lockFeet(geometry, frames, clips.Walk, legs, soles) ?? textured.speeds.Walk * s;
+  const run = lockFeet(geometry, frames, clips.Run, legs, soles) ?? textured.speeds.Run * s;
+  return { name, female, geometry, lod: textured.lod, map: textured.map, tintRef: textured.tintRef, walk, run, frames, clips, joints, height, headRatio, collapse, seat, lie, soles };
+}
+
+/**
+ * Сидя — на сиденье высоты SEAT (catalog.ts). Опора сидя при ступнях на полу у видов разная: голени разной длины, 0,36–0,45
+ * м. Сиденье — у нижних; выше него опора — и человек на стуле уходил бы ступнями под пол: посадка, петля сидя и вставание
+ * опускаются на `lift` (< 0) — в посадке и вставании по доле пути таза вниз, — а ступни остаются на полу: ноги
+ * дотягиваются (reach), колени сгибаются сильнее, как у высокого на низком стуле. Опора ниже сиденья — на 2 см у самых
+ * коротконогих — поднимает корень (crowd.ts, `seatRoot`): ступни чуть не достают пола.
+ */
+function seatTo(frames: Float32Array[], clips: RawLook['clips'], legs: Leg[], hips: number, bind: THREE.Vector3, lift: number) {
+  const shift = (m: Float32Array, k: number) => lower(m, legs, k * lift);
+  // доля пути таза от «стоит» (кадр `stand`) к «сидит» (кадр `sit`)
+  const ramp = (c: { first: number; frames: number }, stand: number, sit: number) => {
+    const ys = Array.from({ length: c.frames }, (_, f) => jointOf(frames[c.first + f], hips, bind).y);
+    const span = ys[stand] - ys[sit] || 1;
+    ys.forEach((y, f) => shift(frames[c.first + f], Math.max(0, Math.min(1, (ys[stand] - y) / span))));
+  };
+  ramp(clips.SitDown, 0, clips.SitDown.frames - 1);
+  ramp(clips.StandUp, clips.StandUp.frames - 1, 0);
+  for (let f = 0; f < clips.Sit.frames; f++) shift(frames[clips.Sit.first + f], 1);
+}
+
+/** Поднять кадр `m` на `d` (опустить — d < 0), ступни оставить на месте: ноги дотягиваются (reach). */
+function lower(m: Float32Array, legs: Leg[], d: number) {
+  if (Math.abs(d) < 1e-6) return;
+  for (let o = 0; o < m.length; o += 16) m[o + 13] += d;
+  for (const leg of legs) reach(m, leg, -d, 0);
+}
+
+/** Касание: нижняя точка подошвы не выше пола (или своего низа, если стопа под пол не уходит) больше чем на столько, м. */
+export const CONTACT = 0.01;
+
+/** Нога: суставы бедра и колена, стопа и всё ниже неё (стопа — первой), их места в связанной позе. */
+interface Leg {
+  hip: number;
+  knee: number;
+  foot: number[];
+  bind: [THREE.Vector3, THREE.Vector3, THREE.Vector3];
+}
+
+function legsOf(skeleton: THREE.Skeleton): Leg[] {
+  const bind = (j: number) => new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().copy(skeleton.boneInverses[j]).invert());
+  return (['L', 'R'] as const).map(side => {
+    const j = (n: string) => {
+      const i = skeleton.bones.findIndex(b => b.name === `${n}${side}`);
+      if (i < 0) throw new Error(`no bone ${n}${side}`);
+      return i;
+    };
+    const [hip, knee, ankle] = [j('UpperLeg'), j('LowerLeg'), j('Foot')];
+    const below = (b: THREE.Object3D) => {
+      for (let o = b.parent; o; o = o.parent) if (o === skeleton.bones[ankle]) return true;
+      return false;
+    };
+    const foot = [ankle, ...skeleton.bones.flatMap((b, i) => (below(b) ? [i] : []))];
+    return { hip, knee, foot, bind: [bind(hip), bind(knee), bind(ankle)] };
+  });
+}
+
+/** Опоры одной стопы в петле: в каждом кадре — нижняя вершина подошвы, её высота и сдвиг вдоль хода к следующему кадру. */
+export interface Stance {
+  /** высота нижней точки подошвы по кадрам, м */
+  low: number[];
+  /** на сколько нижняя вершина кадра f уходит вдоль хода к кадру f + 1, м (назад — меньше нуля) */
+  step: number[];
+  /** опоры: номера кадров подряд по кругу петли */
+  runs: number[][];
+}
+
+/**
+ * Опоры стопы в петле из `n` кадров (последний кадр клипа — снова первый, его нет): касание (CONTACT) три кадра и дольше,
+ * и стопа в нём уходит назад — касание носком в полёте шага уходит вперёд, это не опора. `at(f)` — позиции вершин кадра.
+ */
+export function stanceOf(n: number, sole: number[], at: (f: number) => Float32Array): Stance {
+  const pos = Array.from({ length: n }, (_, f) => at(f));
+  const lowV: number[] = [];
+  const low: number[] = [];
+  for (const p of pos) {
+    let y = Infinity;
+    let v0 = sole[0];
+    for (const v of sole) if (p[v * 3 + 1] < y) [y, v0] = [p[v * 3 + 1], v];
+    lowV.push(v0);
+    low.push(y);
+  }
+  const step = pos.map((p, f) => pos[(f + 1) % n][lowV[f] * 3 + 2] - p[lowV[f] * 3 + 2]);
+  const top = Math.max(0, Math.min(...low)) + CONTACT;
+  const on = low.map(y => y <= top);
+  const runs: number[][] = [];
+  for (let f = 0; f < n; f++) {
+    if (!on[f] || on[(f + n - 1) % n]) continue;
+    const run = [f];
+    for (let k = (f + 1) % n; on[k] && k !== f; k = (k + 1) % n) run.push(k);
+    if (run.length >= 3 && run.slice(0, -1).reduce((sum, k) => sum + step[k], 0) < 0) runs.push(run);
+  }
+  return { low, step, runs };
+}
+
+/** Сдвиг опорной точки в мире за опору при скорости хода `v`, м/с: от начала опоры по кадрам. */
+export function drift(st: Stance, run: number[], v: number): number[] {
+  const d = [0];
+  for (let i = 0; i < run.length - 1; i++) d.push(d[i] + st.step[run[i]] + v / BAKE_FPS);
+  return d;
+}
+
+/**
+ * Ступня стоит (spec docs/specs/2026-10-people.md, «Анимации»). Анимации набора сняты на другом скелете: у вида с другими
+ * пропорциями опорная ступня уходит назад не с той скоростью, с какой человек идёт, у левой и правой — по-разному, и при
+ * любой скорости хода одна из них скользила бы до 5 см за шаг. Скорость хода — та, при которой хуже всего скользящая опора
+ * скользит меньше всего; остаток снимает нога: в каждом кадре опоры стопа сдвигается вдоль хода так, чтобы опорная точка в
+ * мире стояла на месте, ушедшая под пол — поднимается на пол, бедро и голень дотягиваются до неё (reach); в полёте сдвиг
+ * плавно переходит от конца одной опоры к началу следующей, а стопа идёт не ниже CONTACT над полом. Меняет кадры клипа на
+ * месте; нет опоры — undefined.
+ */
+function lockFeet(g: THREE.BufferGeometry, frames: Float32Array[], clip: { first: number; frames: number }, legs: Leg[], soles: number[][]): number | undefined {
+  const n = clip.frames - 1;
+  // только вершины подошв: номера в своём списке
+  const verts = soles.flat();
+  const pos = Array.from({ length: n }, (_, f) => skinVertices(g, frames[clip.first + f], verts));
+  let k = 0;
+  const st = soles.map(sole => stanceOf(n, sole.map(() => k++), f => pos[f]));
+  if (!st.some(s => s.runs.length)) return undefined;
+  const worst = (v: number) => {
+    let w = 0;
+    for (const s of st) {
+      for (const run of s.runs) {
+        const d = drift(s, run, v);
+        w = Math.max(w, Math.max(...d) - Math.min(...d));
+      }
+    }
+    return w;
+  };
+  // скорость — с шагом 1 мм/с, от 0,3 до 6 м/с: размах сдвига за опору выпуклый по скорости (наибольшее из линейных минус
+  // наименьшее), наибольший по опорам — тоже, и наименьший ищется делением отрезка на три
+  let lo = 300;
+  let hi = 6000;
+  while (hi - lo > 2) {
+    const a = lo + Math.floor((hi - lo) / 3);
+    const b = hi - Math.floor((hi - lo) / 3);
+    const wa = worst(a / 1000);
+    const wb = worst(b / 1000);
+    if (wa < wb) hi = b - 1;
+    else if (wa > wb) lo = a + 1;
+    else [lo, hi] = [a, b];
+  }
+  let speed = lo / 1000;
+  for (let i = lo + 1; i <= hi; i++) if (worst(i / 1000) < worst(speed)) speed = i / 1000;
+  st.forEach((s, side) => {
+    const dz = new Array<number>(n).fill(0);
+    const on = new Array<boolean>(n).fill(false);
+    for (const run of s.runs) {
+      const d = drift(s, run, speed);
+      const mid = (Math.max(...d) + Math.min(...d)) / 2;
+      run.forEach((f, i) => {
+        dz[f] = mid - d[i];
+        on[f] = true;
+      });
+    }
+    // полёт: от конца прежней опоры к началу следующей, плавно
+    if (!s.runs.length) return;
+    for (let f = 0; f < n; f++) {
+      if (on[f]) continue;
+      let a = f;
+      while (!on[a]) a = (a + n - 1) % n;
+      let b = f;
+      while (!on[b]) b = (b + 1) % n;
+      const t = ((f - a + n) % n) / ((b - a + n) % n || n);
+      const k = t * t * (3 - 2 * t);
+      dz[f] = dz[a] + (dz[b] - dz[a]) * k;
+    }
+    // в опоре ушедшая под пол стопа — на полу, в полёте — не ниже CONTACT: носок не чиркает по полу
+    for (let f = 0; f < n; f++) reach(frames[clip.first + f], legs[side], Math.max(0, (on[f] ? 0 : CONTACT) - s.low[f]), dz[f]);
+  });
+  // петля: последний кадр — снова первый
+  frames[clip.first + n] = frames[clip.first].slice();
+  return speed;
+}
+
+const mJ = new THREE.Matrix4();
+/** Сустав в кадре: матрица кадра × место в связанной позе. */
+const jointOf = (m: Float32Array, j: number, bind: THREE.Vector3) => bind.clone().applyMatrix4(mJ.fromArray(m, j * 16));
+/** Поворот `q` вокруг точки `p`. */
+const about = (p: THREE.Vector3, q: THREE.Quaternion) =>
+  new THREE.Matrix4().makeTranslation(p.x, p.y, p.z).multiply(new THREE.Matrix4().makeRotationFromQuaternion(q)).multiply(new THREE.Matrix4().makeTranslation(-p.x, -p.y, -p.z));
+/** Применить к суставу `j` кадра перемещение `w` в мире. */
+const move = (m: Float32Array, j: number, w: THREE.Matrix4) => mJ.fromArray(m, j * 16).premultiply(w).toArray(m, j * 16);
+
+/**
+ * Дотянуть ногу кадра `m` до стопы, сдвинутой на `dy` вверх и `dz` вдоль хода (две кости): колено остаётся в своей
+ * плоскости, бедро поворачивается вокруг тазобедренного сустава, голень — вокруг нового колена, стопа и пальцы
+ * переносятся без поворота. Не дотянуться — нога прямая, стопа — докуда достаёт.
+ */
+function reach(m: Float32Array, leg: Leg, dy: number, dz: number) {
+  if (Math.abs(dy) < 1e-6 && Math.abs(dz) < 1e-6) return;
+  const H = jointOf(m, leg.hip, leg.bind[0]);
+  const K = jointOf(m, leg.knee, leg.bind[1]);
+  const A = jointOf(m, leg.foot[0], leg.bind[2]);
+  const a = H.distanceTo(K);
+  const b = K.distanceTo(A);
+  const T = A.clone().add(new THREE.Vector3(0, dy, dz));
+  const u = T.clone().sub(H);
+  const d = Math.min(a + b - 1e-5, Math.max(Math.abs(a - b) + 1e-5, u.length()));
+  u.normalize();
+  T.copy(H).addScaledVector(u, d);
+  // плоскость колена: его отступ от линии «бедро — стопа»; нога прямая — колено вперёд
+  const w = K.clone().sub(H);
+  w.addScaledVector(u, -w.dot(u));
+  if (w.lengthSq() < 1e-12) w.set(0, 0, 1).addScaledVector(u, -u.z);
+  w.normalize();
+  const cos = (a * a + d * d - b * b) / (2 * a * d);
+  const K2 = H.clone().addScaledVector(u, a * cos).addScaledVector(w, a * Math.sqrt(Math.max(0, 1 - cos * cos)));
+  const thigh = about(H, new THREE.Quaternion().setFromUnitVectors(K.clone().sub(H).normalize(), K2.clone().sub(H).normalize()));
+  const A1 = A.clone().applyMatrix4(thigh);
+  const shin = about(K2, new THREE.Quaternion().setFromUnitVectors(A1.sub(K2).normalize(), T.clone().sub(K2).normalize())).multiply(thigh);
+  move(m, leg.hip, thigh);
+  move(m, leg.knee, shin);
+  const foot = new THREE.Matrix4().makeTranslation(T.x - A.x, T.y - A.y, T.z - A.z);
+  for (const j of leg.foot) move(m, j, foot);
 }
 
 /** Поднять или опустить кадр `m` так, чтобы нижняя из вершин `feet` была на полу. */
@@ -431,70 +653,107 @@ function jointY(skeleton: THREE.Skeleton, f: Float32Array, name: string): number
   return bind.applyMatrix4(new THREE.Matrix4().fromArray(f, j * 16)).y;
 }
 
-export interface Simplifier {
-  simplify(i: Uint32Array, p: Float32Array, stride: number, target: number, err: number, flags?: string[]): [Uint32Array, number];
-  simplifySloppy(i: Uint32Array, p: Float32Array, stride: number, lock: Uint8Array | null, target: number, err: number): [Uint32Array, number];
-  simplifyWithAttributes(
-    i: Uint32Array,
-    p: Float32Array,
-    stride: number,
-    attrs: Float32Array,
-    attrStride: number,
-    weights: number[],
-    lock: Uint8Array | null,
-    target: number,
-    err: number,
-    flags?: string[],
-  ): [Uint32Array, number];
+/** Сетка вида для передачи между потоками: атрибуты и индексы — свои буферы, уходят без копии. */
+export interface WireGeometry {
+  attributes: Record<string, { array: Float32Array; itemSize: number }>;
+  index: Uint32Array;
 }
 
-/** Упрощённая копия для дальнего плана: те же вершины, меньше треугольников (meshoptimizer). */
-export function simplify(g: THREE.BufferGeometry, ratio: number, simplifier: Simplifier, lock: Uint8Array | null = null): THREE.BufferGeometry {
-  const pos = g.attributes.position.array as Float32Array;
-  const idx = new Uint32Array(g.index!.array);
-  const target = Math.floor((idx.length * ratio) / 3) * 3;
-  // цвет — признак, чтобы границы одежды не расплывались; подошвы закреплены — упрощённый человек стоит на полу
-  const col = g.attributes.color.array as Float32Array;
-  let [out] = simplifier.simplifyWithAttributes(idx, pos, 3, col, 3, [0.5, 0.5, 0.5], lock, target, 0.05, []);
-  if (out.length > target * 1.5) [out] = simplifier.simplifySloppy(idx, pos, 3, lock, target, 0.05);
-  const lod = new THREE.BufferGeometry();
-  for (const [k, a] of Object.entries(g.attributes)) lod.setAttribute(k, a);
-  lod.setIndex(new THREE.BufferAttribute(out, 1));
-  return lod;
+/**
+ * Запечённый вид для передачи из потока запекания (bake-worker.ts) в окно (spec docs/specs/2026-10-people.md,
+ * «Производительность»): сетки, все кадры подряд одним массивом и атлас — картинкой ImageBitmap, без копии (toWire).
+ */
+export interface WireLook extends Omit<RawLook, 'geometry' | 'lod' | 'map' | 'mask' | 'frames'> {
+  geometry: WireGeometry;
+  lod: WireGeometry;
+  /** матрицы суставов всех кадров подряд: на кадр — 16 чисел на сустав */
+  frames: Float32Array;
+  map?: { image: ImageBitmap; flipY: boolean; colorSpace: string; wrapS: THREE.Wrapping; wrapT: THREE.Wrapping; magFilter: THREE.MagnificationTextureFilter; minFilter: THREE.MinificationTextureFilter };
 }
 
-/** Упрощённая модель вида: подошвы (ниже 2 см в позе «стоит») не упрощаются; у Rocketbox — своя, из файла. */
-export function lodOf(r: RawLook, ratio: number, simplifier: Simplifier): THREE.BufferGeometry {
-  if (r.lod) return r.lod;
-  const pos = skinPositions(r.geometry, r.frames[r.clips.Idle.first]);
-  const n = r.geometry.attributes.position.count;
-  const lock = new Uint8Array(n);
-  for (let v = 0; v < n; v++) if (pos[v * 3 + 1] < 0.02) lock[v] = 1;
-  return simplify(r.geometry, ratio, simplifier, lock);
+/** Вид — в передачу между потоками: что уходит без копии — в `transfer`. */
+export function toWire(r: RawLook): { look: WireLook; transfer: Transferable[] } {
+  const transfer: Transferable[] = [];
+  const geo = (g: THREE.BufferGeometry): WireGeometry => {
+    const attributes: WireGeometry['attributes'] = {};
+    for (const [name, a] of Object.entries(g.attributes)) {
+      const array = a.array as Float32Array;
+      attributes[name] = { array, itemSize: a.itemSize };
+      transfer.push(array.buffer);
+    }
+    const index = g.index!.array as Uint32Array;
+    transfer.push(index.buffer);
+    return { attributes, index };
+  };
+  const size = r.joints * 16;
+  const frames = new Float32Array(r.frames.length * size);
+  r.frames.forEach((m, f) => frames.set(m, f * size));
+  transfer.push(frames.buffer);
+  const { geometry, lod, map, mask: _mask, frames: _frames, ...rest } = r;
+  const look: WireLook = { ...rest, geometry: geo(geometry), lod: geo(lod), frames };
+  const image = map?.image as ImageBitmap | undefined;
+  if (map && image) {
+    look.map = { image, flipY: map.flipY, colorSpace: map.colorSpace, wrapS: map.wrapS, wrapT: map.wrapT, magFilter: map.magFilter, minFilter: map.minFilter };
+    transfer.push(image);
+  }
+  return { look, transfer };
+}
+
+/** Вид из передачи — снова с сетками, кадрами и атласом Three.js. */
+export function fromWire(w: WireLook): RawLook {
+  const geo = (x: WireGeometry) => {
+    const g = new THREE.BufferGeometry();
+    for (const [name, a] of Object.entries(x.attributes)) g.setAttribute(name, new THREE.BufferAttribute(a.array, a.itemSize));
+    g.setIndex(new THREE.BufferAttribute(x.index, 1));
+    return g;
+  };
+  const size = w.joints * 16;
+  const frames = Array.from({ length: w.frames.length / size }, (_, f) => w.frames.subarray(f * size, (f + 1) * size));
+  const { geometry, lod, map: m, frames: _frames, ...rest } = w;
+  let map: THREE.Texture | undefined;
+  if (m) {
+    map = new THREE.Texture(m.image);
+    map.flipY = m.flipY;
+    map.colorSpace = m.colorSpace;
+    map.wrapS = m.wrapS;
+    map.wrapT = m.wrapT;
+    map.magFilter = m.magFilter;
+    map.minFilter = m.minFilter;
+    map.needsUpdate = true;
+  }
+  return { ...rest, geometry: geo(geometry), lod: geo(lod), frames, ...(map ? { map } : {}) };
 }
 
 /** Все виды людей: запечённые матрицы — в одну текстуру. */
-export function packPeople(raws: RawLook[], lods: (THREE.BufferGeometry | undefined)[]): People {
+export function packPeople(raws: RawLook[]): People {
   const stride = Math.max(...raws.map(r => r.joints));
   const totalFrames = raws.reduce((a, r) => a + r.frames.length, 0);
-  const texels = totalFrames * stride * 4;
+  const texels = totalFrames * stride * 3;
   const h = Math.ceil(texels / BONE_TEX_W);
-  const data = new Float32Array(BONE_TEX_W * h * 4);
+  const data = new Uint16Array(BONE_TEX_W * h * 4);
+  const half = THREE.DataUtils.toHalfFloat;
   const looks: Look[] = [];
   let frame0 = 0;
-  raws.forEach((r, i) => {
-    for (let f = 0; f < r.frames.length; f++) data.set(r.frames[f], (frame0 + f) * stride * 16);
+  raws.forEach(r => {
+    // матрица по столбцам (Three.js) → три её строки подряд: (m00 m01 m02 m03), (m10 …), (m20 …)
+    for (let f = 0; f < r.frames.length; f++) {
+      const m = r.frames[f];
+      for (let j = 0; j < r.joints; j++) {
+        const o = ((frame0 + f) * stride + j) * 12;
+        for (let row = 0; row < 3; row++) for (let col = 0; col < 4; col++) data[o + row * 4 + col] = half(m[j * 16 + col * 4 + row]);
+      }
+    }
     const clips = {} as Record<ClipName, Clip>;
-    for (const cn of CLIP_NAMES) clips[cn] = { start: frame0 + r.clips[cn].first, frames: r.clips[cn].frames, duration: r.clips[cn].duration };
-    const lod = r.lod ?? lods[i]!;
+    for (const cn of CLIP_NAMES) clips[cn] = { start: frame0 + r.clips[cn].first, frames: r.clips[cn].frames, duration: r.clips[cn].duration, fps: r.clips[cn].fps };
+    const lod = r.lod;
     looks.push({
-      name: r.name, female: r.female, geometry: r.geometry, lod, clips, joints: r.joints, tris: r.geometry.index!.count / 3, lodTris: lod.index!.count / 3,
-      height: r.height, headRatio: r.headRatio, collapse: r.collapse, seat: r.seat, lie: r.lie,
+      name: r.name, female: r.female, spec: lookSpec(r.name)!, geometry: r.geometry, lod, clips, joints: r.joints, tris: r.geometry.index!.count / 3, lodTris: lod.index!.count / 3,
+      height: r.height, headRatio: r.headRatio, collapse: r.collapse, seat: r.seat, lie: r.lie, soles: r.soles,
       map: r.map, mask: r.mask, tintRef: r.tintRef, walk: r.walk, run: r.run,
     });
     frame0 += r.frames.length;
   });
-  const tex = new THREE.DataTexture(data, BONE_TEX_W, h, THREE.RGBAFormat, THREE.FloatType);
+  const tex = new THREE.DataTexture(data, BONE_TEX_W, h, THREE.RGBAFormat, THREE.HalfFloatType);
   tex.minFilter = THREE.NearestFilter;
   tex.magFilter = THREE.NearestFilter;
   tex.generateMipmaps = false;
@@ -504,13 +763,19 @@ export function packPeople(raws: RawLook[], lods: (THREE.BufferGeometry | undefi
 
 /** Матрицы кадра `frame` (номер в общей текстуре) вида `look` — для проверок на CPU. */
 export function frameData(p: People, look: Look, frame: number): Float32Array {
-  const o = frame * p.jointStride * 16;
-  return p.data.subarray(o, o + look.joints * 16);
+  const out = new Float32Array(look.joints * 16);
+  const num = THREE.DataUtils.fromHalfFloat;
+  for (let j = 0; j < look.joints; j++) {
+    const o = (frame * p.jointStride + j) * 12;
+    for (let row = 0; row < 3; row++) for (let col = 0; col < 4; col++) out[j * 16 + col * 4 + row] = num(p.data[o + row * 4 + col]);
+    out[j * 16 + 15] = 1;
+  }
+  return out;
 }
 
 /** Нижняя и верхняя точка вида в кадре: по всем вершинам, которые рисует геометрия `g` (полная или упрощённая). */
 export function skinnedY(p: People, look: Look, frame: number, g: THREE.BufferGeometry = look.geometry): { min: number; max: number } {
-  // упрощённая Rocketbox — со своими вершинами; у Quaternius — те же атрибуты, что у полной
+  // упрощённая — со своими вершинами
   const pos = skinPositions(g, frameData(p, look, frame));
   const idx = g.index!.array as ArrayLike<number>;
   let min = Infinity;
