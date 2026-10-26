@@ -7,6 +7,7 @@ import type { Command, Notice, Ride, ShiftState } from '../engine/shift/types';
 import type { CrewView } from '../engine/shift/crew';
 import type { MoodView } from '../engine/shift/mood';
 import type { ScenarioView } from './campaign';
+import type { Leg } from './legs';
 import type { NameRow } from './pack';
 import type { SaveMeta } from './packing';
 import type { DoctorAct, DoctorOut, FromSim, PathView, RoomsMoney, ToSim, World } from './protocol';
@@ -34,6 +35,8 @@ export interface Slice extends DoctorOut {
   scenario?: ScenarioView;
   /** деньги по помещениям (spec docs/specs/2026-10-metrics-layer.md, часть 2); когда изменились */
   money?: RoomsMoney;
+  /** слой «Пути пациентов» (spec docs/specs/2026-10-layers.md, часть 2): переходы за сутки, пока слой включён */
+  legs?: Leg[];
 }
 
 export class SimClient {
@@ -88,7 +91,7 @@ export class SimClient {
       ...(msg.refused ? { refused: msg.refused } : {}),
       ...(msg.path ? { path: msg.path } : {}), ...(msg.broken ? { broken: msg.broken } : {}), ...(msg.late ? { late: msg.late } : {}), ...(msg.crew ? { crew: msg.crew } : {}),
       ...(msg.moods ? { moods: msg.moods } : {}), ...(msg.rides ? { rides: msg.rides } : {}), ...(msg.scenario ? { scenario: msg.scenario } : {}),
-      ...(msg.money ? { money: msg.money } : {}),
+      ...(msg.money ? { money: msg.money } : {}), ...(msg.legs ? { legs: msg.legs } : {}),
     });
   }
 
@@ -140,6 +143,11 @@ export class SimClient {
   /** Показывать путь этого пациента (номер в движке); null — никого (spec docs/specs/2026-10-flow-ui.md). */
   watch(id: string | null) {
     this.post({ kind: 'watch', id });
+  }
+
+  /** Слой «Пути пациентов» (spec docs/specs/2026-10-layers.md, часть 2): присылать переходы за сутки — или больше нет. */
+  legs(on: boolean) {
+    this.post({ kind: 'legs', on });
   }
 
   save(): Promise<ShiftState> {

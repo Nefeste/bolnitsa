@@ -17,6 +17,7 @@ import type { QualityMode, TextScale } from '../app/settings';
 import type { ScenarioAction, ScenarioHud } from '../app/scenario';
 import type { Metric } from '../app/metrics';
 import type { ProblemGo, ProblemList } from '../app/problems';
+import type { LegRow } from '../app/paths';
 
 /** Скорость игры (spec docs/specs/2026-10-walk.md): ×1, ×3, ×12; 0 — пауза. */
 export type Speed = 0 | 1 | 3 | 12;
@@ -160,7 +161,12 @@ export interface Hud {
    * `day` — сутки денег на слое (часть 2): номер прошедших суток, `null` — сегодня до сих пор; `days` — какие прошедшие
    * сутки есть (последние 14)
    */
-  layers: { open: boolean; queues: boolean; depts: boolean; problems: boolean; metric: Metric | null; day: number | null; days: number[] };
+  layers: { open: boolean; queues: boolean; depts: boolean; paths: boolean; problems: boolean; metric: Metric | null; day: number | null; days: number[] };
+  /**
+   * слой «Пути пациентов» (spec docs/specs/2026-10-layers.md, часть 2): переходы за сутки, где прошли больше всего метров;
+   * сколько переходов всего, сколько метров и сколько строк не вошло; `sel` — выбранный переход (на полу — только он)
+   */
+  paths: { rows: LegRow[]; total: number; meters: number; more: number; sel: string | null };
   /** слой «Проблемы» (spec docs/specs/2026-10-layers.md, часть 1): что сейчас мешает больнице — список и число в меню */
   problems: ProblemList;
   /**
@@ -261,7 +267,8 @@ export const initial: Hud = {
   gone: [],
   seenRows: [],
   seenAll: 0,
-  layers: { open: false, queues: false, depts: false, problems: false, metric: null, day: null, days: [] },
+  layers: { open: false, queues: false, depts: false, paths: false, problems: false, metric: null, day: null, days: [] },
+  paths: { rows: [], total: 0, meters: 0, more: 0, sel: null },
   problems: { rows: [], more: 0, count: 0 },
   departments: [],
   deptLegend: [],
@@ -366,6 +373,9 @@ export interface Actions {
   toggleDepts(): void;
   /** слой «Проблемы» (spec docs/specs/2026-10-layers.md, часть 1): пол красит он; строка списка — туда, куда она ведёт */
   toggleProblems(): void;
+  /** слой «Пути пациентов» (часть 2): пол коридоров по частоте; строка списка — только её путь, ещё раз — все */
+  togglePaths(): void;
+  pickLeg(key: string | null): void;
   goProblem(go: ProblemGo): void;
   /** слой «Показатели»: показатель или выключить (`null`); сутки денег — прошедшие или сегодня (`null`) */
   setMetric(m: Metric | null): void;

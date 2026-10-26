@@ -13,6 +13,7 @@ import type { Lang } from '../i18n';
 import type { Difficulty } from '../engine/shift/types';
 import type { ScenarioView } from './campaign';
 import type { CardView, DoctorState, ErrorList, Refusal, SeenList } from './doctor';
+import type { Leg } from './legs';
 import type { NameRow } from './pack';
 import type { SaveMeta } from './packing';
 
@@ -45,6 +46,11 @@ export type ToSim =
    * его в срез (`path`), когда он изменился; null — никого
    */
   | { kind: 'watch'; id: string | null }
+  /**
+   * слой «Пути пациентов» (spec docs/specs/2026-10-layers.md, часть 2): окно его включило — поток кладёт в срез переходы за
+   * сутки (`legs`): сразу, а дальше раз в `LEGS_EVERY` игровых секунд, когда они изменились; выключило — больше не кладёт
+   */
+  | { kind: 'legs'; on: boolean }
   /** режим врача (spec docs/specs/2026-10-doctor-mode.md, «Поток расчёта»): карта, «Взять случай», действие в карте */
   | { kind: 'doctor'; act: DoctorAct };
 
@@ -89,7 +95,7 @@ export type FromSim =
    */
   | ({
       kind: 'slice'; buf: Int32Array; names: NameRow[]; notices: Notice[]; lag: number; world?: World; path?: PathView; broken?: string[]; late?: number[]; crew?: CrewView[];
-      moods?: MoodView[]; rides?: Ride[]; scenario?: ScenarioView; money?: RoomsMoney;
+      moods?: MoodView[]; rides?: Ride[]; scenario?: ScenarioView; money?: RoomsMoney; legs?: Leg[];
     } & DoctorOut)
   | { kind: 'state'; state: ShiftState }
   /** файл сохранения: сжатые байты (без копии) и его шапка; не вышло — `packFailed` */
@@ -121,3 +127,5 @@ export interface RoomsMoney {
 }
 /** Сколько прошедших суток денег по помещениям держит окно: две недели. */
 export const ROOMS_DAYS = 14;
+/** Переходы слоя «Пути пациентов» — не чаще, чем раз в столько игровых секунд: десять игровых минут. */
+export const LEGS_EVERY = 600;

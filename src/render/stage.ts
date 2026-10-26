@@ -13,6 +13,7 @@ import { Icons } from './icons';
 import { buildLamps, type Lamps } from './lamps';
 import { Columns } from './columns';
 import { DoorStripes } from './stripes';
+import { FloorHeat } from './heat';
 import { FloorTint } from './overlay';
 import { type Layout, roomAt } from './layout';
 import { type Paint, PeopleView } from './people';
@@ -68,6 +69,8 @@ export class Stage {
   /** отделения (spec docs/specs/2026-10-departments.md, часть 2): слой «Отделения» и полосы на полу у дверей */
   readonly deptTint = new FloorTint();
   readonly stripes = new DoorStripes();
+  /** слой «Пути пациентов» (spec docs/specs/2026-10-layers.md, часть 2): где больные ходят чаще — пол светлее */
+  readonly heat = new FloorHeat();
   /** слой «Показатели» (spec docs/specs/2026-10-metrics-layer.md): столбики над помещениями */
   readonly columns = new Columns();
   /** метка вашей фигуры */
@@ -128,6 +131,8 @@ export class Stage {
     this.scene.add(this.deptTint.group);
     this.stripes.setLayout(layout, this.lamps.lightMap);
     this.scene.add(this.stripes.group);
+    this.heat.setLayout(layout);
+    this.scene.add(this.heat.group);
     this.columns.setLayout(layout);
     this.scene.add(this.columns.group);
     // ваша фигура (spec docs/specs/2026-10-doctor-mode.md): синяя стрелка остриём вниз над головой
@@ -175,6 +180,7 @@ export class Stage {
     this.tint.setLayout(layout);
     this.deptTint.setLayout(layout);
     this.stripes.setLayout(layout, this.lamps.lightMap);
+    this.heat.setLayout(layout);
     this.columns.setLayout(layout);
     // свет пола и светильники — по часу заново
     this.hourShown = -1;

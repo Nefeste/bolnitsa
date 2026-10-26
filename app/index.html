@@ -214,6 +214,11 @@
     .prow.p-bad .swatch { background: var(--red); }
     .prow.p-warn .swatch { background: var(--yellow); }
     .prow.p-off .swatch { background: #6f7a80; }
+    /* список слоя «Пути пациентов» (часть 2): там же; строка — кнопка «только этот путь», выбранная — подсвечена */
+    .deptlegend.legs { width: 340px; }
+    .deptlegend.legs p { margin: 4px 0 0; }
+    .deptlegend .lrow { display: block; width: 100%; text-align: left; padding: 2px 6px; background: transparent; border-color: transparent; line-height: 1.35; }
+    .deptlegend .lrow.on { background: rgba(255,196,0,.16); border-color: rgba(255,196,0,.55); }
     .start { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 22px 26px; display: flex; flex-direction: column; gap: 10px; width: 480px; }
     .start .game { font-size: 28px; font-weight: 600; letter-spacing: .01em; }
     .start .intro { margin: 0 0 6px; color: var(--muted); line-height: 1.45; }

@@ -88,6 +88,8 @@ const actions: Actions = {
   toggleQueues: later('toggleQueues'),
   toggleDepts: later('toggleDepts'),
   toggleProblems: later('toggleProblems'),
+  togglePaths: later('togglePaths'),
+  pickLeg: later('pickLeg'),
   goProblem: later('goProblem'),
   setMetric: later('setMetric'),
   doctor: later('doctor'),
