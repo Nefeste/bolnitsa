@@ -32,7 +32,7 @@ import type { Observation, Patient } from '../med/types';
 import {
   type ClosedCase, type ColleagueDay, type Command, DAY, type Flow, type GoneRow, type DaySummary, type Difficulty, easyLevel, type Notice, type PlannedReturn, REGISTRATION, SHIFT_END, SHIFT_SCHEMA_VERSION,
   SHIFT_START, type ShiftEvent, type ShiftPatient, type ShiftState, TRIAGE, type Triage, type VisitKind, type WardDay, type AmbulanceDay, type SurgeryDay, type Ride,
-  type ChiefDay,
+  type ChiefDay, type InflowDay, type LeftWhy,
 } from './types';
 import { type Ask, askFor, askLong } from './consult';
 import { type ApproveAsk, approveFor, ASK_RULES, asksDecisions, asksOf, DEFAULT_ASKS } from './approve';
@@ -45,7 +45,7 @@ import { occupied, siteCommand, siteFree } from './site';
 import { arrivalAfter, dayOf, hospitalDay, hoursOf, returnWindow, roundsAt, validHours } from './day';
 import { type Bed, daysIn, type StayEnd, stayNorm, wardCourse, wardState } from './ward';
 import { accrue, offerOf, openEconomy, payWorks, repay, shortOf, takeLoan, unpaidShift } from './money';
-import { ambulancePerHour, bookedPerHour, type Capacity, walkPerHour } from './inflow';
+import { ambulancePerHour, bookedPerHour, type Capacity, reputationPct, walkPerHour } from './inflow';
 import * as meeting from './meeting';
 import { depart, leaversDue, moodMorning } from './mood';
 import { backMorning, growMorning, sickMorning, tenure } from './growth';
@@ -55,6 +55,7 @@ import { priorOf, referTo } from './refer';
 import { book, carriersOf, gurneyOf, lying, planRide, rideHome, ridesUntil } from './gurney';
 
 const MIN = 60;
+const HOUR = 60 * MIN;
 const TRIAGE_RANK: Record<Triage, number> = { red: 0, yellow: 1, green: 2 };
 /** Сколько минут готовы ждать: красный не уходит, а ухудшается (`09-game-design.md` §4). */
 const PATIENCE: Record<Exclude<Triage, 'red'>, [number, number]> = { yellow: [120, 180], green: [60, 150] };
@@ -1016,7 +1017,7 @@ function flowArrive(db: ContentDb, s: ShiftState, ev: Extract<ShiftEvent, { kind
   // двери (spec 2026-10-door-benches)
   const stood = s.patients[id].stands;
   const sat = s.patients[id].bench !== undefined ? { bench: true as const } : {};
-  journey.arrived(s, s.patients[id], () => colleaguesOf(db, s).filter((m, _, list) => colleagueTakes(db, s, s.patients[id], m, list)).length, () => forPlayer(db, s, s.patients[id]), stood === 'far' ? { far: db.inflow?.hall ?? 0, ...sat } : stood === 'full' ? { full: true, ...sat } : {});
+  journey.arrived(s, s.patients[id], () => colleaguesOf(db, s).filter((m, _, list) => colleagueTakes(db, s, s.patients[id], m, list)).length, () => !!teach || forPlayer(db, s, s.patients[id]), stood === 'far' ? { far: db.inflow?.hall ?? 0, ...sat } : stood === 'full' ? { full: true, ...sat } : {});
 }
 
 /**
@@ -1091,9 +1092,9 @@ function mark(db: ContentDb, s: ShiftState, cmd: Extract<Command, { kind: 'mark'
  * ожидания и кабинет врача с врачом (`openBlocks`, как открытие смены «Анамнеза»); скорую принимают, когда работает
  * смотровая приёмного.
  */
-export function siteOpen(db: ContentDb, s: ShiftState, stream: 'walk' | 'amb' | 'ret'): boolean {
+export function siteOpen(db: ContentDb, s: ShiftState, stream: 'walk' | 'amb' | 'ret', at = s.t): boolean {
   if (stream === 'amb') return emergencyBays(db, s).length > 0;
-  const ctx = hospitalCtx(db, s);
+  const ctx = hospitalCtx(db, s, at);
   return openBlocks(db, ctx.plan, ctx.working, ctx.staffed).length === 0;
 }
 
@@ -1336,6 +1337,8 @@ function morning(db: ContentDb, s: ShiftState, notices: Notice[]) {
   // промежутка нет памяти, и новый отсчёт даёт тот же поток
   s.events = s.events.filter(e => e.event.kind !== 'flow' || e.event.stream === 'ret');
   planFlow(db, s);
+  // «Почему?» у цифр планёрки (spec 2026-10-why): от чего поток наступивших суток и сколько придёт
+  if (s.flow?.auto) summary.inflow = inflowDay(db, s);
   prune(s);
   notices.push({ kind: 'morning', summary, ...(broken.length > 0 ? { broken } : {}), ...(news ? { staff: news } : {}) });
   // «стало хуже» (spec 2026-10-economy, «Обход»): ваши лежащие — для автопаузы
@@ -1416,6 +1419,42 @@ export function capacityOf(db: ContentDb, s: ShiftState, at = s.t): Capacity {
     capacities.set(ctx, c);
   }
   return c;
+}
+
+/**
+ * Поток от больницы на сутки `s.day` (spec docs/specs/2026-10-why.md): по часам суток — с теми, кто в этот час в смене, сами
+ * и по записи — в часы приёма и пока больница открыта, как их считает `flowRate`; что его задаёт — кабинеты, специалисты и
+ * места смотровой в начале суток, репутация сейчас; на одного — кабинет и специалиста все часы приёма, место смотровой.
+ * Средние, до десятых.
+ */
+function inflowDay(db: ContentDb, s: ShiftState): InflowDay {
+  const base = (s.day - 1) * DAY;
+  const day = dayOf(db);
+  const [open, close] = hoursOf(db, s.flow!);
+  const reputation = s.economy?.reputation ?? db.economy.reputation.start;
+  const one: Capacity = { offices: 1, bays: 1, booked: [] };
+  let walk = 0;
+  let book = 0;
+  let amb = 0;
+  let hours = 0;
+  for (let h = 0; h < 24; h++) {
+    // середина часа этих суток: с 08:00 до полуночи — тот же календарный день, раньше — следующий
+    const at = base + (h * HOUR >= SHIFT_START ? 0 : DAY) + h * HOUR + HOUR / 2;
+    const c = capacityOf(db, s, at);
+    amb += (ambulancePerHour(db, c) * day.ambulance[h]) / 100;
+    if (h < open || h >= close) continue;
+    hours += day.walk[h] / 100;
+    if (s.hospital?.site && !siteOpen(db, s, 'walk', at)) continue;
+    walk += (walkPerHour(db, c, reputation) * day.walk[h]) / 100;
+    book += (bookedPerHour(db, reputation) * c.booked.length * day.walk[h]) / 100;
+  }
+  const now = capacityOf(db, s, base + SHIFT_START + HOUR / 2);
+  const tenth = (x: number) => Math.round(x * 10) / 10;
+  return {
+    offices: now.offices, booked: now.booked.length, bays: now.bays, pct: tenth(reputationPct(db, reputation)),
+    walk: tenth(walk), book: tenth(book), amb: tenth(amb),
+    perOffice: tenth(walkPerHour(db, one, reputation) * hours), perDoctor: tenth(bookedPerHour(db, reputation) * hours), perBay: tenth(ambulancePerHour(db, one) * 24),
+  };
 }
 
 /** Больница стала другой (стройка, найм, отложенный снос): поток, чья частота изменилась, — заново от этой минуты. */
@@ -3407,13 +3446,16 @@ function handle(db: ContentDb, s: ShiftState, ev: ShiftEvent, notices: Notice[])
     case 'patience': {
       const p = s.patients[ev.id];
       if (p.status !== 'waiting' || p.wait !== ev.wait) return;
+      // «Почему?» у цифр планёрки (spec 2026-10-why): почему ушёл — пока он ещё ждёт
+      const gone = s.flow ? leaving(db, s, p) : undefined;
       p.status = 'left';
       s.queue = s.queue.filter(x => x !== p.id);
       s.summary.left++;
-      // узкие места суток (spec 2026-10-economy): ждал врача до ухода
-      if (s.flow) meeting.left(s, p);
+      // узкие места суток (spec 2026-10-economy): ждал врача до ухода; и почему ушёл
+      if (gone) meeting.left(s, p, gone.why, gone.stood, gone.asks);
       notices.push({ kind: 'left', id: p.id });
       evict(s, p);
+      if (gone) journey.leftWhy(s, p, gone.why);
       return doors(db, s);
     }
     case 'flow':
@@ -3499,6 +3541,8 @@ function arrive(db: ContentDb, s: ShiftState, p: ShiftPatient, notices: Notice[]
   if (s.hospital && !s.flow && p.patience > 0 && s.queue.length >= ctx.seats) p.patience = Math.round(p.patience / 2);
   s.summary.arrived++;
   if (p.kind === 'return') s.summary.returnsToday++;
+  // «Почему?» у цифр планёрки (spec 2026-10-why): пришли по виду
+  if (s.flow) meeting.arrived(s, p.kind);
   // поток для ПК (spec 2026-10-walk): к какому врачу записан, где ждёт и когда туда дойдёт
   if (s.flow) seatPc(db, s, p, ctx, nurse);
   enqueue(s, p, s.t, p.seatAt ?? s.t);
@@ -3670,6 +3714,7 @@ function arriveByAmbulance(db: ContentDb, s: ShiftState, p: ShiftPatient, notice
   s.summary.arrived++;
   // вернулся с другой болезнью (часть 41б): инсульт после ТИА — тоже повторное обращение
   if (p.returnOf !== undefined) s.summary.returnsToday++;
+  if (s.flow) meeting.arrived(s, p.kind);
   ambulanceDay(s).arrived++;
   // фибрилляция желудочков до реперфузии (часть 39б): лежит в смотровой под монитором, ждёт у входа — с
   // бригадой скорой и её дефибриллятором
@@ -3765,6 +3810,22 @@ function results(db: ContentDb, s: ShiftState, p: ShiftPatient, notices: Notice[
     // у нанятого врача результаты ждёт он сам — его следующий шаг уже назначен
     notices.push({ kind: 'resultsReady', id: p.id });
   }
+}
+
+/**
+ * Почему уходит, не дождавшись (spec docs/specs/2026-10-why.md) — пока он ещё ждёт. По последнему ожиданию пути: его врач на
+ * перерыве; ждал вас. Иначе — по тому, кто принимает в час ухода: есть нанятый врач, который взял бы его, — все такие заняты
+ * (свободный позвал бы сразу); нет — в смене ни одного такого: смена кончилась, врача уволили, такого нет. Пути нет — другое.
+ * `stood` — стоял у кабинета (терпения вдвое меньше), `asks` — при приходе или сейчас врачи ждали вашего ответа.
+ */
+function leaving(db: ContentDb, s: ShiftState, p: ShiftPatient): { why: LeftWhy; stood: boolean; asks: boolean } {
+  const { wait, queue } = journey.lastWaits(s, p);
+  const why: LeftWhy = !wait || (wait.k !== 'queue' && wait.k !== 'rest') ? 'other'
+    : wait.k === 'rest' ? 'rest'
+      : wait.why === 'you' ? 'you'
+        : colleaguesOf(db, s).some((m, _, list) => colleagueTakes(db, s, p, m, list)) ? 'busy' : 'none';
+  const stood = queue !== undefined && (queue.full === true || queue.far !== undefined) && queue.bench !== true;
+  return { why, stood, asks: (queue?.asks ?? 0) > 0 || (s.consults?.length ?? 0) > 0 };
 }
 
 // --- нанятые врачи (spec 2026-09-hired-doctors) -------------------------------------------
