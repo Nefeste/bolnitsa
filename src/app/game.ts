@@ -37,7 +37,7 @@ import { Stage } from '../render/stage';
 import type { Projection, Quality } from '../render/view';
 import type { WallMode } from '../render/world';
 import type { ErrorList, SeenList } from '../sim/doctor';
-import { H, KINDS } from '../sim/pack';
+import { H, kindOf, REFERRED } from '../sim/pack';
 import { type Slice, SimClient } from '../sim/client';
 import type { PathView, World } from '../sim/protocol';
 import type { Actions, Hud, RoomCard, Speed, Store, Tab } from '../ui/store';
@@ -1150,7 +1150,7 @@ export class Game {
     const last = this.pop.lastOf(id);
     return {
       kind: 'patient', id, ...(r.name ? { name: r.name } : {}), sex: r.sex, age: r.age, ...(r.complaint ? { complaint: r.complaint } : {}), triage: last?.triage ?? 'green', doing: last?.doing ?? 'waiting',
-      visit: KINDS[Number(last?.kind ?? 1)] ?? 'walkIn', gone: true,
+      visit: kindOf(Number(last?.kind ?? 1)), gone: true,
     };
   }
 
@@ -1159,6 +1159,15 @@ export class Game {
     doctor: (staffId: string) => {
       const m = this.staff.find(x => x.id === staffId);
       return m ? genitive(this.db.roles[m.role], m.role) : T.flow.doctorAny;
+    },
+    // направлен к кому (spec docs/specs/2026-10-specialists.md, часть 2): должность в дательном падеже — и кто направил
+    dat: (staffId: string) => {
+      const m = this.staff.find(x => x.id === staffId);
+      return m ? this.names().dat(m.role) : T.flow.doctorAnyDat;
+    },
+    who: (staffId: string) => {
+      const m = this.staff.find(x => x.id === staffId);
+      return m ? named(this.db.roles[m.role]?.name, m.role) : T.flow.doctorAnyWho;
     },
     exam: (id: Id) => ({ name: named(this.db.exams[id]?.name, id), kind: this.db.exams[id]?.kind ?? 'lab' }),
     role: (id: Id) => named(this.db.roles[id]?.name, id),
@@ -1211,10 +1220,12 @@ export class Game {
     let patients: PatientRow[] = [];
     let patientsAll = 0;
     if (hud.tab === 'patients') {
-      // записан к специалисту — так и в строке (spec docs/specs/2026-10-specialists.md)
+      // записан к специалисту или направлен к врачу — так и в строке (spec docs/specs/2026-10-specialists.md, части 1 и 2)
       const title = (p: (typeof people)[number][1]) => {
         const who = T.card.patient(p.row.sex, p.row.age, p.row.name);
-        return p.row.to ? `${who} · ${T.card.booked(this.names().dat(p.row.to))}` : who;
+        if (p.row.to) return `${who} · ${T.card.booked(this.names().dat(p.row.to))}`;
+        const ref = Number(p.kind) & REFERRED ? this.pop.staffAt(p.by)?.role : undefined;
+        return ref ? `${who} · ${T.card.referred(this.names().dat(ref), p.row.sex === 'f')}` : who;
       };
       const list = people.map(([key, p]) => ({ ...p, key, id: p.row.id, title: title(p) }));
       ({ rows: patients, total: patientsAll } = patientRows(list, t, hud.patientFilter));

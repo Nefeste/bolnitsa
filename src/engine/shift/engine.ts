@@ -1,4 +1,4 @@
-// из anamnez: src/engine/shift/engine.ts @ 96503ac, изменено: разбор приёма нанятого врача — по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults); стройка ПК — команда `site`, событие `siteFree`, приход в закрытую больницу, аппараты коек ПИТ из плана (spec 2026-10-build); сутки целиком в потоке для ПК — часы приёма, поток по часам, планёрка в 08:00, обход нанятых врачей, ночь по часам (spec 2026-10-day); путь пациента — однострочные вызовы `journey.*` (spec 2026-10-flow-ui); фибрилляция желудочков после полуночи — в ночь суток поступления и в сменах «Анамнеза» (`hospitalDay`; так же в anamnez 0.6.4, Nefeste/anamnez#152); касса и поток от больницы, планёрка с узкими местами, «стало хуже», долгий случай нанятого врача (spec 2026-10-economy); ходьба в потоке для ПК — свой врач, свой зал, следующие у двери, приём, когда дошёл (spec 2026-10-walk); приём вашего — когда он дошёл, `meet` и событие `reach` (spec 2026-10-owner-play-2); карты ушедших — `s.past` (spec 2026-10-discharged-card); скамьи у дверей кабинетов — `bench` (spec 2026-10-door-benches); настроение нанятых на планёрке и уход сам в пересменку (spec 2026-10-staff-mood); рост, учёба и болезнь нанятых (spec 2026-10-staff-mood, части 3–5); каталка — перевозки лежачих, операция и снимки на каталке (spec 2026-10-orderlies); главврач утверждает — галочки «О чём спрашивать», решение на утверждении, «Ещё обследование», выписка через утверждение (spec 2026-10-two-ways, часть 2)
+// из anamnez: src/engine/shift/engine.ts @ 96503ac, изменено: разбор приёма нанятого врача — по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults); стройка ПК — команда `site`, событие `siteFree`, приход в закрытую больницу, аппараты коек ПИТ из плана (spec 2026-10-build); сутки целиком в потоке для ПК — часы приёма, поток по часам, планёрка в 08:00, обход нанятых врачей, ночь по часам (spec 2026-10-day); путь пациента — однострочные вызовы `journey.*` (spec 2026-10-flow-ui); фибрилляция желудочков после полуночи — в ночь суток поступления и в сменах «Анамнеза» (`hospitalDay`; так же в anamnez 0.6.4, Nefeste/anamnez#152); касса и поток от больницы, планёрка с узкими местами, «стало хуже», долгий случай нанятого врача (spec 2026-10-economy); ходьба в потоке для ПК — свой врач, свой зал, следующие у двери, приём, когда дошёл (spec 2026-10-walk); приём вашего — когда он дошёл, `meet` и событие `reach` (spec 2026-10-owner-play-2); карты ушедших — `s.past` (spec 2026-10-discharged-card); скамьи у дверей кабинетов — `bench` (spec 2026-10-door-benches); настроение нанятых на планёрке и уход сам в пересменку (spec 2026-10-staff-mood); рост, учёба и болезнь нанятых (spec 2026-10-staff-mood, части 3–5); каталка — перевозки лежачих, операция и снимки на каталке (spec 2026-10-orderlies); главврач утверждает — галочки «О чём спрашивать», решение на утверждении, «Ещё обследование», выписка через утверждение (spec 2026-10-two-ways, часть 2); направление к специалисту — правило нанятого терапевта, команда `refer`, поправка профиля направленных (spec 2026-10-specialists, часть 2)
 // Движок смены: приход пациентов, сортировка, очередь, терпение, обследования со своими
 // сроками, закрытие случая и дня (spec 2026-09-first-shift, «Движок»; ADR 0005).
 //
@@ -14,7 +14,7 @@ import {
 import { type CampaignProgress, campaignEvening, chapterOf, nextChapterOf, plotOf, scenarioOf, startChapter, tutorialDayOf } from '../campaign/campaign';
 import { build, emptyPlot, type HospitalState, type PlacedRoom, type Plan, planOf, presetHospital, sizeOf, UNDO_DEPTH, widenPlot } from '../hospital/build';
 import { bedsideIn, DOCTOR, doctorRoom, examWhere, NONE_BROKEN, openBlocks, type Problem, problemsOf, slotKey, type Staffing, workingRooms } from '../hospital/requirements';
-import { applicantsOf, doctorOf, dutyOf, grow, memberAt, onDuty, ORDERLY, presetStaff, PROFILE_PRIOR, readingOf, type StaffMember, speedOf, staffingOf, wageOf } from '../hospital/staff';
+import { applicantsOf, doctorOf, dutyOf, grow, memberAt, onDuty, ORDERLY, presetStaff, readingOf, type StaffMember, speedOf, staffingOf, wageOf } from '../hospital/staff';
 import { metersBetween, WALK_SPEED, walkSeconds } from '../hospital/walk';
 import { log2 } from '../core/math';
 import { P_ONE, RNG_VERSION, Rng } from '../core/rng';
@@ -51,6 +51,7 @@ import { depart, leaversDue, moodMorning } from './mood';
 import { backMorning, growMorning, sickMorning, tenure } from './growth';
 import { caseIncomeRooms, caseRoom, COMMON as ROOMS_COMMON, roomExpense, roomIncome } from './rooms';
 import { cover } from './reserve';
+import { priorOf, referTo } from './refer';
 import { book, carriersOf, gurneyOf, lying, planRide, rideHome, ridesUntil } from './gurney';
 
 const MIN = 60;
@@ -470,7 +471,7 @@ export function apply(db: ContentDb, s: ShiftState, cmd: Command, more?: () => b
 }
 
 /** Действия приёма: идут, только когда вы с пациентом. */
-const VISIT = new Set<Command['kind']>(['exam', 'waitResults', 'sendAway', 'diagnose', 'hypothesis', 'toggleTreatment', 'setting', 'finish']);
+const VISIT = new Set<Command['kind']>(['exam', 'waitResults', 'sendAway', 'diagnose', 'hypothesis', 'toggleTreatment', 'setting', 'finish', 'refer']);
 
 function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
   // поток для ПК (spec 2026-10-owner-play-2): пациент ещё идёт к вам — приём не начат
@@ -592,6 +593,8 @@ function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       return takeOver(db, s, cmd.id);
     case 'consult':
       return answerConsult(db, s, cmd);
+    case 'refer':
+      return referOwn(db, s, cmd.to);
     // «Главврач утверждает» (spec 2026-10-two-ways, F3): галочки — сразу, следующее решение врача уже по ним
     case 'asks': {
       const rules = ASK_RULES.filter(r => cmd.rules.includes(r));
@@ -4191,8 +4194,12 @@ function colleagueStep(db: ContentDb, s: ShiftState, p: ShiftPatient, ev?: Shift
   // ещё не просил и главврач о таком спрашивать велел (spec 2026-10-two-ways, F3); просил или не велели — решает тем, что знает
   if (s.flow && !p.asked && p.phase?.diagnosis === undefined && rules.includes('long') && longCase(db, s, p)) {
     colleagueJobs.delete(s);
-    const profile = p.to === m.id ? db.roles[m.role]?.profile : undefined;
-    const ask = askLong(db, { candidates: candidatesOf(db, p.departments ?? s.meta.department), obs: observationsOf(p), patient: p.patient, ...(profile ? { prior: { ids: profile, x: PROFILE_PRIOR } } : {}) });
+    const prior = priorOf(db, p, m);
+    const ask = askLong(db, { candidates: candidatesOf(db, p.departments ?? s.meta.department), obs: observationsOf(p), patient: p.patient, ...(prior ? { prior } : {}) });
+    // вторая гипотеза — из профиля специалиста, который сейчас принимает (решение владельца #112): направляет к нему, а не
+    // просит вас посмотреть
+    const to = referOf(db, s, p, m, ask.lead);
+    if (to) return sendOn(db, s, p, m, to);
     return openConsult(db, s, p, m, ask, notices);
   }
   // устал (spec 2026-10-staff-shifts, часть 2) — работает дольше
@@ -4211,10 +4218,14 @@ function colleagueStep(db: ContentDb, s: ShiftState, p: ShiftPatient, ev?: Shift
     }
   }
   // поток для ПК: выбрал диагноз — дальше только вопросы перед лечением и решение, — но не уверен: просит вас посмотреть, а
-  // больной ждёт у него (spec 2026-10-consults). О больном просят один раз; «не уверен» снят (spec 2026-10-two-ways, F3) — нет
-  if (s.flow && !p.asked && r.phase.diagnosis !== undefined && p.phase?.diagnosis === undefined && rules.includes('unsure')) {
+  // больной ждёт у него (spec 2026-10-consults). О больном просят один раз; «не уверен» снят (spec 2026-10-two-ways, F3) — нет.
+  // Вторая гипотеза — из профиля специалиста, который сейчас принимает (решение владельца #112): направляет к нему, а не
+  // просит; это его решение, вас оно не зовёт, — и при снятой галочке
+  if (s.flow && !p.asked && r.phase.diagnosis !== undefined && p.phase?.diagnosis === undefined && (rules.includes('unsure') || refers(db, s, p, m))) {
     const ask = askOf(db, s, p, m, r.phase.diagnosis, r.phase.confidence);
-    if (ask) {
+    const to = ask && referOf(db, s, p, m, ask.lead);
+    if (to) return sendOn(db, s, p, m, to);
+    if (ask && rules.includes('unsure')) {
       p.phase = r.phase;
       return openConsult(db, s, p, m, ask, notices);
     }
@@ -4284,11 +4295,34 @@ const hurried = (db: ContentDb, s: ShiftState, p: ShiftPatient): boolean =>
  * шага (он только что посчитан для тех же наблюдений и запомнен, поэтому почти даром).
  */
 function askOf(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffMember, dx: Id, confidence?: number): Ask | undefined {
-  const profile = p.to === m.id ? db.roles[m.role]?.profile : undefined;
+  const prior = priorOf(db, p, m);
   return askFor(db, {
     skill: m.skill, dx, ...(confidence !== undefined ? { confidence } : {}), candidates: candidatesOf(db, p.departments ?? s.meta.department), obs: observationsOf(p), patient: p.patient,
-    minutes: Math.round((s.t - p.arriveT) / 60), ...(profile ? { prior: { ids: profile, x: PROFILE_PRIOR } } : {}),
+    minutes: Math.round((s.t - p.arriveT) / 60), ...(prior ? { prior } : {}),
   });
+}
+
+/** Специалисты, которые сейчас принимают, — кроме `m`. */
+function specialistsNow(db: ContentDb, s: ShiftState, m: StaffMember): StaffMember[] {
+  return colleaguesOf(db, s).filter(x => x.id !== m.id && db.roles[x.role]?.profile !== undefined);
+}
+
+/**
+ * Может ли нанятый врач `m` направить больного к специалисту (решение владельца #112): он не специалист, больного ещё не
+ * направляли, тот не лежит в смотровой приёмного, а специалист сейчас принимает. Поток для ПК; без числа `consults.refer`
+ * (база тестов, пробы) — не направляют.
+ */
+function refers(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffMember): boolean {
+  return s.flow !== undefined && db.consults?.refer !== undefined && db.roles[m.role]?.profile === undefined && p.ref === undefined && !p.bay
+    && specialistsNow(db, s, m).length > 0;
+}
+
+/**
+ * К кому нанятый терапевт `m` направит больного, а не попросит вас посмотреть (решение владельца #112, «вариант 2»): к
+ * специалисту, который сейчас принимает, по второй гипотезе (`referTo`).
+ */
+function referOf(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffMember, lead: readonly Belief[]): StaffMember | undefined {
+  return lead.length >= 2 && refers(db, s, p, m) ? referTo(db, specialistsNow(db, s, m), lead) : undefined;
 }
 
 /**
@@ -4341,26 +4375,66 @@ function answerConsult(db: ContentDb, s: ShiftState, cmd: Extract<Command, { kin
     colleagueStep(db, s, p, undefined, notices);
     return notices;
   }
+  passOn(db, s, p, m, to);
+  return [];
+}
+
+/**
+ * Передать больного другому нанятому врачу `to` (spec 2026-10-consults; spec 2026-10-specialists, часть 2): тот позовёт его
+ * первым, когда освободится, и рассудит заново своим навыком — со всем, что узнано; специалист — с поправкой профиля
+ * направленного (`priorOf`). Поток для ПК (spec 2026-10-walk): из кабинета `room` прежнего врача или вашего — в зону ожидания
+ * у кабинета нового, к `at`. `from` — направил нанятый врач сам (по второй гипотезе); нет — вы.
+ */
+function handOver(db: ContentDb, s: ShiftState, p: ShiftPatient, to: StaffMember, room: string | undefined, at: number, from?: string) {
   p.by = to.id;
+  p.ref = to.id;
   p.phase = {};
   delete p.tired;
   p.status = 'waiting';
   p.queuedT = s.t;
   p.wait++;
   delete p.out;
-  // поток для ПК (spec 2026-10-walk): из кабинета прежнего врача — в зону ожидания у кабинета нового
   if (s.flow) {
     const ctx = hospitalCtx(db, s);
     p.doc = to.id;
-    moveTo(ctx.plan, ctx.working, p, m.room, to.room, s.t + MIN);
+    moveTo(ctx.plan, ctx.working, p, room, to.room, at);
     seatDoor(db, s, ctx.plan, p);
   }
-  journey.own(s, p, true);
-  // минута — передать карту, и этот врач свободен
+  journey.own(s, p, true, from);
+}
+
+/** Нанятый врач `m` передаёт больного со своего приёма врачу `to`: минута — передать карту, и он свободен. */
+function passOn(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffMember, to: StaffMember, from?: string) {
+  handOver(db, s, p, to, m.room, s.t + MIN, from);
   (s.desk ??= {})[m.id] = s.t + MIN;
   schedule(s, s.t + MIN, { kind: 'free', by: m.id });
   staffDesks(db, s);
-  return [];
+}
+
+/**
+ * Нанятый терапевт `m` не уверен, а его вторая гипотеза — из профиля специалиста `to` (решение владельца #112): направляет
+ * больного к нему сам, а не просит вас посмотреть; в итогах дня врача — `sent`.
+ */
+function sendOn(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffMember, to: StaffMember) {
+  const day = colleagueDay(s, m.id);
+  day.sent = (day.sent ?? 0) + 1;
+  passOn(db, s, p, m, to, m.id);
+}
+
+/**
+ * «Направить к …» из вашего кабинета (решение владельца #112): ваш больной — к специалисту `to`, который сейчас принимает, со
+ * всем, что узнано; тот позовёт его первым, когда освободится, и поведёт с поправкой профиля. Ждёт результатов, вышел на
+ * обследование или лежит в смотровой приёмного — нельзя. Минута — направление, и вы свободны.
+ */
+function referOwn(db: ContentDb, s: ShiftState, toId: string): Notice[] {
+  const p = current(s);
+  if (!s.flow || !p || p.pending.length > 0 || isOut(s, p) || p.bay) return [];
+  const to = colleaguesOf(db, s).find(x => x.id === toId && db.roles[x.role]?.profile !== undefined);
+  if (!to) return [];
+  s.current = undefined;
+  handOver(db, s, p, to, doctorRoom(hospitalCtx(db, s).plan), s.t + MIN);
+  staffDesks(db, s);
+  return later(db, s, p, MIN);
 }
 
 // --- «Главврач утверждает» (spec docs/specs/2026-10-two-ways.md, F2–F3, поток для ПК) --------------------------------------
@@ -4375,10 +4449,10 @@ const chiefDay = (s: ShiftState): ChiefDay => (s.summary.chief ??= { asked: 0, a
 function approveOf(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffMember, dx: Id, setting: Setting): ApproveAsk | undefined {
   const rules = asksOf(s);
   if (!db.consults || !asksDecisions(rules, p.chief === true)) return undefined;
-  const profile = p.to === m.id ? db.roles[m.role]?.profile : undefined;
+  const prior = priorOf(db, p, m);
   return approveFor(db, {
     rules, chief: p.chief === true, dx, setting, candidates: candidatesOf(db, p.departments ?? s.meta.department), obs: observationsOf(p), patient: p.patient,
-    minutes: Math.round((s.t - p.arriveT) / 60), ...(profile ? { prior: { ids: profile, x: PROFILE_PRIOR } } : {}),
+    minutes: Math.round((s.t - p.arriveT) / 60), ...(prior ? { prior } : {}),
   });
 }
 
@@ -4497,19 +4571,8 @@ function answerApproval(db: ContentDb, s: ShiftState, cmd: Extract<Command, { ki
   const to = cmd.answer === 'refer' ? colleaguesOf(db, s).find(x => x.id === cmd.to && x.id !== a.by) : undefined;
   if (!to) return [];
   closeApproval(s, p, 'changed');
-  p.by = to.id;
-  p.phase = {};
-  delete p.tired;
-  p.queuedT = s.t;
-  p.wait++;
-  // поток для ПК (spec 2026-10-walk): от двери прежнего врача — в зону ожидания у кабинета нового
-  if (s.flow) {
-    const ctx = hospitalCtx(db, s);
-    p.doc = to.id;
-    moveTo(ctx.plan, ctx.working, p, ctx.all.find(x => x.id === a.by)?.room, to.room, s.t);
-    seatDoor(db, s, ctx.plan, p);
-  }
-  journey.own(s, p, true);
+  // от двери прежнего врача — в зону ожидания у кабинета нового
+  handOver(db, s, p, to, s.flow ? hospitalCtx(db, s).all.find(x => x.id === a.by)?.room : undefined, s.t);
   staffDesks(db, s);
   return [];
 }
@@ -4562,15 +4625,15 @@ function colleagueParts(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffM
   // «Наставник» (spec 2026-10-skills): нанятый врач под вашим началом реже забывает спросить
   const forget = how.forget / mentorOf(db, s.meta.skills, m.role);
   // специалист знает, с чем к нему записываются (spec 2026-10-chapter-4, часть 60а): у записанного к нему болезни профиля
-  // вероятнее — во столько раз
-  const profile = p.to === m.id ? db.roles[m.role]?.profile : undefined;
+  // вероятнее — во столько раз; у направленного к нему — во столько, во сколько вероятнее у направленных (`priorOf`)
+  const prior = priorOf(db, p, m);
   // долгий случай, о котором уже просил (spec 2026-10-economy): решает тем, что знает — ни анализов, ни снимков, только вопросы
   // перед лечением; уверенности не ждёт. Устал (spec 2026-10-staff-shifts, часть 2) — ставит диагноз при меньшей уверенности
   const hurry = hurried(db, s, p);
   return stepParts(db, p.patient, observationsOf(p), p.done, p.phase ?? {}, {
     candidates: candidatesOf(db, p.departments ?? s.meta.department), exams: hurry ? examsHere(db, s).filter(id => db.exams[id].kind === 'ask') : examsHere(db, s),
     threshold: hurry ? 0 : blurredOf(db, s, m, how.threshold), minGain: how.minGain,
-    ...(profile ? { prior: { ids: profile, x: PROFILE_PRIOR } } : {}),
+    ...(prior ? { prior } : {}),
     // навык 1–2 иногда забывает спросить перед лечением — жребий своей ветви
     skipAsk: q => forget > 0 && branch(s, `forget:${p.id}:${q}`).chance(forget * 100),
     // и что у постели (часть 39а): под монитором — тромболизис; и сколько прошло с прихода (часть 41а)
