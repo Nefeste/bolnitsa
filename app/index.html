@@ -44,6 +44,14 @@
     .top .stat b { color: #fff; }
     .top .warn { color: var(--yellow); }
     .notice { color: var(--muted); font-size: 12px; padding: 3px 10px; max-width: 100%; box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* всплывающие извещения (spec docs/specs/2026-10-aaa-polish.md, «Извещения»): новое сверху, срочное — красной полосой */
+    .toasts { display: flex; flex-direction: column; align-items: center; gap: 4px; max-width: 100%; }
+    .toast { color: var(--text); border-left: 3px solid transparent; transition: opacity 0.25s linear; animation: toast-in 0.2s ease-out; }
+    .toast.urgent { border-left-color: var(--red); }
+    .toast.warn { border-left-color: var(--yellow); }
+    .toast.go { cursor: pointer; }
+    .toast.go:hover { background: rgba(40, 52, 58, 0.95); }
+    @keyframes toast-in { from { transform: translateY(-6px); opacity: 0; } to { transform: none; } }
     .label { color: var(--muted); margin: 0 2px 0 8px; }
     /* над окном врача: раскрытое меню «Слои» доходит до него и не должно уходить под него */
     .left { position: absolute; left: 8px; top: 56px; width: 150px; display: flex; flex-direction: column; gap: 6px; padding: 8px; z-index: 4; }

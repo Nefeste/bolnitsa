@@ -12,6 +12,7 @@ import type { EconomyHud, MoneyAction } from '../app/money';
 import type { HintKey } from '../app/hints';
 import type { SaveRow } from '../app/saves';
 import type { Role } from '../app/roles';
+import type { NoticeRow } from '../app/toasts';
 import type { QualityMode } from '../app/settings';
 import type { ScenarioAction, ScenarioHud } from '../app/scenario';
 import type { Metric } from '../app/metrics';
@@ -127,7 +128,7 @@ export interface Hud {
   /** «Следить» (spec docs/specs/2026-10-owner-play-2.md): камера идёт за выбранным */
   following?: boolean;
   room?: RoomCard;
-  notices: { t: number; text: string }[];
+  notices: NoticeRow[];
   /** вкладка «Пациенты» (spec docs/specs/2026-10-flow-ui.md): строки по фильтру, сколько всего, ушедшие */
   patients: PatientRow[];
   patientsAll: number;

@@ -637,6 +637,24 @@ async function partThree() {
     .catch(() => null);
   if (moved) ok(`пациенты ходят: сдвинулись ${moved.n} из ${moved.of}, идут ${moved.walking} (${moved.clock})`);
   else fail('пациенты стоят');
+  // извещения всплывающими строками (spec docs/specs/2026-10-aaa-polish.md, «Извещения»): под часами — не больше трёх;
+  // щелчок по строке о больном — камера к нему; на паузе новых нет, и строки гаснут сами
+  const toasts = await until(() => document.querySelectorAll('#toasts .toast').length > 0, null, 60000).then(() => true).catch(() => false);
+  await page.evaluate(() => window.__game.actions.setSpeed(0));
+  const shown = await page.evaluate(() => [...document.querySelectorAll('#toasts .toast')].map(e => ({ text: e.textContent, go: e.classList.contains('go') })));
+  if (toasts && shown.length >= 1 && shown.length <= 3) ok(`извещения под часами: ${shown.length} — «${shown[0].text}»`);
+  else fail(`извещения под часами: ${JSON.stringify(shown)}`);
+  const go = shown.findIndex(x => x.go);
+  if (go >= 0) {
+    const was = await page.evaluate(() => [window.__game.stage.cam.target.x, window.__game.stage.cam.target.z]);
+    await page.click(`#toasts .toast:nth-child(${go + 1})`);
+    const flew = await until(w => { const t = window.__game.stage.cam.target; return window.__game.stage.cam.flying || Math.hypot(t.x - w[0], t.z - w[1]) > 0.5; }, was, 10000).then(() => true).catch(() => false);
+    if (flew) ok(`щелчок по извещению «${shown[go].text}» — камера к больному`);
+    else fail('щелчок по извещению о больном — камера на месте');
+  }
+  const faded = await until(() => !document.getElementById('toasts'), null, 15000).then(() => true).catch(() => false);
+  if (faded) ok('на паузе извещения гаснут сами (обычное — 6 с, срочное — 12 с)');
+  else fail(`извещения не гаснут: ${await page.evaluate(() => document.getElementById('toasts')?.textContent)}`);
   // ходьба в движке (spec docs/specs/2026-10-walk.md): идущий — в карточке «идёт … · дойдёт к ЧЧ:ММ»; дошёл (в движке и на
   // экране) — «идёт» и срок пропадают
   await page.keyboard.press('Digit1');

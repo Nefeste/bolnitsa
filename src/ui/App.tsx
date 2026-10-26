@@ -1,7 +1,7 @@
 // Панели игры (spec docs/specs/2026-10-shell-3d.md, «Панели»; геймдизайн §12): сверху — день и часы, скорость, касса,
 // репутация, стройка, извещения; слева — стройка (spec docs/specs/2026-10-build.md) и слои; справа — вкладки; снизу —
 // карточка выбранного. Панели тонкие: читают хранилище (store.ts) и просят игру (Actions); 3D-кадр живёт вне React.
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { medicLine, rideLine, wheelLine } from '../app/flow';
 import type { SaveRow } from '../app/saves';
 import { clock, type Lang, lang, money, T } from '../i18n';
@@ -12,6 +12,7 @@ import { Card } from './doctor/Card';
 import { Encyclopedia, openEncyclopedia } from './Encyclopedia';
 import { Asks, Dock, OfficeRow, TakeCase } from './doctor/Dock';
 import { ROLES } from '../app/roles';
+import { toastsOf } from '../app/toasts';
 import type { QualityMode } from '../app/settings';
 import { Meeting, Reports, signed } from './Meeting';
 import { Layers, PathSection, PatientsTab } from './flow';
@@ -69,13 +70,35 @@ function TopBar({ hud, actions }: P) {
   );
 }
 
-/** Последнее извещение — под часами, целиком (в верхней полосе оно ужималось до многоточия); вся лента — в «Журнале». */
-function Notice({ hud }: P) {
-  const last = hud.notices[0];
-  if (!last) return null;
+/**
+ * Извещения всплывающими строками под часами (spec docs/specs/2026-10-aaa-polish.md, «Извещения»): последние три, новое
+ * сверху; гаснут сами (`toastsOf`), срочное — с красной полосой и дольше; щелчок по строке с больным — камера к нему. Вся
+ * лента — в «Журнале».
+ */
+function Toasts({ hud, actions }: P) {
+  const [now, setNow] = useState(() => performance.now());
+  const rows = toastsOf(hud.notices, now, hud.t);
+  const live = rows.length > 0;
+  // пока строки на экране — часы окна, чтобы они гасли и без новых извещений
+  useEffect(() => {
+    if (!live) return;
+    const id = setInterval(() => setNow(performance.now()), 250);
+    return () => clearInterval(id);
+  }, [live]);
+  if (!live) return null;
   return (
-    <div className="notice panel" id="notice" title={hud.notices.map(n => `${clock(n.t)} ${n.text}`).join('\n')}>
-      🔔 {clock(last.t)} {last.text}
+    <div className="toasts" id="toasts">
+      {rows.map(({ n, opacity }) => (
+        <div
+          key={n.at}
+          className={`notice panel toast${n.tone ? ` ${n.tone}` : ''}${n.who ? ' go' : ''}`}
+          style={{ opacity }}
+          title={n.who ? T.top.toastFind : undefined}
+          onClick={n.who ? () => actions.find(n.who!) : undefined}
+        >
+          {clock(n.t)} {n.text}
+        </div>
+      ))}
     </div>
   );
 }
@@ -1049,7 +1072,7 @@ export function App({ store, actions, names }: { store: Store; actions: Actions;
         {/* письмо наставницы (spec docs/specs/2026-10-scenario-1.md) — над строкой подсказки: строка говорит как, письмо — зачем */}
         {!hud.doctor?.card ? <LetterCard s={hud.scenario} actions={actions} /> : null}
         <HintStrip {...p} />
-        <Notice {...p} />
+        <Toasts {...p} />
       </div>
       <LeftTools {...p} />
       <GameMenu {...p} />
