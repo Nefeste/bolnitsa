@@ -1456,6 +1456,22 @@ export interface Money {
   loan: { step: number; days: number; fee: number };
 }
 
+/** Уровень оси «Управление» (spec docs/specs/2026-10-difficulty.md; геймдизайн §10): «Спокойно», «Обычно», «Трудно». */
+export type Manage = 'calm' | 'normal' | 'hard';
+
+/**
+ * Числа уровня «Управления» (content/hospital/difficulty.yaml): множители к числам «Обычно», % — поток (сами, по записи,
+ * скорая), терпение пришедших, зарплаты (и рынок), поломки аппаратов; предел минуса, ₽; касса начала — бюджет песочницы.
+ */
+export interface ManageLevel {
+  inflow: number;
+  patience: number;
+  salary: number;
+  breakdown: number;
+  overdraft: number;
+  budget: 'modest' | 'normal' | 'generous';
+}
+
 /**
  * Сутки целиком «Больницы» (spec docs/specs/2026-10-day.md), поток для ПК: часы идут без остановки, амбулатория — по часам
  * работы, скорая — круглые сутки. Игровые числа — гипотезы.
@@ -1498,6 +1514,8 @@ export interface ContentDb {
   money?: Money;
   /** отделения ПК (spec docs/specs/2026-10-departments.md), по порядку записи; нет (база тестов) — отделений у помещений нет */
   departments?: Record<Id, Department>;
+  /** ось «Управление» (spec 2026-10-difficulty): «Спокойно» и «Трудно»; «Обычно» — числа базы как есть; нет — только «Обычно» */
+  manage?: Record<Exclude<Manage, 'normal'>, ManageLevel>;
   characters: Record<Id, Character>;
   chapters: Record<Id, Chapter>;
   /** сценарии кампании ПК (spec docs/specs/2026-10-scenario-1.md); нет (база тестов) — сценариев нет */

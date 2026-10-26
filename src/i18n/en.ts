@@ -258,6 +258,25 @@ export const en: Strings = {
     text: 'Text size',
     textSize: ['normal', 'larger', 'large'],
   },
+  manage: {
+    title: 'Difficulty',
+    axis: 'Management',
+    name: { calm: 'Calm', normal: 'Normal', hard: 'Hard' },
+    line: {
+      calm: 'Fewer patients, and they wait longer; staff cost less, machines break less often; more money at the start.',
+      normal: 'Flow, patience, wages and cash as designed.',
+      hard: 'More patients, and they wait less; staff cost more, machines break more often; less money at the start.',
+    },
+    numbers: (inflow: string, patience: string, salary: string, breakdown: string, limit: string, cash?: string) =>
+      `flow ${inflow} · patience ${patience} · wages ${salary} · breakdowns ${breakdown} · overdraft down to ${limit}${cash ? ` · cash ${cash}` : ''}`,
+    soft: 'Soft mode',
+    softHint: 'Whoever was to die is transferred to the regional hospital in a severe state instead. The case review is the same.',
+    medicine: 'Hints in the patient card — from «Intern» to «Doctor» — are chosen in the doctor window.',
+    scenario: 'The scenario’s goals and cash are the same on any level.',
+    go: 'Start',
+    now: 'The change applies from this minute: the flow from the next arrival, patience for new arrivals, wages from the next payment, the overdraft limit at once. The level and soft mode belong to this game and are kept in its saves.',
+    save: (level: string, soft: boolean) => (soft ? `${level}, soft mode` : level),
+  },
   card: {
     patient: (sex: 'm' | 'f', age: number, name?: string) => (name ? `${name}, ${age}` : `${sex === 'f' ? 'Female' : 'Male'} patient, ${age}`),
     booked: (who: string) => `booked with ${who}`,

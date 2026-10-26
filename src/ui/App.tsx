@@ -4,7 +4,7 @@
 import { type ReactNode, useEffect, useState } from 'react';
 import { medicLine, rideLine, wheelLine } from '../app/flow';
 import type { SaveRow } from '../app/saves';
-import { clock, type Lang, lang, money, T } from '../i18n';
+import { clock, factor, type Lang, lang, money, T } from '../i18n';
 import { lowerFirst } from '../i18n/case';
 import type { PersonInfo } from '../render/population';
 import type { WallMode } from '../render/world';
@@ -17,7 +17,8 @@ import { type QualityMode, TEXT_SCALES } from '../app/settings';
 import { Meeting, Reports, signed } from './Meeting';
 import { Layers, PathSection, PatientsTab } from './flow';
 import { byGuide, GoalsTab, GuideToggle, LetterCard, ScenarioDone, StepMark } from './Scenario';
-import { type Actions, type Hud, type RoomCard, type Speed, type Store, type Tab, type Tool, useHud } from './store';
+import { type Actions, type Hud, type Level, type LevelRow, type RoomCard, type Speed, type Store, type Tab, type Tool, useHud } from './store';
+import type { Id, Manage } from '../content/types';
 
 /** Названия из базы: помещения, должности, признаки. */
 export interface Names {
@@ -204,6 +205,45 @@ function SettingsPanel({ hud, actions }: P) {
         <input type="checkbox" id="debug" checked={hud.debug} onChange={actions.toggleDebug} /> {T.view.debug}
       </label>
       <p className="muted small">{t.where}</p>
+      {/* сложность этой игры (spec docs/specs/2026-10-difficulty.md, часть 2; решение владельца #136): в любой момент */}
+      <h3 className="sub">{T.manage.title}</h3>
+      <Difficulty level={{ manage: hud.manage, soft: hud.soft }} set={l => (l.manage !== hud.manage ? actions.setManage(l.manage) : actions.setSoft(l.soft))} />
+      <p className="muted small">{T.manage.now}</p>
+    </div>
+  );
+}
+
+const MANAGES: readonly Manage[] = ['calm', 'normal', 'hard'];
+
+/**
+ * Сложность (spec docs/specs/2026-10-difficulty.md, часть 2; решения владельца #135–#137): уровень «Управления» — три кнопки,
+ * под ними — что он меняет и его числа из базы; «Мягкий режим» — галочка. На втором шаге экрана начала и в «Настройках».
+ * `cash` — касса начала этого начала; у сценария она своя — нет.
+ */
+function Difficulty({ level, set, row, cash }: { level: Level; set: (l: Level) => void; row?: LevelRow; cash?: number }) {
+  const t = T.manage;
+  return (
+    <div className="difficulty" id="difficulty">
+      <div className="label">{t.axis}</div>
+      <div className="row">
+        {MANAGES.map(m => (
+          <Btn key={m} id={`manage-${m}`} on={level.manage === m} onClick={() => set({ ...level, manage: m })}>
+            {t.name[m]}
+          </Btn>
+        ))}
+      </div>
+      <p className="small" id="manage-line">
+        {t.line[level.manage]}
+      </p>
+      {row ? (
+        <p className="muted small" id="manage-numbers">
+          {t.numbers(factor(row.inflow), factor(row.patience), factor(row.salary), factor(row.breakdown), row.overdraft !== undefined ? money(row.overdraft) : '—', cash !== undefined ? money(cash) : undefined)}
+        </p>
+      ) : null}
+      <label className="check">
+        <input type="checkbox" id="soft" checked={level.soft} onChange={e => set({ ...level, soft: e.target.checked })} /> {t.soft}
+      </label>
+      <p className="muted small">{t.softHint}</p>
     </div>
   );
 }
@@ -947,7 +987,9 @@ function saveText(r: SaveRow): { title: string; sub: string } {
   const m = r.meta;
   if (!m) return { title: r.slot, sub: T.saves.noMeta };
   const from = m.scenario ? (scenarioNames[m.scenario] ?? m.scenario) : startName(m.start);
-  return { title: T.saves.row(m.day, clock(m.t)), sub: [from, T.saves.kind[m.kind] ?? m.kind, T.saves.savedAt(when(m.savedAt))].join(' · ') };
+  // сложность (spec docs/specs/2026-10-difficulty.md, часть 2): сохранения до неё — «Обычно»
+  const level = T.manage.save(T.manage.name[m.manage ?? 'normal'], m.soft === true);
+  return { title: T.saves.row(m.day, clock(m.t)), sub: [from, level, T.saves.kind[m.kind] ?? m.kind, T.saves.savedAt(when(m.savedAt))].join(' · ') };
 }
 
 /** Список сохранений (spec docs/specs/2026-10-saves.md): «Загрузить», в меню игры — и «Удалить». */
@@ -1016,23 +1058,56 @@ function GameMenu({ hud, actions }: P) {
   );
 }
 
+/** Сложность новой игры по умолчанию: «Обычно», мягкий режим выключен (решение владельца #137). */
+const NORMAL: Level = { manage: 'normal', soft: false };
+
 /**
- * Второй шаг экрана начала (spec docs/specs/2026-10-two-ways.md, F4; решение владельца #67): «Кто вы» — три карточки, по
- * строке о каждой; «Назад» — к выбору больницы.
+ * Второй шаг экрана начала (spec docs/specs/2026-10-two-ways.md, F4; решение владельца #67): сложность (spec
+ * docs/specs/2026-10-difficulty.md, часть 2) и «Кто вы» — три карточки, по строке о каждой; карточка начинает игру.
+ * «Назад» — к выбору больницы.
  */
-function RoleChooser({ start, actions, back }: { start: 'empty' | 'preset' | 'poly'; actions: Actions; back: () => void }) {
+function RoleChooser({ start, hud, actions, back }: { start: 'empty' | 'preset' | 'poly'; hud: Hud; actions: Actions; back: () => void }) {
   const t = T.doctor.role;
+  const [level, setLevel] = useState<Level>(NORMAL);
+  const row = hud.startLevels?.[level.manage];
   return (
     <div className="start panel" id="start-roles">
       <div className="game">{T.app.title}</div>
+      <h2>{T.manage.title}</h2>
+      <Difficulty level={level} set={setLevel} row={row} cash={row?.cash[start]} />
+      <p className="muted small">{T.manage.medicine}</p>
       <h2>{T.start.roleTitle}</h2>
       <p className="intro">{T.start.roleIntro}</p>
       {ROLES.map(r => (
-        <button key={r} type="button" id={`start-role-${r}`} onClick={() => actions.startGame(start, r)}>
+        <button key={r} type="button" id={`start-role-${r}`} onClick={() => actions.startGame(start, r, level)}>
           <b>{t.name[r]}</b>
           <span>{t.line[r]}</span>
         </button>
       ))}
+      <button type="button" id="start-back" className="small" onClick={back}>
+        ← {T.start.back}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Второй шаг сценария (spec docs/specs/2026-10-difficulty.md, часть 2): сценарий — на уровне игрока, роли нет — вы «Врач»
+ * (spec docs/specs/2026-10-scenario-1.md); цели и касса сценария — те же на любом уровне.
+ */
+function ScenarioStart({ sc, hud, actions, back }: { sc: { id: Id; title: string; about: string }; hud: Hud; actions: Actions; back: () => void }) {
+  const [level, setLevel] = useState<Level>(NORMAL);
+  return (
+    <div className="start panel" id="start-scenario">
+      <div className="game">{T.app.title}</div>
+      <h2>{sc.title}</h2>
+      <p className="intro">{sc.about}</p>
+      <h2>{T.manage.title}</h2>
+      <Difficulty level={level} set={setLevel} row={hud.startLevels?.[level.manage]} />
+      <p className="muted small">{T.manage.scenario}</p>
+      <button type="button" id="start-go" className="on" onClick={() => actions.startGame({ scenario: sc.id }, undefined, level)}>
+        <b>{T.manage.go}</b>
+      </button>
       <button type="button" id="start-back" className="small" onClick={back}>
         ← {T.start.back}
       </button>
@@ -1046,8 +1121,11 @@ function StartChooser({ hud, actions }: P) {
   const last = saves.find(r => r.meta);
   // больница выбрана — второй шаг: кто вы (F4)
   const [pick, setPick] = useState<'empty' | 'preset' | 'poly' | null>(null);
+  // сценарий выбран — второй шаг: сложность (spec docs/specs/2026-10-difficulty.md, часть 2)
+  const [scenario, setScenario] = useState<{ id: Id; title: string; about: string } | null>(null);
   const campaign = hud.startScenarios ?? [];
-  if (pick) return <RoleChooser start={pick} actions={actions} back={() => setPick(null)} />;
+  if (pick) return <RoleChooser start={pick} hud={hud} actions={actions} back={() => setPick(null)} />;
+  if (scenario) return <ScenarioStart sc={scenario} hud={hud} actions={actions} back={() => setScenario(null)} />;
   return (
     <div className="start panel" id="start">
       <div className="game">{T.app.title}</div>
@@ -1070,7 +1148,7 @@ function StartChooser({ hud, actions }: P) {
         <>
           <h2>{T.scenario.campaign}</h2>
           {campaign.map(c => (
-            <button key={c.id} type="button" id={`start-${c.id.replace(/\./g, '-')}`} onClick={() => actions.startGame({ scenario: c.id })}>
+            <button key={c.id} type="button" id={`start-${c.id.replace(/\./g, '-')}`} onClick={() => setScenario(c)}>
               <b>{c.title}</b>
               <span>{c.about}</span>
             </button>

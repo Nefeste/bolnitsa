@@ -34,11 +34,13 @@
 // начала, письма наставницы к состояниям подсказок и «в начале», каталог стройки сценария, свой кабинет, первые трое —
 // заданные, «Цели» и «Без обучения», «Письма» на планёрке, tools/app/e2e-scenario.mjs. Часть 25 — слой «Показатели»:
 // столбики над помещениями из меню «Слои», высота по людям, наведение и щелчок по столбику, «Ожидание», M по кругу,
-// показатель запомнен, tools/app/e2e-metrics.mjs.
+// показатель запомнен, tools/app/e2e-metrics.mjs. Часть 26 — направление к специалисту, tools/app/e2e-referral.mjs. Часть 27 —
+// сложность: второй шаг экрана начала — «Управление» и мягкий режим, игра на выбранном уровне, смена в «Настройках», строка
+// сохранения, tools/app/e2e-difficulty.mjs.
 // Ошибок в консоли и запросов наружу нет.
 // Снимки — tools/app/out/e2e.png, e2e-build-*.png и e2e-flow-*.png; `--shots high` — снимки частей 2 и 3 в этом качестве
 // (на время снимка).
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|…|26 или 7,10,11] [--shots low|medium|high] [--port 8093]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|…|28 или 7,10,11] [--shots low|medium|high] [--port 8093]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -60,6 +62,7 @@ import { ownerTwoPart } from './e2e-owner2.mjs';
 import { peoplePart } from './e2e-people.mjs';
 import { polyPart } from './e2e-poly.mjs';
 import { dischargedPart } from './e2e-discharged.mjs';
+import { difficultyPart } from './e2e-difficulty.mjs';
 import { readyPart } from './e2e-ready.mjs';
 import { referralPart } from './e2e-referral.mjs';
 import { deptsPart } from './e2e-depts.mjs';
@@ -178,7 +181,9 @@ try {
   if (run(25)) await metricsPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   // часть 26 — направление к специалисту (spec docs/specs/2026-10-specialists.md, часть 2): tools/app/e2e-referral.mjs
   if (run(26)) await referralPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
-  // часть 28 — отделения на карте (spec docs/specs/2026-10-departments.md, часть 2; 27 — у сложности): tools/app/e2e-depts.mjs
+  // часть 27 — сложность (spec docs/specs/2026-10-difficulty.md, часть 2): tools/app/e2e-difficulty.mjs
+  if (run(27)) await difficultyPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  // часть 28 — отделения на карте (spec docs/specs/2026-10-departments.md, часть 2): tools/app/e2e-depts.mjs
   if (run(28)) await deptsPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');

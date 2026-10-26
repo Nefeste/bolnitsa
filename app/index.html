@@ -212,12 +212,22 @@
     ul.saves li .who { flex: 1 1 100%; min-width: 0; }
     .gamemenu { position: absolute; left: 174px; top: 56px; width: 340px; max-height: 70vh; overflow-y: auto; z-index: 7; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; background: rgba(18, 25, 29, 0.98); }
     /* «Настройки» (docs/specs/2026-10-settings.md): окно на месте меню игры, из которого открываются */
-    .settings { position: absolute; left: 174px; top: 56px; width: 380px; z-index: 7; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; background: rgba(18, 25, 29, 0.98); }
+    .settings { position: absolute; left: 174px; top: 56px; width: 380px; z-index: 7; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; background: rgba(18, 25, 29, 0.98); max-height: calc((100vh - 72px) / var(--ui-k, 1)); overflow-y: auto; }
     .settings .row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
     .settings .row .close { margin-left: auto; }
     .settings .label { margin: 4px 0 0; }
     .settings .check { display: flex; gap: 6px; align-items: center; cursor: pointer; margin-top: 4px; }
     .settings p { margin: 0; }
+    /* сложность (docs/specs/2026-10-difficulty.md, часть 2): уровень «Управления» и мягкий режим — второй шаг экрана начала и
+       «Настройки» */
+    .difficulty { display: flex; flex-direction: column; gap: 4px; }
+    .difficulty .row { display: flex; flex-wrap: wrap; gap: 4px; }
+    .difficulty .label { margin: 0; }
+    .difficulty p { margin: 0; line-height: 1.4; }
+    .difficulty .check { display: flex; gap: 6px; align-items: center; cursor: pointer; margin-top: 2px; }
+    .start .difficulty .row button { flex-direction: row; padding: 5px 14px; }
+    .start > p.small { margin: 0; line-height: 1.4; }
+    .settings h3.sub { margin: 8px 0 0; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, .1); font-size: 12px; color: var(--accent); text-transform: uppercase; letter-spacing: .05em; }
     .start button.on span { color: #0b1a1e; opacity: .8; }
     /* экран начала на живой сцене (docs/specs/2026-10-aaa-polish.md): вид закрыт цветом фона и открывается, когда сцена дошла
        до приёма, — закрыт, а не прозрачен: кадры прозрачного вида браузер не ждёт, и они копятся; к краям темнее; панель —
