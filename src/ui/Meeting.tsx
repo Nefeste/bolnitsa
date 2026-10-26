@@ -1,12 +1,13 @@
 // Экран планёрки в 08:00 и вкладка «Отчёты» (spec docs/specs/2026-10-economy.md, «Планёрка»; геймдизайн §12): сутки в цифрах,
 // нанятые врачи, касса по статьям, репутация и её причины, узкие места, что сломалось, кому из ваших лежащих хуже, персонал —
 // кто собирается уйти и кто уходит (spec docs/specs/2026-10-staff-mood.md), итог главврача и ошибки нанятых врачей (spec
-// docs/specs/2026-10-two-ways.md, F5), подсказка, часы приёма, кредит. Данные — из окна (src/app/money.ts), слова — здесь, при отрисовке.
+// docs/specs/2026-10-two-ways.md, F5), подсказка, часы приёма, кредит; «Почему?» у пришедших и ушедших (spec
+// docs/specs/2026-10-why.md). Данные — из окна (src/app/money.ts), слова — здесь, при отрисовке.
 import { type ReactNode, useState } from 'react';
 import { PAYERS } from '../engine/economy/economy';
 import { GURNEY_WAIT } from '../engine/shift/meeting';
 import type { RepChange } from '../engine/economy/economy';
-import type { ChiefDay } from '../engine/shift/types';
+import type { ChiefDay, DaySummary, LeftBy, LeftWhy, VisitKind } from '../engine/shift/types';
 import type { ErrorList, ErrorRow } from '../sim/doctor';
 import { money, T } from '../i18n';
 import { type EconomyHud, type MeetingView, type Raise, slowOf, type Tip } from '../app/money';
@@ -119,8 +120,98 @@ function Errors({ x, actions }: { x: ErrorList; actions: Actions }) {
   );
 }
 
+/** Кто приходит, по порядку строки «Пришли». */
+const KINDS: readonly VisitKind[] = ['walkIn', 'appointment', 'ambulance', 'return'];
+
+/** «сами — 33, по записи — 64, скорая — 9» — виды, что были. */
+function partsOf(by: Partial<Record<VisitKind, number>>): string {
+  const w = T.meeting.why;
+  return KINDS.filter(k => (by[k] ?? 0) > 0).map(k => w.part(w.by[k], by[k] ?? 0)).join(', ');
+}
+
+/** Кнопка «почему?» у числа: открывает и закрывает разбор под строкой. */
+function WhyButton({ id, on, title, onClick }: { id: string; on: boolean; title: string; onClick: () => void }) {
+  return (
+    <button type="button" className={`why${on ? ' on' : ''}`} id={id} title={title} aria-expanded={on} onClick={onClick}>
+      {T.meeting.why.open}
+    </button>
+  );
+}
+
+/**
+ * «Почему?» у числа пришедших (spec docs/specs/2026-10-why.md): кто пришёл; от чего поток сегодня — кабинеты терапевтов и
+ * репутация, специалисты, места смотровой — и сколько в среднем придёт с этой больницей.
+ */
+function WhyArrived({ d }: { d: DaySummary }) {
+  const w = T.meeting.why;
+  const f = d.inflow;
+  const r = Math.round;
+  return (
+    <div className="mwhy" id="meet-why-arrived-box">
+      <p>{w.arrived(partsOf(d.arrivedBy ?? {}))}</p>
+      {f ? (
+        <>
+          <p>{w.flow}</p>
+          <ul>
+            <li id="meet-why-walk">
+              {f.offices === 0 ? w.noOffice : f.walk === 0 ? w.closed : w.walk(r(f.perOffice), d.economy?.reputation.to ?? 50, r(f.pct - 100), f.offices, r(f.walk))}
+            </li>
+            {f.booked > 0 ? <li id="meet-why-book">{w.book(r(f.perDoctor), f.booked, r(f.book))}</li> : null}
+            {f.bays > 0 ? <li id="meet-why-amb">{w.amb(r(f.perBay), f.bays, r(f.amb))}</li> : null}
+            {(d.arrivedBy?.return ?? 0) > 0 ? <li>{w.ret}</li> : null}
+          </ul>
+          <p className="muted">{w.more}</p>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * «Почему?» у числа ушедших (spec docs/specs/2026-10-why.md): причины — больше всего первой — и что с каждой делать; сколько
+ * стояли у кабинета; «Кто ушёл» — вкладка «Пациенты», список «Ушли»: с экрана планёрки — закрыв его, часы стоят.
+ */
+function WhyLeft({ b, screen, actions }: { b: LeftBy; screen: boolean; actions: Actions }) {
+  const w = T.meeting.why;
+  const rows: { k: LeftWhy; text: string; fix?: string }[] = [];
+  const add = (k: LeftWhy, text: (n: number) => string, fix?: string) => {
+    const n = b.why[k] ?? 0;
+    if (n > 0) rows.push({ k, text: text(n), ...(fix ? { fix } : {}) });
+  };
+  add('busy', w.busy, b.asks ? `${w.busyFix} ${w.asks(b.asks)}` : w.busyFix);
+  add('none', w.none, w.noneFix);
+  add('rest', w.rest, w.restFix);
+  add('you', w.you, w.youFix);
+  add('other', w.other);
+  rows.sort((x, y) => (b.why[y.k] ?? 0) - (b.why[x.k] ?? 0));
+  return (
+    <div className="mwhy" id="meet-why-left-box">
+      <p>{w.left}</p>
+      <ul>
+        {rows.map(x => (
+          <li key={x.k} id={`meet-left-${x.k}`}>
+            {x.text}
+            {x.fix ? <span className="muted"> {x.fix}</span> : null}
+          </li>
+        ))}
+      </ul>
+      {b.stood ? <p className="muted">{w.stood(b.stood)}</p> : null}
+      <button
+        type="button" className="small" id="meet-gone" title={w.goneHint}
+        onClick={() => {
+          if (screen) actions.money({ kind: 'close', pause: true });
+          actions.setTab('patients');
+          actions.filterPatients({ list: 'gone' });
+        }}
+      >
+        {w.gone}
+      </button>
+    </div>
+  );
+}
+
 /** Сутки в цифрах, врачи, касса, репутация, узкие места, сломанное, обход, подсказка — для экрана и вкладки. */
-export function MeetingBody({ m, e, actions }: { m: MeetingView; e: EconomyHud; actions: Actions }) {
+export function MeetingBody({ m, e, actions, screen = false }: { m: MeetingView; e: EconomyHud; actions: Actions; screen?: boolean }) {
   const t = T.meeting;
   const d = m.summary;
   const col = Object.values(d.colleagues ?? {});
@@ -131,6 +222,9 @@ export function MeetingBody({ m, e, actions }: { m: MeetingView; e: EconomyHud; 
   const income = l ? PAYERS.reduce((n, p) => n + l.income[p], 0) + wardIncome : 0;
   const expenses = l ? Object.values(l.expenses).reduce((n: number, v) => n + (v ?? 0), 0) : 0;
   const slow = slowOf(d.load);
+  // «Почему?» (spec docs/specs/2026-10-why.md): какие разборы открыты
+  const [why, setWhy] = useState<{ arrived?: boolean; left?: boolean }>({});
+  const parts = d.arrivedBy ? partsOf(d.arrivedBy) : '';
   return (
     <div className="mbody">
       {/* сценарий (spec docs/specs/2026-10-scenario-1.md): выполненные цели и письма утра — первыми */}
@@ -148,8 +242,23 @@ export function MeetingBody({ m, e, actions }: { m: MeetingView; e: EconomyHud; 
       ) : null}
       <Section title={t.day} id="meet-day">
         <p>
-          {t.arrived(d.arrived, d.ambulance?.arrived ?? 0)} · {t.seen(d.seen + hired, d.seen, hired)} · {t.left(d.left)}
+          {t.arrived(d.arrived, d.ambulance?.arrived ?? 0)}
+          {d.arrivedBy && d.arrived > 0 ? (
+            <>
+              {' '}
+              <WhyButton id="meet-why-arrived" on={!!why.arrived} title={t.why.arrivedHint(parts)} onClick={() => setWhy({ ...why, arrived: !why.arrived })} />
+            </>
+          ) : null}{' '}
+          · {t.seen(d.seen + hired, d.seen, hired)} · {t.left(d.left)}
+          {d.leftBy && d.left > 0 ? (
+            <>
+              {' '}
+              <WhyButton id="meet-why-left" on={!!why.left} title={t.why.leftHint} onClick={() => setWhy({ ...why, left: !why.left })} />
+            </>
+          ) : null}
         </p>
+        {why.arrived && d.arrivedBy ? <WhyArrived d={d} /> : null}
+        {why.left && d.leftBy ? <WhyLeft b={d.leftBy} screen={screen} actions={actions} /> : null}
         {d.ward ? <p>{t.ward(d.ward.admitted, d.ward.discharged, d.ward.transferred, d.ward.died ?? 0, d.ward.lying)}</p> : null}
       </Section>
       {m.doctors.length > 0 || d.seen > 0 ? (
@@ -353,7 +462,7 @@ export function Meeting({ e, actions }: { e: EconomyHud; actions: Actions }) {
           {T.meeting.resume}
         </button>
       </div>
-      <MeetingBody m={m} e={e} actions={actions} />
+      <MeetingBody m={m} e={e} actions={actions} screen />
       <Hours e={e} actions={actions} />
     </div>
   );

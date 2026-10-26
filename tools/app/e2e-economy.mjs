@@ -2,8 +2,9 @@
 // 1 200 000 ₽ в верхней полосе; помещение мышью — призрак с ценой, касса минус цена; снос — половина назад, Ctrl+Z — снова
 // минус; часы приёма во вкладке «Отчёты» — команда движка. Готовая больница, поток от больницы: «До утра» — до 08:00 (на
 // событиях автопаузы — снова), планёрка с автопаузой: сутки в цифрах, касса по статьям, репутация, подсказка; «Продолжить» —
-// часы идут. Затем ваш лежащий: позвать из очереди, диагноз, «В палату», «Завершить приём» — строка «Обхода» с динамикой;
-// «Сменить лечение» — карта с блоком обхода, новое лечение в листе назначений; «Выписать» — строки нет.
+// часы идут; «почему?» у пришедших и ушедших (spec docs/specs/2026-10-why.md) — числа итога суток. Затем ваш лежащий: позвать
+// из очереди, диагноз, «В палату», «Завершить приём» — строка «Обхода» с динамикой; «Сменить лечение» — карта с блоком обхода,
+// новое лечение в листе назначений; «Выписать» — строки нет. «Кто ушёл» с экрана планёрки — «Пациенты» → «Ушли», часы стоят.
 // Снимки — `e2e-economy-*.jpg` (JPEG: для документов).
 import { join } from 'node:path';
 
@@ -131,6 +132,24 @@ export async function economyPart({ page, port, out, ok, fail, q, shots }) {
   if (/\d+ → \d+/.test(rep) && num(await text('#reputation-now')) === m.e.reputation) ok(`репутация: «${rep.slice(0, 160)}»`);
   else fail(`репутация: «${rep}», в полосе ${m.e?.reputation}`);
   ok(`сутки: «${day}»; подсказка: «${(await text('#meet-tip')).slice(0, 120)}»`);
+  // «Почему?» у цифр планёрки (spec docs/specs/2026-10-why.md): кто пришёл и от чего поток; почему ушли — числа из итога суток
+  const sum = await page.evaluate(() => window.__game.store.get().economy.meeting.summary);
+  await page.click('#meeting #meet-why-arrived');
+  const why = await text('#meeting #meet-why-arrived-box');
+  const kinds = [['walkIn', 'сами'], ['appointment', 'по записи'], ['ambulance', 'скорая'], ['return', 'повторно']].filter(([k]) => (sum.arrivedBy?.[k] ?? 0) > 0);
+  const total = kinds.reduce((n, [k]) => n + sum.arrivedBy[k], 0);
+  const f = sum.inflow;
+  if (total === sum.arrived && kinds.every(([k, w]) => why.includes(`${w} — ${sum.arrivedBy[k]}`)) && f && why.includes(`около ${Math.round(f.walk)}`) && why.includes(`около ${Math.round(f.amb)}`))
+    ok(`«почему?» у пришедших: «${why.slice(0, 260)}»`);
+  else fail(`«почему?» у пришедших: «${why}», итог ${JSON.stringify({ arrived: sum.arrived, by: sum.arrivedBy, inflow: f })}`);
+  if (sum.left > 0) {
+    await page.click('#meeting #meet-why-left');
+    const gone = await text('#meeting #meet-why-left-box');
+    const rows = await page.$$eval('#meeting #meet-why-left-box li', els => els.map(e => e.id));
+    const n = Object.values(sum.leftBy?.why ?? {}).reduce((a, b) => a + b, 0);
+    if (n === sum.left && rows.length === Object.values(sum.leftBy.why).filter(x => x > 0).length && gone.includes('Кто ушёл')) ok(`«почему?» у ушедших (${sum.left}): «${gone.slice(0, 260)}»`);
+    else fail(`«почему?» у ушедших: «${gone}», итог ${JSON.stringify(sum.leftBy)}, ушли ${sum.left}`);
+  } else ok('ушедших за сутки нет — «почему?» у них не показан');
   ok(`снимок планёрки: ${join(out, 'e2e-economy-1-meeting.jpg')} (${await shot('e2e-economy-1-meeting.jpg')} КБ)`);
   await page.click('#meeting-close');
   await until(() => !window.__game.store.get().economy?.open && window.__game.speed === 1);
@@ -200,4 +219,18 @@ export async function economyPart({ page, port, out, ok, fail, q, shots }) {
   await until(() => !document.getElementById('dcard'));
   if (!(await page.$(`#dw-${who}`))) ok('«Выписать» — строки в «Обходе» нет');
   else fail('после выписки строка в «Обходе» осталась');
+  // «Кто ушёл» (spec docs/specs/2026-10-why.md): с экрана планёрки — вкладка «Пациенты», список «Ушли»; экран закрыт, часы стоят
+  if (sum.left > 0) {
+    await page.evaluate(() => window.__game.actions.setSpeed(1));
+    await page.evaluate(() => window.__game.actions.money({ kind: 'open' }));
+    await page.waitForSelector('#meeting');
+    await page.click('#meeting #meet-why-left');
+    await page.click('#meeting #meet-gone');
+    const list = await until(() => {
+      const st = window.__game.store.get();
+      return !st.economy?.open && window.__game.speed === 0 && st.tab === 'patients' && st.patientFilter.list === 'gone';
+    }).then(() => text('#patients'), () => '');
+    if (list && (await page.$('#pf-gone.on'))) ok(`«Кто ушёл» — планёрка закрыта, часы стоят, «Пациенты» → «Ушли»: «${list.slice(0, 160)}»`);
+    else fail(`«Кто ушёл»: ${JSON.stringify(await page.evaluate(() => ({ open: window.__game.store.get().economy?.open, speed: window.__game.speed, tab: window.__game.store.get().tab, list: window.__game.store.get().patientFilter.list })))}`);
+  }
 }

@@ -86,8 +86,9 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # by mouse in the empty building; people and flow at 13:00 — icons, «Пациенты», the
                                    # patient's path, the queues overlay; then the doctor mode: a consult, a whole case, «Take
                                    # the case», «My office»; then money: building from cash, «Until morning» to the 08:00
-                                   # meeting, the «Обход» list; then ready rooms: four clicks open the empty building, R, one
-                                   # undo; then the start screen's three cards and the polyclinic; then specialists: hire a
+                                   # meeting, «почему?» of the arrived and the left, «Кто ушёл», the «Обход» list; then ready
+                                   # rooms: four clicks open the empty building, R, one undo;
+                                   # then the start screen's three cards and the polyclinic; then specialists: hire a
                                    # gastroenterologist in the polyclinic, «по записи к …»; then the owner's play of 18.10:
                                    # «Открыть карту» of anyone, «Следить», «Позвать» — the card when they come in; then
                                    # saves: save, «Продолжить», load from the menu, delete, a broken file; then the card of the
@@ -152,7 +153,8 @@ bun tools/bench/departments.ts                 # departments (spec): how often a
 bun tools/sim/economy.ts --seeds 1,2,3         # economy simulator: scripted hospitals for 7 days, cash, flow, reputation and the criteria
                                                # (`--days 14` — and who quits on their own: at most two in two weeks; `--only
                                                # ambulatory` — scenario 1 with its cash and build order for 10 days, the goal
-                                               # «Пять суток с кассой в плюсе» by day 10)
+                                               # «Пять суток с кассой в плюсе» by day 10); under each day — the arrived by kind,
+                                               # the meeting's forecast for it and the left by reason (`docs/specs/2026-10-why.md`)
 bun tools/sim/halls.ts --flow 14               # the polyclinic under load: waiting halls by the offices vs at the entrance
                                                # (both: `--hall 0` — seats of the whole hospital, `--bench 0` — no door benches)
 bun --cpu-prof --cpu-prof-dir=tools/bench/out/prof tools/bench/bench.ts --mode flow --only 200 --quick --until 11
@@ -195,6 +197,10 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   Money of the PC flow is ours: `shift/money.ts` (cash now, wages and upkeep by the hour, building from cash, the
   overdraft limit, the loan), `shift/inflow.ts` (the flow from the hospital), `shift/meeting.ts` (the day's bottlenecks,
   «стало хуже»), numbers in `content/hospital/inflow.yaml` and `money.yaml` — `docs/specs/2026-10-economy.md`.
+  «Почему?» at the meeting (`docs/specs/2026-10-why.md`): `DaySummary.arrivedBy` (the arrived by kind), `leftBy` (the left
+  by reason, named when patience ran out — `leaving` in `engine.ts`: his doctor on a break, waited for you, or whether a
+  hired doctor who would take him is on the shift now; also on the path's end, `End.why`) and `inflow` (the new day's flow
+  by the hour with those on shift then — `inflowDay`); the window's «почему?» blocks are in `src/ui/Meeting.tsx`.
 - Staff shifts (`docs/specs/2026-10-staff-shifts.md`): a hired person works the day (08:00–20:00) or the night shift
   (`shift` in `hospital/staff.ts`; none — round the clock, saves before 0.9.0); who is on duty — `dutyOf`, and
   `hospitalCtx(db, s, at)` builds the hospital from them; the `duty` event at 08:00 and 20:00 in `engine.ts` hands queued

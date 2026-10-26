@@ -1,8 +1,9 @@
 // Касса, репутация, поток от больницы, планёрка, обход и долгий случай в потоке для ПК (spec docs/specs/2026-10-economy.md,
 // «Тесты»): начало и срез; стройка из кассы — цена, половина назад при сносе, цена назад при отмене, отказ ниже предела;
 // зарплаты и содержание по часам; планёрка — касса суток, процент, кредит; репутация и поток от неё; поток от больницы —
-// кабинеты, места смотровой, сразу после стройки; узкие места суток; «стало хуже»; обход в карте; долгий случай нанятого
-// врача; детерминизм при разном шаге и в потоке расчёта; сборка базы.
+// кабинеты, места смотровой, сразу после стройки; узкие места суток; «Почему?» у цифр планёрки — пришли по виду, ушли по
+// причинам, поток на сутки; «стало хуже»; обход в карте; долгий случай нанятого врача; детерминизм при разном шаге и в
+// потоке расчёта; сборка базы.
 import { describe, expect, test } from 'bun:test';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -12,7 +13,7 @@ import { emptyLedger, expensesOf, incomeOf, salariesOf } from '../../src/engine/
 import { emptySite, hospitalOf, roomPrice, type Site } from '../../src/engine/hospital/site';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { presetStaff, salaryOf } from '../../src/engine/hospital/staff';
-import { apply, capacityOf, inpatientsOf, newFlowShift } from '../../src/engine/shift/engine';
+import { apply, capacityOf, inpatientsOf, newFlowShift, newShift } from '../../src/engine/shift/engine';
 import { reputationPct, walkPerHour } from '../../src/engine/shift/inflow';
 import { turnedWorse } from '../../src/engine/shift/meeting';
 import { cashNow, dayNet, startCash, upkeepPerDay } from '../../src/engine/shift/money';
@@ -303,6 +304,75 @@ describe('узкие места суток', () => {
     // новые сутки — новые числа: коек «из» считает только планёрка
     expect(s.summary.load).not.toBe(load);
     expect(s.summary.load?.beds?.of ?? 0).toBe(0);
+  });
+});
+
+describe('«Почему?» у цифр планёрки (spec docs/specs/2026-10-why.md)', () => {
+  const sum = (r: Partial<Record<string, number>>) => Object.values(r).reduce((n: number, v) => n + (v ?? 0), 0);
+
+  test('пришли по виду и ушли по причинам — в сумме числа суток; путь каждого ушедшего — с той же причиной', () => {
+    const s = city({ seed: 5, flow: { perHour: 14, ambulancePerHour: 2 } });
+    live(s, 32, 300);
+    const d = s.history[0];
+    expect(sum(d.arrivedBy!)).toBe(d.arrived);
+    expect(d.arrivedBy!.ambulance).toBe(d.ambulance!.arrived);
+    expect(d.left).toBeGreaterThan(5);
+    expect(sum(d.leftBy!.why)).toBe(d.left);
+    expect(d.leftBy!.why.busy).toBeGreaterThan(0);
+    expect(d.leftBy!.stood ?? 0).toBeLessThanOrEqual(d.left);
+    expect(d.leftBy!.asks ?? 0).toBeLessThanOrEqual(d.leftBy!.why.busy ?? 0);
+    const ends: Record<string, number> = {};
+    for (const j of Object.values(s.journeys!.of)) if (j.end?.how === 'left' && j.end.t < 32 * HOUR) ends[j.end.why!] = (ends[j.end.why!] ?? 0) + 1;
+    expect(ends).toEqual(d.leftBy!.why as Record<string, number>);
+    // новые сутки — новый счёт
+    expect(s.summary.leftBy?.why.busy ?? 0).toBeLessThan(d.leftBy!.why.busy!);
+  });
+
+  test('смена кончилась, а очередь осталась — «в смене не было врача», хотя при приходе все были заняты', () => {
+    const s = empty({ seed: 3, flow: { perHour: 9 } });
+    buildClinic(s);
+    live(s, 32, 300);
+    const d = s.history[0];
+    expect(d.leftBy?.why.none ?? 0).toBeGreaterThan(0);
+    const late = Object.values(s.journeys!.of).filter(j => j.end?.why === 'none');
+    expect(late.length).toBe(d.leftBy!.why.none);
+    for (const j of late) {
+      // ушли после пересменки в 20:00, а при приходе ждали занятого врача дневной смены
+      expect(j.end!.t).toBeGreaterThan(20 * HOUR);
+      expect(j.steps.findLast(x => x.k === 'queue')).toMatchObject({ why: 'busy' });
+    }
+  });
+
+  test('поток от больницы на сутки: с планёрки, по часам, с теми, кто в смене; сбывается в среднем', () => {
+    const s = city({ seed: 2 });
+    const c = capacityOf(db, s);
+    live(s, 32 + 24 * 3, 600);
+    const [d1, d2, d3, d4] = s.history;
+    const f = d1.inflow!;
+    expect(f).toMatchObject({ offices: c.offices, booked: c.booked.length, bays: c.bays });
+    expect(f.pct).toBe(Math.round(reputationPct(db, d1.economy!.reputation.to) * 10) / 10);
+    // на кабинет все часы приёма: 2,5 в час × 12 часов при репутации 50, с её поправкой
+    expect(f.perOffice).toBeCloseTo((2.5 * 12 * f.pct) / 100, 0);
+    expect(f.perBay).toBe(db.inflow!.ambulance);
+    // в городской днём и ночью терапевт один: сами — как на кабинет
+    expect(f.walk).toBeCloseTo(f.perOffice * f.offices, 0);
+    // прогноз сбывается: за трое суток пришедших сами и по записи — в пределах четверти от прогноза
+    const came = (k: 'walkIn' | 'appointment') => [d2, d3, d4].reduce((n, d) => n + (d.arrivedBy?.[k] ?? 0), 0);
+    const want = (k: 'walk' | 'book') => [d1, d2, d3].reduce((n, d) => n + d.inflow![k], 0);
+    expect(Math.abs(came('walkIn') - want('walk'))).toBeLessThan(want('walk') / 4);
+    expect(Math.abs(came('appointment') - want('book'))).toBeLessThan(want('book') / 4);
+  }, 60_000);
+
+  test('поток без `auto` — без прогноза; смена «Анамнеза» — без счёта по виду и причин', () => {
+    const s = city({ seed: 5, flow: { perHour: 6, ambulancePerHour: 1 } });
+    live(s, 32, 600);
+    expect(s.history[0].inflow).toBeUndefined();
+    expect(s.history[0].arrivedBy).toBeDefined();
+    const a = newShift(db, { seed: 21, season: 'winter' });
+    for (let i = 0; i < 600 && a.summary.arrived < 3; i++) apply(db, a, { kind: 'advance', seconds: 60 });
+    expect(a.summary.arrived).toBeGreaterThan(2);
+    expect(a.summary.arrivedBy).toBeUndefined();
+    expect(a.summary.leftBy).toBeUndefined();
   });
 });
 
