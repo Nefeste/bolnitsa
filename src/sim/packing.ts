@@ -21,6 +21,12 @@ export interface SaveMeta {
   t: number;
   /** касса сейчас, ₽ */
   cash?: number;
+  /**
+   * сложность (spec docs/specs/2026-10-difficulty.md, часть 2): уровень «Управления» — нет у «Обычно» и у сохранений до него;
+   * мягкий режим — только включённый. Копии `meta.manage` и `meta.soft` снимка — для строки сохранения
+   */
+  manage?: 'calm' | 'hard';
+  soft?: true;
 }
 
 export interface SaveFile {

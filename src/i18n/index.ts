@@ -36,6 +36,11 @@ export function clock(t: number): string {
   return `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}`;
 }
 
+/** Множитель из процентов: 80 → «×0,8», 115 → «×1,15» (сложность, spec docs/specs/2026-10-difficulty.md). */
+export function factor(pct: number): string {
+  return `×${(pct / 100).toLocaleString(lang === 'en' ? 'en-US' : 'ru-RU', { maximumFractionDigits: 2 })}`;
+}
+
 /** Деньги: «12 000 ₽» (валюта — рубль, как касса «Анамнеза»; геймдизайн §8 — условная монета, решит владелец). */
 export function money(n: number): string {
   return `${Math.round(n).toLocaleString(lang === 'en' ? 'en-US' : 'ru-RU')} ₽`;

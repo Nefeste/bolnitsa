@@ -40,8 +40,11 @@ export function raisedOf(db: ContentDb, m: StaffMember): number {
   return Math.ceil((m.salary * (100 + step)) / 100 / 50) * 50;
 }
 
-/** Выплата уволенному, ₽ (геймдизайн §7): `severance` его смен, ночная — с надбавкой; без настроения в базе — 0. */
-export const severanceOf = (db: ContentDb, m: StaffMember): number => (db.economy.staff.mood?.severance ?? 0) * wageOf(db, m);
+/**
+ * Выплата уволенному, ₽ (геймдизайн §7): `severance` его смен, ночная — с надбавкой; без настроения в базе — 0. `pct` —
+ * зарплаты уровня «Управления» (spec 2026-10-difficulty), %.
+ */
+export const severanceOf = (db: ContentDb, m: StaffMember, pct = 100): number => (db.economy.staff.mood?.severance ?? 0) * wageOf(db, m, pct);
 
 const clamp = (v: number): number => Math.max(0, Math.min(100, v));
 

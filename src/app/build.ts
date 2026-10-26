@@ -369,7 +369,8 @@ export class Builder {
         const role = post === DOCTOR ? standInOf(db, DOCTOR) : post;
         if (!role || !db.roles[role]?.hire) continue;
         const i = free.findIndex(m => m.role === role);
-        salary += payOf(db, i >= 0 ? free.splice(i, 1)[0].salary : salaryOf(db, role, 3), shift);
+        // как платят на уровне «Управления» (spec docs/specs/2026-10-difficulty.md)
+        salary += this.g.paid(payOf(db, i >= 0 ? free.splice(i, 1)[0].salary : salaryOf(db, role, 3), shift));
         const name = lower(named(db.roles[role]?.name, role));
         who.push(shift === 'night' ? `${name} (${T.card.shifts.night})` : name);
       }

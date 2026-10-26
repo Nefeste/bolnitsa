@@ -26,9 +26,13 @@
 // списка; в отчёте — сколько раз резерв встал на место заболевшего и сколько смен места стояли пустыми.
 // `--hall N` — сидя или стоя по своему залу не дальше N м (content/hospital/inflow.yaml, `hall`); `--hall 0` — по всей больнице.
 // `--bench N` — скамьи у дверей кабинетов не дальше N шагов (`bench`, spec docs/specs/2026-10-door-benches.md); `--bench 0` — без них.
+// Ось «Управление» (spec docs/specs/2026-10-difficulty.md): `--manage calm,normal,hard` — каждая больница на каждом уровне;
+// критерии уровней: «Спокойно» — ушли, не дождавшись, не больше 5 % пришедших, касса ни разу не ниже нуля, за 7 суток
+// прибыль больше, чем на «Обычно»; «Обычно» — как выше; «Трудно» — ушли 10–20 %, касса не ниже предела минуса уровня, за
+// 7 суток не окупается. Касса сценария 1 — его, на любом уровне; его цель к 10-м суткам — критерий только «Обычно».
 //   bun tools/sim/economy.ts [--days 7] [--seeds 1,2,3] [--only clinic,district,city,poly,polyspec,ambulatory] [--hall N] [--bench N] [--raise]
-//                            [--no-orderly night|all] [--reserve registrar,nurse] [--json]
-import type { ContentDb, Id } from '../../src/content/types';
+//                            [--no-orderly night|all] [--reserve registrar,nurse] [--manage calm,normal,hard] [--json]
+import type { ContentDb, Id, Manage } from '../../src/content/types';
 import { expensesOf, incomeOf } from '../../src/engine/economy/economy';
 import { DOOR_PRICE, emptySite, hospitalOf, priceOf, roomPrice, type Site, type SiteCommand } from '../../src/engine/hospital/site';
 import { siteOfPlan } from '../../src/engine/hospital/site-plan';
@@ -36,6 +40,7 @@ import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { nightHospital, presetStaff, salaryOf, type StaffMember, withNightShift } from '../../src/engine/hospital/staff';
 import { apply, capacityOf, newFlowShift } from '../../src/engine/shift/engine';
 import { ambulancePerHour, walkPerHour } from '../../src/engine/shift/inflow';
+import { levelOf } from '../../src/engine/shift/manage';
 import { cashNow, startCash } from '../../src/engine/shift/money';
 import type { InflowDay, LeftBy, Ride, ShiftState, VisitKind } from '../../src/engine/shift/types';
 import { buildDb } from '../content/load';
@@ -50,6 +55,9 @@ const ONLY = arg('only', '').split(',').filter(Boolean);
 const asJson = process.argv.includes('--json');
 const RAISE = process.argv.includes('--raise');
 const NO_ORDERLY = arg('no-orderly', '');
+/** Уровни «Управления» (`--manage`): каждая больница — на каждом. */
+const MANAGES = arg('manage', 'normal').split(',').filter((x): x is Manage => x === 'calm' || x === 'normal' || x === 'hard');
+const LEVEL_NAME: Record<Manage, string> = { calm: 'Спокойно', normal: 'Обычно', hard: 'Трудно' };
 /** Резерв (`--reserve`): должности — по человеку без места на каждую в начале. */
 const RESERVE = arg('reserve', '').split(',').filter(Boolean).map(r => (r.startsWith('role.') ? r : `role.${r}`));
 /** Готовая больница без ночных санитаров или без санитаров вовсе (`--no-orderly`). */
@@ -171,7 +179,7 @@ interface DayRow {
 }
 interface Run {
   /** `week` — прибыль за первые 7 суток без стройки: критерий «не окупается за 7 суток» и при `--days` больше 7 */
-  scenario: string; seed: number; start: number; value: number; minCash: number; profit: number; week: number; days: DayRow[];
+  scenario: string; manage: Manage; seed: number; start: number; value: number; minCash: number; profit: number; week: number; days: DayRow[];
   lines: Record<string, number>;
   /** персонал (spec 2026-10-staff-mood): собирались уйти и ушли сами — сутки, должность, причины; настроение в конце */
   quits: { day: number; role: Id }[];
@@ -200,12 +208,13 @@ interface Run {
   proxy?: number;
 }
 
-function start(name: string, seed: number): ShiftState {
+function start(name: string, seed: number, manage: Manage): ShiftState {
   const flow = { perHour: 0, auto: true as const };
+  const level = manage === 'normal' ? {} : { manage };
   if (name === 'city') {
     const rec = db.presets['preset.city'];
     const st = siteOfPreset(db, rec);
-    return newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, st), staff: orderlies(withNightShift(db, st.rooms, presetStaff(db, rec))), flow, economy: { cash: startCash(db, 'preset') } });
+    return newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, st), staff: orderlies(withNightShift(db, st.rooms, presetStaff(db, rec))), flow, economy: { cash: startCash(db, 'preset', manage) }, ...level });
   }
   if (name === 'poly' || name === 'polyspec') {
     const p = siteOfPlan(db, db.sites!['site.polyclinic']);
@@ -214,15 +223,15 @@ function start(name: string, seed: number): ShiftState {
     const swap: Record<string, Id> = name === 'polyspec' ? { r5: 'role.gastroenterologist', r6: 'role.endocrinologist' } : {};
     const staff = p.staff.map(m => (m.room && swap[m.room] ? { ...m, role: swap[m.room], salary: salaryOf(db, swap[m.room], 3) } : m));
     // смены (spec 2026-10-staff-shifts): все — дневная, ночью поликлиника закрыта
-    return newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, p.site), staff: withNightShift(db, p.site.rooms, staff), flow, economy: { cash: startCash(db, 'poly') } });
+    return newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, p.site), staff: withNightShift(db, p.site.rooms, staff), flow, economy: { cash: startCash(db, 'poly', manage) }, ...level });
   }
   if (name === 'ambulatory') {
     // касса и что строят — из записи сценария; часы — с 08:00 первых суток, как у прочих
-    const s = newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, emptySite()), staff: [], flow, scenario: AMBULATORY_SC });
+    const s = newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, emptySite()), staff: [], flow, scenario: AMBULATORY_SC, ...level });
     build(s, AMBULATORY);
     return s;
   }
-  const s = newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, emptySite()), staff: [], flow, economy: { cash: startCash(db, 'empty') } });
+  const s = newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, emptySite()), staff: [], flow, economy: { cash: startCash(db, 'empty', manage) }, ...level });
   build(s, name === 'clinic' ? CLINIC : DISTRICT);
   return s;
 }
@@ -230,8 +239,8 @@ function start(name: string, seed: number): ShiftState {
 /** Сколько суток прожить: сценарию 1 — не меньше 10, его критерий — к 10-м суткам. */
 const daysOf = (name: string) => (name === 'ambulatory' ? Math.max(DAYS, 10) : DAYS);
 
-function run(name: string, seed: number): Run {
-  const s = start(name, seed);
+function run(name: string, seed: number, manage: Manage): Run {
+  const s = start(name, seed, manage);
   for (const role of RESERVE) site(s, { kind: 'reserve', role });
   const first = s.economy!.cash;
   const value = valueOf(s.hospital!.site!);
@@ -302,9 +311,11 @@ function run(name: string, seed: number): Run {
   // поток от больницы сейчас — в среднем в сутки при часах по умолчанию
   const c = capacityOf(db, s);
   const hours = db.day!.walk.slice(db.day!.hours[0], db.day!.hours[1]).reduce((a, b) => a + b, 0) / 100;
+  // ось «Управление»: поток — на множитель уровня
+  const k = levelOf(db, manage).inflow / 100;
   for (const d of days) {
-    d.flowWalk = Math.round(walkPerHour(db, c, d.rep) * hours);
-    d.flowAmb = Math.round(ambulancePerHour(db, c) * 24);
+    d.flowWalk = Math.round(walkPerHour(db, c, d.rep) * hours * k);
+    d.flowAmb = Math.round(ambulancePerHour(db, c) * 24 * k);
   }
   // прибыль — без стройки первых суток: сколько больница зарабатывает, когда построена
   const gain = (list: DayRow[]) => list.reduce((n, d, i) => n + d.income - d.expenses + (i === 0 ? d.works : 0), 0);
@@ -314,7 +325,7 @@ function run(name: string, seed: number): Run {
   const proxy = s.staff?.find(m => m.room === office)?.salary;
   const goals = name === 'ambulatory' && s.campaign ? { ...s.campaign.done } : undefined;
   return {
-    scenario: name, seed, start: first, value, minCash, profit: gain(days), week: gain(days.slice(0, 7)), days, lines, quits, leaves, moods, grew, sick, covered, bare, raised, rides, stuck,
+    scenario: name, manage, seed, start: first, value, minCash, profit: gain(days), week: gain(days.slice(0, 7)), days, lines, quits, leaves, moods, grew, sick, covered, bare, raised, rides, stuck,
     ...(goals ? { goals, ...(proxy !== undefined ? { proxy } : {}) } : {}),
   };
 }
@@ -322,16 +333,33 @@ function run(name: string, seed: number): Run {
 const fmt = (n: number) => Math.round(n).toLocaleString('ru-RU');
 const scenarios = ['clinic', 'district', 'city', 'poly', 'polyspec', 'ambulatory'].filter(x => ONLY.length === 0 || ONLY.includes(x));
 const runs: Run[] = [];
-for (const name of scenarios) for (const seed of SEEDS) runs.push(run(name, seed));
+/** Больницы, что на уровне не строятся сразу: касса начала с пределом минуса меньше цены (на «Трудно» — районная). */
+const unbuilt: { name: string; manage: Manage; error: string }[] = [];
+for (const name of scenarios)
+  for (const manage of MANAGES)
+    for (const seed of SEEDS) {
+      try {
+        runs.push(run(name, seed, manage));
+      } catch (e) {
+        if (manage === 'normal' || !String(e).includes('"kind":"money"')) throw e;
+        if (!unbuilt.some(u => u.name === name && u.manage === manage)) unbuilt.push({ name, manage, error: String(e) });
+      }
+    }
 
 if (asJson) {
   console.log(JSON.stringify(runs, null, 1));
 } else {
-  const limit = db.money?.overdraft ?? 0;
   let fails = 0;
-  for (const name of scenarios) {
-    const rs = runs.filter(r => r.scenario === name);
-    console.log(`\n## ${name}: касса в начале ${fmt(rs[0].start)} ₽, больница стоит ${fmt(rs[0].value)} ₽`);
+  for (const name of scenarios) for (const manage of MANAGES) {
+    const limit = levelOf(db, manage).overdraft ?? 0;
+    const rs = runs.filter(r => r.scenario === name && r.manage === manage);
+    const level = MANAGES.length > 1 || manage !== 'normal' ? ` · ${LEVEL_NAME[manage]}` : '';
+    if (rs.length === 0 && unbuilt.some(u => u.name === name && u.manage === manage)) {
+      const start = startCash(db, name === 'city' ? 'preset' : name.startsWith('poly') ? 'poly' : 'empty', manage);
+      console.log(`\n## ${name}${level}: не строится сразу — касса начала ${fmt(start)} ₽ и предел минуса −${fmt(limit)} ₽ меньше цены; строят по частям`);
+      continue;
+    }
+    console.log(`\n## ${name}${level}: касса в начале ${fmt(rs[0].start)} ₽, больница стоит ${fmt(rs[0].value)} ₽`);
     for (const r of rs) {
       console.log(`  зерно ${r.seed}: касса не ниже ${fmt(r.minCash)}, прибыль за ${r.days.length} сут. без стройки ${fmt(r.profit)} ₽`);
       for (const d of r.days) {
@@ -382,16 +410,40 @@ if (asJson) {
         console.log(`    подняли зарплату ${r.raised} раз; зарплаты за сутки — ${fmt(avg(r.days.slice(0, k)))} в первые ${k}, ${fmt(avg(r.days.slice(-k)))} в последние ${k}`);
       }
     }
-    const low = rs.filter(r => r.minCash < -limit);
-    const rich = rs.filter(r => r.week > r.value);
-    if (low.length) console.log(`  ✗ касса ниже предела (−${fmt(limit)}): зёрна ${low.map(r => r.seed).join(', ')}`);
-    else console.log(`  ✓ касса ни разу не ниже предела −${fmt(limit)} ₽`);
+    // «Спокойно» (spec 2026-10-difficulty): касса ни разу не ниже нуля; на других уровнях — не ниже предела минуса уровня
+    const floor = manage === 'calm' ? 0 : -limit;
+    const low = rs.filter(r => r.minCash < floor);
+    if (low.length) console.log(`  ✗ касса ниже ${manage === 'calm' ? 'нуля' : `предела (−${fmt(limit)})`}: зёрна ${low.map(r => r.seed).join(', ')}`);
+    else console.log(`  ✓ касса ни разу не ниже ${manage === 'calm' ? 'нуля' : `предела −${fmt(limit)} ₽`}`);
+    fails += low.length;
     const week = Math.min(DAYS, 7);
-    if (rich.length) console.log(`  ✗ окупилась за ${week} суток: зёрна ${rich.map(r => r.seed).join(', ')}`);
-    else console.log(`  ✓ за ${week} суток не окупается целиком: прибыль ${rs.map(r => fmt(r.week)).join(' / ')} при цене ${fmt(rs[0].value)}`);
-    fails += low.length + rich.length;
-    // сценарий 1 (часть 4): «разумный игрок выходит в плюс к 10-м суткам» — цель «Пять суток с кассой в плюсе» к 10-м суткам
-    if (name === 'ambulatory') {
+    // «Спокойно» окупается быстрее «Обычно» — ему этот критерий не нужен
+    if (manage !== 'calm') {
+      const rich = rs.filter(r => r.week > r.value);
+      if (rich.length) console.log(`  ✗ окупилась за ${week} суток: зёрна ${rich.map(r => r.seed).join(', ')}`);
+      else console.log(`  ✓ за ${week} суток не окупается целиком: прибыль ${rs.map(r => fmt(r.week)).join(' / ')} при цене ${fmt(rs[0].value)}`);
+      fails += rich.length;
+    }
+    // ось «Управление»: доля ушедших, не дождавшись, и прибыль «Спокойно» против «Обычно»
+    if (manage !== 'normal') {
+      const arrived = rs.reduce((n, r) => n + r.days.reduce((m, d) => m + d.arrived, 0), 0);
+      const left = rs.reduce((n, r) => n + r.days.reduce((m, d) => m + d.left, 0), 0);
+      const pct = arrived ? (100 * left) / arrived : 0;
+      const [lo, hi] = manage === 'calm' ? [0, 5] : [10, 20];
+      const ok = pct >= lo && pct <= hi;
+      console.log(`  ${ok ? '✓' : '✗'} ушли, не дождавшись, — ${pct.toFixed(1)} % пришедших (${left} из ${arrived}); нужно ${lo}–${hi} %`);
+      if (!ok) fails++;
+      const normal = runs.filter(r => r.scenario === name && r.manage === 'normal');
+      if (manage === 'calm' && normal.length) {
+        const mean = (list: Run[]) => list.reduce((n, r) => n + r.week, 0) / list.length;
+        const faster = mean(rs) > mean(normal);
+        console.log(`  ${faster ? '✓' : '✗'} прибыль за ${week} суток — ${fmt(mean(rs))} ₽ в среднем, на «Обычно» — ${fmt(mean(normal))}`);
+        if (!faster) fails++;
+      }
+    }
+    // сценарий 1 (часть 4): «разумный игрок выходит в плюс к 10-м суткам» — цель «Пять суток с кассой в плюсе» к 10-м суткам;
+    // касса и цели сценария подобраны на «Обычно»
+    if (name === 'ambulatory' && manage === 'normal') {
       const late = rs.filter(r => (r.goals?.cash ?? Infinity) > 10);
       if (late.length) console.log(`  ✗ «Пять суток с кассой в плюсе» — не к 10-м суткам: зёрна ${late.map(r => r.seed).join(', ')}`);
       else console.log(`  ✓ «Пять суток с кассой в плюсе» — к суткам ${rs.map(r => r.goals!.cash).join(' / ')}, не позже 10-х`);
