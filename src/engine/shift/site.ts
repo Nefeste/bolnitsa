@@ -18,6 +18,7 @@ import {
 import { covers, nightHospital, salaryOf, type Shift, type StaffMember, wageOf } from '../hospital/staff';
 import { growthNumbers, studyUntil } from './growth';
 import { payStudy, paySeverance, payWorks, shortOf } from './money';
+import { manageOf } from './manage';
 import { cheer, leavingOf, moodBack, moodOut, raisedOf, severanceOf } from './mood';
 import { cover } from './reserve';
 import type { ContentDb, Id } from '../../content/types';
@@ -190,7 +191,7 @@ function siteCommandOf(db: ContentDb, s: ShiftState, cmd: SiteCommand): Notice[]
       if (!m) return no(cmd.kind, { kind: 'nothing' });
       if (occupied(db, s).staff.has(m.id)) return no(cmd.kind, { kind: 'busy' });
       // выплата за смены (spec 2026-10-staff-mood; геймдизайн §7) — и ниже предела минуса: уволить можно всегда
-      const paid = severanceOf(db, m);
+      const paid = severanceOf(db, m, manageOf(db, s).salary);
       remember(s, works, site, m.room, { paid, mood: moodOut(s, m.id) });
       s.staff = s.staff!.filter(x => x.id !== m.id);
       paySeverance(s, paid);
@@ -344,7 +345,7 @@ function study(db: ContentDb, s: ShiftState, id: string): Notice[] {
   if (!m || !g || m.skill >= 5 || m.away) return no('study', { kind: 'nothing' });
   if (leavingOf(s, id)) return no('study', { kind: 'leaving' });
   if (occupied(db, s).staff.has(id)) return no('study', { kind: 'busy' });
-  const cost = g.studyCost * wageOf(db, m);
+  const cost = g.studyCost * wageOf(db, m, manageOf(db, s).salary);
   const need = shortOf(db, s, cost);
   if (need > 0) return no('study', { kind: 'money', need });
   payStudy(s, cost);
