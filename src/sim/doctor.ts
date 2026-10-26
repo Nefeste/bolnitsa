@@ -212,6 +212,11 @@ export interface CardView extends VisitView {
   approve?: { until: number; discharge?: true };
   /** «верно или нет» у закрытого случая нанятого врача (решение владельца #66) — и у лежащего */
   verdict?: CaseVerdict;
+  /**
+   * «Направить к …» (spec docs/specs/2026-10-specialists.md, часть 2; решение владельца #112): ваш у вас в кабинете — к кому
+   * из специалистов, которые сейчас принимают; `wait` — ждёт результатов или вышел на обследование: пока нельзя
+   */
+  refer?: { to: ColleagueRow[]; wait?: true };
 }
 
 /**
@@ -794,12 +799,22 @@ export function cardView(db: ContentDb, s: ShiftState, id: string, level: Diffic
   // «верно или нет» (spec 2026-10-two-ways, F1; решение владельца #66): правда — только у закрытого
   const verdict = c?.by ? verdictOf(db, p, c) : undefined;
   const take = !mine && !p.closed && yours === undefined && takeCommand(db, s, id).cmd !== undefined;
+  // «Направить к …» (spec 2026-10-specialists, часть 2): ваш у вас в кабинете, не лежит в смотровой — к специалисту, который
+  // сейчас принимает
+  const specialists = mine && here && !p.closed && coming === undefined && s.flow && !p.bay ? colleaguesOf(db, s).filter(m => db.roles[m.role]?.profile) : [];
+  const refer: CardView['refer'] = specialists.length > 0
+    ? {
+      to: specialists.map(m => ({ id: m.id, role: named(db.roles[m.role]?.name, m.role), skill: m.skill })),
+      ...(seen.pending.length > 0 || (p.out !== undefined && p.out.back > now) ? { wait: true as const } : {}),
+    }
+    : undefined;
   return {
     ...view, id, active: mine && !p.closed && coming === undefined, ...(where ? { where } : {}), ...(coming !== undefined ? { coming } : {}), ...(where === 'waiting' && !s.current ? { callable: true } : {}), ...(round ? { round } : {}),
     ...(lead ? { lead } : {}), ...(decided ? { decided } : {}), ...(take ? { take: true as const } : {}),
     ...(order ? { order: true as const } : {}),
     ...(p.approve && here ? { approve: { until: p.approve.until, ...(p.approve.plan ? {} : { discharge: true as const }) } } : {}),
     ...(verdict ? { verdict } : {}),
+    ...(refer ? { refer } : {}),
   };
 }
 
