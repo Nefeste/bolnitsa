@@ -2,6 +2,9 @@ id: room.office
 name: { ru: "Кабинет врача" }
 gen: { ru: "кабинета врача" }
 staff: [role.doctor]
+# отделение по виду помещения (spec docs/specs/2026-10-departments.md); палату и кабинет переводит инструмент «Отделение»
+department: dept.therapy
+paint: true
 sizes:
   - id: M
     w: 8

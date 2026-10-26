@@ -5,6 +5,8 @@ gen: { ru: "палаты интенсивной терапии" }
 # операционной; у каждой койки — монитор с дефибриллятором. ИВЛ здесь нет: кому она нужна, того
 # переводят (ОРИТ — глава 4)
 staff: [role.nurse, role.anesthetist]
+# отделение по виду помещения (spec docs/specs/2026-10-departments.md)
+department: dept.icu
 # работает и ночью (spec docs/specs/2026-10-staff-shifts.md): готовая больница — и с ночной сменой
 night: true
 icu: true

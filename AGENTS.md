@@ -244,6 +244,13 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   consult or an approval, a referral — goes through `handOver`, which sets `ShiftPatient.ref`. The path's `own` step with
   `refer` (and `from` when a doctor referred) is never dropped as a zero wait; the slice marks the referred with the
   `REFERRED` bit of `P.flags` (`kindOf` reads the visit kind).
+- Departments (`docs/specs/2026-10-departments.md`, part 1; owner's decisions #140, #142): `content/hospital/departments.yaml`
+  — the six departments of the game design's §4 table in its order (`paint` — the «Отделение» tool moves wards and offices
+  into them; `takes` — disease departments it also takes: trauma goes to surgery); a room's department — `deptOf`/`deptsOf`
+  in `hospital/departments.ts`: the tool's mark (`SiteRoom.dept`, the `dept` site command, free and undoable), else the first
+  staff member working there whose role has a `department`, else the room type's `department`; diagnostics and common rooms
+  have none. Nothing in the shift reads it yet (routing by complaint is for the demo), so the flow is the same with or without marks.
+  Undoing a mark keeps whatever room is being rebuilt (`keep` in the undo step): a mark never closes a room.
 - The chief approves (`docs/specs/2026-10-two-ways.md`, part 2): `shift/approve.ts` — the rule checkboxes (`meta.asks`, none
   — «unsure» and «long case» as before) and whether a hired doctor's decision waits for the chief. The decision waits in
   `ShiftPatient.approve` (the patient at the office door, no patience; the doctor calls the next); answers — the `approve`

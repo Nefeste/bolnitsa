@@ -25,6 +25,7 @@ import {
   type TipSrc, tipSchema, type TreatmentSrc, treatmentSchema, versionSchema, type AchievementSrc, achievementSchema, type ScoreSrc, scoreSchema,
   type RuleSrc, ruleSchema, type TargetSrc, targetSchema, type SkillSrc, skillSchema,
   type ConsultsSrc, consultsSchema, type DaySrc, daySchema, type InflowSrc, inflowSchema, type MoneySrc, moneySchema,
+  type DepartmentsSrc, departmentsSchema,
 } from './schema';
 
 export const CONTENT_DIR = join(import.meta.dir, '../../content');
@@ -207,6 +208,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   let day: DaySrc | undefined;
   let inflow: InflowSrc | undefined;
   let money: MoneySrc | undefined;
+  let departments: DepartmentsSrc | undefined;
   let contentVersion = 0;
 
   for (const file of files) {
@@ -279,6 +281,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       inflow = check(inflowSchema);
     } else if (rel === 'hospital/money.yaml') {
       money = check(moneySchema);
+    } else if (rel === 'hospital/departments.yaml') {
+      departments = check(departmentsSchema);
     } else if (top === 'campaign' && rel.split('/')[1] === 'characters') {
       const c = check(characterSchema);
       if (c) { expectId(c.id, 'char'); put(characters, c); }
@@ -307,7 +311,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       const x = check(skillSchema);
       if (x) { expectId(x.id, 'skill'); put(skills, x); }
     } else {
-      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, people/professions, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/sites, hospital/economy.yaml, hospital/consults.yaml, hospital/day.yaml, hospital/inflow.yaml, hospital/money.yaml, campaign/characters, campaign/chapters, campaign/scenarios, campaign/tips, achievements, scores, rules, targets, career/skills)`);
+      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, people/professions, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/sites, hospital/economy.yaml, hospital/consults.yaml, hospital/day.yaml, hospital/inflow.yaml, hospital/money.yaml, hospital/departments.yaml, campaign/characters, campaign/chapters, campaign/scenarios, campaign/tips, achievements, scores, rules, targets, career/skills)`);
     }
   }
   if (!contentVersion) errors.push('version.yaml: нет contentVersion');
@@ -322,6 +326,9 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   if (!inflow) errors.push('hospital/inflow.yaml: нет чисел потока от больницы');
   else if (day) errors.push(...inflowErrors(inflow, day));
   if (!money) errors.push('hospital/money.yaml: нет предела минуса и кредита');
+  // отделения ПК (spec docs/specs/2026-10-departments.md, часть 1): у каждого — своё имя, номера не повторяются
+  if (!departments) errors.push('hospital/departments.yaml: нет отделений');
+  else for (const [i, d] of departments.departments.entries()) if (departments.departments.findIndex(x => x.id === d.id) !== i) errors.push(`hospital/departments.yaml: отделение ${d.id} уже есть`);
 
   // --- ссылки ---
   const hasF = (id: string) => id in findings;
@@ -969,6 +976,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     // поток от больницы и касса ПК (spec 2026-10-economy): без файлов — ошибка сборки выше
     ...(inflow ? { inflow } : {}),
     ...(money ? { money } : {}),
+    // отделения ПК (spec docs/specs/2026-10-departments.md): по порядку записи — так их показывает окно
+    ...(departments ? { departments: Object.fromEntries(departments.departments.map(d => [d.id, { id: d.id, name: d.name, paint: d.paint, ...(d.takes ? { takes: d.takes } : {}) }])) } : {}),
     // готовые больницы из готовых помещений (spec 2026-10-real-hospital); проверка — checkSites ниже
     ...(Object.keys(sites).length ? { sites: Object.fromEntries(Object.values(sites).sort((a, b) => (a.id < b.id ? -1 : 1)).map(p => [p.id, { id: p.id, rooms: p.rooms.map(r => ({ ...r })), ...(p.benches.length ? { benches: p.benches.map(([x, y]) => [x, y] as [number, number]) } : {}) }])) } : {}),
     revealedBy,
@@ -1128,6 +1137,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     const out: RoomType = {
       id: r.id, name: r.name, gen: r.gen, staff: r.staff, needsEquipment: r.needsEquipment, seats: r.seats, beds: r.beds, emergency: r.emergency, icu: r.icu, vent: r.vent, box: r.box, night: r.night,
       ...(r.admits ? { admits: r.admits } : {}),
+      ...(r.department ? { department: r.department } : {}), ...(r.paint ? { paint: true as const } : {}),
       sizes: r.sizes.map(z => ({
         id: z.id, w: z.w, h: z.h, cost: z.cost, upkeep: z.upkeep, door: { x: z.door.x, width: z.door.width },
         objects: z.objects.map(([kind, x, y]) => ({ kind, x, y })), slots: z.slots, ...(z.slotsOf ? { slotsOf: z.slotsOf } : {}), staff: z.staff,
@@ -1158,7 +1168,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       id: r.id, name: r.name, gen: r.gen, hire: r.hire, salary: r.salary,
       ...(r.stands ? { stands: r.stands } : {}), ...(r.needs ? { needs: r.needs } : {}), ...(r.reads ? { reads: true as const } : {}),
       ...(r.optional ? { optional: true as const } : {}),
-      ...(r.profile ? { profile: [...r.profile] } : {}), ...(r.dat ? { dat: r.dat } : {}),
+      ...(r.profile ? { profile: [...r.profile] } : {}), ...(r.dat ? { dat: r.dat } : {}), ...(r.department ? { department: r.department } : {}),
       // встающий на чужое место работает там же, где та должность
       rooms: Object.keys(rooms).sort().filter(id => rooms[id].staff.includes(r.stands ?? r.id)), texts: r.texts,
     };
@@ -1184,6 +1194,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     checkScenarios(db, errors);
     checkAchievements(db, errors);
     checkSkills(db, errors);
+    checkDepartments(db, errors);
     // скорая везёт болезнь отделения (engine.ts, ambulancePatient): раз смотровую приёмного
     // можно построить, у каждого отделения должно быть кого везти — иначе день не начнётся
     if (Object.values(db.rooms).some(r => r.emergency)) {
@@ -1342,6 +1353,41 @@ function checkAchievements(db: ContentDb, errors: string[]) {
  * Умения врача (spec 2026-10-skills, часть 75): специальность — отделение, с болезнями которого приходят; обследования и
  * должность — существующие; у специальности на уровне — одно умение.
  */
+/**
+ * Отделения ПК (spec docs/specs/2026-10-departments.md, часть 1): у помещений и должностей — отделения из записи; у
+ * болезней, глав, сценариев, умений, достижений и приёма помещений — отделение из записи или то, которое берёт отделение
+ * записи (`takes`: травму — хирургия), и одно — не двумя; помещение, которое инструмент переводит в другое, само в
+ * отделении, в которое переводят.
+ */
+function checkDepartments(db: ContentDb, errors: string[]) {
+  const list = db.departments;
+  if (!list) return;
+  const takers = new Map<string, string[]>();
+  for (const d of Object.values(list)) for (const x of d.takes ?? []) takers.set(x, [...(takers.get(x) ?? []), d.id]);
+  for (const [x, by] of takers) {
+    if (list[x]) errors.push(`hospital/departments.yaml: ${x} — своё отделение, а его берёт ещё ${by.join(', ')}`);
+    else if (by.length > 1) errors.push(`hospital/departments.yaml: ${x} берут ${by.join(' и ')} — одно отделение, не два`);
+  }
+  const room = (owner: string, d: string | undefined) => {
+    if (d !== undefined && !list[d]) errors.push(`${owner}: отделения ${d} нет в hospital/departments.yaml`);
+  };
+  const medical = (owner: string, d: string) => {
+    if (!list[d] && !takers.has(d)) errors.push(`${owner}: отделения ${d} нет в hospital/departments.yaml, и никакое его не берёт (takes)`);
+  };
+  for (const c of Object.values(db.conditions)) medical(c.id, c.department);
+  for (const c of Object.values(db.chapters)) medical(c.id, c.department);
+  for (const c of Object.values(db.scenarios ?? {})) medical(c.id, c.department);
+  for (const x of Object.values(db.skills)) medical(x.id, x.department);
+  for (const a of Object.values(db.achievements)) if (a.kind === 'department') medical(a.id, a.department);
+  for (const r of Object.values(db.roles)) room(r.id, r.department);
+  for (const r of Object.values(db.rooms)) {
+    room(r.id, r.department);
+    for (const d of r.admits ?? []) medical(r.id, d);
+    if (r.paint && !(r.department && list[r.department]?.paint)) errors.push(`${r.id}: инструмент «Отделение» переводит его в другое, а его отделение по виду — не из тех, в какие переводят`);
+  }
+  if (!Object.values(list).some(d => d.paint)) errors.push('hospital/departments.yaml: инструменту «Отделение» не во что переводить — нет ни одного отделения с paint');
+}
+
 function checkSkills(db: ContentDb, errors: string[]) {
   const levels = new Set<string>();
   for (const x of Object.values(db.skills)) {

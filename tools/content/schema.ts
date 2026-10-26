@@ -627,6 +627,9 @@ const roomSize = z.strictObject({
   places: z.number().int().min(0).max(8).default(0),
 });
 
+/** отделение: болезни, помещения, должности (spec docs/specs/2026-10-departments.md) */
+const deptId = z.string().regex(/^dept\.[a-z0-9_]+$/);
+
 export const roomSchema = z.strictObject({
   id: roomId,
   name: text,
@@ -657,9 +660,15 @@ export const roomSchema = z.strictObject({
    */
   box: z.boolean().default(false),
   /** работает — в больницу приходят и больные этих отделений: приёмное — хирургию (часть 30) */
-  admits: z.array(z.string().regex(/^dept\.[a-z0-9_]+$/)).min(1).optional(),
+  admits: z.array(deptId).min(1).optional(),
   /** работает и ночью (spec 2026-10-staff-shifts): готовая больница начинает здесь и с ночной сменой */
   night: z.boolean().default(false),
+  /**
+   * отделение по виду помещения (spec docs/specs/2026-10-departments.md, часть 1); нет — общее или служба. `paint` —
+   * палату и кабинет инструмент «Отделение» переводит в другое
+   */
+  department: deptId.optional(),
+  paint: z.boolean().default(false),
   sizes: z.array(roomSize).min(1),
   texts: z.strictObject({ hint }),
 });
@@ -714,6 +723,8 @@ export const roleSchema = z.strictObject({
   profile: z.array(z.string().regex(/^cond\.[a-z0-9_]+$/)).min(1).optional(),
   /** дательный падеж — «по записи к гастроэнтерологу»; у специалиста обязателен (часть 59) */
   dat: text.optional(),
+  /** его кабинет — в этом отделении (spec docs/specs/2026-10-departments.md, часть 1): у инфекциониста — инфекционное */
+  department: deptId.optional(),
   texts: z.strictObject({ hint }),
 });
 
@@ -985,6 +996,15 @@ export const moneySchema = z.strictObject({
  * и сколько машин скорой по часам суток, % от среднего; в котором часу нанятые врачи обходят своих лежащих. Среднее и
  * «утром больше» / «вечером больше» проверяет сборка (`tools/content/load.ts`).
  */
+/**
+ * Отделения больницы ПК (spec docs/specs/2026-10-departments.md, часть 1): название, переводит ли в него инструмент
+ * «Отделение» палату или кабинет, и чьих больных оно берёт ещё (`takes` — отделения болезней, у которых своего нет:
+ * травму лечит хирургия, геймдизайн §4). Порядок — порядок в окне.
+ */
+export const departmentsSchema = z.strictObject({
+  departments: z.array(z.strictObject({ id: deptId, name: text, paint: z.boolean().default(false), takes: z.array(deptId).min(1).optional() })).min(1),
+});
+
 const hourly = z.array(int).length(24);
 export const daySchema = z.strictObject({
   hours: z.tuple([z.number().int().min(0).max(23), z.number().int().min(1).max(24)]),
@@ -1365,6 +1385,7 @@ export type SiteSrc = z.infer<typeof siteSchema>;
 export type EconomySrc = z.infer<typeof economySchema>;
 export type ConsultsSrc = z.infer<typeof consultsSchema>;
 export type DaySrc = z.infer<typeof daySchema>;
+export type DepartmentsSrc = z.infer<typeof departmentsSchema>;
 export type InflowSrc = z.infer<typeof inflowSchema>;
 export type MoneySrc = z.infer<typeof moneySchema>;
 export type CharacterSrc = z.infer<typeof characterSchema>;

@@ -4,6 +4,8 @@ gen: { ru: "смотровой приёмного" }
 # санитар (spec docs/specs/2026-10-orderlies.md, решения владельца 24.10.2026, #88–#89) — по одному на смену; работает
 # и без него: лежачих тогда везёт медсестра
 staff: [role.nurse, role.orderly]
+# отделение по виду помещения (spec docs/specs/2026-10-departments.md)
+department: dept.emergency
 # работает и ночью (spec docs/specs/2026-10-staff-shifts.md): готовая больница — и с ночной сменой
 night: true
 emergency: true

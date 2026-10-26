@@ -2,6 +2,8 @@ id: room.ecg
 name: { ru: "Кабинет ЭКГ" }
 gen: { ru: "кабинета ЭКГ" }
 staff: [role.nurse]
+# отделение по виду помещения (spec docs/specs/2026-10-departments.md): ЭКГ — в терапии, как в таблице геймдизайна §4
+department: dept.therapy
 needsEquipment: true
 sizes:
   - id: S

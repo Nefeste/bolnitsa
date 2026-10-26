@@ -4,6 +4,8 @@ gen: { ru: "эндокринолога" }
 dat: { ru: "эндокринологу" }
 # нанятый врач со специальностью (spec 2026-10-chapter-4, часть 59), как гастроэнтеролог
 salary: [4000, 7000]
+# его кабинет — в этом отделении (spec docs/specs/2026-10-departments.md)
+department: dept.therapy
 stands: role.doctor
 needs: room.staff
 profile: [cond.hypothyroidism, cond.thyrotoxicosis, cond.thyroid_storm, cond.diabetes2_new, cond.hypoglycemia, cond.adrenal_crisis, cond.hypocalcemia_acute, cond.dka, cond.hhs]

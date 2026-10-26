@@ -7,12 +7,13 @@
 // кто-то есть) убирается, когда освободится: проверка — событием очереди `siteFree`, поэтому итог не зависит от того,
 // каким шагом идут часы. Койка лежащего — номер в помещении; после стройки номер переносится на тот же предмет. С кассой
 // (spec docs/specs/2026-10-economy.md) стройка платится из неё сразу и не ниже предела минуса: не хватает — отказ `money`.
+// Инструмент «Отделение» (spec docs/specs/2026-10-departments.md, часть 1) — отметка в плане больницы, бесплатно.
 import { scenarioOf } from '../campaign/campaign';
 import { Rng } from '../core/rng';
 import { DOCTOR, standInOf } from '../hospital/requirements';
 import {
-  addBench, addItem, addReady, addRoom, bedOrder, demolish, type Done, FREE_CHECK, furnish, hospitalOf, type MoodStep, moveItem, removeDecor, removeDoor, removedBetween,
-  removeItem, removeRoom, setDoor, setOffice, type Site, type SiteCommand, type SiteError, type SiteRoom, SITE_UNDO, type Works,
+  addBench, addItem, addReady, addRoom, bedOrder, demolish, type Done, FREE_CHECK, furnish, hospitalOf, markDept, type MoodStep, moveItem, removeDecor, removeDoor,
+  removedBetween, removeItem, removeRoom, setDoor, setOffice, type Site, type SiteCommand, type SiteError, type SiteRoom, SITE_UNDO, type Works,
 } from '../hospital/site';
 import { covers, nightHospital, salaryOf, type Shift, type StaffMember, wageOf } from '../hospital/staff';
 import { growthNumbers, studyUntil } from './growth';
@@ -147,10 +148,10 @@ function commit(db: ContentDb, s: ShiftState, before: Site, after: Site) {
  * Снимок для отмены: до действия. С людьми (spec docs/specs/2026-10-staff-mood.md) — и выплата уволенному (`paid`), и что
  * вернуть настроению (`mood`).
  */
-function remember(s: ShiftState, works: Works, site: Site, room?: string, more: { paid?: number; mood?: MoodStep } = {}) {
+function remember(s: ShiftState, works: Works, site: Site, room?: string, more: { paid?: number; mood?: MoodStep; keep?: true } = {}) {
   works.undo.push({
     site, staff: s.staff ?? [], ...(s.nextStaff !== undefined ? { nextStaff: s.nextStaff } : {}), spent: works.spent, ...(room ? { room } : {}),
-    ...(more.paid ? { paid: more.paid } : {}), ...(more.mood ? { mood: more.mood } : {}),
+    ...(more.paid ? { paid: more.paid } : {}), ...(more.mood ? { mood: more.mood } : {}), ...(more.keep ? { keep: true as const } : {}),
   });
   if (works.undo.length > SITE_UNDO) works.undo.splice(0, works.undo.length - SITE_UNDO);
 }
@@ -254,12 +255,17 @@ function siteCommandOf(db: ContentDb, s: ShiftState, cmd: SiteCommand): Notice[]
     case 'undecor':
       r = removeDecor(db, site, cmd.x, cmd.y);
       break;
+    // инструмент «Отделение» (spec docs/specs/2026-10-departments.md, часть 1): бесплатно, в отмене — как стройка
+    case 'dept':
+      r = markDept(db, site, cmd.room, cmd.dept);
+      break;
   }
   if (!r.ok) return no(cmd.kind, r.error);
   // касса (spec 2026-10-economy): трата не уведёт её ниже предела минуса — иначе стройка ждёт денег
   const need = shortOf(db, s, r.cost);
   if (need > 0) return no(cmd.kind, { kind: 'money', need });
-  remember(s, works, site, r.room ?? ('room' in cmd ? cmd.room : undefined));
+  // отметка отделения помещение не перестраивает — и отмена её не закрывает его на перестройку (`keep`)
+  remember(s, works, site, r.room ?? ('room' in cmd ? cmd.room : undefined), cmd.kind === 'dept' ? { keep: true } : {});
   // готовое «С персоналом»: люди на все должности — в том же шаге отмены; со сменами (spec 2026-10-staff-shifts) — на
   // дневную, а в помещении, что работает ночью, в больнице, что работает ночью, — и на ночную, как у готовой больницы
   let hired: number | undefined;
@@ -289,7 +295,9 @@ function undo(db: ContentDb, s: ShiftState, works: Works, site: Site): Notice[] 
   if ((s.staff ?? []).some(m => busy.staff.has(m.id) && !step.staff.some(x => x.id === m.id))) return no('undo', { kind: 'busy' });
   works.undo.pop();
   const restored: Site = { ...step.site };
-  if (step.room && restored.rooms.some(r => r.id === step.room)) restored.editing = step.room;
+  // помещение, которое действие перестраивало, — снова перестраивается; отметка отделения (`keep`) — перестройка, какая есть
+  const editing = step.keep ? site.editing : step.room;
+  if (editing !== undefined && restored.rooms.some(r => r.id === editing)) restored.editing = editing;
   else delete restored.editing;
   const cost = step.spent - works.spent;
   s.staff = mergeStaff(s.staff ?? [], step.staff);
