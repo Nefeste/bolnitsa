@@ -1,29 +1,30 @@
-// из spikes/render-3d: src/people.ts — изменено: экземпляры — из толпы crowd.ts (стоит, идёт, сидит, лежит), цвет одежды и
-// кожи — на экземпляр (одна геометрия на вид, разные должности и пациенты), матрица лёжа.
+// из spikes/render-3d: src/people.ts — изменено: экземпляры — из толпы crowd.ts (стоит, идёт, сидит, лежит), цвет одежды —
+// на экземпляр (одна геометрия на вид, разные должности), матрица лёжа, люди Rocketbox.
 //
 // Люди на видеокарте: каждый вид — две InstancedMesh (полная и упрощённая), все экземпляры вида — один вызов отрисовки.
 // Скелетная анимация считается в вершинном шейдере: матрицы суставов всех кадров всех видов лежат в одной текстуре
-// (bake.ts); на экземпляр приходят номер кадра A, кадр B и доля между ними, цвет одежды и кожи. На CPU за кадр — матрица и
-// три числа на человека.
+// (bake.ts); на экземпляр приходят номер кадра A, кадр B и доля между ними, цвет одежды. На CPU за кадр — матрица и три
+// числа на человека.
 //
-// Люди Rocketbox (spec docs/specs/2026-10-people.md): у вида — свой материал с атласом и маской. Одежда по маске R —
-// цвет должности (цвет экземпляра) × яркость ткани, складки остаются; пряди — срез по альфе маски, и в тенях тоже.
+// У вида — свой материал с атласом и маской (spec docs/specs/2026-10-people.md). Одежда по маске R — цвет должности (цвет
+// экземпляра) × яркость ткани, складки остаются; пряди — срез по альфе маски, и в тенях тоже.
 import * as THREE from 'three';
-import { BAKE_FPS, BONE_TEX_W, CLIP_NAMES, type Look, type People } from './bake';
-import type { Crowd, Walker } from './crowd';
+import { BONE_TEX_W, type Clip, CLIP_NAMES, type Look, type People } from './bake';
+import { type Crowd, FADE, type Walker } from './crowd';
 
+// матрица сустава в текстуре — три её верхние строки подряд (bake.ts, packPeople); нижняя — 0 0 0 1
 const PARS = /* glsl */ `
 attribute vec4 skinIndex;
 attribute vec4 skinWeight;
 attribute vec3 aAnim;
-attribute vec2 aTint;
-attribute vec3 aSkin;
 uniform highp sampler2D uBones;
 mat4 boneAt(int f, float j) {
-  int b = (f * JOINT_STRIDE + int(j)) * 4;
+  int b = (f * JOINT_STRIDE + int(j)) * 3;
   ivec2 p = ivec2(b % BONE_W, b / BONE_W);
-  return mat4(texelFetch(uBones, p, 0), texelFetch(uBones, p + ivec2(1, 0), 0),
-              texelFetch(uBones, p + ivec2(2, 0), 0), texelFetch(uBones, p + ivec2(3, 0), 0));
+  vec4 r0 = texelFetch(uBones, p, 0);
+  vec4 r1 = texelFetch(uBones, p + ivec2(1, 0), 0);
+  vec4 r2 = texelFetch(uBones, p + ivec2(2, 0), 0);
+  return mat4(r0.x, r1.x, r2.x, 0.0, r0.y, r1.y, r2.y, 0.0, r0.z, r1.z, r2.z, 0.0, r0.w, r1.w, r2.w, 1.0);
 }
 mat4 skinAt(int f) {
   return boneAt(f, skinIndex.x) * skinWeight.x + boneAt(f, skinIndex.y) * skinWeight.y
@@ -34,18 +35,7 @@ const BASE = /* glsl */ `
 mat4 skinM = skinAt(int(aAnim.x));
 if (aAnim.z > 0.001) skinM = skinM * (1.0 - aAnim.z) + skinAt(int(aAnim.y)) * aAnim.z;
 `;
-// одежда — цвет экземпляра (должность, зерно пациента), кожа — свой цвет экземпляра; остальное — цвет модели
-const COLOR = /* glsl */ `
-#if defined( USE_COLOR ) || defined( USE_INSTANCING_COLOR )
-  vColor = vec4( color, 1.0 );
-#endif
-#ifdef USE_INSTANCING_COLOR
-  vColor.rgb = mix( vColor.rgb, instanceColor.rgb, aTint.x );
-#endif
-  vColor.rgb = mix( vColor.rgb, aSkin, aTint.y );
-`;
-
-// атлас Rocketbox: цвет экземпляра — в vTint (одежда по маске), а не множителем всего цвета
+// цвет экземпляра — в vTint (одежда по маске), а не множителем всего цвета
 const TINT_VERTEX = /* glsl */ `
 #ifdef USE_INSTANCING_COLOR
   vTint = instanceColor.rgb;
@@ -67,7 +57,7 @@ function inject(shader: THREE.WebGLProgramParametersWithUniforms, bones: THREE.T
     .replace('#include <skinbase_vertex>', BASE)
     .replace('#include <skinnormal_vertex>', 'objectNormal = normalize(mat3(skinM) * objectNormal);')
     .replace('#include <skinning_vertex>', 'transformed = (skinM * vec4(transformed, 1.0)).xyz;');
-  if (!depth) v = v.replace('#include <color_vertex>', look ? TINT_VERTEX : COLOR);
+  if (!depth) v = v.replace('#include <color_vertex>', TINT_VERTEX);
   shader.vertexShader = v;
   if (look && !depth) {
     shader.uniforms.uMask = { value: look.mask };
@@ -76,19 +66,29 @@ function inject(shader: THREE.WebGLProgramParametersWithUniforms, bones: THREE.T
   }
 }
 
-/** Цвет экземпляра: одежда и кожа. */
+/** Кадры анимации на секунде `time`: A, B (номера в общей текстуре) и доля между ними; петля — по кругу, иначе — до конца. */
+function frameOf(clip: Clip, time: number, loop: boolean): [number, number, number] {
+  const t = Math.max(0, time) * clip.fps;
+  if (loop) {
+    const tt = t % (clip.frames - 1);
+    const fa = Math.floor(tt);
+    return [clip.start + fa, clip.start + ((fa + 1) % (clip.frames - 1)), tt - fa];
+  }
+  const tt = Math.min(t, clip.frames - 1);
+  const fa = Math.floor(tt);
+  return [clip.start + fa, clip.start + Math.min(fa + 1, clip.frames - 1), tt - fa];
+}
+
+/** Цвет экземпляра: одежда (красится по маске там, где у вида ткань в цвет должности). */
 export interface Paint {
   clothes: THREE.Color;
-  skin: THREE.Color;
 }
 
 export class PeopleView {
   readonly group = new THREE.Group();
   private full: THREE.InstancedMesh[] = [];
   private far: THREE.InstancedMesh[] = [];
-  private attrs: { full: Record<'anim' | 'skin', THREE.InstancedBufferAttribute>; far: Record<'anim' | 'skin', THREE.InstancedBufferAttribute> }[] = [];
-  /** материал людей с цветом в вершинах; у видов с атласом — свои (`textured`) */
-  readonly material: THREE.MeshStandardMaterial;
+  private attrs: { full: THREE.InstancedBufferAttribute; far: THREE.InstancedBufferAttribute }[] = [];
   /** сколько людей нарисовано полной и упрощённой моделью в последнем кадре */
   nearCount = 0;
   farCount = 0;
@@ -97,24 +97,13 @@ export class PeopleView {
     private people: People,
     private max: number,
   ) {
-    // у набора материалы двусторонние (волосы — тонкие пластины)
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0, side: THREE.DoubleSide });
-    mat.onBeforeCompile = s => inject(s, people.boneTexture, people.jointStride, false);
-    mat.customProgramCacheKey = () => 'baked-skin';
-    const depth = new THREE.MeshDepthMaterial({ side: THREE.DoubleSide });
-    depth.onBeforeCompile = s => inject(s, people.boneTexture, people.jointStride, true);
-    depth.customProgramCacheKey = () => 'baked-skin-depth';
-    this.material = mat;
     for (const look of people.looks) {
-      const [lookMat, lookDepth] = look.map ? this.textured(look) : [mat, depth];
+      const [lookMat, lookDepth] = this.textured(look);
       const make = (g: THREE.BufferGeometry) => {
         const geo = g.clone();
         const anim = new THREE.InstancedBufferAttribute(new Float32Array(max * 3), 3);
-        const skin = new THREE.InstancedBufferAttribute(new Float32Array(max * 3), 3);
         anim.setUsage(THREE.DynamicDrawUsage);
-        skin.setUsage(THREE.DynamicDrawUsage);
         geo.setAttribute('aAnim', anim);
-        geo.setAttribute('aSkin', skin);
         const m = new THREE.InstancedMesh(geo, lookMat, max);
         m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         m.setColorAt(0, new THREE.Color(1, 1, 1));
@@ -125,13 +114,13 @@ export class PeopleView {
         m.receiveShadow = true;
         m.count = 0;
         this.group.add(m);
-        return { m, anim, skin };
+        return { m, anim };
       };
       const f = make(look.geometry);
       const d = make(look.lod);
       this.full.push(f.m);
       this.far.push(d.m);
-      this.attrs.push({ full: { anim: f.anim, skin: f.skin }, far: { anim: d.anim, skin: d.skin } });
+      this.attrs.push({ full: f.anim, far: d.anim });
     }
   }
 
@@ -192,28 +181,19 @@ export class PeopleView {
       const k = full ? nFull[li]++ : nFar[li]++;
       if (k >= this.max) continue;
       this.matrixOf(w, this.m4).toArray(mesh.instanceMatrix.array, k * 16);
-      const c = paint(w);
-      c.clothes.toArray(mesh.instanceColor!.array, k * 3);
-      c.skin.toArray(at.skin.array as Float32Array, k * 3);
-      const clip = look.clips[CLIP_NAMES[w.clip]];
-      const t = Math.max(0, w.clipTime) * BAKE_FPS;
-      let fa: number;
-      let fb: number;
-      let wt: number;
-      if (w.loop) {
-        const tt = t % (clip.frames - 1);
-        fa = Math.floor(tt);
-        fb = (fa + 1) % (clip.frames - 1);
-        wt = tt - fa;
-      } else {
-        const tt = Math.min(t, clip.frames - 1);
-        fa = Math.floor(tt);
-        fb = Math.min(fa + 1, clip.frames - 1);
-        wt = tt - fa;
+      paint(w).clothes.toArray(mesh.instanceColor!.array, k * 3);
+      const cur = frameOf(look.clips[CLIP_NAMES[w.clip]], w.clipTime, w.loop);
+      let [fa, fb, wt] = cur;
+      if (w.fade > 0) {
+        // переход (crowd.ts, `setClip`): ближайшая поза прежней анимации → ближайшая поза новой, по доле прошедшего
+        const old = frameOf(look.clips[CLIP_NAMES[w.fromClip]], w.fromTime, w.fromLoop);
+        fa = old[2] < 0.5 ? old[0] : old[1];
+        fb = cur[2] < 0.5 ? cur[0] : cur[1];
+        wt = 1 - w.fade / FADE;
       }
-      const arr = at.anim.array as Float32Array;
-      arr[k * 3] = clip.start + fa;
-      arr[k * 3 + 1] = clip.start + fb;
+      const arr = at.array as Float32Array;
+      arr[k * 3] = fa;
+      arr[k * 3 + 1] = fb;
       arr[k * 3 + 2] = wt;
     }
     let near = 0;
@@ -222,7 +202,7 @@ export class PeopleView {
       for (const [mesh, at, n0] of [
         [this.full[li], this.attrs[li].full, nFull[li]],
         [this.far[li], this.attrs[li].far, nFar[li]],
-      ] as [THREE.InstancedMesh, Record<'anim' | 'skin', THREE.InstancedBufferAttribute>, number][]) {
+      ] as [THREE.InstancedMesh, THREE.InstancedBufferAttribute, number][]) {
         const n = Math.min(n0, this.max);
         mesh.count = n;
         mesh.visible = n > 0;
@@ -233,11 +213,9 @@ export class PeopleView {
         mesh.instanceColor!.clearUpdateRanges();
         mesh.instanceColor!.addUpdateRange(0, n * 3);
         mesh.instanceColor!.needsUpdate = true;
-        for (const a of [at.anim, at.skin]) {
-          a.clearUpdateRanges();
-          a.addUpdateRange(0, n * 3);
-          a.needsUpdate = true;
-        }
+        at.clearUpdateRanges();
+        at.addUpdateRange(0, n * 3);
+        at.needsUpdate = true;
       }
       near += Math.min(nFull[li], this.max);
       far += Math.min(nFar[li], this.max);
