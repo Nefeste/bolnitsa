@@ -313,7 +313,10 @@ export function pathCard(j: Journey, female: boolean, now: number, names: PathNa
         const q = [...steps].reverse().find((x): x is Extract<Step, { k: 'queue' }> => x.k === 'queue');
         // ждал — с того, как сел в зале (spec 2026-10-walk): терпение тратится оттуда, а не у стойки и не в пути
         const all = T.flow.left(female, dur(q ? e.t - (q.sat ?? q.t) : e.t - j.at), dur(e.patience ?? 0));
-        left = q ? `${all} — ${queueWhy(q)}` : all;
+        // почему — как считает планёрка (spec docs/specs/2026-10-why.md): к часу ухода в смене могло не остаться врача, который
+        // принял бы его, а врач, к которому он записан, — уйти на перерыв
+        const more = e.why === 'none' && q?.why === 'busy' ? [T.flow.leftNone(female)] : e.why === 'rest' ? [T.flow.leftRest(female)] : [];
+        left = q ? `${all} — ${[queueWhy(q), ...more].join('; ')}` : all;
         text = T.flow.leftEnd(female);
         why = T.flow.patience(female, dur(e.patience ?? 0));
         break;

@@ -2,9 +2,10 @@
 // что движок видел за 24 часа — больше всего ждали врача и дольше всего, очередь у кабинетов обследований, скорая у входа,
 // палаты, лежачие ждали каталку (spec docs/specs/2026-10-orderlies.md); и «стало хуже» — ваши лежащие, перешедшие в 08:00 в
 // «хуже» или «реакция на лечение». Пишется там, где это случается (постановка в очередь, назначение, приезд скорой,
-// поступление, перевозка, уход), — один максимум, без списков.
+// поступление, перевозка, уход), — один максимум, без списков. «Почему?» у цифр (spec docs/specs/2026-10-why.md) — счёт
+// пришедших по виду и ушедших по причине.
 import { hospitalDay } from './day';
-import type { DayLoad, ShiftPatient, ShiftState } from './types';
+import type { DayLoad, LeftWhy, ShiftPatient, ShiftState, VisitKind } from './types';
 import { daysIn, wardState } from './ward';
 
 const MIN = 60;
@@ -19,11 +20,24 @@ export function queued(s: ShiftState) {
   if (s.queue.length > l.queue) l.queue = s.queue.length;
 }
 
-/** Ушёл, не дождавшись: ждал врача с прихода до сейчас. */
-export function left(s: ShiftState, p: ShiftPatient) {
+/** Пришёл — «Почему?» у числа пришедших (spec docs/specs/2026-10-why.md): сами, по записи, скорая, повторно. */
+export function arrived(s: ShiftState, kind: VisitKind) {
+  const by = (s.summary.arrivedBy ??= {});
+  by[kind] = (by[kind] ?? 0) + 1;
+}
+
+/**
+ * Ушёл, не дождавшись: ждал врача с прихода до сейчас; почему — в счёт причин (spec docs/specs/2026-10-why.md): `stood` —
+ * стоял у кабинета, `asks` — кто-то из врачей ждал вашего ответа.
+ */
+export function left(s: ShiftState, p: ShiftPatient, why: LeftWhy, stood: boolean, asks: boolean) {
   const l = loadOf(s);
   const wait = Math.round((s.t - p.arriveT) / MIN);
   if (wait > l.wait) l.wait = wait;
+  const by = (s.summary.leftBy ??= { why: {} });
+  by.why[why] = (by.why[why] ?? 0) + 1;
+  if (stood) by.stood = (by.stood ?? 0) + 1;
+  if (asks && why === 'busy') by.asks = (by.asks ?? 0) + 1;
 }
 
 /**

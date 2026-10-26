@@ -446,6 +446,14 @@
     .msec p { margin: 2px 0; }
     .msec ul { list-style: none; margin: 0; padding: 0 0 0 6px; }
     .msec li { margin: 1px 0; }
+    /* «Почему?» у цифр планёрки (spec docs/specs/2026-10-why.md): кнопка у числа и разбор под строкой */
+    .msec button.why { padding: 0 6px; font-size: 11px; line-height: 16px; color: var(--accent); background: transparent; border-color: transparent; vertical-align: 1px; }
+    .msec button.why:hover:not(:disabled), .msec button.why.on { border-color: var(--accent); background: transparent; color: var(--accent); }
+    .mwhy { margin: 4px 0 6px; padding: 4px 8px 6px 10px; border-left: 3px solid var(--accent); background: rgba(47, 181, 201, 0.06); }
+    .mwhy p { margin: 2px 0; }
+    .mwhy ul { padding-left: 2px; }
+    .mwhy li { margin: 3px 0; }
+    .mwhy button { margin-top: 4px; }
     #meet-tip { grid-column: 1 / -1; background: rgba(47,181,201,.12); border-radius: 4px; padding: 2px 8px 4px; }
     .hours { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
     .hours .label { margin-left: 0; }
