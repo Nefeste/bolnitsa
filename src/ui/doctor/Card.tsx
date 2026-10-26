@@ -881,11 +881,39 @@ function DecideColumn({ v, act, explain }: { v: CardView; act: (c: Command) => v
       </div>
       <div className="finishbar">
         <small className="muted">{v.draft.diagnosis ? d.summary(v.draft.treatments.length, setting) : p.finishNeedsDx}</small>
+        {v.refer ? <Refer v={v} act={act} /> : null}
         <button type="button" id="dcard-finish" className="on" disabled={!v.draft.diagnosis || !v.active} onClick={() => act({ kind: 'finish' })}>
           {p.finish}
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * «Направить к …» (spec docs/specs/2026-10-specialists.md, часть 2; решение владельца #112): к специалисту, который сейчас
+ * принимает, — со всем, что узнано; он позовёт первым и поведёт с поправкой профиля. Ждёт результатов — пока нельзя.
+ */
+function Refer({ v, act }: { v: CardView; act: (c: Command) => void }) {
+  const c = T.doctor.card;
+  const r = v.refer!;
+  return (
+    <select
+      id="dcard-refer"
+      value=""
+      disabled={!!r.wait || !v.active}
+      title={r.wait ? c.referWait : c.referHint}
+      onChange={e => {
+        if (e.target.value) act({ kind: 'refer', to: e.target.value });
+      }}
+    >
+      <option value="">{c.refer}</option>
+      {r.to.map(x => (
+        <option key={x.id} value={x.id}>
+          {c.referTo(x.role, x.skill)}
+        </option>
+      ))}
+    </select>
   );
 }
 

@@ -1,4 +1,4 @@
-// из anamnez: src/content/types.ts @ 96503ac, изменено: ContentDb.consults — «Просят посмотреть» (spec 2026-10-consults); ContentDb.day — сутки целиком (spec 2026-10-day); ContentDb.inflow и ContentDb.money, Consults.long — поток от больницы, касса ПК, долгий случай (spec 2026-10-economy); ContentDb.sites и SitePlan — готовые больницы из готовых помещений (spec 2026-10-real-hospital); Inflow.bench, Preset.benches и SitePlan.benches — скамьи у дверей кабинетов (spec 2026-10-door-benches); Preset.land — свободная земля под стройку (spec 2026-10-city-land); economy.staff.mood — настроение нанятых (spec 2026-10-staff-mood)
+// из anamnez: src/content/types.ts @ 96503ac, изменено: ContentDb.consults — «Просят посмотреть» (spec 2026-10-consults); ContentDb.day — сутки целиком (spec 2026-10-day); ContentDb.inflow и ContentDb.money, Consults.long — поток от больницы, касса ПК, долгий случай (spec 2026-10-economy); ContentDb.sites и SitePlan — готовые больницы из готовых помещений (spec 2026-10-real-hospital); Inflow.bench, Preset.benches и SitePlan.benches — скамьи у дверей кабинетов (spec 2026-10-door-benches); Preset.land — свободная земля под стройку (spec 2026-10-city-land); economy.staff.mood — настроение нанятых (spec 2026-10-staff-mood); Consults.refer — поправка профиля направленных к специалисту (spec 2026-10-specialists, часть 2)
 // Типы собранной медицинской базы (`docs/04-data-model.md` §1).
 //
 // Исходник — YAML в content/, собирает tools/content/build.ts. Здесь — то, что получает
@@ -1394,6 +1394,11 @@ export interface Consults {
    * диагноза, прежде чем попросить посмотреть с причиной «долго»; уже просил — после этого решает тем, что знает
    */
   long: number;
+  /**
+   * направление к специалисту (spec docs/specs/2026-10-specialists.md, часть 2; решение владельца #112): у направленного к
+   * специалисту болезни его профиля вероятнее во столько раз; нет — нанятые терапевты не направляют (база тестов, пробы)
+   */
+  refer?: number;
 }
 
 /**

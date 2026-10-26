@@ -218,6 +218,11 @@ export interface CardView extends VisitView {
    * ваш закрытый — на разборе; каждая один раз, «Без обучения» — нет
    */
   tips?: CardTips;
+  /**
+   * «Направить к …» (spec docs/specs/2026-10-specialists.md, часть 2; решение владельца #112): ваш у вас в кабинете — к кому
+   * из специалистов, которые сейчас принимают; `wait` — ждёт результатов или вышел на обследование: пока нельзя
+   */
+  refer?: { to: ColleagueRow[]; wait?: true };
 }
 
 /**
@@ -802,6 +807,15 @@ export function cardView(db: ContentDb, s: ShiftState, id: string, level: Diffic
   const take = !mine && !p.closed && yours === undefined && takeCommand(db, s, id).cmd !== undefined;
   const active = mine && !p.closed && coming === undefined;
   const tips = cardTips(db, s, p, active);
+  // «Направить к …» (spec 2026-10-specialists, часть 2): ваш у вас в кабинете, не лежит в смотровой — к специалисту, который
+  // сейчас принимает
+  const specialists = mine && here && !p.closed && coming === undefined && s.flow && !p.bay ? colleaguesOf(db, s).filter(m => db.roles[m.role]?.profile) : [];
+  const refer: CardView['refer'] = specialists.length > 0
+    ? {
+      to: specialists.map(m => ({ id: m.id, role: named(db.roles[m.role]?.name, m.role), skill: m.skill })),
+      ...(seen.pending.length > 0 || (p.out !== undefined && p.out.back > now) ? { wait: true as const } : {}),
+    }
+    : undefined;
   return {
     ...view, id, active, ...(where ? { where } : {}), ...(coming !== undefined ? { coming } : {}), ...(where === 'waiting' && !s.current ? { callable: true } : {}), ...(round ? { round } : {}),
     ...(lead ? { lead } : {}), ...(decided ? { decided } : {}), ...(take ? { take: true as const } : {}),
@@ -809,6 +823,7 @@ export function cardView(db: ContentDb, s: ShiftState, id: string, level: Diffic
     ...(p.approve && here ? { approve: { until: p.approve.until, ...(p.approve.plan ? {} : { discharge: true as const }) } } : {}),
     ...(verdict ? { verdict } : {}),
     ...(tips ? { tips } : {}),
+    ...(refer ? { refer } : {}),
   };
 }
 

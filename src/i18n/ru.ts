@@ -260,6 +260,8 @@ export const ru = {
     patient: (sex: 'm' | 'f', age: number, name?: string) => `${name ?? (sex === 'f' ? 'Пациентка' : 'Пациент')}, ${age} ${years(age)}`,
     /** записан к специалисту (spec docs/specs/2026-10-specialists.md) */
     booked: (dat: string) => `по записи к ${dat}`,
+    /** направлен к нанятому врачу (spec docs/specs/2026-10-specialists.md, часть 2): «направлена к гастроэнтерологу» */
+    referred: (dat: string, f: boolean) => `${f ? 'направлена' : 'направлен'} к ${dat}`,
     /** к кому: должность в дательном падеже из базы; нет — название с маленькой буквы */
     dat: (dat: string, name: string) => dat || name.toLowerCase(),
     complaint: 'Жалоба',
@@ -514,6 +516,8 @@ export const ru = {
     doctor: (who: string, d: string) => `у ${who} — ${d}`,
     atYou: (d: string) => `у вас — ${d}`,
     doctorAny: 'врача',
+    doctorAnyDat: 'врачу',
+    doctorAnyWho: 'врач',
     exam: (name: string, parts: string) => `${name}: ${parts}`,
     goes: 'идёт туда',
     walk: (d: string) => `дорога ${d}`,
@@ -529,7 +533,14 @@ export const ru = {
     report: 'снимок описывают',
     own: (d: string) => `ожидание своего врача — ${d}`,
     ownWhy: 'врач принимает другого больного',
-    refer: (d: string) => `направлен к другому врачу, ожидание — ${d}`,
+    /**
+     * направлен к врачу (spec docs/specs/2026-10-specialists.md, часть 2): к кому, в дательном падеже, и сколько ждал; ждать не
+     * пришлось — без ожидания
+     */
+    referTo: (f: boolean, dat: string, d?: string) => `${f ? 'направлена' : 'направлен'} к ${dat}${d ? `, ожидание — ${d}` : ''}`,
+    /** кто направил: нанятый врач сам — не уверен, вторая гипотеза из профиля специалиста; или вы */
+    referBy: (role: string) => `направил ${role.toLowerCase()}: не уверен, а вторая гипотеза — по профилю специалиста`,
+    referYou: 'вы направили',
     ask: (d: string, until: string) => `врач просит вас посмотреть — ждёт ответа ${d} (до ${until})`,
     askLate: 'ответа не было — врач решил сам',
     /** решение врача ждёт главврача (spec docs/specs/2026-10-two-ways.md, F3) */
@@ -537,7 +548,7 @@ export const ru = {
     approveWait: 'ждёт у двери кабинета, врач принимает другого',
     approveExam: 'вы назначили ещё обследование',
     approveTake: 'вы взяли случай',
-    approveRefer: 'вы направили к другому врачу',
+    approveReferTo: (dat: string) => `вы направили к ${dat}`,
     approveAgreed: 'вы согласились',
     approveSilent: 'ответа не было — решение врача в силе',
     chief: 'назначил главврач',

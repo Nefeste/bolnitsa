@@ -422,9 +422,13 @@ export class Doctor {
         this.collecting = true;
         const cmds = a.kind === 'act' ? [a.cmd] : a.cmds;
         for (const cmd of cmds) client.doctor({ kind: 'case', id, cmd });
+        // направили (spec 2026-10-specialists, часть 2): «идёт к вам» больше не так — к кому направлен
+        const sent = cmds.find(c => c.kind === 'refer');
+        const role = sent && this.g.staff.find(m => m.id === sent.to)?.role;
+        if (role && this.hud.card) this.say(true, T.doctor.notices.referred(this.hud.card.title, this.g.names().dat(role), this.hud.card.portrait.sex === 'f'));
         // «Ждать» (spec 2026-10-owner-play-2): решать пока нечего — карта закрывается, часы идут; вернётся или будет готово
-        // — карта и пауза
-        if (cmds.some(c => c.kind === 'waitResults')) {
+        // — карта и пауза. «Направить к …» (spec 2026-10-specialists, часть 2): больной ушёл к специалисту — тоже
+        if (cmds.some(c => c.kind === 'waitResults' || c.kind === 'refer')) {
           this.close();
           return;
         }
