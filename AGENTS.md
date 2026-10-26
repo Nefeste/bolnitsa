@@ -146,6 +146,8 @@ bun tools/bench/referrals.ts                   # referral to a specialist (#62, 
                                                # whole day with the engine's rule (`--every`, `--lead`)
 bun tools/bench/approvals.ts                   # «Главврач утверждает»: decisions per hour awaiting approval and how many are wrong
                                                # (`--rules below90,discharge`, `--answer silent`; next to it — the same day by default)
+bun tools/bench/departments.ts                 # departments (spec): how often a registrar routing walk-ins by complaint would pick
+                                               # the wrong department (`--first` — by the main complaint, `--vitals`, `--list`)
 bun tools/sim/economy.ts --seeds 1,2,3         # economy simulator: scripted hospitals for 7 days, cash, flow, reputation and the criteria
                                                # (`--days 14` — and who quits on their own: at most two in two weeks; `--only
                                                # ambulatory` — scenario 1 with its cash and build order for 10 days, the goal
