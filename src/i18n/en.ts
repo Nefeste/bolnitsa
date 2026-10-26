@@ -18,6 +18,8 @@ export const en: Strings = {
     error: 'Error',
   },
   top: {
+    /** всплывающее извещение о больном (spec 2026-10-aaa-polish, «Извещения») */
+    toastFind: 'Click to show on the map',
     day: (n: number) => `Day ${n}`,
     pause: 'Pause',
     speed: (k: number) => `×${k}`,

@@ -18,6 +18,8 @@ export const ru = {
     error: 'Ошибка',
   },
   top: {
+    /** всплывающее извещение о больном (spec 2026-10-aaa-polish, «Извещения») */
+    toastFind: 'Щелчок — показать на карте',
     day: (n: number) => `День ${n}`,
     pause: 'Пауза',
     speed: (k: number) => `×${k}`,

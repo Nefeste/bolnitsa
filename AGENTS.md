@@ -290,7 +290,8 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   settings (`settings.ts`: walls, camera, quality «auto», text size — `TEXT_SCALES` 1/1.15/1.3 as `--ui-k`: `zoom` of `#ui`,
   the font of map labels; kept in page storage, not in saves — bench and build change the view through
   `showWalls`/`showQuality`, which do not write them); people and flow:
-  pure window logic (`flow.ts` — path lines, room load and state, patient rows) and room status chips (`chips.ts`). The
+  pure window logic (`flow.ts` — path lines, room load and state, patient rows) and room status chips (`chips.ts`); popup
+  notices under the clock — `toasts.ts` (the last three, real-time fade, only fresh ones; the «Журнал» tab keeps them all). The
   «Показатели» layer (`docs/specs/2026-10-metrics-layer.md`): `metrics.ts` — a room's column from its load (`columnOf`: height,
   colour, the hover line, the number), `collabels.ts` — numbers over the columns, `src/render/columns.ts` — one instanced mesh
   of shaded boxes, picked by a ray; the chosen metric is a player setting (`metric`), M cycles it, `?metric=load` for bench.
