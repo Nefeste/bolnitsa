@@ -15,6 +15,8 @@ import {
   conditionTerm, examInfo, examsByAction, examTerm, findingInfo, lifeHistory, type Line, type ResultGroup, type TermInfo, treatmentTerm,
 } from '../../sim/caseView';
 import { type CardView, type CaseVerdict, LEVELS } from '../../sim/doctor';
+import type { TipView } from '../../sim/tips';
+import { initialsOf } from '../../app/scenario';
 import { openEncyclopedia } from '../Encyclopedia';
 import type { Actions } from '../store';
 import { BODY_PLACES, type ExamPlace, placeOf, SHELVES } from './places';
@@ -152,7 +154,11 @@ function CardWindow({ v, level, meanwhile, next, actions }: P) {
       {/* ваш лежащий — обход (spec docs/specs/2026-10-economy.md): заново, когда сменили лечение */}
       {v.round ? <Round key={v.round.current.join(',')} id={v.id} r={v.round} actions={actions} /> : null}
       {v.decision ? (
-        <Review v={v} next={next} actions={actions} explain={setTerm} />
+        <>
+          {/* подсказка наставницы на разборе (spec docs/specs/2026-10-scenario-1.md, часть 2б) */}
+          <MentorTip tip={v.tips?.review} at={`${v.id}:review`} actions={actions} />
+          <Review v={v} next={next} actions={actions} explain={setTerm} />
+        </>
       ) : read && v.order ? (
         <div className="dcols two">
           <Course v={v} explain={setTerm} />
@@ -257,8 +263,11 @@ function Steps({ v, act, actions, explain }: { v: CardView; act: (c: Command) =>
     order: v.pending.length > 0 ? s.waiting(v.pending.length) : n(ids.order) > 0 ? s.ordered(n(ids.order)) : '',
     decide: v.draftDiagnosisName ?? '',
   };
+  // подсказка наставницы (spec docs/specs/2026-10-scenario-1.md, часть 2б): на «Решении» — своя, на остальных шагах — карты
+  const decide = open === 'decide';
   return (
     <div className="dsteps" id="dcard-steps">
+      <MentorTip tip={decide ? v.tips?.decide : v.tips?.card} at={`${v.id}:${v.done.length}:${decide ? 'decision' : 'card'}`} actions={actions} />
       {STEPS.map(k => (
         <Fragment key={k}>
           <button type="button" id={`step-${k}`} className={k === open ? 'dstep on' : 'dstep'} aria-expanded={k === open} onClick={() => setOpen(k)}>
@@ -278,6 +287,70 @@ function Steps({ v, act, actions, explain }: { v: CardView; act: (c: Command) =>
           ) : null}
         </Fragment>
       ))}
+    </div>
+  );
+}
+
+/** Подсказки, закрытые здесь, пока поток не прислал вид без них: та же не возвращается на кадр. */
+const tipsClosed = new Set<string>();
+/** Момент, в который закрыли подсказку: следующая ждёт следующего действия врача (или другого шага). */
+let tipHold: string | undefined;
+
+/**
+ * Подсказка наставницы в карте (spec docs/specs/2026-10-scenario-1.md, часть 2б): значок с инициалами, заголовок, от кого,
+ * текст и статьи энциклопедии. «Понятно» и ✕ «Пропустить» — показана; «Без обучения» — подсказок и писем к состояниям
+ * больше нет. Часы идут, как шли (решение владельца #116). `at` — момент приёма: пока он тот же, вторая подряд не
+ * показывается.
+ */
+function MentorTip({ tip, at, actions }: { tip?: TipView; at: string; actions: Actions }) {
+  const t = T.scenario;
+  const [, redraw] = useState(0);
+  if (!tip || tipsClosed.has(tip.id) || tipHold === at) return null;
+  const close = () => {
+    tipsClosed.add(tip.id);
+    tipHold = at;
+    actions.scenario({ kind: 'tip', id: tip.id });
+    redraw(n => n + 1);
+  };
+  return (
+    <div className="dtip" id="dcard-tip" data-tip={tip.id}>
+      <button type="button" className="close small" id="tip-skip" onClick={close} title={t.skip}>
+        ✕
+      </button>
+      <div className="lhead">
+        <span className="lbadge" aria-hidden="true">
+          {initialsOf(tip.from)}
+        </span>
+        <div>
+          <b>{tip.title}</b>
+          <small className="muted">{tip.from}</small>
+        </div>
+      </div>
+      <p className="ltext">{tip.text}</p>
+      <div className="row">
+        <button type="button" className="on" id="tip-ok" onClick={close}>
+          {t.ok}
+        </button>
+        <button
+          type="button" id="tip-off" title={t.offHint}
+          onClick={() => {
+            actions.scenario({ kind: 'off', on: true });
+            close();
+          }}
+        >
+          {t.off}
+        </button>
+        {tip.see.length > 0 ? (
+          <span className="tipsee">
+            <span className="muted">{t.tipSee}:</span>
+            {tip.see.map(x => (
+              <button key={x.id} type="button" className="said" data-enc={x.id} onClick={() => openEncyclopedia(x.id)}>
+                {x.name}
+              </button>
+            ))}
+          </span>
+        ) : null}
+      </div>
     </div>
   );
 }

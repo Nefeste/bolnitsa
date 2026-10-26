@@ -209,3 +209,82 @@ letters:
       en: >-
         The clinic is in good shape: people come, the diagnoses are accurate, the balance is positive. From here on it is
         up to you. I'll drop by, but you will manage.
+# Подсказки наставницы в карте больного (часть 2б): по одной, когда к месту, каждая — один раз за сценарий; первая по порядку
+# списка из тех, что к месту. Это подсказки главы «Участок» «Анамнеза» (content/campaign/tips/) от наставницы сценария, со
+# словами своей карты (шаги «Расспрос» … «Решение», «Завершить приём»); медицина в них та же. О болезни — только у
+# заданного больного: его болезнь наставница знает.
+tips:
+  - id: start
+    from: char.tutor
+    when: caseOpen
+    name: { ru: "Сначала — расспрос", en: "Questions first" }
+    text:
+      ru: >-
+        Начните с жалоб и расспроса: когда началось, что беспокоит, что уже пробовали. Расспрос почти ничего не стоит, а
+        диагноз чаще всего слышен уже в ответах. Вопросы — в шаге «Расспрос», ответы — в ленте «Ход приёма».
+      en: >-
+        Start with the complaints and questions: when it began, what bothers them, what they have already tried.
+        Questions cost almost nothing, and the diagnosis can most often be heard in the answers. The questions are in the
+        History step, the answers appear in the Course of the visit.
+    see: [exam.ask_onset]
+  - id: examine
+    from: char.tutor
+    when: afterAsk
+    name: { ru: "Теперь — осмотр", en: "Now the examination" }
+    text:
+      ru: >-
+        Расспросили — осмотрите. Осмотр подтверждает или отводит то, что вы услышали: при боли в горле посмотрите зев,
+        при кашле послушайте лёгкие. Он тоже почти ничего не стоит.
+      en: >-
+        You have asked; now examine. The examination confirms or rules out what you heard: with a sore throat look at
+        the throat, with a cough listen to the lungs. It costs almost nothing as well.
+    see: [exam.throat, exam.lung_auscultation]
+  - id: strep
+    from: char.tutor
+    when: { condition: cond.strep_pharyngitis }
+    name: { ru: "Горло и антибиотик", en: "Sore throat and antibiotics" }
+    text:
+      ru: >-
+        Боль в горле чаще всего вирусная, и антибиотик при ней не помогает. Нужен ли он, решает экспресс-тест на
+        стрептококк: положительный — нужен, отрицательный — лечим как вирусную инфекцию. Налёты на миндалинах,
+        болезненные узлы на шее, температура без кашля — чем больше этого, тем нужнее тест.
+      en: >-
+        A sore throat is most often viral, and an antibiotic does not help it. Whether one is needed is decided by the
+        rapid strep test: positive, it is needed; negative, treat it as a viral infection. Patches on the tonsils, tender
+        nodes in the neck, a fever without a cough: the more of these, the more the test is needed.
+    see: [exam.strep_rapid, cond.strep_pharyngitis]
+  - id: decision
+    from: char.tutor
+    when: decision
+    name: { ru: "Решение", en: "The decision" }
+    text:
+      ru: >-
+        Решение — в два шага: сначала диагноз, потом лечение и где лечить — дома, в стационар или вызвать скорую.
+        Сомневаетесь — вернитесь к расспросу, осмотру или обследованиям. Разбор — после «Завершить приём».
+      en: >-
+        The decision takes two steps: first the diagnosis, then the treatment and where to treat: at home, refer to a
+        hospital or call an ambulance. In doubt, go back to the history, the examination or the tests. The review comes
+        after "Finish the visit".
+  - id: urine
+    from: char.tutor
+    when: { condition: cond.cystitis }
+    name: { ru: "Жалобы на мочеиспускание", en: "Urinary complaints" }
+    text:
+      ru: >-
+        При жалобах на мочеиспускание сделайте тест-полоску мочи прямо в кабинете: за пару минут видны лейкоциты и
+        нитриты, лаборатория для этого не нужна. Отрицательная полоска при типичных жалобах цистит не исключает.
+      en: >-
+        With urinary complaints, do a urine dipstick right in your office: in a couple of minutes it shows leukocytes
+        and nitrites, no laboratory needed. A negative dipstick with typical complaints does not rule out cystitis.
+    see: [exam.urine_dipstick, cond.cystitis]
+  - id: review
+    from: char.tutor
+    when: review
+    name: { ru: "Разбор", en: "The review" }
+    text:
+      ru: >-
+        Сравните свой путь с тем, как прошёл бы этот случай разумный врач: какой вопрос или анализ решил дело, а что
+        ничего не добавило. Лишнее — это время пациента и деньги амбулатории.
+      en: >-
+        Compare your path with how a reasonable doctor would have handled this case: which question or test settled it
+        and what added nothing. Anything extra costs the patient time and the clinic money.
