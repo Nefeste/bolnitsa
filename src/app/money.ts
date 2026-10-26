@@ -103,7 +103,8 @@ export interface EconomyHud {
 
 export type MoneyAction =
   | { kind: 'open' }
-  | { kind: 'close' }
+  /** `pause` — закрыть, а часы оставить на паузе: «Кто ушёл» ведёт смотреть список (spec docs/specs/2026-10-why.md) */
+  | { kind: 'close'; pause?: true }
   | { kind: 'autopause'; on: boolean }
   | { kind: 'hours'; open: number; close: number }
   | { kind: 'loan' };
@@ -250,13 +251,13 @@ export class Money {
     }
   }
 
-  private close() {
+  private close(pause = false) {
     if (!this.hud.open) return;
     this.hud.open = false;
     // письма планёрки прочитаны: их текст был на её экране — карточкой они не вернутся
     this.g.scenario.readAll(this.hud.meeting?.scenario?.letters.map(l => l.id) ?? []);
-    // пауза до планёрки — не причина стоять после неё: часы пойдут ×1
-    this.g.setSpeed(this.before || 1);
+    // пауза до планёрки — не причина стоять после неё: часы пойдут ×1; «Кто ушёл» — смотреть список, часы стоят
+    this.g.setSpeed(pause ? 0 : this.before || 1);
     this.before = null;
   }
 
@@ -277,7 +278,7 @@ export class Money {
         if (this.hud.meeting && !this.hud.open) this.show(this.g.ff ? 1 : this.g.speed);
         break;
       case 'close':
-        this.close();
+        this.close(a.pause === true);
         break;
       case 'autopause':
         this.hud.autopause = a.on;

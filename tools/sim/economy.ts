@@ -37,7 +37,7 @@ import { nightHospital, presetStaff, salaryOf, type StaffMember, withNightShift 
 import { apply, capacityOf, newFlowShift } from '../../src/engine/shift/engine';
 import { ambulancePerHour, walkPerHour } from '../../src/engine/shift/inflow';
 import { cashNow, startCash } from '../../src/engine/shift/money';
-import type { Ride, ShiftState } from '../../src/engine/shift/types';
+import type { InflowDay, LeftBy, Ride, ShiftState, VisitKind } from '../../src/engine/shift/types';
 import { buildDb } from '../content/load';
 
 const arg = (name: string, def: string) => {
@@ -161,6 +161,13 @@ interface DayRow {
   /** скорая: больше всего ждали у входа сразу; каталку ждали дольше порога планёрки — сколько раз и дольше всего, минут */
   door: number;
   gurney?: { n: number; wait: number };
+  /**
+   * «Почему?» у цифр планёрки (spec docs/specs/2026-10-why.md): пришли по виду, ушли по причинам; прогноз потока на эти
+   * сутки — с планёрки, которой они начались (у первых суток его нет)
+   */
+  by: Partial<Record<VisitKind, number>>;
+  why?: LeftBy;
+  forecast?: InflowDay;
 }
 interface Run {
   /** `week` — прибыль за первые 7 суток без стройки: критерий «не окупается за 7 суток» и при `--days` больше 7 */
@@ -278,7 +285,7 @@ function run(name: string, seed: number): Run {
   const why: Record<string, number> = {};
   for (const r of Object.values(s.moods ?? {})) for (const w of r.why ?? []) why[w] = (why[w] ?? 0) + 1;
   const moods = { n: vs.length, low: vs.filter(v => v < (db.economy.staff.mood?.quit ?? 30)).length, min: vs.length ? Math.min(...vs) : 0, mean: vs.length ? vs.reduce((a, b) => a + b, 0) / vs.length : 0, why };
-  const days = s.history.map((d): DayRow => {
+  const days = s.history.map((d, i): DayRow => {
     const e = d.economy!;
     const col = Object.values(d.colleagues ?? {});
     for (const [k, v] of Object.entries(e.ledger.income)) lines[k] = (lines[k] ?? 0) + v;
@@ -289,6 +296,7 @@ function run(name: string, seed: number): Run {
       day: d.day, cash: e.cash, income: incomeOf(e.ledger), expenses: expensesOf(e.ledger), works: e.ledger.expenses.works ?? 0, rep: e.reputation.to, score: e.reputation.score,
       arrived: d.arrived, ambulance: d.ambulance?.arrived ?? 0, seen: col.reduce((n, c) => n + c.seen, d.seen), left: d.left, died: d.ward?.died ?? 0, lying: d.ward?.lying ?? 0,
       flowWalk: 0, flowAmb: 0, salaries: e.ledger.expenses.salaries, door: d.load?.door ?? 0, ...(d.load?.gurney ? { gurney: { ...d.load.gurney } } : {}),
+      by: d.arrivedBy ?? {}, ...(d.leftBy ? { why: d.leftBy } : {}), ...(s.history[i - 1]?.inflow ? { forecast: s.history[i - 1].inflow } : {}),
     };
   });
   // поток от больницы сейчас — в среднем в сутки при часах по умолчанию
@@ -328,6 +336,11 @@ if (asJson) {
       console.log(`  зерно ${r.seed}: касса не ниже ${fmt(r.minCash)}, прибыль за ${r.days.length} сут. без стройки ${fmt(r.profit)} ₽`);
       for (const d of r.days) {
         console.log(`    сутки ${d.day}: пришли ${d.arrived} (скорая ${d.ambulance}; поток ${d.flowWalk}+${d.flowAmb}), приняты ${d.seen}, ушли ${d.left}, умерли ${d.died}, лежат ${d.lying} · доходы ${fmt(d.income)}, расходы ${fmt(d.expenses)}${d.works ? ` (стройка ${fmt(d.works)})` : ''} · касса ${fmt(d.cash)} · репутация ${d.rep}${d.score !== undefined ? ` (оценка ${d.score})` : ''}`);
+        // «Почему?» (spec docs/specs/2026-10-why.md): по виду и прогноз планёрки на эти сутки; ушли — по причинам
+        const f = d.forecast;
+        const w = d.why;
+        const why = w ? Object.entries(w.why).map(([k, v]) => `${k} ${v}`).join(', ') + (w.asks ? ` (из busy при просьбах ${w.asks})` : '') + (w.stood ? `; стояли ${w.stood}` : '') : '';
+        console.log(`      почему: сами ${d.by.walkIn ?? 0}, по записи ${d.by.appointment ?? 0}, скорая ${d.by.ambulance ?? 0}, повторно ${d.by.return ?? 0}${f ? ` · прогноз ${fmt(f.walk)} + ${fmt(f.book)} + ${fmt(f.amb)} (кабинетов ${f.offices}, специалистов ${f.booked}, мест ${f.bays}, ${f.pct} %)` : ''}${why ? ` · ушли: ${why}` : ''}`);
       }
       const lines = Object.entries(r.lines).filter(([, v]) => v !== 0).map(([k, v]) => `${k} ${fmt(v)}`).join(', ');
       console.log(`    за ${r.days.length} сут.: ${lines}`);
