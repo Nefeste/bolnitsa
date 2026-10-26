@@ -25,6 +25,10 @@ export const WALK = 1;
 export const RUN = 2;
 export const SITDOWN = 3;
 export const STANDUP = 4;
+export const SIT = 5;
+
+/** Сколько секунд одна анимация переходит в другую (смешивание поз, people.ts): без рывка. */
+export const FADE = 0.25;
 
 /** Шаг к сроку движка — не медленнее и не быстрее этих долей обычного (spec 2026-10-walk). */
 export const PACE: readonly [number, number] = [0.7, 1.5];
@@ -74,6 +78,11 @@ export interface Walker {
   clip: number;
   clipTime: number;
   loop: boolean;
+  /** переход из прежней анимации: какой, на какой её секунде, петля ли; сколько секунд ещё смешивать (0 — нет) */
+  fromClip: number;
+  fromTime: number;
+  fromLoop: boolean;
+  fade: number;
   /** уходит: дошёл до выхода — исчезает */
   leaving: boolean;
   /** сколько секунд ждёт встречного в двери */
@@ -168,7 +177,7 @@ export class Crowd {
     const w: Walker = {
       key, look, staff, x: from.x, y: 0, z: from.z, heading: 0, lie: 0, lat: KEEP_RIGHT, state: 'idle', pts: null, cum: null, seg: 0, due,
       at: undefined, goals: [], dwell: 0, t: 0, fx: 0, fz: 0, fy: 0, clip: IDLE, clipTime: (key.length * 0.37) % 3, loop: true, leaving: false,
-      yield: 0, v: 0, idle: idleRate(key),
+      fromClip: IDLE, fromTime: 0, fromLoop: true, fade: 0, yield: 0, v: 0, idle: idleRate(key),
     };
     this.walkers.set(key, w);
     if (staff && !enter) this.settle(w, spot);
@@ -193,8 +202,9 @@ export class Crowd {
       w.y = r.y;
       w.heading = spot.yaw;
       w.state = 'sit';
-      this.setClip(w, SITDOWN, false);
-      w.clipTime = 1e3;
+      // сидит — петля сидя, с секунды по ключу: соседи на скамье дышат не в такт
+      this.setClip(w, SIT, true);
+      w.clipTime = (w.key.length * 0.71) % 5;
       w.lie = 0;
     } else if (spot.pose === 'lie') {
       w.x = spot.x;
@@ -213,6 +223,8 @@ export class Crowd {
       w.lie = 0;
       this.setClip(w, IDLE, true);
     }
+    // на месте сразу — без перехода из прежней позы
+    w.fade = 0;
   }
 
   /**
@@ -309,7 +321,14 @@ export class Crowd {
   }
 
   private setClip(w: Walker, c: number, loop: boolean) {
-    if (w.clip !== c) w.clipTime = 0;
+    if (w.clip !== c) {
+      // переход: последняя поза прежней анимации смешивается с новой `FADE` секунд (people.ts)
+      w.fromClip = w.clip;
+      w.fromTime = w.clipTime;
+      w.fromLoop = w.loop;
+      w.fade = FADE;
+      w.clipTime = 0;
+    }
     w.clip = c;
     w.loop = loop;
   }
@@ -389,8 +408,9 @@ export class Crowd {
       return;
     }
     const look = this.looks[w.look];
-    // шаг и бег — со скоростью вида (bake.ts: у Rocketbox — по смещению корня за петлю): ступня не скользит
+    // шаг и бег — со скоростью вида (bake.ts, lockFeet: при ней опорная ступня стоит на месте): ступня не скользит
     w.clipTime += dt * (w.clip === WALK || w.clip === RUN ? Math.max(0.2, w.v / (w.clip === RUN ? look.run : look.walk)) : w.clip === SITDOWN || w.clip === STANDUP ? fast : w.idle);
+    if (w.fade > 0) w.fade = Math.max(0, w.fade - dt * fast);
     w.v = 0;
     switch (w.state) {
       case 'idle':
@@ -470,6 +490,8 @@ export class Crowd {
         if (w.t >= dur) {
           w.state = 'sit';
           w.heading = spot.yaw;
+          // петля сидя начинается с последней позы посадки (tools/app/people.mjs, `seated`)
+          this.setClip(w, SIT, true);
         }
         return;
       }

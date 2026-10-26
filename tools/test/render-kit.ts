@@ -3,13 +3,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { MeshoptSimplifier } from 'three/addons/libs/meshopt_simplifier.module.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ContentDb, Id, RoomSizeId, Rot } from '../../src/content/types';
 import { emptyPlot, build, planOf, presetHospital, type HospitalState, dims, sizeOf } from '../../src/engine/hospital/build';
 import { presetStaff, type StaffMember } from '../../src/engine/hospital/staff';
-import { bakeLook, lodOf, packPeople, type People } from '../../src/render/bake';
+import { bakeLook, packPeople, type People } from '../../src/render/bake';
 import { layoutOf, type Layout } from '../../src/render/layout';
 import { type Index, type Model, modelOf } from '../../src/render/models';
 
@@ -36,28 +35,17 @@ export async function furnitureModels(names: string[]): Promise<Map<string, Mode
   return out;
 }
 
-let people: People | undefined;
-/** Все виды людей, запечённые как в игре. */
-export async function bakedPeople(): Promise<People> {
-  if (people) return people;
-  await MeshoptSimplifier.ready;
-  const raws = [];
-  for (const n of index.people) raws.push(bakeLook(await gltfOf(`people/${n}`), n));
-  people = packPeople(raws, raws.map(r => lodOf(r, 0.25, MeshoptSimplifier)));
-  return people;
-}
-
 /** Люди Rocketbox (spec docs/specs/2026-10-people.md; tools/app/people.mjs): виды набора. */
 export const rocketboxIndex = JSON.parse(readFileSync(join(MODELS, 'rocketbox', 'index.json'), 'utf8')) as { looks: string[] };
 
-let rocketbox: People | undefined;
-/** Люди Rocketbox, запечённые как в игре: упрощённая модель — из файла. */
-export async function bakedRocketbox(): Promise<People> {
-  if (rocketbox) return rocketbox;
+let people: People | undefined;
+/** Все виды людей, запечённые как в игре: упрощённая модель — из файла. */
+export async function bakedPeople(): Promise<People> {
+  if (people) return people;
   const raws = [];
   for (const n of rocketboxIndex.looks) raws.push(bakeLook(await gltfOf(`rocketbox/${n}`), n));
-  rocketbox = packPeople(raws, raws.map(() => undefined));
-  return rocketbox;
+  people = packPeople(raws);
+  return people;
 }
 
 /** Больница пресета, план и раскладка. */

@@ -5,7 +5,7 @@
 //   ?hospital=empty|preset — с чего начать (spec docs/specs/2026-10-build.md, «Начало игры»; нет — окно спросит; бенч и
 //   снимки — всегда готовая больница). В Electron — те же ключи: --bench, --hospital empty.
 //   ?flow=6,1 — поток числами (сами в час, машин скорой в час), а не от больницы (spec docs/specs/2026-10-economy.md):
-//   сценарий режима врача в браузере; авто-бенч и снимки — всегда числа сцены, та же толпа, что прежде.
+//   сценарий режима врача в браузере; авто-бенч и снимки — числа сцены, та же толпа, что прежде, а с ?flow= — его числа.
 //   ?load=<ячейка> — открыть сохранение (spec docs/specs/2026-10-saves.md): так меню игры загружает и экран начала
 //   продолжает. ?role=doctor|chief|manager — кто вы (spec docs/specs/2026-10-two-ways.md, F4); с ?hospital= без роли —
 //   «Врач», как играли до ролей. В Electron — --role chief. ?scenario=scenario.ambulatory — сценарий кампании (spec
@@ -168,13 +168,17 @@ window.shell?.onClosing(() => {
   })().finally(() => window.shell?.closeNow());
 });
 
-/** Поток: от больницы; авто-бенч и снимки — числа сцены (та же толпа, что прежде); `?flow=6,1` — эти числа. */
+/**
+ * Поток: от больницы; `?flow=6,1` — эти числа; авто-бенч и снимки — числа сцены (та же толпа, что прежде), бенч с `?flow=` —
+ * его числа (толпа больше: spec docs/specs/2026-10-people.md, «Проверки»).
+ */
 async function flowOf(): Promise<Flow> {
   const args = window.shell ? await window.shell.args() : [];
   const has = (k: string) => q.get(k) === '1' || args.includes(`--${k}`);
-  if (has('bench') || has('shot')) return SCENE.flow;
   const [walk, amb] = (q.get('flow') ?? '').split(',').map(Number);
-  return Number.isFinite(walk) && walk > 0 ? { perHour: walk, ...(Number.isFinite(amb) && amb > 0 ? { ambulancePerHour: amb } : {}) } : AUTO;
+  const own = Number.isFinite(walk) && walk > 0 ? { perHour: walk, ...(Number.isFinite(amb) && amb > 0 ? { ambulancePerHour: amb } : {}) } : undefined;
+  if (has('bench') || has('shot')) return own ?? SCENE.flow;
+  return own ?? AUTO;
 }
 
 begin()
