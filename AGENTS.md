@@ -88,9 +88,10 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # the doctor mode: a consult, a whole case, «Take the case», «My office»; then money:
                                    # building from cash, «Until morning» to the 08:00 meeting, «почему?» of the arrived and
                                    # the left, «Кто ушёл», the «Обход» list; then ready rooms: four clicks open the empty
-                                   # building, R, one undo; then the start screen's three cards and the polyclinic; then
-                                   # specialists: hire a gastroenterologist in the polyclinic, «по записи к …»; then the
-                                   # owner's play of 18.10:
+                                   # building, R, one undo; then the start screen on the live scene (the ready city behind
+                                   # the glass panel, the camera on its circle, the choice reopens the page with its keys),
+                                   # its three cards and the polyclinic; then specialists: hire a gastroenterologist in the
+                                   # polyclinic, «по записи к …»; then the owner's play of 18.10:
                                    # «Открыть карту» of anyone, «Следить», «Позвать» — the card when they come in; then
                                    # saves: save, «Продолжить», load from the menu, delete, a broken file; then the card of the
                                    # departed: «Приняты», the decision in a discharged patient's card, the departed's person card;
@@ -130,7 +131,8 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # card's chart by day; then referral to a specialist: «Направить к …» in your own card's
                                    # «Решение» — the specialists on duty, the card closes, «направлен к гастроэнтерологу» in
                                    # «Пациенты», the patient card and the path);
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|26` for one part
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|26` for one part, `-- --only 7,10,11` —
+                                   # several in a row on one page, as in the full run
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
                                                      # (`-- --flow 40,4` — a bigger crowd, about 180 people,
                                                      # `-- --metric load` — with the «Показатели» layer)
@@ -294,7 +296,10 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   (`docs/specs/2026-10-doctor-mode.md`): `caseView.ts` (a copy of Anamnez's player view of a case) and `doctor.ts` build the
   patient card and the doctor's lists here and send them ready-made — the window never sees a patient's truth.
 - `src/app/` — the game in the window: loads the database and models, starts with the empty building or the preset,
-  frame loop, clock, input, build tools (`build.ts`), room labels (`labels.ts`), auto-bench (`bench.ts`), the player's
+  frame loop, clock, input, build tools (`build.ts`), room labels (`labels.ts`), auto-bench (`bench.ts`), the live scene
+  behind the start screen (`docs/specs/2026-10-aaa-polish.md`, «Экран начала на живой сцене»: `main.tsx` starts the ready
+  city as a `Game` with `backdrop` — no input, saves, icons or autopause, never `__ready` — and the choice reopens the page
+  with its keys; `backdrop.ts` — the camera's circle over the rooms, pure), the player's
   settings (`settings.ts`: walls, camera, quality «auto», text size — `TEXT_SCALES` 1/1.15/1.3 as `--ui-k`: `zoom` of `#ui`,
   the font of map labels; kept in page storage, not in saves — bench and build change the view through
   `showWalls`/`showQuality`, which do not write them); people and flow:

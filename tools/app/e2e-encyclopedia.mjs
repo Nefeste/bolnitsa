@@ -16,7 +16,9 @@ export async function encyclopediaPart({ page, port, out, ok, fail, q }) {
   const open = () => page.evaluate(() => !!document.getElementById('enc'));
 
   // ---------------------------------------------------------------- экран начала: «Энциклопедия»
-  await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru`);
+  // экран начала без живой сцены (spec docs/specs/2026-10-aaa-polish.md): её проверяет часть 7; здесь уходят со страницы, пока
+  // она грузится, и загрузчик моделей пишет в консоль об оборванной загрузке
+  await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&backdrop=0`);
   await page.waitForSelector('#start-enc', { timeout: 60000 });
   await page.click('#start-enc');
   await page.waitForSelector('#enc #enc-sec-conditions', { timeout: 30000 });
