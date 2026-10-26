@@ -61,6 +61,7 @@ import { peoplePart } from './e2e-people.mjs';
 import { polyPart } from './e2e-poly.mjs';
 import { dischargedPart } from './e2e-discharged.mjs';
 import { readyPart } from './e2e-ready.mjs';
+import { referralPart } from './e2e-referral.mjs';
 import { savesPart } from './e2e-saves.mjs';
 import { scenarioPart } from './e2e-scenario.mjs';
 import { shiftsPart } from './e2e-shifts.mjs';
@@ -173,6 +174,8 @@ try {
   if (run(24)) await scenarioPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   // часть 25 — слой «Показатели» (spec docs/specs/2026-10-metrics-layer.md, часть 1): tools/app/e2e-metrics.mjs
   if (run(25)) await metricsPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  // часть 26 — направление к специалисту (spec docs/specs/2026-10-specialists.md, часть 2): tools/app/e2e-referral.mjs
+  if (run(26)) await referralPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);

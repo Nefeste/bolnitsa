@@ -1,4 +1,4 @@
-// из anamnez: src/engine/shift/types.ts @ 96503ac, изменено: ClosedCase.review — разбор по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults); стройка ПК — команда, событие, извещение и счётчики (spec 2026-10-build); сутки целиком — часы приёма, планёрка и обход (spec 2026-10-day); путь пациента — поле `journeys` (spec 2026-10-flow-ui); касса и поток от больницы, планёрка, обход, долгий случай (spec 2026-10-economy); скамья у двери — `ShiftPatient.bench` (spec 2026-10-door-benches); настроение нанятых — `moods`, персонал на планёрке — `StaffNews` (spec 2026-10-staff-mood); главврач утверждает — `meta.asks`, `ShiftPatient.approve`, `orders`, `chief`, команды `asks`, `approve`, `order`, `DaySummary.chief` (spec 2026-10-two-ways, часть 2)
+// из anamnez: src/engine/shift/types.ts @ 96503ac, изменено: ClosedCase.review — разбор по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults); стройка ПК — команда, событие, извещение и счётчики (spec 2026-10-build); сутки целиком — часы приёма, планёрка и обход (spec 2026-10-day); путь пациента — поле `journeys` (spec 2026-10-flow-ui); касса и поток от больницы, планёрка, обход, долгий случай (spec 2026-10-economy); скамья у двери — `ShiftPatient.bench` (spec 2026-10-door-benches); настроение нанятых — `moods`, персонал на планёрке — `StaffNews` (spec 2026-10-staff-mood); главврач утверждает — `meta.asks`, `ShiftPatient.approve`, `orders`, `chief`, команды `asks`, `approve`, `order`, `DaySummary.chief` (spec 2026-10-two-ways, часть 2); направление к специалисту — `ShiftPatient.ref`, команда `refer`, `ColleagueDay.sent` (spec 2026-10-specialists, часть 2)
 // Смена в амбулатории (spec 2026-09-first-shift, «Движок»; `04-data-model.md` §2).
 //
 // Состояние — обычный сериализуемый объект: сохранение — снимок (ADR 0010). Случайность
@@ -143,6 +143,12 @@ export interface ShiftPatient {
    * вы — как любого
    */
   to?: string;
+  /**
+   * поток для ПК: направлен к нанятому врачу — номер человека из штата (spec 2026-10-specialists, часть 2, решение владельца
+   * #112): нанятым терапевтом, который не уверен, а его вторая гипотеза — из профиля специалиста, или вами. Специалист ведёт
+   * направленного к себе с поправкой профиля `consults.refer`
+   */
+  ref?: string;
   /**
    * поток для ПК (spec 2026-10-walk): к какому врачу записан — номер нанятого врача; нет — к вам. Ждёт в зоне ожидания
    * `hall` у его кабинета, а следующий к врачу — у двери его кабинета `next`. От входа доходит до регистратуры к `regAt`,
@@ -497,6 +503,11 @@ export type Command =
    * `takeOver`; `self` — пусть решает сам, сейчас; `refer` — направить к другому нанятому врачу `to`
    */
   | { kind: 'consult'; id: string; answer: 'look' | 'self' | 'refer'; to?: string }
+  /**
+   * поток для ПК (spec 2026-10-specialists, часть 2, решение владельца #112): направить вашего больного из вашего кабинета к
+   * специалисту `to`, который сейчас принимает, — со всем, что узнано; он ведёт его с поправкой профиля
+   */
+  | { kind: 'refer'; to: string }
   /** поток для ПК (spec 2026-10-two-ways, F3): о чём нанятые врачи спрашивают главврача — сразу */
   | { kind: 'asks'; rules: AskRule[] }
   /**
@@ -735,6 +746,8 @@ export interface ColleagueDay {
   unsafe?: number;
   /** поток для ПК: сколько раз просил вас посмотреть (spec 2026-10-consults) */
   asked?: number;
+  /** поток для ПК: скольких направил к специалисту сам — не уверен, вторая гипотеза из его профиля (решение владельца #112) */
+  sent?: number;
   /** поток для ПК (spec 2026-10-staff-shifts, часть 2): сколько раз уходил на перерыв; сколько диагнозов выбрал уставшим */
   rests?: number;
   tired?: number;
