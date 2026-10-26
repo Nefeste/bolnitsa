@@ -90,7 +90,7 @@ float tileNoise(vec2 p) {
         '#include <map_fragment>',
         /* glsl */ `#include <map_fragment>
 float tileK = uTile > 0.0 ? 0.05 * (tileHash(floor(vFloor / uTile)) - 0.5) : 0.0;
-diffuseColor.rgb *= 1.0 + tileK + 0.06 * (tileNoise(vFloor * 0.3) - 0.5);`,
+diffuseColor.rgb *= 1.0 + tileK + 0.03 * (tileNoise(vFloor * 0.3) - 0.5);`,
       );
   };
   mat.customProgramCacheKey = () => 'floor-tint';

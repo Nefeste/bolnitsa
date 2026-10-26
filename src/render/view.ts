@@ -95,6 +95,9 @@ export class Daylight {
     cam.far = 220;
     s.shadow.bias = -0.0004;
     s.shadow.normalBias = 0.03;
+    // тень пропускает 15 % солнца: в помещениях под крышей (world.ts, `buildRoof`) у мебели и людей остаются мягкие тени,
+    // а полосы из окон — ярче всего вокруг (spec 2026-10-aaa-polish, «Свет, часть 2»)
+    s.shadow.intensity = 0.85;
     s.target.position.set(w / 2, 0, h / 2);
     scene.add(s, s.target, this.hemi);
   }
