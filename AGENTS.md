@@ -118,7 +118,8 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # scenario 1: «Кампания» on the start screen, the mentor's letters at the start and to the
                                    # hint states while building, the scenario's build catalog, your own office, the first three
                                    # patients set by the scenario, «Цели» and «Без обучения», «Письма» at the meeting, the
-                                   # build order in the catalog and in «Цели» (on and off), no role row in the scenario; then the
+                                   # build order in the catalog and in «Цели» (on and off), no role row in the scenario, the
+                                   # mentor's tips in the first patient's card one at a time; then the
                                    # «Показатели» layer: columns over the rooms from «Слои», taller where people are, numbers,
                                    # hover and click on a column, «Ожидание» with M, remembered after a reload; «Выручка» and
                                    # «Прибыль» with service rooms in grey, «До утра» — a past day on the slider, the room
@@ -146,7 +147,9 @@ bun tools/bench/referrals.ts                   # referral to a specialist (#62, 
 bun tools/bench/approvals.ts                   # «Главврач утверждает»: decisions per hour awaiting approval and how many are wrong
                                                # (`--rules below90,discharge`, `--answer silent`; next to it — the same day by default)
 bun tools/sim/economy.ts --seeds 1,2,3         # economy simulator: scripted hospitals for 7 days, cash, flow, reputation and the criteria
-                                               # (`--days 14` — and who quits on their own: at most two in two weeks)
+                                               # (`--days 14` — and who quits on their own: at most two in two weeks; `--only
+                                               # ambulatory` — scenario 1 with its cash and build order for 10 days, the goal
+                                               # «Пять суток с кассой в плюсе» by day 10)
 bun tools/sim/halls.ts --flow 14               # the polyclinic under load: waiting halls by the offices vs at the entrance
                                                # (both: `--hall 0` — seats of the whole hospital, `--bench 0` — no door benches)
 bun --cpu-prof --cpu-prof-dir=tools/bench/out/prof tools/bench/bench.ts --mode flow --only 200 --quick --until 11
@@ -271,6 +274,10 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   (owner's decisions #114, #115): the build order — `guide` in the record; a step is done when a room of its type works
   (`ScenarioView.guide`); the build catalog lists the steps first with numbers and the next one's «why» (`byGuide` in
   `src/ui/Scenario.tsx`), «Цели» lists them too, «Порядок стройки» turns it off; a scenario has no role row — you are «Врач».
+  Part 2б: the mentor's tips in the patient card — `tips` in the record; `src/sim/tips.ts` (a copy of Anamnez's) picks them in
+  the sim and sends them with the card (`CardView.tips`: the steps, «Решение», the review), one at a time when they fit, each
+  once; a tip about a disease only for a tutorial patient (otherwise it would give the diagnosis away); «Понятно» is the
+  `tip` mark, and the next tip waits for the doctor's next action (`src/ui/doctor/Card.tsx`, `MentorTip`).
 - `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`), Web Worker
   (`worker.ts`) and its client in the window (`client.ts`). The window never runs the engine. The doctor mode
   (`docs/specs/2026-10-doctor-mode.md`): `caseView.ts` (a copy of Anamnez's player view of a case) and `doctor.ts` build the
