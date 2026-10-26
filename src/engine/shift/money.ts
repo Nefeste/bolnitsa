@@ -4,23 +4,26 @@
 // содержание пишутся в кассу суток по часам (нанимают и строят в любой момент), стройка оплачивается сразу и не ниже
 // предела минуса, ниже предела на планёрке банк предлагает кредит (content/hospital/money.yaml); зарплата — по сменам (spec
 // docs/specs/2026-10-staff-shifts.md). Чистые функции состояния смены; в сменах «Анамнеза» движок их не зовёт.
-import type { ContentDb } from '../../content/types';
+import type { ContentDb, Manage } from '../../content/types';
 import { emptyLedger, expensesOf, incomeOf, type Ledger, upkeepOf } from '../economy/economy';
 import type { HospitalState } from '../hospital/build';
 import { wagesOf } from '../hospital/staff';
 import { roomUpkeep, type Site } from '../hospital/site';
 import { accrueRooms, COMMON, roomExpense } from './rooms';
+import { levelOf, manageOf } from './manage';
 import { DAY, type ShiftState, SHIFT_START } from './types';
 
 type Economy = NonNullable<ShiftState['economy']>;
 
 /**
- * С чего начинается касса (spec «Начало»): пустое здание — бюджет песочницы «обычный» «Анамнеза»; готовая больница —
- * городская или поликлиника (spec 2026-10-real-hospital) — уже построена: его доля, как у готовой амбулатории песочницы.
+ * С чего начинается касса (spec «Начало»): пустое здание — бюджет песочницы «Анамнеза» по уровню «Управления» (spec
+ * 2026-10-difficulty; «Обычно» — «обычный»); готовая больница — городская или поликлиника (spec 2026-10-real-hospital) — уже
+ * построена: его доля, как у готовой амбулатории песочницы.
  */
-export function startCash(db: ContentDb, start: 'empty' | 'preset' | 'poly'): number {
+export function startCash(db: ContentDb, start: 'empty' | 'preset' | 'poly', manage?: Manage): number {
   const sb = db.economy.sandbox;
-  return start === 'empty' ? sb.budgets.normal : Math.floor((sb.budgets.normal * sb.clinicShare) / 100);
+  const budget = sb.budgets[levelOf(db, manage).budget];
+  return start === 'empty' ? budget : Math.floor((budget * sb.clinicShare) / 100);
 }
 
 /** Касса потока для ПК в начале: касса, репутация «Анамнеза», пустая касса суток; зарплаты и содержание — с минуты `t`. */
@@ -85,23 +88,25 @@ export function accrue(db: ContentDb, s: ShiftState) {
   const l = ledgerOf(e);
   const up = upkeepPerDay(db, s.hospital);
   // смены (spec 2026-10-staff-shifts): зарплата — за смену, ночная дороже; без смены — за сутки, как прежде
-  const salaries = Math.round((wagesOf(db, s.staff ?? []) * dt) / DAY);
+  // ось «Управление» (spec 2026-10-difficulty): зарплаты — на множитель уровня
+  const pct = manageOf(db, s).salary;
+  const salaries = Math.round((wagesOf(db, s.staff ?? [], pct) * dt) / DAY);
   const equipment = Math.round((up.equipment * dt) / DAY);
   const rooms = Math.round((up.rooms * dt) / DAY);
   l.expenses.salaries += salaries;
   l.expenses.equipment += equipment;
   l.expenses.rooms += rooms;
   // деньги по помещениям (spec docs/specs/2026-10-metrics-layer.md, часть 2): те же суммы — по помещениям
-  accrueRooms(db, s, dt, salaries + equipment + rooms);
+  accrueRooms(db, s, dt, salaries + equipment + rooms, pct);
 }
 
 /**
  * Чего не хватает на трату `cost` (стройка), ₽: касса сейчас минус трата не должна уйти ниже предела (`money.yaml`,
- * `overdraft`). Хватает, трата не положительна или кассы нет — 0.
+ * `overdraft`; у уровней «Управления» — свой, spec 2026-10-difficulty). Хватает, трата не положительна или кассы нет — 0.
  */
 export function shortOf(db: ContentDb, s: ShiftState, cost: number): number {
   const now = cashNow(s);
-  const limit = db.money?.overdraft;
+  const limit = manageOf(db, s).overdraft;
   if (now === undefined || limit === undefined || cost <= 0) return 0;
   return Math.max(0, cost - (now + limit));
 }
@@ -164,7 +169,7 @@ export function repay(s: ShiftState) {
 export function offerOf(db: ContentDb, s: ShiftState): number | undefined {
   const e = s.economy;
   const m = db.money;
-  if (!e || !m || e.loan || e.cash >= -m.overdraft) return undefined;
+  if (!e || !m || e.loan || e.cash >= -(manageOf(db, s).overdraft ?? m.overdraft)) return undefined;
   return Math.ceil(-e.cash / m.loan.step) * m.loan.step;
 }
 

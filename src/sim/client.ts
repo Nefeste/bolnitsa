@@ -104,7 +104,7 @@ export class SimClient {
   }
 
   /** Файл сохранения: поток сжимает снимок с шапкой и видом окна. */
-  pack(meta: Omit<SaveMeta, 'day' | 't' | 'cash'>, view?: unknown): Promise<{ bytes: Uint8Array; meta: SaveMeta }> {
+  pack(meta: Omit<SaveMeta, 'day' | 't' | 'cash' | 'manage' | 'soft'>, view?: unknown): Promise<{ bytes: Uint8Array; meta: SaveMeta }> {
     return new Promise((ok, fail) => {
       this.packs.push({ ok, fail });
       this.post({ kind: 'pack', meta, ...(view !== undefined ? { view } : {}) });

@@ -2,7 +2,7 @@
 // читают через `useSyncExternalStore`. Снимок неизменяемый: каждое `set` — новый объект.
 import { useSyncExternalStore } from 'react';
 import type { PathLine, PatientFilter, PatientRow } from '../app/flow';
-import type { Id, ObjectKind, RoomSizeId } from '../content/types';
+import type { Id, Manage, ObjectKind, RoomSizeId } from '../content/types';
 import type { Lang } from '../i18n';
 import type { PersonInfo } from '../render/population';
 import type { Quality } from '../render/view';
@@ -186,6 +186,27 @@ export interface Hud {
   scenarioNames?: Record<Id, string>;
   /** сценарий кампании (spec docs/specs/2026-10-scenario-1.md): письма, цели, «Сценарий пройден»; не сценарий — нет */
   scenario?: ScenarioHud;
+  /** сложность этой игры (spec docs/specs/2026-10-difficulty.md, часть 2): уровень «Управления» и мягкий режим */
+  manage: Manage;
+  soft: boolean;
+  /** экран начала: числа уровней «Управления» из базы — строке под кнопками второго шага */
+  startLevels?: Record<Manage, LevelRow>;
+}
+
+/** Уровень «Управления» на экране начала: множители, %; предел минуса, ₽ (нет — без предела); касса начала по началу, ₽. */
+export interface LevelRow {
+  inflow: number;
+  patience: number;
+  salary: number;
+  breakdown: number;
+  overdraft?: number;
+  cash: Record<'empty' | 'preset' | 'poly', number>;
+}
+
+/** Сложность новой игры: уровень «Управления» и мягкий режим (spec docs/specs/2026-10-difficulty.md, часть 2). */
+export interface Level {
+  manage: Manage;
+  soft: boolean;
 }
 
 export const initial: Hud = {
@@ -228,6 +249,8 @@ export const initial: Hud = {
   version: '',
   settingsOpen: false,
   menu: { open: false, rows: [] },
+  manage: 'normal',
+  soft: false,
 };
 
 export class Store {
@@ -290,9 +313,12 @@ export interface Actions {
   reserve(role: Id): void;
   /**
    * начало игры: пустое здание, готовая больница или поликлиника и роль (spec docs/specs/2026-10-two-ways.md, F4); `{ load }`
-   * — сохранение (spec 2026-10-saves)
+   * — сохранение (spec 2026-10-saves); `level` — сложность новой игры (spec docs/specs/2026-10-difficulty.md, часть 2)
    */
-  startGame(kind: 'empty' | 'preset' | 'poly' | { load: string } | { scenario: Id }, role?: Role): void;
+  startGame(kind: 'empty' | 'preset' | 'poly' | { load: string } | { scenario: Id }, role?: Role, level?: Level): void;
+  /** сложность в игре (spec docs/specs/2026-10-difficulty.md, часть 2; решение владельца #136): в любой момент — с этой минуты */
+  setManage(level: Manage): void;
+  setSoft(on: boolean): void;
   /** часть 3 (spec docs/specs/2026-10-flow-ui.md): фильтры «Пациентов», камера к человеку и выбор, слои карты */
   filterPatients(patch: Partial<PatientFilter>): void;
   focus(key: string): void;

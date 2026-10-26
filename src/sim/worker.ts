@@ -32,7 +32,11 @@ function packSave(msg: Extract<ToSim, { kind: 'pack' }>) {
   if (out.kind !== 'state') return scope.postMessage({ kind: 'packFailed', message: out.kind === 'error' ? out.message : out.kind });
   const s = out.state;
   const cash = cashNow(s);
-  const meta = { ...msg.meta, day: s.day, t: s.t, ...(cash !== undefined ? { cash } : {}) };
+  // сложность — из снимка (spec docs/specs/2026-10-difficulty.md, часть 2): строка сохранения покажет уровень
+  const meta = {
+    ...msg.meta, day: s.day, t: s.t, ...(cash !== undefined ? { cash } : {}),
+    ...(s.meta.manage ? { manage: s.meta.manage } : {}), ...(s.meta.soft ? { soft: true as const } : {}),
+  };
   pack({ schema: SAVE_SCHEMA, meta, ...(msg.view !== undefined ? { view: msg.view } : {}), state: s })
     .then(bytes => scope.postMessage({ kind: 'packed', bytes, meta }, [bytes.buffer as ArrayBuffer]))
     .catch(e => scope.postMessage({ kind: 'packFailed', message: e instanceof Error ? e.message : String(e) }));
