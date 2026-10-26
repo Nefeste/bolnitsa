@@ -24,7 +24,7 @@ import { loadContent } from './content';
 import { listSlots, readSlot } from './saves';
 import { scenarioTitle } from './scenario';
 import { DEFAULT_ROLE, type Role, roleOf } from './roles';
-import { readSettings } from './settings';
+import { applyText, readSettings } from './settings';
 
 declare const __VERSION__: string;
 
@@ -35,7 +35,10 @@ document.documentElement.lang = lang;
 document.title = T.app.title;
 
 const store = new Store();
-store.set({ lang, version: __VERSION__ });
+// размер текста (spec docs/specs/2026-10-settings.md, «Размер текста») — из настроек игрока, и на экране начала
+const text = readSettings().text;
+applyText(text);
+store.set({ lang, version: __VERSION__, text });
 let game: Game | undefined;
 const later = <K extends keyof Actions>(k: K) => ((...a: unknown[]) => (game?.actions[k] as (...x: unknown[]) => void)?.(...a)) as Actions[K];
 const actions: Actions = {
@@ -44,6 +47,7 @@ const actions: Actions = {
   setWalls: later('setWalls'),
   setQuality: later('setQuality'),
   setProjection: later('setProjection'),
+  setText: later('setText'),
   overview: later('overview'),
   select: later('select'),
   setTab: later('setTab'),
