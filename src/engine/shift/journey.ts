@@ -5,7 +5,7 @@
 // времени. Причина ожидания — то, что движок знает в момент, когда ожидание началось; правды о болезни здесь нет.
 import type { Id, Setting } from '../../content/types';
 import type { Doing } from './slice';
-import { DAY, type ShiftPatient, type ShiftState, type VisitKind } from './types';
+import { DAY, type LeftWhy, type ShiftPatient, type ShiftState, type VisitKind } from './types';
 
 /** Почему ждёт врача в общей очереди: все нанятые врачи заняты; ни один не принимает; ждёт вас. */
 export type QueueWhy = 'busy' | 'none' | 'you';
@@ -70,6 +70,11 @@ export interface End {
   chief?: 'agreed' | 'silent';
   /** ушёл, не дождавшись: сколько был готов ждать, игровых секунд */
   patience?: number;
+  /**
+   * ушёл, не дождавшись: почему — по последнему ожиданию и тому, кто принимал в час ухода (spec docs/specs/2026-10-why.md);
+   * так его считает планёрка
+   */
+  why?: LeftWhy;
 }
 
 /** Каталка на обследование (spec docs/specs/2026-10-orderlies.md): за ним пришли в `pick`; `busy` — тот, кто везёт, сначала довозил других; `nurse` — везла медсестра. */
@@ -324,6 +329,24 @@ export function gone(s: ShiftState, p: ShiftPatient) {
   if (!j || j.end) return;
   if (p.status === 'left') finish(j, { t: s.t, how: 'left', patience: p.patience });
   else if (p.status === 'unseen') finish(j, { t: s.t, how: 'unseen' });
+}
+
+/**
+ * Для «почему ушёл» (spec docs/specs/2026-10-why.md): последнее ожидание пути — шаг, после которого он ушёл, — и последнее
+ * ожидание в общей очереди (терпение есть только там). Пути нет — пусто.
+ */
+export function lastWaits(s: ShiftState, p: ShiftPatient): { wait?: Step; queue?: Extract<Step, { k: 'queue' }> } {
+  const steps = s.journeys?.of[p.id]?.steps;
+  if (!steps) return {};
+  const last = steps[steps.length - 1];
+  const queue = lastOf(steps, 'queue');
+  return { ...(last && WAITS.has(last.k) ? { wait: last } : {}), ...(queue ? { queue } : {}) };
+}
+
+/** Ушёл, не дождавшись (`evict` уже записал конец): почему — в конец пути, как его посчитала планёрка. */
+export function leftWhy(s: ShiftState, p: ShiftPatient, why: LeftWhy) {
+  const end = s.journeys?.of[p.id]?.end;
+  if (end?.how === 'left') end.why = why;
 }
 
 /**
