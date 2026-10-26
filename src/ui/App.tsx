@@ -13,7 +13,7 @@ import { Encyclopedia, openEncyclopedia } from './Encyclopedia';
 import { Asks, Dock, OfficeRow, TakeCase } from './doctor/Dock';
 import { ROLES } from '../app/roles';
 import { toastsOf } from '../app/toasts';
-import type { QualityMode } from '../app/settings';
+import { type QualityMode, TEXT_SCALES } from '../app/settings';
 import { Meeting, Reports, signed } from './Meeting';
 import { Layers, PathSection, PatientsTab } from './flow';
 import { byGuide, GoalsTab, GuideToggle, LetterCard, ScenarioDone, StepMark } from './Scenario';
@@ -61,7 +61,8 @@ function TopBar({ hud, actions }: P) {
         </Btn>
       </span>
       <Money hud={hud} />
-      <span className="stat" id="counts">
+      {/* крупный текст на узком экране — с многоточием; целиком — в подсказке */}
+      <span className="stat" id="counts" title={`${T.top.arrived} ${hud.arrived} · ${T.top.seen} ${hud.seen} · ${T.top.left} ${hud.left} · ${T.top.queue} ${hud.queue}`}>
         {T.top.arrived} <b>{hud.arrived}</b> · {T.top.seen} <b>{hud.seen}</b> · {T.top.left} <b>{hud.left}</b> · {T.top.queue} <b>{hud.queue}</b>
       </span>
 
@@ -187,6 +188,15 @@ function SettingsPanel({ hud, actions }: P) {
         {q.map(([m, s]) => (
           <Btn key={m} id={`quality-${m}`} on={hud.qualityMode === m} onClick={() => actions.setQualityMode(m)} title={m === 'auto' ? t.autoHint : undefined}>
             {s}
+          </Btn>
+        ))}
+      </div>
+      {/* размер текста (spec docs/specs/2026-10-settings.md, «Размер текста»): панели и подписи на карте */}
+      <div className="label">{t.text}</div>
+      <div className="row">
+        {TEXT_SCALES.map((k, i) => (
+          <Btn key={k} id={`text-${i}`} on={hud.text === k} onClick={() => actions.setText(k)}>
+            {t.textSize[i]}
           </Btn>
         ))}
       </div>
