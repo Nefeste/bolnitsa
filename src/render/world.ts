@@ -61,6 +61,41 @@ function floorKinds(l: Layout): (FloorKind | null)[] {
   return k;
 }
 
+/** Сторона плитки пола, м (textures.ts: период текстуры на число плиток); нет — пол без плиток (линолеум, паркет). */
+const TILE: Partial<Record<FloorKind, number>> = { corridor: 0.5, hall: 0.5, white: 0.25, toiletTile: 0.2, or: 1 / 3 };
+
+/**
+ * Разнобой оттенка пола (spec 2026-10-aaa-polish, «Свет, часть 2»): у каждой плитки свой оттенок по месту в мире, не по
+ * повтору текстуры, и пятна в несколько метров — пол «дышит», а не повторяется через 2 м.
+ */
+function tileVariation(mat: THREE.MeshStandardMaterial, tile: number) {
+  mat.onBeforeCompile = s => {
+    s.uniforms.uTile = { value: tile };
+    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vFloor;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvFloor = position.xz;');
+    s.fragmentShader = s.fragmentShader
+      .replace(
+        '#include <common>',
+        /* glsl */ `#include <common>
+varying vec2 vFloor;
+uniform float uTile;
+float tileHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float tileNoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(tileHash(i), tileHash(i + vec2(1.0, 0.0)), f.x), mix(tileHash(i + vec2(0.0, 1.0)), tileHash(i + vec2(1.0, 1.0)), f.x), f.y);
+}`,
+      )
+      .replace(
+        '#include <map_fragment>',
+        /* glsl */ `#include <map_fragment>
+float tileK = uTile > 0.0 ? 0.05 * (tileHash(floor(vFloor / uTile)) - 0.5) : 0.0;
+diffuseColor.rgb *= 1.0 + tileK + 0.03 * (tileNoise(vFloor * 0.3) - 0.5);`,
+      );
+  };
+  mat.customProgramCacheKey = () => 'floor-tint';
+}
+
 /**
  * Пол — квадраты по 0,5 м; половинки стеновых клеток берут пол соседа (как в пробе). Второй набор координат (`uv1`) —
  * доля участка: по нему ложится карта света светильников.
@@ -125,6 +160,7 @@ export function buildFloors(l: Layout, anisotropy: number, lightMap: THREE.Textu
     g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     g.setAttribute('uv1', new THREE.BufferAttribute(uv1, 2));
     const mat = new THREE.MeshStandardMaterial({ map: tex.texture, roughness: k === 'wood' ? 0.6 : 0.45, metalness: 0 });
+    tileVariation(mat, TILE[k] ?? 0);
     if (lightMap) {
       mat.lightMap = lightMap;
       mat.lightMapIntensity = 0;
@@ -235,6 +271,8 @@ export interface Walls {
     uFocus: { value: THREE.Vector2 };
     uRadius: { value: number };
     uToCam: { value: THREE.Vector2 };
+    /** доля ночи 0–1: стекло окон светится тёплым изнутри (spec 2026-10-aaa-polish, «Свет, часть 2») */
+    uNight: { value: number };
   };
   setMode(m: WallMode): void;
 }
@@ -292,7 +330,9 @@ function wallMaterial(uniforms: Walls['uniforms']): { mat: THREE.MeshStandardMat
     Object.assign(s.uniforms, uniforms);
     s.vertexShader = s.vertexShader.replace('#include <common>', `#include <common>\n${WALL_VERT_PARS}`).replace('#include <begin_vertex>', WALL_VERT_BEGIN);
     s.fragmentShader = s.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying float vH;\nvarying vec3 vObjN;\nvarying float vOut;\nvarying float vKind;')
+      .replace('#include <common>', '#include <common>\nvarying float vH;\nvarying vec3 vObjN;\nvarying float vOut;\nvarying float vKind;\nuniform float uNight;')
+      // ночью стекло окон светится изнутри тёплым: снаружи видно, что в больнице горит свет
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\tif (vKind > 0.5 && vKind < 1.5) totalEmissiveRadiance += vec3(1.0, 0.78, 0.5) * uNight * 0.55;')
       .replace(
         'vec4 diffuseColor = vec4( diffuse, opacity );',
         /* glsl */ `
@@ -309,15 +349,44 @@ function wallMaterial(uniforms: Walls['uniforms']): { mat: THREE.MeshStandardMat
       );
   };
   mat.customProgramCacheKey = () => 'walls';
+  // тень — от стен в полную высоту при любом срезе (здание стоит, срез — только для взгляда), стекло солнце пропускает:
+  // вместе с крышей (`buildRoof`) днём в помещения свет падает только через окна и двери (spec 2026-10-aaa-polish, «Свет, часть 2»)
   const depth = new THREE.MeshDepthMaterial();
   depth.onBeforeCompile = s => {
-    Object.assign(s.uniforms, uniforms);
-    s.vertexShader = s.vertexShader
-      .replace('#include <common>', `#include <common>\n${WALL_VERT_PARS}`)
-      .replace('#include <begin_vertex>', WALL_VERT_BEGIN.replace('vObjN = normal;', '').replace('vOut = dot(normal.xz, aOut);', '').replace('vKind = aKind;', ''));
+    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nattribute float aKind;\nvarying float vKind;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvKind = aKind;');
+    s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vKind;').replace('void main() {', 'void main() {\n\tif (vKind > 0.5 && vKind < 1.5) discard;');
   };
   depth.customProgramCacheKey = () => 'walls-depth';
   return { mat, depth };
+}
+
+/**
+ * Крыша — только для теней (spec 2026-10-aaa-polish, «Свет, часть 2»): над всем зданием на высоте стен. В кадре её нет — не
+ * пишет ни цвета, ни глубины (затенение GTAO её не видит), а солнце загораживает: днём помещения освещены светильниками и
+ * небом, а солнце ложится на пол полосами из окон и дверей.
+ */
+export function buildRoof(l: Layout): THREE.Mesh {
+  const { w, h, plan } = l;
+  const pos: number[] = [];
+  for (let y = 0; y < h; y++) {
+    let x = 0;
+    while (x < w) {
+      if (plan.grid.cells[y * w + x] === CELL.outside) {
+        x++;
+        continue;
+      }
+      const x0 = x;
+      while (x < w && plan.grid.cells[y * w + x] !== CELL.outside) x++;
+      pos.push(x0, WALL_H, y, x0, WALL_H, y + 1, x, WALL_H, y + 1, x0, WALL_H, y, x, WALL_H, y + 1, x, WALL_H, y);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  // тень плоскости — с обеих сторон: по умолчанию в карту теней попала бы только нижняя, а солнце светит сверху
+  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, shadowSide: THREE.DoubleSide }));
+  m.castShadow = true;
+  m.name = 'roof';
+  return m;
 }
 
 /** Наружу от клетки стены: к улице рядом (нет — 0, 0). */
@@ -429,6 +498,7 @@ export function buildWalls(l: Layout): Walls {
     uFocus: { value: new THREE.Vector2(w / 2, h / 2) },
     uRadius: { value: 14 },
     uToCam: { value: new THREE.Vector2(0, 1) },
+    uNight: { value: 0 },
   };
   const { mat, depth } = wallMaterial(uniforms);
   const mesh = new THREE.Mesh(geo, mat);

@@ -299,8 +299,9 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   `RoomsMoney` (today so far, the last 14 days); `moneyColumnOf` — revenue and profit, `serviceRoom` — rooms that never
   earn show their costs in grey (owner's decision #120); the «Сутки» slider and the room card's chart (`MoneyChart`).
 - `src/render/` — the 3D view (Three.js): `layout.ts` places template items on the engine plan, `catalog.ts` maps
-  engine items to CC0 models or code-made ones, `world.ts` floors and cut walls, `doors.ts`, `lamps.ts`, `post.ts`
-  (MSAA + GTAO), `stage.ts`, build ghosts `ghost.ts`; people: `bake.ts` (animations baked into a texture), `cast.ts`
+  engine items to CC0 models or code-made ones, `world.ts` floors and cut walls (and the shadow-only roof: the sun gets in
+  only through windows), `doors.ts`, `lamps.ts`, `post.ts` (MSAA + GTAO, colour by the hour and the vignette), `stage.ts`,
+  build ghosts `ghost.ts`; people: `bake.ts` (animations baked into a texture), `cast.ts`
   (the one table of heights, role colours and looks), `place.ts`, `path.ts`, `crowd.ts`, `population.ts`. People exist
   only in rendering: the engine never sees them. People are Microsoft Rocketbox looks (`docs/specs/2026-10-people.md`):
   59 in `LOOKS` of `cast.ts` (a look of its own per role — `roles`; hard hats and workwear only for patients of their
