@@ -1,7 +1,8 @@
 // из spikes/render-3d: build.mjs — изменено: страница и поток расчёта, медицинская база рядом, версия из package.json.
 // Сборка страницы игры в dist/ (spec docs/specs/2026-10-shell-3d.md, «Сборка страницы»): esbuild — страница
-// (src/app/main.tsx → app.js) и поток расчёта (src/sim/worker.ts → sim.js), index.html, модели и собранная медицинская
-// база (content.json). Сеть не нужна ни при запуске, ни при работе: всё лежит локально.
+// (src/app/main.tsx → app.js), поток расчёта (src/sim/worker.ts → sim.js) и поток запекания людей
+// (src/render/bake-worker.ts → bake.js), index.html, модели и собранная медицинская база (content.json). Сеть не нужна
+// ни при запуске, ни при работе: всё лежит локально.
 import { build } from 'esbuild';
 import { cpSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -27,6 +28,8 @@ const common = {
 };
 await build({ ...common, entryPoints: [join(root, 'src/app/main.tsx')], outfile: join(out, 'app.js'), jsx: 'automatic' });
 await build({ ...common, entryPoints: [join(root, 'src/sim/worker.ts')], outfile: join(out, 'sim.js') });
+// поток запекания людей (spec docs/specs/2026-10-people.md, «Производительность»)
+await build({ ...common, entryPoints: [join(root, 'src/render/bake-worker.ts')], outfile: join(out, 'bake.js') });
 copyFileSync(join(root, 'app/index.html'), join(out, 'index.html'));
 copyFileSync(bundle, join(out, 'content.json'));
 cpSync(join(root, 'assets/models'), join(out, 'assets/models'), { recursive: true });
