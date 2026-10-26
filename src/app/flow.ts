@@ -139,6 +139,9 @@ export interface PathCard {
 /** Названия для пути: кто врач (родительный падеж должности — «у терапевта»), что за обследование. */
 export interface PathNames {
   doctor(staffId: string): string;
+  /** к кому направлен — должность в дательном падеже («к гастроэнтерологу»), и кто направил (spec 2026-10-specialists, часть 2) */
+  dat(staffId: string): string;
+  who(staffId: string): string;
   exam(id: Id): { name: string; kind: string };
   /** должность — для «… на перерыве» (spec docs/specs/2026-10-staff-shifts.md, часть 2б) */
   role(id: Id): string;
@@ -244,11 +247,20 @@ export function pathCard(j: Journey, female: boolean, now: number, names: PathNa
         lines.push({ at: clock(from), text: T.flow.results(dur(d)), why: imaging ? T.flow.report : T.flow.lab, kind: 'wait', ...mark });
         break;
       }
-      case 'own':
-        if (d < 60 && !open) break;
+      case 'own': {
+        // направлен к врачу (spec docs/specs/2026-10-specialists.md, часть 2): строка и без ожидания — к кому и кто направил
+        const waits = d >= 60 || open;
+        if (x.refer) {
+          waited += d;
+          const why = [x.from !== undefined ? T.flow.referBy(names.who(x.from)) : T.flow.referYou, ...(waits ? [T.flow.ownWhy] : [])].join('; ');
+          lines.push({ at: clock(from), text: T.flow.referTo(female, names.dat(x.by), waits ? dur(d) : undefined), why, kind: 'wait', ...mark });
+          break;
+        }
+        if (!waits) break;
         waited += d;
-        lines.push({ at: clock(from), text: x.refer ? T.flow.refer(dur(d)) : T.flow.own(dur(d)), why: T.flow.ownWhy, kind: 'wait', ...mark });
+        lines.push({ at: clock(from), text: T.flow.own(dur(d)), why: T.flow.ownWhy, kind: 'wait', ...mark });
         break;
+      }
       case 'ask': {
         waited += d;
         const late = !open && next >= x.until;
@@ -260,7 +272,7 @@ export function pathCard(j: Journey, female: boolean, now: number, names: PathNa
         waited += d;
         const nx = steps[i + 1];
         const why = open ? T.flow.approveWait
-          : nx?.k === 'own' ? (nx.refer ? T.flow.approveRefer : T.flow.approveExam)
+          : nx?.k === 'own' ? (nx.refer ? T.flow.approveReferTo(names.dat(nx.by)) : T.flow.approveExam)
           : nx?.k === 'queue' || (nx?.k === 'doctor' && nx.by === undefined) ? T.flow.approveTake
           : j.end?.chief === 'agreed' ? T.flow.approveAgreed
           : j.end?.chief === 'silent' ? T.flow.approveSilent
