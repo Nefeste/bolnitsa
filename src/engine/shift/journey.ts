@@ -32,8 +32,11 @@ export type Step =
   | { t: number; k: 'exam'; exam: Id; room: string; at: number; start: number; end: number; back: number; ready: number; rest?: Id; gurney?: Gurney; chief?: true }
   /** ждёт результатов: врач отпустил его и позвал другого; с конца последней процедуры; результаты — к `ready` */
   | { t: number; k: 'results'; ready: number }
-  /** ждёт своего врача: вернулся с результатами, а врач занят; `refer` — направлен к другому нанятому врачу */
-  | { t: number; k: 'own'; by: string; refer?: true }
+  /**
+   * ждёт своего врача: вернулся с результатами, а врач занят; `refer` — направлен к другому нанятому врачу: вами или, когда
+   * есть `from`, нанятым терапевтом `from` по второй гипотезе (spec 2026-10-specialists, часть 2)
+   */
+  | { t: number; k: 'own'; by: string; refer?: true; from?: string }
   /** нанятый врач просит вас посмотреть его — ждёт ответа до `until` (spec 2026-10-consults) */
   | { t: number; k: 'ask'; by: string; until: number }
   /** решение нанятого врача `by` ждёт главврача у двери кабинета — до `until` (spec 2026-10-two-ways, F3) */
@@ -141,7 +144,8 @@ function journeyOf(s: ShiftState, p: ShiftPatient): Journey | undefined {
 function push(j: Journey, step: Step) {
   if (j.end) return;
   const last = j.steps[j.steps.length - 1];
-  if (last && last.t >= step.t && WAITS.has(last.k)) j.steps.pop();
+  // ожидание без длины — не шаг; направление к другому врачу (spec 2026-10-specialists, часть 2) — шаг и без ожидания
+  if (last && last.t >= step.t && WAITS.has(last.k) && !(last.k === 'own' && last.refer)) j.steps.pop();
   if (j.steps.length >= MAX_STEPS) {
     j.cut = true;
     return;
@@ -238,12 +242,15 @@ export function away(s: ShiftState, p: ShiftPatient) {
   push(j, { t: from, k: 'results', ready });
 }
 
-/** Ждёт своего врача: результаты пришли, а врач занят (`results`); `refer` — направлен к другому (`answerConsult`). */
-export function own(s: ShiftState, p: ShiftPatient, refer = false) {
+/**
+ * Ждёт своего врача: результаты пришли, а врач занят (`results`); `refer` — направлен к другому (`handOver`): вами или
+ * нанятым врачом `from`.
+ */
+export function own(s: ShiftState, p: ShiftPatient, refer = false, from?: string) {
   if (p.by === undefined) return;
   const j = journeyOf(s, p);
   if (!j) return;
-  push(j, { t: s.t, k: 'own', by: p.by, ...(refer ? { refer: true as const } : {}) });
+  push(j, { t: s.t, k: 'own', by: p.by, ...(refer ? { refer: true as const } : {}), ...(from !== undefined ? { from } : {}) });
 }
 
 /** Снова в общей очереди и ждёт вас: ваш больной вернулся с результатами, вы забрали его, «подождите» (`enqueue`). */

@@ -621,8 +621,10 @@ function personLines(info: PersonInfo, names: Names): [string, string][] {
     ];
   }
   // ушёл — на карте его нет: кто и как пришёл, остальное — в пути (spec 2026-10-flow-ui)
-  // записан к специалисту (spec docs/specs/2026-10-specialists.md): «по записи к гастроэнтерологу»
-  const visit = info.to ? T.card.booked(names.dat(info.to)) : (T.visit[info.visit as keyof typeof T.visit] ?? info.visit);
+  // записан к специалисту (spec docs/specs/2026-10-specialists.md): «по записи к гастроэнтерологу»; направлен к врачу (часть 2)
+  // — «сам · направлен к гастроэнтерологу»
+  const came = info.to ? T.card.booked(names.dat(info.to)) : (T.visit[info.visit as keyof typeof T.visit] ?? info.visit);
+  const visit = info.ref && info.by ? `${came} · ${T.card.referred(names.dat(info.by), info.sex === 'f')}` : came;
   if (info.gone) return [[T.card.complaint, names.finding(info.complaint)], [T.card.visit, visit]];
   return [
     [T.card.complaint, names.finding(info.complaint)],

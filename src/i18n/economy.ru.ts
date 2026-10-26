@@ -37,11 +37,13 @@ export const economyRu = {
     hired: 'Нанятые врачи',
     hiredRow: (role: string, skill: number, seen: number, correct: number) =>
       `${role}, навык ${skill}: ${seen} ${pluralRu(seen, 'приём', 'приёма', 'приёмов')}${seen > 0 ? `, верно ${correct} %` : ''}`,
-    hiredMore: (asked: number, taken: number, unsafe: number, tired = 0) =>
+    hiredMore: (asked: number, taken: number, unsafe: number, tired = 0, sent = 0) =>
       [
         asked > 0 ? `просил посмотреть — ${asked}` : '', taken > 0 ? `вы забрали — ${taken}` : '', unsafe > 0 ? `решений с замечанием безопасности — ${unsafe}` : '',
         // spec docs/specs/2026-10-staff-shifts.md, часть 2
         tired > 0 ? `диагнозов уставшим — ${tired}` : '',
+        // spec docs/specs/2026-10-specialists.md, часть 2
+        sent > 0 ? `направил к специалистам — ${sent}` : '',
       ].filter(Boolean).join(', '),
     /** специалист без записи за сутки (spec docs/specs/2026-10-specialists.md) */
     idle: 'к нему никто не записался',

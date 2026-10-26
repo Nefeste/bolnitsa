@@ -10,7 +10,7 @@ import { onDuty, ORDERLY, type StaffMember } from '../engine/hospital/staff';
 import type { CrewView } from '../engine/shift/crew';
 import type { Doing } from '../engine/shift/slice';
 import type { Rest, Ride, Triage } from '../engine/shift/types';
-import { DOINGS, H, HEADER, KINDS, type NameRow, NO_TIME, P, STATUSES, STRIDE, TRIAGES } from '../sim/pack';
+import { DOINGS, H, HEADER, kindOf, type NameRow, NO_TIME, P, REFERRED, STATUSES, STRIDE, TRIAGES } from '../sim/pack';
 import type { Look } from './bake';
 import { CLOTHES, COAT, GOWN, lookSpec, OLD_AGE, PARAMEDIC, roleColor, SKIN } from './cast';
 import { type Crowd, GURNEY_AHEAD, type Walker } from './crowd';
@@ -65,6 +65,8 @@ export type PersonInfo =
       kind: 'patient'; id: string; name?: string; sex: 'm' | 'f'; age: number; complaint?: Id; triage: Triage; doing: Doing; room?: string; by?: Id; visit: string; gone?: true;
       /** записан к специалисту — его должность (spec docs/specs/2026-10-specialists.md) */
       to?: Id;
+      /** направлен к тому, кто его ведёт (`by`; spec docs/specs/2026-10-specialists.md, часть 2) */
+      ref?: true;
       /** ещё идёт туда, где с ним это делают (spec docs/specs/2026-10-owner-play.md), и к какому часу дойдёт (spec 2026-10-walk) */
       walking?: true;
       arrive?: number;
@@ -458,7 +460,7 @@ export class Population {
         const look = this.pick('patient', row.sex, row.age >= OLD_AGE, row.seed);
         this.paints.set(key, { clothes: new THREE.Color(CLOTHES[row.seed % CLOTHES.length]), skin: new THREE.Color(SKIN[(row.seed >>> 3) % SKIN.length]) });
         // привезённый скорой — через вход для скорой, на каталке бригады: её везёт фельдшер (spec 2026-10-orderlies)
-        const ambulance = KINDS[buf[o + P.flags]] === 'ambulance';
+        const ambulance = kindOf(buf[o + P.flags]) === 'ambulance';
         const pw = this.crowd.add(key, look, spot, false, ambulance, due);
         if (ambulance && doing === 'ambulance') this.medic(key, pw, row.seed, spot, taken);
         continue;
@@ -747,10 +749,15 @@ export class Population {
       ...wheeled,
       kind: 'patient', id: l.row.id, ...(l.row.name ? { name: l.row.name } : {}), sex: l.row.sex, age: l.row.age, ...(l.row.complaint ? { complaint: l.row.complaint } : {}), triage: l.triage, doing: l.doing,
       ...(l.row.to ? { to: l.row.to } : {}),
-      ...(room ? { room } : {}), ...(by ? { by } : {}), visit: ['appointment', 'walkIn', 'return', 'ambulance'][Number(l.kind)] ?? 'walkIn',
+      ...(room ? { room } : {}), ...(by ? { by } : {}), visit: kindOf(Number(l.kind)), ...(by && Number(l.kind) & REFERRED ? { ref: true as const } : {}),
       ...(walking ? { walking: true as const } : {}), ...(coming ? { arrive: l.arrive } : {}), ...(door ? { door: true as const } : {}),
       ...(l.approve ? { approve: l.approve.until } : {}),
     };
+  }
+
+  /** Человек штата по номеру в срезе (`P.by`); -1 — вы или никто. */
+  staffAt(i: number): StaffMember | undefined {
+    return i >= 0 ? this.staff[i] : undefined;
   }
 
   /** Кто сейчас везёт каталку — номера через запятую: изменилось — «Персонал» заново. */
