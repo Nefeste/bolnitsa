@@ -741,6 +741,29 @@ async function partThree() {
   const rows = await page.$$eval('#patients .patrow', els => els.map(e => e.textContent ?? ''));
   if (rows.length > 0 && rows.every(t => t.includes('ждёт врача'))) ok(`вкладка «Пациенты», ждут врача: ${rows.length}; первый — «${rows[0]}»`);
   else fail(`вкладка «Пациенты»: ${JSON.stringify(rows.slice(0, 5))}`);
+  // скольжение после протяжки (spec docs/specs/2026-10-aaa-polish.md, «Камера»): быстрая протяжка правой кнопкой — после
+  // отпускания карта идёт дальше и останавливается сама
+  await page.evaluate(() => {
+    const c = window.__game.stage.cam;
+    c.overview();
+    c.half = 14;
+  });
+  await page.mouse.move(640, 380);
+  await page.mouse.down({ button: 'right' });
+  await page.mouse.move(560, 380, { steps: 6 });
+  await page.mouse.up({ button: 'right' });
+  const up = await page.evaluate(() => {
+    const c = window.__game.stage.cam;
+    return { gliding: c.gliding, x: c.target.x, z: c.target.z };
+  });
+  const stopped = await until(() => !window.__game.stage.cam.gliding, null, 15000).then(() => true, () => false);
+  const end = await page.evaluate(() => {
+    const t = window.__game.stage.cam.target;
+    return { x: t.x, z: t.z };
+  });
+  const slid = Math.hypot(end.x - up.x, end.z - up.z);
+  if (up.gliding && stopped && slid > 0.5) ok(`протяжка правой кнопкой — после отпускания карта скользит ещё ${slid.toFixed(1)} м и останавливается сама`);
+  else fail(`скольжение после протяжки: ${JSON.stringify({ up, end, stopped })}`);
   await page.evaluate(() => window.__game.stage.cam.overview());
   await page.waitForTimeout(200);
   const cam0 = await page.evaluate(() => window.__game.stage.cam.half);

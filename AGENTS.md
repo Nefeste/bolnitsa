@@ -84,8 +84,9 @@ npm run build                      # content + page and worker (esbuild) → dis
 npm run electron                   # build + the game window
 npm run e2e                        # after build: the game in headless Chromium, real clicks (preset; then building six rooms
                                    # by mouse in the empty building; people and flow at 13:00 — icons, «Пациенты», the
-                                   # patient's path, the queues overlay; then the doctor mode: a consult, a whole case, «Take
-                                   # the case», «My office»; then money: building from cash, «Until morning» to the 08:00
+                                   # patient's path, the queues overlay, the camera gliding after a right-button drag; then
+                                   # the doctor mode: a consult, a whole case, «Take the case», «My office»; then money:
+                                   # building from cash, «Until morning» to the 08:00
                                    # meeting, the «Обход» list; then ready rooms: four clicks open the empty building, R, one
                                    # undo; then the start screen's three cards and the polyclinic; then specialists: hire a
                                    # gastroenterologist in the polyclinic, «по записи к …»; then the owner's play of 18.10:
