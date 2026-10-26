@@ -50,11 +50,16 @@ export interface Look {
   female: boolean;
   /** кто вид в игре — строка таблицы cast.ts */
   spec: LookSpec;
-  /** атлас и маска: R — одежда, которая красится цветом должности, A — непрозрачность прядей; в тестах без картинок — нет */
+  /**
+   * атлас (в альфе — непрозрачность прядей) и маска: R — одежда, которая красится цветом должности, G — кожа (½) и волосы
+   * (1), их красит оттенок человека; в тестах без картинок — нет
+   */
   map?: THREE.Texture;
   mask?: THREE.Texture;
   /** линейная яркость ткани, которую красим: цвет должности × (яркость точки / эта) — складки остаются */
   tintRef: number;
+  /** средняя яркость волос вида (sRGB): новый цвет волос — вокруг неё; 0 — волос в маске нет (шапка, лысина) */
+  hair: number;
   /** скорость шага и бега при ×1 проигрывания, м/с: ступня не скользит */
   walk: number;
   run: number;
@@ -77,7 +82,7 @@ export interface Look {
    */
   seat: { y: number; z: number };
   /** лёжа на спине (поза «стоит», повёрнутая на 90°): на сколько корень над поверхностью и где середина тела */
-  lie: { back: number; mid: number };
+  lie: { back: number; mid: number; belly: number; legs: number; toes: number };
   /** подошвы обуви — вершины костей стопы ниже 12 см в позе «стоит», левая и правая: по ним опора шага (lockFeet) и её проверка */
   soles: number[][];
 }
@@ -137,6 +142,7 @@ export interface RawLook {
   /** маска атласа (Rocketbox) — отдельным файлом рядом с glb; ставит тот, кто грузит */
   mask?: THREE.Texture;
   tintRef: number;
+  hair: number;
   walk: number;
   run: number;
   /** матрицы суставов по кадрам: [кадр][сустав] — 16 чисел, уже с приведением к росту и полу */
@@ -147,7 +153,7 @@ export interface RawLook {
   headRatio: number;
   collapse: { shoulders: number; hips: number };
   seat: { y: number; z: number };
-  lie: { back: number; mid: number };
+  lie: { back: number; mid: number; belly: number; legs: number; toes: number };
   soles: number[][];
 }
 
@@ -252,9 +258,9 @@ function texturedParts(root: THREE.Object3D, body: THREE.SkinnedMesh, lodMesh: T
     for (const k of Object.keys(g.attributes)) if (!keep.includes(k)) g.deleteAttribute(k);
     return g;
   };
-  const extras = (root.getObjectByName('rocketbox')?.userData ?? {}) as { speeds?: { Walk?: number; Run?: number }; tintRef?: number };
+  const extras = (root.getObjectByName('rocketbox')?.userData ?? {}) as { speeds?: { Walk?: number; Run?: number }; tintRef?: number; hair?: number };
   const map = (body.material as THREE.MeshStandardMaterial).map ?? undefined;
-  return { geometry: own(body), lod: own(lodMesh), map, tintRef: extras.tintRef ?? 0, speeds: extras.speeds ?? {} };
+  return { geometry: own(body), lod: own(lodMesh), map, tintRef: extras.tintRef ?? 0, hair: extras.hair ?? 0, speeds: extras.speeds ?? {} };
 }
 
 /** Один вид: сетка с атласом; анимации → матрицы суставов на каждый кадр с частотой CLIP_FPS, приведённые к росту и полу. */
@@ -373,7 +379,10 @@ export function bakeLook(gltf: { scene: THREE.Object3D; animations: THREE.Animat
   const idle = skinPositions(geometry, frames[clips.Idle.first]);
   let back = Infinity;
   for (const v of bodyVertices(geometry, skeleton.bones, /^(Torso|Abdomen|Hips)$/)) back = Math.min(back, idle[v * 3 + 2]);
-  const lie = { back: -back, mid: height / 2 };
+  // высота лежащего над постелью — живот, ноги, носки (стопа лёжа смотрит вверх): по ней одеяло (spec
+  // docs/specs/2026-10-people.md, часть 2б)
+  const above = (re: RegExp) => Math.max(0, ...bodyVertices(geometry, skeleton.bones, re).map(v => idle[v * 3 + 2] - back));
+  const lie = { back: -back, mid: height / 2, belly: above(/^(Torso|Abdomen|Hips|Chest)$/), legs: above(/^(UpperLeg|LowerLeg)[LR]$/), toes: above(/^(Foot|Toes)[LR]$/) };
 
   const jointAt = (f: Float32Array, n: string) => {
     const j = skeleton.bones.findIndex(b => b.name === n);
@@ -407,7 +416,7 @@ export function bakeLook(gltf: { scene: THREE.Object3D; animations: THREE.Animat
   const soles = (['L', 'R'] as const).map(side => bodyVertices(geometry, skeleton.bones, new RegExp(`^(Foot|Toes)${side}$`)).filter(v => idle[v * 3 + 1] < 0.12));
   const walk = lockFeet(geometry, frames, clips.Walk, legs, soles) ?? textured.speeds.Walk * s;
   const run = lockFeet(geometry, frames, clips.Run, legs, soles) ?? textured.speeds.Run * s;
-  return { name, female, geometry, lod: textured.lod, map: textured.map, tintRef: textured.tintRef, walk, run, frames, clips, joints, height, headRatio, collapse, seat, lie, soles };
+  return { name, female, geometry, lod: textured.lod, map: textured.map, tintRef: textured.tintRef, hair: textured.hair, walk, run, frames, clips, joints, height, headRatio, collapse, seat, lie, soles };
 }
 
 /**
@@ -749,7 +758,7 @@ export function packPeople(raws: RawLook[]): People {
     looks.push({
       name: r.name, female: r.female, spec: lookSpec(r.name)!, geometry: r.geometry, lod, clips, joints: r.joints, tris: r.geometry.index!.count / 3, lodTris: lod.index!.count / 3,
       height: r.height, headRatio: r.headRatio, collapse: r.collapse, seat: r.seat, lie: r.lie, soles: r.soles,
-      map: r.map, mask: r.mask, tintRef: r.tintRef, walk: r.walk, run: r.run,
+      map: r.map, mask: r.mask, tintRef: r.tintRef, hair: r.hair, walk: r.walk, run: r.run,
     });
     frame0 += r.frames.length;
   });
