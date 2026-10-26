@@ -212,6 +212,14 @@
     .settings .check { display: flex; gap: 6px; align-items: center; cursor: pointer; margin-top: 4px; }
     .settings p { margin: 0; }
     .start button.on span { color: #0b1a1e; opacity: .8; }
+    /* экран начала на живой сцене (docs/specs/2026-10-aaa-polish.md): вид закрыт цветом фона и открывается, когда сцена дошла
+       до приёма, — закрыт, а не прозрачен: кадры прозрачного вида браузер не ждёт, и они копятся; к краям темнее; панель —
+       стекло над сценой */
+    #view.backdrop { z-index: 0; }
+    #view.backdrop::after { content: ""; position: absolute; inset: 0; z-index: 1; background: #2a3236; pointer-events: none; transition: opacity 1.2s ease; }
+    #view.backdrop.shown::after { opacity: 0; }
+    .startveil { position: absolute; inset: 0; background: radial-gradient(ellipse at center, rgba(16, 22, 26, .1) 0%, rgba(16, 22, 26, .45) 65%, rgba(16, 22, 26, .75) 100%); }
+    .start { background: rgba(22, 30, 34, .74); backdrop-filter: blur(10px) saturate(1.1); }
     /* люди и поток (docs/specs/2026-10-flow-ui.md): значки помещений, вкладка «Пациенты», путь пациента, слои */
     .roomchips { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
     /* числа над столбиками слоя «Показатели» (docs/specs/2026-10-metrics-layer.md) */

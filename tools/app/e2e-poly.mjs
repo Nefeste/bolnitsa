@@ -1,7 +1,9 @@
 // Сценарий в браузере, часть 7 — поликлиника по нормам проектирования (spec docs/specs/2026-10-real-hospital.md,
 // «Проверки»). Без ключа в адресе — экран начала: «Кампания» (spec docs/specs/2026-10-scenario-1.md) и три карточки песочницы;
+// за ним — живая сцена (spec docs/specs/2026-10-aaa-polish.md, «Экран начала на живой сцене»): городская больница к 10:00,
+// часы идут, камера едет по кругу, игрой сцена не считается, панель — стекло; выбор открывает страницу с его ключами.
 // «Поликлиника» — тринадцать готовых помещений, люди на местах, ваш кабинет — первый, больница открыта. Часы идут — пациенты
-// приходят, их принимают. Снимок — `e2e-poly-1.jpg`.
+// приходят, их принимают. Снимки — `e2e-poly-0-start.jpg` (экран начала на живой сцене) и `e2e-poly-1.jpg`.
 import { join } from 'node:path';
 
 /** @param {{ page: import('playwright-core').Page, port: number, out: string, ok: (m: string) => void, fail: (m: string) => void, q: string, shots: string }} x */
@@ -28,6 +30,35 @@ export async function polyPart({ page, port, out, ok, fail, q, shots }) {
   const want = [['start-scenario-ambulatory', 'Сценарий 1. Амбулатория'], ['start-empty', 'Пустое здание'], ['start-poly', 'Поликлиника'], ['start-preset', 'Городская больница']];
   if (JSON.stringify(cards) === JSON.stringify(want)) ok(`экран начала — «Кампания» и три карточки песочницы: ${cards.map(c => `«${c[1]}»`).join(', ')}`);
   else fail(`карточки начала: ${JSON.stringify(cards)}`);
+  // живая сцена за экраном начала: проявилась к приёму, часы идут, камера едет по кругу; игрой она не считается
+  await page.waitForSelector('#view.shown', { timeout: 120000 });
+  const scene = () =>
+    page.evaluate(() => {
+      const g = window.__backdrop;
+      return { t: g.t, x: g.stage.cam.target.x, z: g.stage.cam.target.z, half: g.stage.cam.half, people: g.crowd.walkers.size, start: g.start, role: g.doctor.hud.role, game: !!window.__game, ready: window.__ready === true };
+    });
+  const s1 = await scene();
+  // часы и камера пошли (без видеокарты первый показ размытия над сценой — секунды)
+  const w0 = Date.now();
+  const going = ([t, x, z]) => {
+    const g = window.__backdrop;
+    return g.t > t && Math.hypot(g.stage.cam.target.x - x, g.stage.cam.target.z - z) > 0.05;
+  };
+  await until(going, [s1.t, s1.x, s1.z], 60000).catch(() => {});
+  const s2 = await scene();
+  const secs = ((Date.now() - w0) / 1000).toFixed(1);
+  const moved = Math.hypot(s2.x - s1.x, s2.z - s1.z);
+  const hour = (s1.t % 86400) / 3600;
+  if (s1.start === 'preset' && s1.role === 'manager' && hour >= 10 && s1.people > 20 && s2.t > s1.t && moved > 0.05 && s2.half === 13 && !s2.game && !s2.ready) {
+    ok(`за экраном начала — живая сцена: городская больница, ${hour.toFixed(1)} ч, людей ${s1.people}; за ${secs} с часы прошли ${Math.round(s2.t - s1.t)} с, камера — ${moved.toFixed(2)} м; игрой не считается`);
+  } else fail(`живая сцена: ${JSON.stringify({ s1, s2, moved, secs })}`);
+  const glass = await page.evaluate(() => getComputedStyle(document.getElementById('start')).backdropFilter);
+  if (glass.includes('blur')) ok(`панель — стекло над сценой: ${glass}`);
+  else fail(`панель экрана начала: ${glass}`);
+  await page.waitForFunction(() => getComputedStyle(document.getElementById('view'), '::after').opacity === '0', null, { timeout: 15000 });
+  // снимок как есть: качество сцены — её, `--shots` переключает только игру
+  const start = await page.screenshot({ path: join(out, 'e2e-poly-0-start.jpg'), type: 'jpeg', quality: 72 });
+  ok(`снимок: ${join(out, 'e2e-poly-0-start.jpg')} (${Math.round(start.length / 1024)} КБ)`);
   // второй шаг — «Кто вы» (spec docs/specs/2026-10-two-ways.md, F4): три карточки ролей; «Назад» — к выбору больницы
   await page.click('#start-preset');
   await page.waitForSelector('#start-roles', { timeout: 10000 });
@@ -41,6 +72,11 @@ export async function polyPart({ page, port, out, ok, fail, q, shots }) {
   await page.click('#start-poly');
   await page.click('#start-role-doctor');
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
+  // выбор открыл страницу заново — с его ключами; живой сцены в игре нет
+  const opened = await page.evaluate(() => ({ url: location.search, backdrop: !!window.__backdrop, view: document.getElementById('view').className }));
+  if (opened.url.includes('hospital=poly') && opened.url.includes('role=doctor') && opened.url.includes(`q=${q}`) && !opened.backdrop && !opened.view.includes('backdrop')) {
+    ok(`выбор — та же страница с ключами «${opened.url}», без живой сцены`);
+  } else fail(`после выбора: ${JSON.stringify(opened)}`);
   const h = await page.evaluate(() => {
     const g = window.__game;
     const site = g.hospital.site;
