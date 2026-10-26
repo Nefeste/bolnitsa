@@ -7,6 +7,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { Cell, ContentDb, Id, Season } from '../content/types';
 import { type HospitalState, type Plan, planOf } from '../engine/hospital/build';
+import { deptsOf, deptWhy, paintsOf } from '../engine/hospital/departments';
 import { type Block, DOCTOR, doctorRoom, openBlocks, type Problem, problemsOf, standInOf, standInsOf, type Staffing, workingRooms } from '../engine/hospital/requirements';
 import { demolishRefund, emptySite, furnishOf, hospitalOf, priceOf, readyCost, rulesOf, type Site, type SiteCommand, type SiteResult } from '../engine/hospital/site';
 import { siteOfPlan } from '../engine/hospital/site-plan';
@@ -43,6 +44,7 @@ import type { PathView, World } from '../sim/protocol';
 import type { Actions, Hud, RoomCard, Speed, Store, Tab } from '../ui/store';
 import { Builder, objectName, whyText } from './build';
 import { Chips } from './chips';
+import { colorOf, css, layerColors, legendOf, NO_DEPT, patientDept, planDepts, stripeColors } from './departments';
 import { loadContent } from './content';
 import { Doctor } from './doctor';
 import { chipShown, dur, medicLine, moodOf, pathCard, type PatientRow, patientRows, roomChip, roomLoads, tintOf, wheelLine } from './flow';
@@ -320,6 +322,8 @@ export class Game {
   /** первая зона ожидания (общая очередь к врачам) и кабинет человека штата — номера в плане */
   private hall = -1;
   private office: number[] = [];
+  /** отделение каждого помещения плана (spec docs/specs/2026-10-departments.md, часть 2); у служб и общих — нет */
+  private depts: (Id | undefined)[] = [];
   speed: Speed = 1;
   /** промотка «до утра» (заглушка части 2а): до 20:00 или до первого срочного */
   ff = false;
@@ -539,6 +543,32 @@ export class Game {
     return T.problem.offShift(clock(this.nextShift()));
   }
 
+  /**
+   * Отделения помещений (spec docs/specs/2026-10-departments.md, часть 2) — по плану и штату, как их считает движок
+   * (`deptsOf`): полосы на полу у дверей, пол слоя «Отделения», его легенда, список инструмента. Отметка, найм и увольнение
+   * меняют их без пересборки сцены (`staffOnly` в src/sim/host.ts).
+   */
+  private showDepts() {
+    const { db, plan } = this;
+    const site = this.hospital.site;
+    this.depts = site ? planDepts(plan, deptsOf(db, site, this.staff)) : plan.rooms.map(() => undefined);
+    this.stage.stripes.set(stripeColors(this.depts));
+    this.stage.deptTint.set(layerColors(this.depts));
+    const legend = db.departments ? legendOf(Object.keys(db.departments), this.depts) : [];
+    const f = this.store.get().patientFilter;
+    // отделения, выбранного в «Пациентах», в больнице больше нет — все
+    const gone = f.dept !== 'all' && !legend.some(x => (x.id || 'none') === f.dept);
+    this.store.set({
+      departments: paintsOf(db).map(id => ({ id, name: this.deptName(id), color: css(colorOf(id)) })),
+      deptLegend: legend.map(x => ({ ...x, name: x.id === '' ? T.flow.deptOther : this.deptName(x.id), color: css(colorOf(x.id || undefined)) })),
+      ...(gone ? { patientFilter: { ...f, dept: 'all' as const } } : {}),
+    });
+  }
+
+  private deptName(id: Id): string {
+    return named(this.db.departments?.[id]?.name, id);
+  }
+
   /** Когда начнётся другая смена — час суток в секундах. */
   private nextShift(): number {
     const day = this.db.economy.staff.shifts?.day ?? [8, 20];
@@ -667,13 +697,17 @@ export class Game {
     });
     this.hall = plan.rooms.findIndex(r => r.type === 'room.waiting' && r.door.length > 0);
     this.office = this.staff.map(m => plan.rooms.findIndex(r => r.id === m.room));
+    this.showDepts();
     this.labels.set(
-      plan.rooms.map(r => {
+      plan.rooms.map((r, i) => {
         const why = problemsOf(db, plan, r, this.staffed);
         const off = this.offShift(why[0], r);
+        const d = this.depts[i];
         return {
           id: r.id, x: r.x + r.w / 2, z: r.y + r.h / 2, name: named(db.rooms[r.type]?.name, r.type), state: off ?? (why.length ? T.problem.down(this.problemText(why[0])) : T.problem.works), ok: why.length === 0,
           ...(off ? { rest: true } : {}),
+          // табличка отделения (spec docs/specs/2026-10-departments.md, часть 2): полоса его цвета и название
+          ...(d !== undefined ? { dept: { name: this.deptName(d), color: css(colorOf(d)) } } : {}),
         };
       }),
     );
@@ -782,6 +816,8 @@ export class Game {
     if (light) {
       this.pop.setStaff(w.staff);
       this.onDuty();
+      // отметка отделения (spec docs/specs/2026-10-departments.md, часть 2): призрак — по новой больнице
+      this.builder.refresh();
       return;
     }
     this.setWorld(false);
@@ -1038,9 +1074,10 @@ export class Game {
     const b = performance.now();
     this.pickUnder();
     this.stage.frame(dt, (this.t % 86400) / 3600, this.crowd, this.pop.paint, k => this.pop.triageOf(k), this.ringKey(), this.pickOf());
-    this.labels.visible = this.builder.on;
+    // подписи помещений — в стройке и в слое «Отделения» (spec docs/specs/2026-10-departments.md, часть 2); значки — вместо них
+    this.labels.visible = this.builder.on || this.store.get().layers.depts;
     this.labels.frame();
-    this.chips.visible = !this.builder.on;
+    this.chips.visible = !this.labels.visible;
     this.chips.frame();
     this.colLabels.frame();
     // карта вашего больного — когда его фигура вошла (замечание владельца 25.10.2026)
@@ -1225,6 +1262,8 @@ export class Game {
     this.chips.set(plan.rooms.flatMap((r, i) => (chipShown(chips[i], hud.layers.queues) ? [{ id: r.id, x: r.x + r.w / 2, z: r.y + r.h / 2, chip: chips[i] }] : [])));
     this.stage.tint.group.visible = hud.layers.queues;
     if (hud.layers.queues) this.stage.tint.set(loads.map((l, i) => tintOf(l, this.problems[i] !== undefined)));
+    // слой «Отделения» (spec docs/specs/2026-10-departments.md, часть 2): цвета пола — с отделениями (`showDepts`)
+    this.stage.deptTint.group.visible = hud.layers.depts;
     // слой «Показатели»: столбик помещения по его нагрузке; не работает, нет людей, закрыто или не в смене — плашка, в
     // подписи — почему (по значку: красный бывает и у долгой очереди — она столбик)
     const metric = hud.layers.metric;
@@ -1255,7 +1294,11 @@ export class Game {
         const ref = Number(p.kind) & REFERRED ? this.pop.staffAt(p.by)?.role : undefined;
         return ref ? `${who} · ${T.card.referred(this.names().dat(ref), p.row.sex === 'f')}` : who;
       };
-      const list = people.map(([key, p]) => ({ ...p, key, id: p.row.id, title: title(p) }));
+      // отделение пациента (часть 2): помещения, где он, или кабинета его врача
+      const list = people.map(([key, p]) => {
+        const dept = patientDept(p, this.depts, by => this.office[by] ?? -1);
+        return { ...p, key, id: p.row.id, title: title(p), ...(dept !== undefined ? { dept } : {}) };
+      });
       ({ rows: patients, total: patientsAll } = patientRows(list, t, hud.patientFilter));
     }
     // ушёл, когда кончилось терпение: час — его срок из среза (извещение при промотке приходит позже), ждал — до него
@@ -1493,6 +1536,12 @@ export class Game {
       this.builder.pickItem(kind, eq);
       this.hud();
     },
+    // «Отделение» (spec docs/specs/2026-10-departments.md, часть 2): инструмент — какое; карточка помещения — сразу командой
+    pickDept: dept => {
+      this.builder.pickDept(dept);
+      this.hud();
+    },
+    markDept: (room, dept) => this.command({ kind: 'dept', room, ...(dept ? { dept } : {}) }),
     undo: () => this.command({ kind: 'undo' }),
     done: () => {
       if (this.builder.on) this.builder.toggle();
@@ -1558,9 +1607,15 @@ export class Game {
     loadGame: slot => reopen({ load: slot }),
     deleteGame: slot => void removeSlot(this.disk, slot).then(() => this.refreshSaves()),
     newGame: () => reopen({}),
+    // пол красит один слой: «Очереди и загрузка» или «Отделения»
     toggleQueues: () => {
       const l = this.store.get().layers;
-      this.store.set({ layers: { ...l, queues: !l.queues } });
+      this.store.set({ layers: { ...l, queues: !l.queues, depts: false } });
+      this.hud();
+    },
+    toggleDepts: () => {
+      const l = this.store.get().layers;
+      this.store.set({ layers: { ...l, depts: !l.depts, queues: false } });
       this.hud();
     },
     // слой «Показатели» (spec docs/specs/2026-10-metrics-layer.md): показатель запоминается в настройках игрока
@@ -1672,12 +1727,20 @@ export class Game {
       });
     });
     const f = furnishOf(db, site, id);
+    // отделение (spec docs/specs/2026-10-departments.md, часть 2): какое и откуда; палату и кабинет можно перевести отсюда же
+    const dw = db.departments ? deptWhy(db, room, this.staff) : undefined;
+    const dept: RoomCard['dept'] = !db.departments ? undefined : {
+      ...(dw
+        ? { name: this.deptName(dw.dept), color: css(colorOf(dw.dept)), why: dw.by === 'mark' ? T.card.deptMark : dw.by === 'staff' ? T.card.deptStaff(lowerFirst(named(db.roles[dw.role!]?.name, dw.role!))) : T.card.deptType }
+        : { name: T.card.deptNone, color: css(NO_DEPT), why: '' }),
+      ...(t.paint && !room.leaving ? { value: room.dept ?? '' } : {}),
+    };
     // каталка ночью (spec docs/specs/2026-10-orderlies.md, «Что видно»): у помещения с санитаром, когда в ночной смене есть
     // люди, а санитара — ни одного во всей больнице: лежачих повезут медсёстры
     const night = t.staff.includes(ORDERLY) && this.staff.some(m => m.shift === 'night') && !this.staff.some(m => m.role === ORDERLY && m.shift !== 'day');
     return {
       ...base, size: `${r.w} × ${r.h}`, ok: why.length === 0, state: why.length ? T.problem.down(this.problemText(why[0])) : T.problem.works,
-      problems: why.map(p => this.problemText(p)), needs, posts, ...(night ? { note: T.card.nightCarrier } : {}),
+      problems: why.map(p => this.problemText(p)), needs, posts, ...(night ? { note: T.card.nightCarrier } : {}), ...(dept ? { dept } : {}),
       // деньги по суткам (spec docs/specs/2026-10-metrics-layer.md, часть 2): прошедшие и сегодня — графиком
       money: [...this.roomsMoney.days.map(d => ({ day: d.day as number | null, r: d.rooms[id] })), { day: null, r: this.roomsMoney.now[id] }].map(x => ({
         day: x.day, income: x.r?.income ?? 0, expenses: x.r?.expenses ?? 0,
@@ -1817,8 +1880,12 @@ export class Game {
       // «Вся больница» (spec docs/specs/2026-10-settings.md): кнопки вида на экране больше нет
       else if (k === 'Home') this.actions.overview();
       else if (k === 'Escape') this.cancel();
-      // часть 3: L — слой «Очереди и загрузка», Tab — вкладка «Пациенты» (геймдизайн §12)
-      else if (k === 'KeyL') this.actions.toggleQueues();
+      // часть 3: L — слои пола по кругу: «Очереди и загрузка», «Отделения», выключены (геймдизайн §3); Tab — «Пациенты» (§12)
+      else if (k === 'KeyL') {
+        const l = this.store.get().layers;
+        if (l.queues || l.depts) this.actions.toggleDepts();
+        else this.actions.toggleQueues();
+      }
       // M — слой «Показатели» по кругу: загрузка, ожидание, выключен (spec docs/specs/2026-10-metrics-layer.md)
       else if (k === 'KeyM') {
         const now = this.store.get().layers.metric;

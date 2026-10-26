@@ -128,8 +128,11 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # «Прибыль» with service rooms in grey, «До утра» — a past day on the slider, the room
                                    # card's chart by day; then referral to a specialist: «Направить к …» in your own card's
                                    # «Решение» — the specialists on duty, the card closes, «направлен к гастроэнтерологу» in
-                                   # «Пациенты», the patient card and the path);
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|26` for one part
+                                   # «Пациенты», the patient card and the path; then departments on the map:
+                                   # stripes at department doors, the «Отделение» tool and its ghost, a ward to surgery
+                                   # with no scene rebuild, Ctrl+Z, the «Отделения» layer and legend, L in a cycle, the
+                                   # room card's department and its select, the «Пациенты» filter by department);
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|28` for one part (27 — difficulty)
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
                                                      # (`-- --flow 40,4` — a bigger crowd, about 180 people,
                                                      # `-- --metric load` — with the «Показатели» layer)
@@ -257,6 +260,11 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   staff member working there whose role has a `department`, else the room type's `department`; diagnostics and common rooms
   have none. Nothing in the shift reads it yet (routing by complaint is for the demo), so the flow is the same with or without marks.
   Undoing a mark keeps whatever room is being rebuilt (`keep` in the undo step): a mark never closes a room.
+  The window (part 2) calls `deptsOf` itself. `src/app/departments.ts` — Okabe–Ito colours (`tools/test/departments-ui.test.ts`
+  keeps all seven apart under three kinds of colour blindness), stripes, the «Отделения» layer and its legend, a patient's
+  department for the «Пациенты» filter (the room they are in, else their doctor's office); `src/render/stripes.ts` — floor
+  stripes at department doors, lit like the floor; the «Отделение» build tool and the room card's select send the `dept`
+  site command; a marks-only change keeps the scene (`onlyDeptsChanged`, `staffOnly` in `src/sim/host.ts`).
 - The chief approves (`docs/specs/2026-10-two-ways.md`, part 2): `shift/approve.ts` — the rule checkboxes (`meta.asks`, none
   — «unsure» and «long case» as before) and whether a hired doctor's decision waits for the chief. The decision waits in
   `ShiftPatient.approve` (the patient at the office door, no patience; the doctor calls the next); answers — the `approve`

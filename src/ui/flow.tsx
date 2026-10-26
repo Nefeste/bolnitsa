@@ -97,6 +97,17 @@ export function PatientsTab({ hud, actions }: P) {
                 </Seg>
               ))}
             </span>
+            {/* отделение (spec docs/specs/2026-10-departments.md, часть 2): где пациент сейчас или кабинет его врача */}
+            {hud.deptLegend.length ? (
+              <select id="pf-dept" value={f.dept} title={T.flow.deptFilterHint} onChange={e => set({ dept: e.target.value as PatientFilter['dept'] })}>
+                <option value="all">{T.flow.deptAll}</option>
+                {hud.deptLegend.map(d => (
+                  <option key={d.id || 'none'} value={d.id || 'none'}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            ) : null}
             <Seg id="pf-long" on={f.long} onClick={() => set({ long: !f.long })}>
               {T.flow.longOnly(LONG_WAIT / 60)}
             </Seg>
@@ -181,11 +192,11 @@ export function PathSection({ hud }: { hud: Hud }) {
  * остальные слои геймдизайна §3 — позже.
  */
 export function Layers({ hud, actions }: P) {
-  const soon: (keyof typeof T.flow.layer)[] = ['departments', 'paths', 'comfort', 'problems'];
+  const soon: (keyof typeof T.flow.layer)[] = ['paths', 'comfort', 'problems'];
   const metric = hud.layers.metric;
   return (
     <>
-      <button type="button" id="layers" className={hud.layers.open || hud.layers.queues || metric ? 'on' : undefined} onClick={actions.toggleLayers} title="L">
+      <button type="button" id="layers" className={hud.layers.open || hud.layers.queues || hud.layers.depts || metric ? 'on' : undefined} onClick={actions.toggleLayers} title="L">
         ▦ {T.flow.layers}
       </button>
       {hud.layers.open ? (
@@ -193,12 +204,17 @@ export function Layers({ hud, actions }: P) {
           <button type="button" id="layer-queues" className={hud.layers.queues ? 'on' : undefined} onClick={actions.toggleQueues} title="L">
             {T.flow.layer.queues}
           </button>
+          {/* «Отделения» (spec docs/specs/2026-10-departments.md, часть 2): пол помещений в цвет отделения и подписи */}
+          <button type="button" id="layer-depts" className={hud.layers.depts ? 'on' : undefined} onClick={actions.toggleDepts} title="L">
+            {T.flow.layer.departments}
+          </button>
           {soon.map(k => (
             <button key={k} type="button" disabled title={T.flow.layerSoon}>
               {T.flow.layer[k]}
             </button>
           ))}
           {hud.layers.queues ? <p className="hint">{T.flow.legend(WAIT_OK / 60, WAIT_BAD / 60)}</p> : null}
+          {hud.layers.depts ? <DeptLegend hud={hud} /> : null}
           {/* «Показатели»: столбики над помещениями; выручка и прибыль — за сутки, с ползунком по суткам (часть 2) */}
           <div className="metrics" id="metrics-menu" title={T.metrics.hint}>
             <b>{T.metrics.title}</b>
@@ -215,6 +231,23 @@ export function Layers({ hud, actions }: P) {
         </div>
       ) : null}
     </>
+  );
+}
+
+/** Легенда слоя «Отделения»: отделения этой больницы в их цвете, сколько помещений, и «без отделения». */
+function DeptLegend({ hud }: { hud: Hud }) {
+  return (
+    <div className="deptlegend">
+      <ul id="dept-legend">
+        {hud.deptLegend.map(d => (
+          <li key={d.id || 'none'} data-dept={d.id}>
+            <span className="swatch" style={{ background: d.color }} />
+            {d.name} <span className="muted">· {T.flow.deptRooms(d.rooms)}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="hint">{T.flow.deptLegend}</p>
+    </div>
   );
 }
 

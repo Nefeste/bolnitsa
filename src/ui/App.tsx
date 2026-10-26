@@ -289,6 +289,27 @@ function LeftTools({ hud, actions }: P) {
         ))}
       </ul>
     );
+  // отделение (spec docs/specs/2026-10-departments.md, часть 2): в какое переводить; «Без отметки» — снять отметку
+  else if (b.tool === 'dept')
+    body = (
+      <ul className="list" id="dept-list">
+        {hud.departments.map(d => (
+          <li key={d.id}>
+            <button type="button" id={`dept-${d.id.slice(5)}`} className={b.dept === d.id ? 'on' : undefined} onClick={() => actions.pickDept(d.id)}>
+              <span>
+                <span className="swatch" style={{ background: d.color }} />
+                {d.name}
+              </span>
+            </button>
+          </li>
+        ))}
+        <li>
+          <button type="button" id="dept-none" className={b.dept === null ? 'on' : undefined} onClick={() => actions.pickDept(null)} title={T.build.deptNoneHint}>
+            <span>{T.build.deptNone}</span>
+          </button>
+        </li>
+      </ul>
+    );
   else if (b.tool === 'item')
     body = hud.room?.catalog ? (
       <>
@@ -330,6 +351,16 @@ function LeftTools({ hud, actions }: P) {
           </button>
         ))}
       </div>
+      {hud.departments.length ? (
+        <button type="button" id="tool-dept" className={`wide${b.tool === 'dept' ? ' on' : ''}`} onClick={() => actions.setTool(b.tool === 'dept' ? undefined : 'dept')} title={T.build.deptHint}>
+          <span className="swatches">
+            {hud.departments.map(d => (
+              <span key={d.id} className="swatch" style={{ background: d.color }} />
+            ))}
+          </span>
+          {T.build.dept}
+        </button>
+      ) : null}
       <div className="row">
         <button type="button" id="undo" disabled={b.undo === 0} onClick={actions.undo} title="Ctrl+Z">
           ↶ {T.build.undo} ({b.undo})
@@ -392,6 +423,26 @@ function SiteCard({ r, actions, hud }: { r: RoomCard; actions: Actions; hud: Hud
             ))}
           </dd>
         </div>
+        {r.dept ? (
+          <div>
+            <dt>{T.card.dept}</dt>
+            <dd id="card-dept">
+              <span className="swatch" style={{ background: r.dept.color }} />
+              <span id="card-dept-name">{r.dept.name}</span>
+              {r.dept.why ? <span className="muted"> · {r.dept.why}</span> : null}
+              {r.dept.value !== undefined ? (
+                <select id="card-dept-pick" value={r.dept.value} title={T.card.deptPickHint} onChange={e => actions.markDept(r.id, e.target.value || null)}>
+                  <option value="">{T.build.deptNone}</option>
+                  {hud.departments.map(d => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+            </dd>
+          </div>
+        ) : null}
         <div className="posts">
           <dt>{T.card.posts}</dt>
           <dd>
