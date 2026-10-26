@@ -70,6 +70,12 @@ export class Daylight {
   night = 0;
   /** цвет фона по часу — его же берёт туман сцены (stage.ts): край земли растворяется в фоне */
   readonly background = new THREE.Color(0x2a3236);
+  /**
+   * Цвет кадра по часу — множитель в последнем проходе (post.ts; spec 2026-10-aaa-polish, «Свет, часть 2»): рассвет
+   * холодный, полдень ровный, вечер тёплый, ночь чуть синее; и виньетка — ночью сильнее.
+   */
+  readonly grade = new THREE.Color(1, 1, 1);
+  vignette = 0.2;
 
   constructor(
     private scene: THREE.Scene,
@@ -151,6 +157,11 @@ export class Daylight {
     // фон — тёмный: за участком ничего нет (замечание владельца: не плоская зелень до горизонта)
     this.background.set(0x2a3236).lerp(new THREE.Color(0x3a3430), low * 0.5).lerp(new THREE.Color(0x141a24), night);
     this.scene.background = this.background;
+    // тёплый вечер — пик в 18:00; холодный рассвет — до 9:00; ночью кадр чуть синее
+    const evening = hour >= 15.5 ? Math.max(0, 1 - Math.abs(hour - 18) / 2.5) * (1 - night) : 0;
+    const dawn = hour < 9 ? Math.min(1, (9 - hour) / 2) * (1 - night) : 0;
+    this.grade.setRGB(1 + 0.06 * evening - 0.03 * dawn - 0.03 * night, 1 - 0.01 * evening - 0.01 * night, 1 - 0.08 * evening + 0.05 * dawn + 0.04 * night);
+    this.vignette = 0.2 + 0.1 * night;
   }
 }
 
