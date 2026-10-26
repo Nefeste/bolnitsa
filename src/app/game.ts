@@ -48,6 +48,7 @@ import { Doctor } from './doctor';
 import { chipShown, dur, medicLine, moodOf, pathCard, type PatientRow, patientRows, roomChip, roomLoads, tintOf, wheelLine } from './flow';
 import { type HintKey, hintOf } from './hints';
 import { DEFAULT_ROLE, firstOffice, type Role, ROLE_SETS, startFor } from './roles';
+import { type NoticeRow, type Tone } from './toasts';
 import { ScenarioDesk, scenarioTitle } from './scenario';
 import { columnOf, type Metric, METRICS, METRICS_READY, MONEY_METRICS, moneyColumnOf, moneyTop, serviceRoom } from './metrics';
 import { ColumnLabels } from './collabels';
@@ -338,7 +339,13 @@ export class Game {
   firstFrameMs = 0;
   private last = 0;
   private hudAt = 0;
-  private notices: { t: number; text: string }[] = [];
+  private notices: NoticeRow[] = [];
+  private stamped = 0;
+  /** Когда извещение показано, мс настоящего времени — у каждого своё (ключ строки под часами), даже в одном кадре. */
+  private stamp(): number {
+    this.stamped = Math.max(performance.now(), this.stamped + 0.001);
+    return this.stamped;
+  }
   /** часы игры, которые бенч и снимки двигают сами */
   manual = false;
   /** последние кадры: интервал, CPU кадра (толпа + отрисовка) — для полосы отладки и бенча */
@@ -881,26 +888,30 @@ export class Game {
       : n.kind === 'worse' ? this.doctor.worseText(n.id)
       : n.kind === 'reached' ? this.doctor.reachedText(n.id)
       : T.notices.shiftEnd;
-    this.notices.unshift({ t: this.t, text });
+    // всплывающие строки (spec 2026-10-aaa-polish, «Извещения»): срочное — красной полосой и дольше, к больному — щелчком
+    const tone: Tone | undefined =
+      (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'arrest' || n.kind === 'worse' ? 'urgent' : n.kind === 'left' ? 'warn' : undefined;
+    const who = n.kind === 'arrived' || n.kind === 'left' || n.kind === 'ambulance' || n.kind === 'arrest' || n.kind === 'worse' || n.kind === 'reached' ? n.id : undefined;
+    this.notices.unshift({ t: this.t, text, at: this.stamp(), ...(tone ? { tone } : {}), ...(who ? { who } : {}) });
     // персонал на планёрке (spec docs/specs/2026-10-staff-mood.md): кто собирается уйти и кто уходит — строками журнала
     if (n.kind === 'morning' && n.staff) {
       for (const q of n.staff.quit ?? []) {
         const m = this.staff.find(x => x.id === q.id);
-        if (m) this.notices.unshift({ t: this.t, text: T.notices.quit(this.staffWho(m)) });
+        if (m) this.notices.unshift({ t: this.t, text: T.notices.quit(this.staffWho(m)), at: this.stamp(), tone: 'warn' });
       }
-      for (const l of n.staff.leave ?? []) this.notices.unshift({ t: this.t, text: T.notices.leave(this.staffWho(l)) });
+      for (const l of n.staff.leave ?? []) this.notices.unshift({ t: this.t, text: T.notices.leave(this.staffWho(l)), at: this.stamp(), tone: 'warn' });
       // рост, учёба, болезнь (разделы 3–5)
       const person = (id: string) => this.staff.find(x => x.id === id);
       const who = (id: string) => {
         const m = person(id);
         return m ? this.staffWho(m) : id;
       };
-      for (const g of n.staff.grew ?? []) this.notices.unshift({ t: this.t, text: T.notices.grew(who(g.id), g.skill, person(g.id)?.sex ?? 'm') });
-      for (const b of n.staff.back ?? []) this.notices.unshift({ t: this.t, text: T.notices.back(who(b.id), b.skill, person(b.id)?.sex ?? 'm') });
-      for (const id of n.staff.sick ?? []) this.notices.unshift({ t: this.t, text: T.notices.sick(who(id)) });
+      for (const g of n.staff.grew ?? []) this.notices.unshift({ t: this.t, text: T.notices.grew(who(g.id), g.skill, person(g.id)?.sex ?? 'm'), at: this.stamp() });
+      for (const b of n.staff.back ?? []) this.notices.unshift({ t: this.t, text: T.notices.back(who(b.id), b.skill, person(b.id)?.sex ?? 'm'), at: this.stamp() });
+      for (const id of n.staff.sick ?? []) this.notices.unshift({ t: this.t, text: T.notices.sick(who(id)), at: this.stamp() });
       // резерв (часть 5)
-      for (const c of n.staff.covered ?? []) this.notices.unshift({ t: this.t, text: T.notices.covered(who(c.id), who(c.by)) });
-      for (const id of n.staff.returned ?? []) this.notices.unshift({ t: this.t, text: T.notices.returned(who(id), person(id)?.sex ?? 'm') });
+      for (const c of n.staff.covered ?? []) this.notices.unshift({ t: this.t, text: T.notices.covered(who(c.id), who(c.by)), at: this.stamp() });
+      for (const id of n.staff.returned ?? []) this.notices.unshift({ t: this.t, text: T.notices.returned(who(id), person(id)?.sex ?? 'm'), at: this.stamp() });
     }
     if (this.notices.length > 60) this.notices.length = 60;
     // утро — сохранение само (spec docs/specs/2026-10-saves.md): три последних утра
@@ -944,12 +955,12 @@ export class Game {
       if (kind === 'auto') await writeAuto(this.disk, bytes, meta);
       else await writeSlot(this.disk, kind === 'exit' ? 'exit' : await nextManual(this.disk), bytes, meta);
       await this.refreshSaves();
-      this.notices.unshift({ t: this.t, text: kind === 'auto' ? T.saves.autoSaved(meta.day) : T.saves.saved(meta.day, clock(meta.t)) });
+      this.notices.unshift({ t: this.t, text: kind === 'auto' ? T.saves.autoSaved(meta.day) : T.saves.saved(meta.day, clock(meta.t)), at: this.stamp() });
       this.hud();
       return meta;
     };
     const p = this.saving.then(run, run).catch(e => {
-      this.notices.unshift({ t: this.t, text: T.saves.failed(e instanceof Error ? e.message : String(e)) });
+      this.notices.unshift({ t: this.t, text: T.saves.failed(e instanceof Error ? e.message : String(e)), at: this.stamp() });
       this.hud();
       return null;
     });
