@@ -114,7 +114,8 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # steps, a question, an exam and a test go into the timeline, the result opens «Решение»;
                                    # then the people: 59 Rocketbox looks with atlas and mask, the look by role, profession
                                    # and paramedic, the suit colour by role — read from the picture, people sit down, stand
-                                   # up and lie; then
+                                   # up and lie, the mask in two channels on the GPU, people of one look with different hair
+                                   # and skin, the hair tint seen in the frame; then
                                    # scenario 1: «Кампания» on the start screen, the mentor's letters at the start and to the
                                    # hint states while building, the scenario's build catalog, your own office, the first three
                                    # patients set by the scenario, «Цели» and «Без обучения», «Письма» at the meeting, the
@@ -300,7 +301,10 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   (the one table of heights, role colours and looks), `place.ts`, `path.ts`, `crowd.ts`, `population.ts`. People exist
   only in rendering: the engine never sees them. People are Microsoft Rocketbox looks (`docs/specs/2026-10-people.md`):
   59 in `LOOKS` of `cast.ts` (a look of its own per role — `roles`; hard hats and workwear only for patients of their
-  professions — `jobs`, `NameRow.job`), an atlas and a clothes mask, the suit tinted by the mask (`people.ts`). `bake.ts`
+  professions — `jobs`, `NameRow.job`), an atlas (strands in its alpha) and a mask — R the clothes, tinted by role colour, G
+  the skin (½) and hair (1), tinted per person by `toneOf` in `cast.ts` (part 2б; the converter's `regions` finds them, 9 looks
+  in hats or bald have no hair, `NO_HAIR`), the mask goes to the GPU in two channels (`people.ts`); a blanket over whoever
+  lies in a bed (`Spot.bed`), shaped by the look's lying heights (`lie` in `bake.ts`). `bake.ts`
   bakes them in the bake workers (`bake-worker.ts` → `dist/bake.js`; `toWire`/`fromWire` hand them over without a copy):
   feet stay planted in walk and run (`lockFeet`, a two-bone leg reach), the seated pose sits on a chair of `SEAT`
   (`catalog.ts`; `seatTo`), walk and run speed per look.
