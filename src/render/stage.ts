@@ -19,7 +19,7 @@ import { YOU } from './population';
 import { Post } from './post';
 import { createRenderer, Daylight, gpuString, IsoCamera, PRESETS, type Quality } from './view';
 import type { FloorKind, FloorTex } from './textures';
-import { buildFloors, buildGround, buildWalls, type WallMode, type Walls } from './world';
+import { buildFloors, buildGround, buildRoof, buildWalls, type WallMode, type Walls } from './world';
 
 export interface StageInit {
   host: HTMLElement;
@@ -43,6 +43,8 @@ export class Stage {
   renderer: THREE.WebGLRenderer;
   private post: Post | null = null;
   walls: Walls;
+  /** крыша только для теней: солнце в помещения — через окна (spec 2026-10-aaa-polish, «Свет, часть 2») */
+  private roof: THREE.Mesh;
   doors: Doors;
   lamps: Lamps;
   readonly view: PeopleView;
@@ -93,6 +95,8 @@ export class Stage {
     for (const m of this.floors) this.scene.add(m);
     this.walls = buildWalls(layout);
     this.scene.add(this.walls.mesh);
+    this.roof = buildRoof(layout);
+    this.scene.add(this.roof);
     this.doors = buildDoors(layout);
     this.scene.add(this.doors.mesh);
     this.scene.add(this.lamps.mesh);
@@ -142,6 +146,7 @@ export class Stage {
     };
     for (const m of this.floors) drop(m);
     drop(this.walls.mesh);
+    drop(this.roof);
     drop(this.doors.mesh);
     drop(this.lamps.mesh);
     this.lamps.lightMap.dispose();
@@ -152,6 +157,8 @@ export class Stage {
     this.walls = buildWalls(layout);
     this.walls.setMode(this.wallMode);
     this.scene.add(this.walls.mesh);
+    this.roof = buildRoof(layout);
+    this.scene.add(this.roof);
     this.doors = buildDoors(layout);
     this.scene.add(this.doors.mesh);
     this.scene.add(this.lamps.mesh);
@@ -204,6 +211,7 @@ export class Stage {
       this.hourShown = hour;
       this.light.setHour(hour);
       this.lamps.setHour(hour, this.floors.map(m => m.material as THREE.MeshStandardMaterial));
+      u.uNight.value = this.light.night;
     }
     const fog = this.scene.fog as THREE.Fog;
     fog.color.copy(this.light.background);
@@ -266,6 +274,8 @@ export class Stage {
     r.info.reset();
     this.gpu.begin();
     if (this.post) {
+      this.post.grade.copy(this.light.grade);
+      this.post.vignette = this.light.vignette;
       this.post.setCamera(camera);
       this.post.render(camera);
     } else {

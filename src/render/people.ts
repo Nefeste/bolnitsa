@@ -111,7 +111,9 @@ export class PeopleView {
         m.customDepthMaterial = lookDepth;
         m.frustumCulled = false;
         m.castShadow = true;
-        m.receiveShadow = true;
+        // тень на людей не ложится (spec 2026-10-aaa-polish, «Свет, часть 2»): под крышей для теней (world.ts) помещения в
+        // тени, и белый халат врача стал бы серым — люди читаются первыми, свою тень на пол они отбрасывают
+        m.receiveShadow = false;
         m.count = 0;
         this.group.add(m);
         return { m, anim };
