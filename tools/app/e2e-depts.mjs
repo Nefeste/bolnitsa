@@ -139,10 +139,27 @@ export async function deptsPart({ page, port, out, ok, fail, q, shots }) {
   });
   const surgery = layer.legend.find(x => x.startsWith('Хирургия'));
   if (layer.painted === layer.rooms && !layer.queues && surgery && layer.legend[layer.legend.length - 1].startsWith('Без отделения') && layer.labels === 'block' && layer.signs > 0) {
-    await page.evaluate(() => window.__game.actions.overview());
-    await frames();
-    ok(`слой «Отделения»: пол ${layer.painted} помещений из ${layer.rooms}, легенда — ${layer.legend.join('; ')}; табличек ${layer.signs} (снимок ${await shot('e2e-depts-2.jpg')} КБ)`);
+    ok(`слой «Отделения»: пол ${layer.painted} помещений из ${layer.rooms}, легенда — ${layer.legend.join('; ')}; табличек ${layer.signs}`);
   } else fail(`слой «Отделения»: ${JSON.stringify(layer)}`);
+  // легенда — своя панель справа внизу: видна и при закрытом меню «Слои», не ложится ни на какую панель (на 1280 × 720 в
+  // меню слева она вытесняла «Показатели» за край экрана и закрывала окно врача)
+  await page.click('#layers');
+  await page.evaluate(() => window.__game.actions.overview());
+  await frames();
+  const place = await page.evaluate(() => {
+    const box = el => {
+      const r = el?.getBoundingClientRect();
+      return r && r.width > 0 ? { l: r.left, t: r.top, r: r.right, b: r.bottom } : null;
+    };
+    const legend = box(document.getElementById('dept-legend-panel'));
+    const others = ['#left', '#dock', '#right', '#card'].map(s => [s, box(document.querySelector(s))]).filter(([, b]) => b);
+    const hit = legend ? others.filter(([, b]) => b.l < legend.r && legend.l < b.r && b.t < legend.b && legend.t < b.b).map(([s]) => s) : [];
+    return { legend, menu: !!document.getElementById('layers-menu'), hit, w: innerWidth, h: innerHeight, rows: document.querySelectorAll('#dept-legend li').length };
+  });
+  const inside = place.legend && place.legend.l >= 0 && place.legend.t >= 0 && place.legend.r <= place.w && place.legend.b <= place.h;
+  if (inside && !place.menu && place.hit.length === 0 && place.rows === layer.legend.length)
+    ok(`легенда при закрытом меню: справа внизу (${Math.round(place.legend.l)}–${Math.round(place.legend.r)} × ${Math.round(place.legend.t)}–${Math.round(place.legend.b)} на ${place.w} × ${place.h}), ни на какую панель не ложится (снимок ${await shot('e2e-depts-2.jpg')} КБ)`);
+  else fail(`легенда при закрытом меню: ${JSON.stringify(place)}`);
   // L — по кругу: «Отделения» → выключены → «Очереди» → «Отделения»
   const layersNow = () => page.evaluate(() => {
     const l = window.__game.store.get().layers;

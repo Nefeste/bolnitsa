@@ -214,7 +214,6 @@ export function Layers({ hud, actions }: P) {
             </button>
           ))}
           {hud.layers.queues ? <p className="hint">{T.flow.legend(WAIT_OK / 60, WAIT_BAD / 60)}</p> : null}
-          {hud.layers.depts ? <DeptLegend hud={hud} /> : null}
           {/* «Показатели»: столбики над помещениями; выручка и прибыль — за сутки, с ползунком по суткам (часть 2) */}
           <div className="metrics" id="metrics-menu" title={T.metrics.hint}>
             <b>{T.metrics.title}</b>
@@ -234,10 +233,16 @@ export function Layers({ hud, actions }: P) {
   );
 }
 
-/** Легенда слоя «Отделения»: отделения этой больницы в их цвете, сколько помещений, и «без отделения». */
-function DeptLegend({ hud }: { hud: Hud }) {
+/**
+ * Легенда слоя «Отделения» — справа внизу, пока слой включён, и при закрытом меню «Слои»: отделения этой больницы в их
+ * цвете, сколько помещений, и «без отделения». В меню слева она не помещалась: на 1280 × 720 вытесняла «Показатели» за
+ * край экрана и ложилась на окно врача. Как ею пользоваться — во всплывающей подсказке.
+ */
+export function DeptLegend({ hud }: { hud: Hud }) {
+  if (!hud.layers.depts || !hud.deptLegend.length) return null;
   return (
-    <div className="deptlegend">
+    <div className="deptlegend panel" id="dept-legend-panel" title={T.flow.deptLegend}>
+      <b>{T.flow.layer.departments}</b>
       <ul id="dept-legend">
         {hud.deptLegend.map(d => (
           <li key={d.id || 'none'} data-dept={d.id}>
@@ -246,7 +251,6 @@ function DeptLegend({ hud }: { hud: Hud }) {
           </li>
         ))}
       </ul>
-      <p className="hint">{T.flow.deptLegend}</p>
     </div>
   );
 }

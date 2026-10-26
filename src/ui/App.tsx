@@ -15,7 +15,7 @@ import { ROLES } from '../app/roles';
 import { toastsOf } from '../app/toasts';
 import { type QualityMode, TEXT_SCALES } from '../app/settings';
 import { Meeting, Reports, signed } from './Meeting';
-import { Layers, PathSection, PatientsTab } from './flow';
+import { DeptLegend, Layers, PathSection, PatientsTab } from './flow';
 import { byGuide, GoalsTab, GuideToggle, LetterCard, ScenarioDone, StepMark } from './Scenario';
 import { type Actions, type Hud, type Level, type LevelRow, type RoomCard, type Speed, type Store, type Tab, type Tool, useHud } from './store';
 import type { Id, Manage } from '../content/types';
@@ -1222,6 +1222,7 @@ export function App({ store, actions, names }: { store: Store; actions: Actions;
       <SettingsPanel {...p} />
       <RightTabs {...p} />
       <BottomCard {...p} />
+      <DeptLegend hud={hud} />
       {!hud.build.on ? <Dock hud={hud} actions={actions} /> : null}
       {hud.doctor?.card ? <Card key={hud.doctor.card.id} v={hud.doctor.card} level={hud.doctor.level} meanwhile={hud.doctor.meanwhile} next={hud.doctor.next} actions={actions} /> : null}
       {/* планёрка в 08:00 (spec docs/specs/2026-10-economy.md) — когда карта пациента закрыта */}
