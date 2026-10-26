@@ -981,6 +981,20 @@ export const moneySchema = z.strictObject({
 });
 
 /**
+ * Ось «Управление» (spec docs/specs/2026-10-difficulty.md): у «Спокойно» и «Трудно» — множители к числам «Обычно», %, свои
+ * предел минуса и касса начала. Что легче и что труднее, проверяет сборка (`tools/content/load.ts`).
+ */
+const manageLevel = z.strictObject({
+  inflow: z.number().int().min(10).max(300),
+  patience: z.number().int().min(10).max(300),
+  salary: z.number().int().min(10).max(300),
+  breakdown: z.number().int().min(0).max(300),
+  overdraft: z.number().int().min(0),
+  budget: z.enum(['modest', 'normal', 'generous']),
+});
+export const difficultySchema = z.strictObject({ calm: manageLevel, hard: manageLevel });
+
+/**
  * Сутки целиком «Больницы» (spec docs/specs/2026-10-day.md): часы амбулаторного приёма по умолчанию; сколько приходят сами
  * и сколько машин скорой по часам суток, % от среднего; в котором часу нанятые врачи обходят своих лежащих. Среднее и
  * «утром больше» / «вечером больше» проверяет сборка (`tools/content/load.ts`).
@@ -1367,6 +1381,7 @@ export type ConsultsSrc = z.infer<typeof consultsSchema>;
 export type DaySrc = z.infer<typeof daySchema>;
 export type InflowSrc = z.infer<typeof inflowSchema>;
 export type MoneySrc = z.infer<typeof moneySchema>;
+export type DifficultySrc = z.infer<typeof difficultySchema>;
 export type CharacterSrc = z.infer<typeof characterSchema>;
 export type ChapterSrc = z.infer<typeof chapterSchema>;
 export type ScenarioSrc = z.infer<typeof scenarioSchema>;
