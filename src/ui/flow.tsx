@@ -192,11 +192,11 @@ export function PathSection({ hud }: { hud: Hud }) {
  * остальные слои геймдизайна §3 — позже.
  */
 export function Layers({ hud, actions }: P) {
-  const soon: (keyof typeof T.flow.layer)[] = ['paths', 'comfort', 'problems'];
+  const soon: (keyof typeof T.flow.layer)[] = ['paths', 'comfort'];
   const metric = hud.layers.metric;
   return (
     <>
-      <button type="button" id="layers" className={hud.layers.open || hud.layers.queues || hud.layers.depts || metric ? 'on' : undefined} onClick={actions.toggleLayers} title="L">
+      <button type="button" id="layers" className={hud.layers.open || hud.layers.queues || hud.layers.depts || hud.layers.problems || metric ? 'on' : undefined} onClick={actions.toggleLayers} title="L">
         ▦ {T.flow.layers}
       </button>
       {hud.layers.open ? (
@@ -213,6 +213,10 @@ export function Layers({ hud, actions }: P) {
               {T.flow.layer[k]}
             </button>
           ))}
+          {/* «Проблемы» (spec docs/specs/2026-10-layers.md, часть 1): сколько красных и жёлтых — сразу на кнопке */}
+          <button type="button" id="layer-problems" className={hud.layers.problems ? 'on' : undefined} onClick={actions.toggleProblems} title="L">
+            {T.flow.problems.count(hud.problems.count)}
+          </button>
           {hud.layers.queues ? <p className="hint">{T.flow.legend(WAIT_OK / 60, WAIT_BAD / 60)}</p> : null}
           {/* «Показатели»: столбики над помещениями; выручка и прибыль — за сутки, с ползунком по суткам (часть 2) */}
           <div className="metrics" id="metrics-menu" title={T.metrics.hint}>
@@ -251,6 +255,39 @@ export function DeptLegend({ hud }: { hud: Hud }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/**
+ * Список слоя «Проблемы» (spec docs/specs/2026-10-layers.md, часть 1) — справа внизу, на месте легенды отделений, пока слой
+ * включён: красные, жёлтые, серые; щелчок по строке — туда, куда она ведёт.
+ */
+export function ProblemsPanel({ hud, actions }: P) {
+  if (!hud.layers.problems) return null;
+  const p = hud.problems;
+  return (
+    <div className="deptlegend problems panel" id="problems-panel" title={T.flow.problems.hint}>
+      <b>{T.flow.problems.count(p.count)}</b>
+      {p.rows.length === 0 ? (
+        <p className="muted" id="problems-none">
+          {T.flow.problems.none}
+        </p>
+      ) : (
+        <ul id="problems">
+          {p.rows.map(r => (
+            <li key={r.key}>
+              <button type="button" className={`prow p-${r.level}`} data-key={r.key} data-level={r.level} onClick={() => actions.goProblem(r.go)}>
+                <span className="swatch" />
+                <span>
+                  <b>{r.where}</b> — {r.what}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {p.more > 0 ? <p className="muted">{T.flow.problems.more(p.more)}</p> : null}
     </div>
   );
 }
