@@ -286,8 +286,9 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   patient card and the doctor's lists here and send them ready-made — the window never sees a patient's truth.
 - `src/app/` — the game in the window: loads the database and models, starts with the empty building or the preset,
   frame loop, clock, input, build tools (`build.ts`), room labels (`labels.ts`), auto-bench (`bench.ts`), the player's
-  settings (`settings.ts`: walls, camera, quality «auto», kept in page storage, not in saves — bench and build change the
-  view through `showWalls`/`showQuality`, which do not write them); people and flow:
+  settings (`settings.ts`: walls, camera, quality «auto», text size — `TEXT_SCALES` 1/1.15/1.3 as `--ui-k`: `zoom` of `#ui`,
+  the font of map labels; kept in page storage, not in saves — bench and build change the view through
+  `showWalls`/`showQuality`, which do not write them); people and flow:
   pure window logic (`flow.ts` — path lines, room load and state, patient rows) and room status chips (`chips.ts`). The
   «Показатели» layer (`docs/specs/2026-10-metrics-layer.md`): `metrics.ts` — a room's column from its load (`columnOf`: height,
   colour, the hover line, the number), `collabels.ts` — numbers over the columns, `src/render/columns.ts` — one instanced mesh
