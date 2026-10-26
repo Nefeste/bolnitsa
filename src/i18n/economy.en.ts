@@ -60,7 +60,7 @@ export const economyEn: EconomyStrings = {
       you: (n: number) => `They waited for you — ${n}.`,
       youFix: 'Leave some patients to hired doctors: «Own patients» in the doctor window.',
       other: (n: number) => `Other — ${n}.`,
-      stood: (n: number) => `${n} of those who left stood at the office door — half the patience. A waiting area closer to the office, or benches by the doors.`,
+      stood: (n: number) => `Stood at the office door — ${n}: half the patience. A waiting area closer to the office, or benches by the doors.`,
       gone: 'Who left',
       goneHint: '«Patients» → «Left»: each one’s path and why they left',
     },

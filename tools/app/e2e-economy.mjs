@@ -150,6 +150,12 @@ export async function economyPart({ page, port, out, ok, fail, q, shots }) {
     if (n === sum.left && rows.length === Object.values(sum.leftBy.why).filter(x => x > 0).length && gone.includes('Кто ушёл')) ok(`«почему?» у ушедших (${sum.left}): «${gone.slice(0, 260)}»`);
     else fail(`«почему?» у ушедших: «${gone}», итог ${JSON.stringify(sum.leftBy)}, ушли ${sum.left}`);
   } else ok('ушедших за сутки нет — «почему?» у них не показан');
+  // открытый разбор — кнопка «почему?» подсвечена (класс `on`, aria-expanded), у обеих
+  const marks = await page.$$eval('#meeting button.why', els => els.map(e => `${e.id}:${e.className}:${e.getAttribute('aria-expanded')}`));
+  if (marks.length > 0 && marks.every(m => m.endsWith(':why on:true'))) ok(`кнопки «почему?» открытых разборов подсвечены: ${marks.join(', ')}`);
+  else fail(`кнопки «почему?»: ${marks.join(', ')}`);
+  // рамка кнопки «почему?» загорается переходом (0,12 с); на паузе кадров мало — дать ему кончиться до снимка
+  await page.waitForTimeout(500);
   ok(`снимок планёрки: ${join(out, 'e2e-economy-1-meeting.jpg')} (${await shot('e2e-economy-1-meeting.jpg')} КБ)`);
   await page.click('#meeting-close');
   await until(() => !window.__game.store.get().economy?.open && window.__game.speed === 1);

@@ -335,11 +335,11 @@ describe('«Почему?» у цифр планёрки (spec docs/specs/2026-1
     const d = s.history[0];
     expect(d.leftBy?.why.none ?? 0).toBeGreaterThan(0);
     const late = Object.values(s.journeys!.of).filter(j => j.end?.why === 'none');
-    expect(late.length).toBe(d.leftBy!.why.none);
+    expect(late.length).toBe(d.leftBy!.why.none!);
     for (const j of late) {
       // ушли после пересменки в 20:00, а при приходе ждали занятого врача дневной смены
       expect(j.end!.t).toBeGreaterThan(20 * HOUR);
-      expect(j.steps.findLast(x => x.k === 'queue')).toMatchObject({ why: 'busy' });
+      expect([...j.steps].reverse().find(x => x.k === 'queue')).toMatchObject({ why: 'busy' });
     }
   });
 
