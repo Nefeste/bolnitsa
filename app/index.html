@@ -313,6 +313,12 @@
     .dcols.two { grid-template-columns: 1fr 1fr; }
     /* своя карта, макет (spec docs/specs/2026-10-own-card.md): лента «Ход приёма» и шаги, открыт один */
     .dcols.steps { grid-template-columns: 1.25fr 1fr; }
+    /* подсказка наставницы в карте (spec docs/specs/2026-10-scenario-1.md, часть 2б) — как письмо, но в карте */
+    .dtip { position: relative; flex: none; padding: 8px 12px 8px 10px; margin: 2px 0 4px; border-left: 3px solid var(--accent); border-radius: 4px; background: rgba(47,181,201,.10); display: flex; flex-direction: column; gap: 6px; }
+    .dtip .close { position: absolute; right: 6px; top: 6px; }
+    .dtip .lhead div { padding-right: 24px; }
+    .dtip .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .dtip .tipsee { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; margin-left: auto; }
     .dcols.steps .dcourse { margin-top: 0; }
     .dsteps { display: flex; flex-direction: column; gap: 4px; min-height: 0; }
     .dstep { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; text-align: left; padding: 6px 10px; }

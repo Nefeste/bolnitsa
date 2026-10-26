@@ -1110,6 +1110,23 @@ const scenarioLetterSchema = z.strictObject({
 });
 
 /**
+ * Подсказка наставника в карте больного сценария ПК (spec docs/specs/2026-10-scenario-1.md, часть 2б): как подсказка главы,
+ * но в записи сценария и без порядка — порядок списка; скорой и обхода в сценарии 1 нет.
+ */
+const scenarioTipSchema = z.strictObject({
+  id: slug,
+  from: z.string().regex(/^char\.[a-z0-9_]+$/),
+  when: z.union([
+    z.literal('caseOpen'), z.literal('afterAsk'), z.literal('decision'), z.literal('review'),
+    z.strictObject({ condition: z.string().regex(/^cond\.[a-z0-9_]+$/) }),
+  ]),
+  name: text,
+  text,
+  /** о чём подсказка — статьи энциклопедии */
+  see: z.array(z.string()).default([]),
+});
+
+/**
  * Сценарий кампании ПК (spec docs/specs/2026-10-scenario-1.md): как глава, но больница — пустое здание песочницы или
  * готовая больница записи `sites/`; одна фраза для карточки экрана начала.
  */
@@ -1127,6 +1144,8 @@ export const scenarioSchema = z.strictObject({
   letters: z.array(scenarioLetterSchema).default([]),
   /** порядок стройки (решение владельца #114): помещения по порядку и зачем каждое — строкой */
   guide: z.array(z.strictObject({ room: roomId, why: text })).default([]),
+  /** подсказки наставника в карте больного (часть 2б): по порядку списка */
+  tips: z.array(scenarioTipSchema).default([]),
 });
 
 /**
