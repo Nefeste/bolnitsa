@@ -5,7 +5,7 @@
 import type { Plan } from '../hospital/build';
 import { CELL } from '../hospital/grid';
 import { metersBetween, metersFromEntrance } from '../hospital/walk';
-import { REGISTRATION, type ShiftPatient, TRIAGE } from './types';
+import { REGISTRATION, type ShiftPatient, TRIAGE, type Triage } from './types';
 
 /** Игровых секунд в настоящую секунду при ×1 — «спокойный» темп, решение владельца 17.10.2026. */
 export const GAME_PER_REAL = 20;
@@ -16,6 +16,26 @@ export const WALK_SPEED_PC = SCREEN_WALK / GAME_PER_REAL;
 
 const secs = (m: number | undefined): number => Math.round((m ?? 0) / WALK_SPEED_PC);
 
+/**
+ * Медленный шаг (spec docs/specs/2026-10-people.md, «Медленный шаг»; решение владельца #132): пожилые от `SLOW_AGE` лет и
+ * «жёлтые» идут на `SLOW_PACE` % обычной скорости — их дорогу движок считает дольше, и на экране они идут медленным шагом.
+ */
+export const SLOW_AGE = 65;
+export const SLOW_PACE = 80;
+
+/** Идёт медленным шагом: пожилой или «жёлтый» — по состоянию, а не по тому, отсортировал ли его кто-то. */
+export const slowWalker = (age: number, triage: Triage): boolean => age >= SLOW_AGE || triage === 'yellow';
+export const slowOf = (p: ShiftPatient): boolean => slowWalker(p.patient.age, p.triage);
+
+/** Метров в игровую секунду медленным шагом. */
+export const SLOW_SPEED_PC = (WALK_SPEED_PC * SLOW_PACE) / 100;
+
+/** Метров в игровую секунду у пациента: медленным шагом — `SLOW_SPEED_PC`. */
+export const patientSpeed = (p: ShiftPatient): number => (slowOf(p) ? SLOW_SPEED_PC : WALK_SPEED_PC);
+
+/** Секунд пешком: обычным шагом — как `secs`, медленным — дольше, по той же формуле, что `walkSeconds`. */
+const secsAt = (m: number | undefined, slow: boolean): number => (slow ? Math.round((m ?? 0) / SLOW_SPEED_PC) : secs(m));
+
 /** Сколько первых в очереди к врачу ждут у двери его кабинета (spec 2026-10-walk) — игровая оценка, подобрана симулятором. */
 export const AT_DOOR = 2;
 
@@ -25,8 +45,12 @@ export const AT_DOOR = 2;
  */
 export const PER_QUEUED = 20 * 60;
 
-/** Секунд пешком от двери `from` до двери `to` в потоке для ПК. */
-export const walkPc = (plan: Plan, from: string | undefined, to: string | undefined): number => (from && to ? secs(metersBetween(plan, from, to)) : 0);
+/** Секунд пешком от двери `from` до двери `to` в потоке для ПК; `slow` — медленным шагом. */
+export const walkPc = (plan: Plan, from: string | undefined, to: string | undefined, slow = false): number =>
+  from && to ? secsAt(metersBetween(plan, from, to), slow) : 0;
+
+/** Секунд пешком пациенту `p`: его шагом. */
+const walkOf = (plan: Plan, p: ShiftPatient, from: string | undefined, to: string | undefined): number => walkPc(plan, from, to, slowOf(p));
 
 /** Работающее помещение этого вида — первое по плану. */
 const first = (plan: Plan, working: ReadonlySet<string>, type: string): string | undefined => plan.rooms.find(r => r.type === type && working.has(r.id))?.id;
@@ -52,20 +76,23 @@ export function hallNear(plan: Plan, working: ReadonlySet<string>, office: strin
 /**
  * Пришёл в больницу в `t` (spec 2026-10-walk, «Дорога в движке»): идёт от входа к регистратуре (`regAt` — дошёл),
  * оформляется, к медсестре доврачебного кабинета, если она есть (`triAt` — дошёл до неё), и в свою зону ожидания
- * (`seatAt` — сел; `leg` — откуда и когда пошёл к ней). Нет регистратуры или зала — сразу на месте.
+ * (`seatAt` — сел; `leg` — откуда и когда пошёл к ней). Нет регистратуры или зала — сразу на месте. `slow` — медленным
+ * шагом (spec 2026-10-people, «Медленный шаг»).
  */
-export function route(plan: Plan, working: ReadonlySet<string>, hall: string | undefined, nurse: boolean, t: number): { regAt: number; triAt?: number; seatAt: number; leg?: Leg } {
+export function route(
+  plan: Plan, working: ReadonlySet<string>, hall: string | undefined, nurse: boolean, t: number, slow = false,
+): { regAt: number; triAt?: number; seatAt: number; leg?: Leg } {
   const reception = first(plan, working, 'room.reception');
   if (!reception || !hall) return { regAt: t, seatAt: t };
-  const regAt = t + secs(metersFromEntrance(plan, reception));
+  const regAt = t + secsAt(metersFromEntrance(plan, reception), slow);
   const triage = nurse ? first(plan, working, 'room.triage') : undefined;
   if (!triage) {
     const leave = regAt + REGISTRATION;
-    return { regAt, seatAt: leave + walkPc(plan, reception, hall), leg: { from: reception, at: leave } };
+    return { regAt, seatAt: leave + walkPc(plan, reception, hall, slow), leg: { from: reception, at: leave } };
   }
-  const triAt = regAt + REGISTRATION + walkPc(plan, reception, triage);
+  const triAt = regAt + REGISTRATION + walkPc(plan, reception, triage, slow);
   const leave = triAt + TRIAGE;
-  return { regAt, triAt, seatAt: leave + walkPc(plan, triage, hall), leg: { from: triage, at: leave } };
+  return { regAt, triAt, seatAt: leave + walkPc(plan, triage, hall, slow), leg: { from: triage, at: leave } };
 }
 
 /**
@@ -156,7 +183,7 @@ export function moveTo(plan: Plan, working: ReadonlySet<string>, p: ShiftPatient
     p.next = office;
     if (from) p.leg = { from, at: t };
     else delete p.leg;
-    p.nextAt = t + walkPc(plan, from, office);
+    p.nextAt = t + walkOf(plan, p, from, office);
     return;
   }
   p.hall = hallNear(plan, working, office);
@@ -168,7 +195,7 @@ export function moveTo(plan: Plan, working: ReadonlySet<string>, p: ShiftPatient
     return;
   }
   p.leg = { from, at: t };
-  p.seatAt = t + walkPc(plan, from, p.hall);
+  p.seatAt = t + walkOf(plan, p, from, p.hall);
 }
 
 /**
@@ -185,12 +212,12 @@ export function toDoor(plan: Plan, p: ShiftPatient, office: string, t: number) {
   delete p.bench;
   // ещё у стойки или у медсестры — оттуда прямо к двери
   if (fresh && p.leg && t < p.leg.at) {
-    p.nextAt = p.leg.at + walkPc(plan, p.leg.from, office);
+    p.nextAt = p.leg.at + walkOf(plan, p, p.leg.from, office);
     return;
   }
   const at = Math.max(t, was.t ?? t);
   if (was.at) p.leg = { from: was.at, at };
-  p.nextAt = at + walkPc(plan, was.at, office);
+  p.nextAt = at + walkOf(plan, p, was.at, office);
 }
 
 /**
@@ -201,7 +228,7 @@ export function toDoor(plan: Plan, p: ShiftPatient, office: string, t: number) {
 export function toDoctor(plan: Plan, p: ShiftPatient, room: string, t: number): number {
   const { at, t: there } = waitsAt(p);
   if (!at) return 0;
-  if (there === undefined || t >= there || !p.leg) return walkPc(plan, at, room);
-  if (t < p.leg.at) return p.leg.at - t + walkPc(plan, p.leg.from, room);
-  return Math.min(there - t + walkPc(plan, at, room), t - p.leg.at + walkPc(plan, p.leg.from, room));
+  if (there === undefined || t >= there || !p.leg) return walkOf(plan, p, at, room);
+  if (t < p.leg.at) return p.leg.at - t + walkOf(plan, p, p.leg.from, room);
+  return Math.min(there - t + walkOf(plan, p, at, room), t - p.leg.at + walkOf(plan, p, p.leg.from, room));
 }
