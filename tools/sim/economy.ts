@@ -9,7 +9,11 @@
 //   poly     — поликлиника по нормам проектирования из готовых помещений (как «Поликлиника» в окне, spec
 //              2026-10-real-hospital): ваш кабинет пустует — врача никто не играет, принимают три нанятых терапевта;
 //   polyspec — та же поликлиника, где два терапевта заменены гастроэнтерологом и эндокринологом (spec
-//              2026-10-specialists): у специалистов своя запись, пришедших сами берёт один терапевт.
+//              2026-10-specialists): у специалистов своя запись, пришедших сами берёт один терапевт;
+//   ambulatory — сценарий 1 «Амбулатория» (spec docs/specs/2026-10-scenario-1.md, часть 4): касса сценария, разумный игрок
+//              строит в первые сутки все девять помещений его порядка стройки; ваш кабинет ведёт нанятый терапевт — вместо
+//              вас, его зарплату у игрока не платят: она — отдельной строкой. Не меньше 10 суток; критерий — цель «Пять
+//              суток с кассой в плюсе» выполнена к 10-м суткам («разумный игрок выходит в плюс к 10-м суткам»).
 // Критерии: касса ни разу не ниже предела минуса (кредит не нужен); за 7 суток больница не окупается целиком — не богатеет
 // нелепо; поток за сутки — в ориентирах геймдизайна §5. Персонал (spec docs/specs/2026-10-staff-mood.md): кто собирался уйти
 // и кто ушёл сам, настроение в конце, кто вырос и сколько смен пропущено по болезни; с `--days 14` и больше — критерий: игрок
@@ -22,7 +26,7 @@
 // списка; в отчёте — сколько раз резерв встал на место заболевшего и сколько смен места стояли пустыми.
 // `--hall N` — сидя или стоя по своему залу не дальше N м (content/hospital/inflow.yaml, `hall`); `--hall 0` — по всей больнице.
 // `--bench N` — скамьи у дверей кабинетов не дальше N шагов (`bench`, spec docs/specs/2026-10-door-benches.md); `--bench 0` — без них.
-//   bun tools/sim/economy.ts [--days 7] [--seeds 1,2,3] [--only clinic,district,city,poly,polyspec] [--hall N] [--bench N] [--raise]
+//   bun tools/sim/economy.ts [--days 7] [--seeds 1,2,3] [--only clinic,district,city,poly,polyspec,ambulatory] [--hall N] [--bench N] [--raise]
 //                            [--no-orderly night|all] [--reserve registrar,nurse] [--json]
 import type { ContentDb, Id } from '../../src/content/types';
 import { expensesOf, incomeOf } from '../../src/engine/economy/economy';
@@ -97,6 +101,17 @@ const DISTRICT: Spec[] = [
   ['room.emergency', 44, 27, 7, 6, 'top'],
 ];
 
+/**
+ * Сценарий 1 (часть 4): девять помещений его порядка стройки, по порядку — ряд прототипа с санузлом, ЭКГ рядом, доврачебный
+ * — во втором ряду, как в районной.
+ */
+const AMBULATORY_SC = 'scenario.ambulatory';
+const AMBULATORY: Spec[] = (db.scenarios?.[AMBULATORY_SC]?.guide ?? []).map(g => {
+  const at = [...CLINIC, ...DISTRICT].find(x => x[0] === g.room);
+  if (!at) throw new Error(`сценарий 1: где строить ${g.room} — нет в плане`);
+  return at;
+});
+
 /** Нужна ли помещению двойная дверь: в его образцах лежат (как в стройке, часть 2б) — палаты, рентген, смотровая. */
 const DOUBLE = new Set(['room.ward', 'room.xray', 'room.emergency', 'room.icu', 'room.ricu', 'room.box', 'room.ct', 'room.mri', 'room.or']);
 
@@ -170,6 +185,12 @@ interface Run {
    */
   stuck: { n: number; now: number; longest: number };
   moods: { n: number; low: number; min: number; mean: number; why: Record<string, number> };
+  /**
+   * сценарий 1 (часть 4): в какие сутки выполнены его цели (планёрка их записывает), зарплата терапевта вашего кабинета за
+   * сутки — у игрока её нет
+   */
+  goals?: Record<string, number>;
+  proxy?: number;
 }
 
 function start(name: string, seed: number): ShiftState {
@@ -188,10 +209,19 @@ function start(name: string, seed: number): ShiftState {
     // смены (spec 2026-10-staff-shifts): все — дневная, ночью поликлиника закрыта
     return newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, p.site), staff: withNightShift(db, p.site.rooms, staff), flow, economy: { cash: startCash(db, 'poly') } });
   }
+  if (name === 'ambulatory') {
+    // касса и что строят — из записи сценария; часы — с 08:00 первых суток, как у прочих
+    const s = newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, emptySite()), staff: [], flow, scenario: AMBULATORY_SC });
+    build(s, AMBULATORY);
+    return s;
+  }
   const s = newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, emptySite()), staff: [], flow, economy: { cash: startCash(db, 'empty') } });
   build(s, name === 'clinic' ? CLINIC : DISTRICT);
   return s;
 }
+
+/** Сколько суток прожить: сценарию 1 — не меньше 10, его критерий — к 10-м суткам. */
+const daysOf = (name: string) => (name === 'ambulatory' ? Math.max(DAYS, 10) : DAYS);
 
 function run(name: string, seed: number): Run {
   const s = start(name, seed);
@@ -210,7 +240,7 @@ function run(name: string, seed: number): Run {
   const rides: Run['rides'] = [];
   const seen = new Set<string>();
   const waited = new Map<string, { since: number; until?: number }>();
-  const end = (DAYS * 24 + 8) * 3600;
+  const end = (daysOf(name) * 24 + 8) * 3600;
   while (s.t < end) {
     for (const n of apply(db, s, { kind: 'advance', seconds: 300 })) {
       if (n.kind !== 'morning' || !n.staff) continue;
@@ -270,11 +300,19 @@ function run(name: string, seed: number): Run {
   }
   // прибыль — без стройки первых суток: сколько больница зарабатывает, когда построена
   const gain = (list: DayRow[]) => list.reduce((n, d, i) => n + d.income - d.expenses + (i === 0 ? d.works : 0), 0);
-  return { scenario: name, seed, start: first, value, minCash, profit: gain(days), week: gain(days.slice(0, 7)), days, lines, quits, leaves, moods, grew, sick, covered, bare, raised, rides, stuck };
+  // сценарий 1: цели — в ходе сценария; ваш кабинет — первый кабинет врача, его терапевт — вместо вас
+  const office = s.hospital?.site?.rooms.find(r => r.type === 'room.office')?.id;
+  // на месте врача нанимают терапевта (role.doctor — место, человек — role.therapist)
+  const proxy = s.staff?.find(m => m.room === office)?.salary;
+  const goals = name === 'ambulatory' && s.campaign ? { ...s.campaign.done } : undefined;
+  return {
+    scenario: name, seed, start: first, value, minCash, profit: gain(days), week: gain(days.slice(0, 7)), days, lines, quits, leaves, moods, grew, sick, covered, bare, raised, rides, stuck,
+    ...(goals ? { goals, ...(proxy !== undefined ? { proxy } : {}) } : {}),
+  };
 }
 
 const fmt = (n: number) => Math.round(n).toLocaleString('ru-RU');
-const scenarios = ['clinic', 'district', 'city', 'poly', 'polyspec'].filter(x => ONLY.length === 0 || ONLY.includes(x));
+const scenarios = ['clinic', 'district', 'city', 'poly', 'polyspec', 'ambulatory'].filter(x => ONLY.length === 0 || ONLY.includes(x));
 const runs: Run[] = [];
 for (const name of scenarios) for (const seed of SEEDS) runs.push(run(name, seed));
 
@@ -287,12 +325,22 @@ if (asJson) {
     const rs = runs.filter(r => r.scenario === name);
     console.log(`\n## ${name}: касса в начале ${fmt(rs[0].start)} ₽, больница стоит ${fmt(rs[0].value)} ₽`);
     for (const r of rs) {
-      console.log(`  зерно ${r.seed}: касса не ниже ${fmt(r.minCash)}, прибыль за ${DAYS} сут. без стройки ${fmt(r.profit)} ₽`);
+      console.log(`  зерно ${r.seed}: касса не ниже ${fmt(r.minCash)}, прибыль за ${r.days.length} сут. без стройки ${fmt(r.profit)} ₽`);
       for (const d of r.days) {
         console.log(`    сутки ${d.day}: пришли ${d.arrived} (скорая ${d.ambulance}; поток ${d.flowWalk}+${d.flowAmb}), приняты ${d.seen}, ушли ${d.left}, умерли ${d.died}, лежат ${d.lying} · доходы ${fmt(d.income)}, расходы ${fmt(d.expenses)}${d.works ? ` (стройка ${fmt(d.works)})` : ''} · касса ${fmt(d.cash)} · репутация ${d.rep}${d.score !== undefined ? ` (оценка ${d.score})` : ''}`);
       }
       const lines = Object.entries(r.lines).filter(([, v]) => v !== 0).map(([k, v]) => `${k} ${fmt(v)}`).join(', ');
-      console.log(`    за ${DAYS} сут.: ${lines}`);
+      console.log(`    за ${r.days.length} сут.: ${lines}`);
+      // сценарий 1 (часть 4): когда выполнены цели; первые сутки в плюсе; касса без зарплаты терапевта вашего кабинета
+      if (r.goals) {
+        const sc = db.scenarios![AMBULATORY_SC];
+        const done = sc.missions.map(m => `«${m.text.ru}» — ${r.goals![m.id] !== undefined ? `сутки ${r.goals![m.id]}` : 'нет'}`).join('; ');
+        const plus = r.days.find(d => d.income - d.expenses >= 0)?.day;
+        const n = r.days.length;
+        const own = (r.proxy ?? 0) * n;
+        console.log(`    цели: ${done}`);
+        console.log(`    первые сутки в плюсе — ${plus ?? 'нет'}; терапевт вашего кабинета — ${fmt(r.proxy ?? 0)} ₽ в сутки, у игрока этих денег не платят: касса в конце без них ${fmt(r.days[n - 1].cash + own)} (с ними ${fmt(r.days[n - 1].cash)})`);
+      }
       // персонал (spec 2026-10-staff-mood)
       const m = r.moods;
       const why = Object.entries(m.why).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ');
@@ -329,6 +377,13 @@ if (asJson) {
     if (rich.length) console.log(`  ✗ окупилась за ${week} суток: зёрна ${rich.map(r => r.seed).join(', ')}`);
     else console.log(`  ✓ за ${week} суток не окупается целиком: прибыль ${rs.map(r => fmt(r.week)).join(' / ')} при цене ${fmt(rs[0].value)}`);
     fails += low.length + rich.length;
+    // сценарий 1 (часть 4): «разумный игрок выходит в плюс к 10-м суткам» — цель «Пять суток с кассой в плюсе» к 10-м суткам
+    if (name === 'ambulatory') {
+      const late = rs.filter(r => (r.goals?.cash ?? Infinity) > 10);
+      if (late.length) console.log(`  ✗ «Пять суток с кассой в плюсе» — не к 10-м суткам: зёрна ${late.map(r => r.seed).join(', ')}`);
+      else console.log(`  ✓ «Пять суток с кассой в плюсе» — к суткам ${rs.map(r => r.goals!.cash).join(' / ')}, не позже 10-х`);
+      fails += late.length;
+    }
     // персонал (spec 2026-10-staff-mood): игрок ничего не делает — за первые две недели уходят сами не больше двух (дальше
     // растут, а зарплату им не поднимают, — уходят: решение владельца, #83); поднимает, когда просят, — не больше двух за
     // каждые две недели всего срока

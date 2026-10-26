@@ -1712,5 +1712,16 @@ function checkScenarios(db: ContentDb, errors: string[]) {
       steps.add(g.room);
       if (!c.build.includes(g.room)) at(`порядок стройки: ${g.room} в сценарии не построить`);
     }
+    // подсказки в карте (часть 2б): от персонажа; о болезни — заданного больного: её наставник знает, у других болезнь
+    // подсказка выдала бы; статьи энциклопедии — из базы
+    const tips = new Set<string>();
+    for (const t of c.tips) {
+      if (tips.has(t.id)) at(`подсказка ${t.id} повторяется`);
+      tips.add(t.id);
+      if (!db.characters[t.from]) at(`подсказка ${t.id}: персонаж ${t.from} не найден`);
+      const w = t.when;
+      if (typeof w === 'object' && !c.tutorial.some(x => x.condition === w.condition)) at(`подсказка ${t.id}: болезни ${w.condition} нет среди заданных больных`);
+      for (const id of t.see) if (!(db.conditions[id] || db.findings[id] || db.exams[id] || db.treatments[id] || db.risks[id] || db.rooms[id] || db.equipment[id] || db.roles[id])) at(`подсказка ${t.id}: статья ${id} не найдена`);
+    }
   }
 }

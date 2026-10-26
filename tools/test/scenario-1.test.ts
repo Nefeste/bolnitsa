@@ -6,14 +6,17 @@ import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { emptySite, hospitalOf } from '../../src/engine/hospital/site';
 import { primaryOf } from '../../src/engine/med/plan';
-import { apply, newFlowShift } from '../../src/engine/shift/engine';
+import { apply, atDoctor, newFlowShift } from '../../src/engine/shift/engine';
 import { SAVE_SCHEMA } from '../../src/engine/shift/migrate';
-import type { ShiftState } from '../../src/engine/shift/types';
+import type { ShiftPatient, ShiftState } from '../../src/engine/shift/types';
 import type { Game } from '../../src/app/game';
 import { goalRow, guideRows, initialsOf, letterRow, ScenarioDesk, scenarioTitle } from '../../src/app/scenario';
 import { byGuide } from '../../src/ui/Scenario';
 import { setLang } from '../../src/i18n';
 import { scenarioView, type ScenarioView } from '../../src/sim/campaign';
+import { useDb } from '../../src/sim/caseView';
+import { cardView } from '../../src/sim/doctor';
+import { cardTips, tipFits, type TipMoment } from '../../src/sim/tips';
 import { createSim } from '../../src/sim/host';
 import { pack, unpack } from '../../src/sim/packing';
 import { FLOW, hash, liveTo, PROTO, site } from './site-kit';
@@ -335,5 +338,119 @@ describe('сценарий 1 «Амбулатория»: порядок стро
     expect(off.map(x => x.row.id)).toEqual(rows.map(r => r.id));
     expect(off.every(x => x.step === undefined)).toBe(true);
     expect(byGuide(rows, undefined).map(x => x.row.id)).toEqual(rows.map(r => r.id));
+  });
+});
+
+// часть 2б: подсказки наставницы в карте больного — выбирает их поток расчёта (правда о больном — там), по одной, каждую — один
+// раз за сценарий; о болезни — только у заданного больного; «Без обучения» — ни одной
+describe('сценарий 1 «Амбулатория»: подсказки в карте', () => {
+  useDb(db);
+  /** Заданный больной с этой болезнью ждёт вас — позвать и дождаться, пока войдёт. */
+  function callTaught(s: ShiftState, condition: string): ShiftPatient {
+    let p: ShiftPatient | undefined;
+    for (let i = 0; i < 24 * 60 && !p; i++) {
+      apply(db, s, { kind: 'advance', seconds: 60 });
+      p = Object.values(s.patients).find(x => x.taught && x.status === 'waiting' && primaryOf(x.patient).id === condition);
+    }
+    if (!p) throw new Error(`заданный больной ${condition} не пришёл`);
+    apply(db, s, { kind: 'call', id: p.id });
+    for (let i = 0; i < 3600 && s.meet !== undefined; i++) apply(db, s, { kind: 'advance', seconds: 5 });
+    expect([s.current, s.meet]).toEqual([p.id, undefined]);
+    return p;
+  }
+  /** Что ещё можно сделать у вас в кабинете этим видом: вопросы, осмотр. */
+  const todo = (s: ShiftState, p: ShiftPatient, kind: string) => Object.values(db.exams).filter(e => e.kind === kind && !p.done.includes(e.id) && atDoctor(db, s, p, e.id));
+  const tipsOf = (s: ShiftState, p: ShiftPatient) => cardView(db, s, p.id, 'student', 1)!.tips;
+  const ids = (s: ShiftState, p: ShiftPatient) => {
+    const t = tipsOf(s, p);
+    return [t?.card?.id, t?.decide?.id, t?.review?.id];
+  };
+
+  test('запись: шесть подсказок наставницы по порядку, на двух языках; о болезни — у заданных больных; статьи — из базы', () => {
+    expect(sc.tips.map(t => t.id)).toEqual(['start', 'examine', 'strep', 'decision', 'urine', 'review']);
+    for (const t of sc.tips) {
+      expect(t.from).toBe('char.tutor');
+      for (const x of [t.name, t.text]) expect([x.ru.length > 0, (x.en?.length ?? 0) > 0]).toEqual([true, true]);
+      if (typeof t.when === 'object') expect(sc.tutorial.map(x => x.condition)).toContain(t.when.condition);
+      for (const id of t.see) expect(!!(db.exams[id] || db.conditions[id])).toBe(true);
+    }
+  });
+
+  test('к месту: о болезни — только у заданного и после первого действия; расспрос — до вопросов, осмотр — после двух', () => {
+    const at = (over: Partial<TipMoment>): TipMoment => ({
+      screen: 'card', patient: 'p', condition: 'cond.strep_pharyngitis', taught: true, asked: 0, examined: 0, tested: 0, decided: false, ...over,
+    });
+    const tip = (id: string) => sc.tips.find(t => t.id === id)!;
+    expect(tipFits(tip('strep'), at({ asked: 1 }))).toBe(true);
+    // не заданный — подсказка о его болезни выдала бы диагноз
+    expect(tipFits(tip('strep'), at({ asked: 1, taught: false }))).toBe(false);
+    expect(tipFits(tip('strep'), at({}))).toBe(false);
+    expect(tipFits(tip('strep'), at({ asked: 1, condition: 'cond.arvi' }))).toBe(false);
+    expect(tipFits(tip('start'), at({}))).toBe(true);
+    expect(tipFits(tip('start'), at({ asked: 1 }))).toBe(false);
+    expect(tipFits(tip('examine'), at({ asked: 1 }))).toBe(false);
+    expect(tipFits(tip('examine'), at({ asked: 2 }))).toBe(true);
+    expect(tipFits(tip('examine'), at({ asked: 2, examined: 1 }))).toBe(false);
+    expect(tipFits(tip('decision'), at({ screen: 'decision' }))).toBe(true);
+    expect(tipFits(tip('decision'), at({}))).toBe(false);
+    expect(tipFits(tip('review'), at({ screen: 'review', decided: true }))).toBe(true);
+    expect(tipFits(tip('review'), at({ screen: 'review' }))).toBe(false);
+  });
+
+  test('приём заданных больных: расспрос, осмотр, «Решение», разбор, горло — по одной, каждая один раз; «Без обучения» — ни одной', () => {
+    setLang('ru');
+    const s = start(11);
+    buildClinic(s);
+    // первый — ОРВИ: карта открылась — «Сначала — расспрос», на «Решении» — своя
+    const arvi = callTaught(s, 'cond.arvi');
+    expect(ids(s, arvi)).toEqual(['start', 'decision', undefined]);
+    expect(tipsOf(s, arvi)!.card).toMatchObject({ title: 'Сначала — расспрос', from: 'Мира Холм', see: [{ id: 'exam.ask_onset', name: db.exams['exam.ask_onset'].name.ru }] });
+    mark(s, 'tip', 'start');
+    expect(ids(s, arvi)).toEqual([undefined, 'decision', undefined]);
+    // два вопроса — «Теперь — осмотр»; осмотрел — её место прошло
+    const [q1, q2] = todo(s, arvi, 'ask');
+    apply(db, s, { kind: 'exam', exam: q1.id });
+    expect(tipsOf(s, arvi)?.card).toBeUndefined();
+    apply(db, s, { kind: 'exam', exam: q2.id });
+    expect(tipsOf(s, arvi)?.card?.id).toBe('examine');
+    apply(db, s, { kind: 'exam', exam: todo(s, arvi, 'physical')[0].id });
+    expect(tipsOf(s, arvi)?.card).toBeUndefined();
+    mark(s, 'tip', 'decision');
+    expect(tipsOf(s, arvi)).toBeUndefined();
+    // «Завершить приём» — разбор
+    apply(db, s, { kind: 'diagnose', id: 'cond.arvi' });
+    apply(db, s, { kind: 'finish' });
+    expect(arvi.closed).toBeDefined();
+    expect(ids(s, arvi)).toEqual([undefined, undefined, 'review']);
+    mark(s, 'tip', 'review');
+    expect(tipsOf(s, arvi)).toBeUndefined();
+    // второй — фарингит: расспрос уже показан; первый вопрос — «Горло и антибиотик», на английском — по-английски
+    const strep = callTaught(s, 'cond.strep_pharyngitis');
+    expect(tipsOf(s, strep)).toBeUndefined();
+    apply(db, s, { kind: 'exam', exam: todo(s, strep, 'ask')[0].id });
+    expect(tipsOf(s, strep)?.card?.id).toBe('strep');
+    setLang('en');
+    expect(tipsOf(s, strep)!.card).toMatchObject({ title: 'Sore throat and antibiotics', from: 'Mira Holm' });
+    setLang('ru');
+    // «Без обучения» — ни одной; снова обучение — снова есть
+    apply(db, s, { kind: 'mark', what: 'off', on: true });
+    expect(tipsOf(s, strep)).toBeUndefined();
+    apply(db, s, { kind: 'mark', what: 'off', on: false });
+    expect(tipsOf(s, strep)?.card?.id).toBe('strep');
+    // не ваш больной и не сценарий — подсказок нет
+    expect(cardTips(db, s, strep, false)).toBeUndefined();
+    const plain = newFlowShift(db, { seed: 11, season: 'winter', hospital: hospitalOf(db, emptySite()), staff: [], flow: FLOW });
+    expect(cardTips(db, plain, strep, true)).toBeUndefined();
+  }, 180_000);
+
+  test('окно: «Понятно» у подсказки — отметка `tip` движку', () => {
+    const sent: unknown[] = [];
+    const g = { db, client: { command: (c: unknown) => sent.push(c) }, refresh: () => {} } as unknown as Game;
+    const desk = new ScenarioDesk(g);
+    desk.dispatch({ kind: 'tip', id: 'start' });
+    expect(sent).toEqual([]);
+    desk.onView({ id: SC, letters: [], goals: [], hints: [], tips: [] });
+    desk.dispatch({ kind: 'tip', id: 'start' });
+    expect(sent).toEqual([{ kind: 'mark', what: 'tip', id: 'start' }]);
   });
 });
