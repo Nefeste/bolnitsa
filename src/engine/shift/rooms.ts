@@ -40,17 +40,20 @@ export function caseRoom(s: ShiftState, p: ShiftPatient): string {
   return s.hospital?.site?.mine ?? COMMON;
 }
 
-const rates = new WeakMap<readonly StaffMember[], WeakMap<Site, Map<string, number>>>();
+const rates = new WeakMap<readonly StaffMember[], WeakMap<Site, Map<number, Map<string, number>>>>();
 
 /**
  * Расход в сутки по помещениям, ₽: содержание помещения (как цена, по площади) и его аппаратов и зарплата людей на его местах
- * в их смену (`wageOf`); общее — клетки коридора и люди без места (резерв). Сумма — то, что касса пишет по часам
- * (`upkeepPerDay` и `wagesOf`). Одно на штат и участок: оба меняются только новым объектом.
+ * в их смену (`wageOf`; `pct` — зарплаты уровня «Управления», spec 2026-10-difficulty); общее — клетки коридора и люди без
+ * места (резерв). Сумма — то, что касса пишет по часам (`upkeepPerDay` и `wagesOf`). Одно на штат, участок и уровень: штат и
+ * участок меняются только новым объектом.
  */
-function ratesOf(db: ContentDb, staff: readonly StaffMember[], site: Site, corridor: number): Map<string, number> {
+function ratesOf(db: ContentDb, staff: readonly StaffMember[], site: Site, corridor: number, pct: number): Map<string, number> {
   let bySite = rates.get(staff);
   if (!bySite) rates.set(staff, (bySite = new WeakMap()));
-  let m = bySite.get(site);
+  let byPct = bySite.get(site);
+  if (!byPct) bySite.set(site, (byPct = new Map()));
+  let m = byPct.get(pct);
   if (m) return m;
   m = new Map();
   for (const r of site.rooms) {
@@ -60,11 +63,11 @@ function ratesOf(db: ContentDb, staff: readonly StaffMember[], site: Site, corri
   }
   let common = corridor * db.economy.corridor.upkeep;
   for (const p of staff) {
-    if (p.room !== undefined && m.has(p.room)) m.set(p.room, m.get(p.room)! + wageOf(db, p));
-    else common += wageOf(db, p);
+    if (p.room !== undefined && m.has(p.room)) m.set(p.room, m.get(p.room)! + wageOf(db, p, pct));
+    else common += wageOf(db, p, pct);
   }
   m.set(COMMON, common);
-  bySite.set(site, m);
+  byPct.set(pct, m);
   return m;
 }
 
@@ -72,11 +75,11 @@ function ratesOf(db: ContentDb, staff: readonly StaffMember[], site: Site, corri
  * Касса суток записала `total` ₽ зарплат и содержания за `dt` секунд (`accrue`): помещениям — их доли, округлённые так же,
  * общему — остаток, чтобы сумма сошлась с кассой до рубля.
  */
-export function accrueRooms(db: ContentDb, s: ShiftState, dt: number, total: number) {
+export function accrueRooms(db: ContentDb, s: ShiftState, dt: number, total: number, pct = 100) {
   const site = s.hospital?.site;
   if (!pc(s) || !site || dt <= 0) return;
   let left = total;
-  for (const [room, rate] of ratesOf(db, s.staff ?? [], site, s.hospital!.corridor.length)) {
+  for (const [room, rate] of ratesOf(db, s.staff ?? [], site, s.hospital!.corridor.length, pct)) {
     if (room === COMMON) continue;
     const v = Math.round((rate * dt) / DAY);
     if (v === 0) continue;

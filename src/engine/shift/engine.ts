@@ -5,7 +5,7 @@
 // Две точки входа, как в `02-architecture.md` §2: `apply(state, command)` — действие врача,
 // которое двигает часы на свою цену, и команда `advance` — время на карте. Состояние
 // меняется на месте; случайность — только из именованных ветвей зерна смены (ADR 0004).
-import { type BodySystem, type Chapter, type ContentDb, type Equipment, type Exam, type Id, type Preset, type Season, type Setting, SYSTEMS, type TutorialPatient } from '../../content/types';
+import { type BodySystem, type Chapter, type ContentDb, type Equipment, type Exam, type Id, type Manage, type Preset, type Season, type Setting, SYSTEMS, type TutorialPatient } from '../../content/types';
 import { fnv1a } from '../core/hash';
 import {
   caseIncome, consumablesOf, emptyLedger, expensesOf, flowOf, incomeOf, interestOf, type Ledger, levelOf, payerOf, reputationAfter, salariesOf, upkeepOf,
@@ -51,6 +51,7 @@ import { depart, leaversDue, moodMorning } from './mood';
 import { backMorning, growMorning, sickMorning, tenure } from './growth';
 import { caseIncomeRooms, caseRoom, COMMON as ROOMS_COMMON, roomExpense, roomIncome } from './rooms';
 import { cover } from './reserve';
+import { manageOf, scaled } from './manage';
 import { priorOf, referTo } from './refer';
 import { book, carriersOf, gurneyOf, lying, planRide, rideHome, ridesUntil } from './gurney';
 
@@ -241,11 +242,14 @@ export function newSingle(
  */
 export function newFlowShift(
   db: ContentDb,
-  opts: { seed: number; season: Season; difficulty?: Difficulty; hospital: HospitalState; staff: StaffMember[]; flow: Flow; economy?: { cash: number }; scenario?: Id } & Variety,
+  opts: { seed: number; season: Season; difficulty?: Difficulty; hospital: HospitalState; staff: StaffMember[]; flow: Flow; economy?: { cash: number }; scenario?: Id; manage?: Manage; soft?: boolean } & Variety,
 ): ShiftState {
   // рост (spec 2026-10-staff-mood, раздел 3): у людей со сменой — разный стаж, растут не в одно утро
   const s = singleBase(db, { ...opts, staff: tenure(db, opts.seed, opts.staff), venue: SANDBOX_VENUE });
   s.flow = { ...opts.flow };
+  // уровень «Управления» и мягкий режим (spec 2026-10-difficulty) — с начала: по ним поток, терпение и касса
+  if (opts.manage && opts.manage !== 'normal') s.meta.manage = opts.manage;
+  if (opts.soft) s.meta.soft = true;
   // часы приёма — только верные (spec 2026-10-day): иначе — базы
   if (s.flow.hours && !validHours(s.flow.hours[0], s.flow.hours[1])) delete s.flow.hours;
   // сценарий ПК (spec 2026-10-scenario-1): ход — как у главы «Анамнеза», дни сценария — с первых суток; отделение и касса —
@@ -623,6 +627,14 @@ function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       if (cmd.on) s.meta.soft = true;
       else delete s.meta.soft;
       return [];
+    // ось «Управление» (spec 2026-10-difficulty): с этой минуты — зарплаты и содержание до неё записаны по прежнему уровню; тот
+    // же уровень — ничего не меняется
+    case 'manage':
+      if (!s.flow || cmd.level === (s.meta.manage ?? 'normal')) return [];
+      accrue(db, s);
+      if (cmd.level === 'normal') delete s.meta.manage;
+      else s.meta.manage = cmd.level;
+      return [];
     case 'variety':
       if (cmd.on) s.meta.variety = true;
       else delete s.meta.variety;
@@ -939,6 +951,11 @@ function duty(db: ContentDb, s: ShiftState) {
  * или реже, как запись в песочнице; машин скорой — по форме `ambulance`, круглые сутки.
  */
 function flowRate(db: ContentDb, s: ShiftState, stream: 'walk' | 'amb' | 'book', hour: number): number {
+  // ось «Управление» (spec 2026-10-difficulty): поток — сами, по записи, скорая — на множитель уровня
+  return scaled(flowBase(db, s, stream, hour), manageOf(db, s).inflow);
+}
+
+function flowBase(db: ContentDb, s: ShiftState, stream: 'walk' | 'amb' | 'book', hour: number): number {
   const f = s.flow!;
   const day = dayOf(db);
   // поток от больницы (spec 2026-10-economy): сами — по кабинетам и репутации, скорая — по местам смотровой; по записи —
@@ -1324,7 +1341,7 @@ function morning(db: ContentDb, s: ShiftState, notices: Notice[]) {
   // учёба и болезнь (разделы 4–5): вернувшиеся — с навыком и настроением; кто сегодня болеет, на смену не выйдет и денег за
   // неё не получит
   const back = backMorning(db, s);
-  const sick = sickMorning(db, s, m => wageOf(db, m), (rub, m) => unpaidShift(s, rub, m.room));
+  const sick = sickMorning(db, s, m => wageOf(db, m, manageOf(db, s).salary), (rub, m) => unpaidShift(s, rub, m.room));
   // резерв (spec 2026-10-staff-mood, часть 5; решение владельца #97): на место заболевшего — из резерва; вернувшийся — на своё
   const cov = cover(s, () => occupied(db, s).staff);
   const news = mood || grew || back || sick || cov ? { ...mood, ...(grew ? { grew } : {}), ...(back ? { back } : {}), ...(sick ? { sick } : {}), ...cov } : undefined;
@@ -1547,10 +1564,12 @@ export const REPAIR_PCT = 2;
 export function breakdowns(db: ContentDb, s: ShiftState): string[] {
   if (tutorialDay(db, s) === s.day) return [];
   const out: string[] = [];
+  // ось «Управление» (spec 2026-10-difficulty): поломки — на множитель уровня; жребий тот же
+  const k = manageOf(db, s).breakdown;
   for (const r of hospitalCtx(db, s).plan.rooms) {
     r.equipment.forEach((id, slot) => {
       const eq = id ? db.equipment[id] : undefined;
-      if (eq && breaks(eq) && eq.breakdown > 0 && branch(s, `breakdown:${s.day}:${r.id}:${slot}`).chance(eq.breakdown)) out.push(slotKey(r.id, slot));
+      if (eq && breaks(eq) && eq.breakdown > 0 && branch(s, `breakdown:${s.day}:${r.id}:${slot}`).chance(scaled(eq.breakdown, k))) out.push(slotKey(r.id, slot));
     });
   }
   return out;
@@ -3493,7 +3512,8 @@ function arrive(db: ContentDb, s: ShiftState, p: ShiftPatient, notices: Notice[]
   // терпение — каков он на самом деле: и по тому, что медсестра у него намеряет
   const sure = nurse ? triageOf(db, p, vitalsOf(db, s, p)) : p.triage;
   const [lo, hi] = sure === 'red' ? [0, 0] : PATIENCE[sure];
-  p.patience = Math.round(branch(s, `patience:${p.id}`).range(lo, hi) * MIN * patienceOf(s.meta.difficulty));
+  // ось «Управление» (spec 2026-10-difficulty): терпение пришедших — на множитель уровня
+  p.patience = Math.round(scaled(branch(s, `patience:${p.id}`).range(lo, hi) * MIN * patienceOf(s.meta.difficulty), manageOf(db, s).patience));
   // своя больница: пришёл в полную зону ожидания — стоит, и ждать готов вдвое меньше; в потоке для ПК — по своему залу,
   // это решает `seatPc` (spec 2026-10-own-hall)
   if (s.hospital && !s.flow && p.patience > 0 && s.queue.length >= ctx.seats) p.patience = Math.round(p.patience / 2);

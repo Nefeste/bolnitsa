@@ -4,7 +4,7 @@
 // Состояние — обычный сериализуемый объект: сохранение — снимок (ADR 0010). Случайность
 // в нём не хранится: всё берётся из именованных ветвей зерна смены (ADR 0004), поэтому
 // одинаковые зерно и команды дают одинаковую смену — на телефоне, в тестах и в повторе.
-import type { BodySystem, Id, Season, Setting } from '../../content/types';
+import type { BodySystem, Id, Manage, Season, Setting } from '../../content/types';
 import type { Scheduled } from '../core/events';
 import type { Outcome } from '../med/course';
 import type { BuildCommand, Built, HospitalState } from '../hospital/build';
@@ -492,6 +492,8 @@ export type Command =
   | { kind: 'operate'; id: string }
   /** «мягкий режим» из настроек (часть 28б): вместо смерти — перевод в тяжёлом состоянии */
   | { kind: 'soft'; on: boolean }
+  /** ось «Управление» (spec 2026-10-difficulty): уровень — с этой минуты, в любой момент и в обе стороны (#136) */
+  | { kind: 'manage'; level: Manage }
   /** «Больные: разнообразие» из настроек (spec 2026-10-variety): со следующего разыгранного дня */
   | { kind: 'variety'; on: boolean }
   /** умения врача из профиля (spec 2026-10-skills): со следующего дня; `today` — в начале игры, сразу */
@@ -780,6 +782,10 @@ export interface ShiftState {
     difficulty?: Difficulty;
     /** «мягкий режим» (spec 2026-09-chapter-2, часть 28б): вместо смерти — перевод в тяжёлом состоянии */
     soft?: boolean;
+    /**
+     * ось «Управление» (spec 2026-10-difficulty, поток для ПК): «Спокойно» или «Трудно»; нет — «Обычно», так играли до неё
+     */
+    manage?: Exclude<Manage, 'normal'>;
     /**
      * «Больные: разнообразие» (spec 2026-10-variety, 0.3.11): день разыгрывается со сглаженными
      * частотами болезней; в кампании — нет. Нет поля — как в жизни

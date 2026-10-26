@@ -153,7 +153,8 @@ bun tools/bench/departments.ts                 # departments (spec): how often a
 bun tools/sim/economy.ts --seeds 1,2,3         # economy simulator: scripted hospitals for 7 days, cash, flow, reputation and the criteria
                                                # (`--days 14` — and who quits on their own: at most two in two weeks; `--only
                                                # ambulatory` — scenario 1 with its cash and build order for 10 days, the goal
-                                               # «Пять суток с кассой в плюсе» by day 10)
+                                               # «Пять суток с кассой в плюсе» by day 10; `--manage calm,normal,hard` — every
+                                               # hospital on every management level and the level criteria)
 bun tools/sim/halls.ts --flow 14               # the polyclinic under load: waiting halls by the offices vs at the entrance
                                                # (both: `--hall 0` — seats of the whole hospital, `--bench 0` — no door benches)
 bun --cpu-prof --cpu-prof-dir=tools/bench/out/prof tools/bench/bench.ts --mode flow --only 200 --quick --until 11
@@ -195,7 +196,13 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   land — a wider lot and an empty east wing (`land` in the preset, `docs/specs/2026-10-city-land.md`).
   Money of the PC flow is ours: `shift/money.ts` (cash now, wages and upkeep by the hour, building from cash, the
   overdraft limit, the loan), `shift/inflow.ts` (the flow from the hospital), `shift/meeting.ts` (the day's bottlenecks,
-  «стало хуже»), numbers in `content/hospital/inflow.yaml` and `money.yaml` — `docs/specs/2026-10-economy.md`.
+  «стало хуже»), numbers in `content/hospital/inflow.yaml` and `money.yaml` — `docs/specs/2026-10-economy.md`. The
+  management axis (`docs/specs/2026-10-difficulty.md`; owner's decisions #135–#137): `meta.manage` — «Спокойно» or
+  «Трудно», none — «Обычно», the base numbers byte for byte; `shift/manage.ts` (`manageOf`, `scaled`) scales the flow
+  (`flowRate`), an arrival's patience, wages when paid (`wageOf`/`wagesOf` take the level's percent; `StaffMember.salary`
+  stays the «Обычно» pay, so the market and the mood do not change with the level), the breakdown chance, the overdraft
+  limit and the start cash (`startCash`); the `manage` command takes effect from that minute; the numbers —
+  `content/hospital/difficulty.yaml` (only «Спокойно» and «Трудно»; the content build checks their direction).
 - Staff shifts (`docs/specs/2026-10-staff-shifts.md`): a hired person works the day (08:00–20:00) or the night shift
   (`shift` in `hospital/staff.ts`; none — round the clock, saves before 0.9.0); who is on duty — `dutyOf`, and
   `hospitalCtx(db, s, at)` builds the hospital from them; the `duty` event at 08:00 and 20:00 in `engine.ts` hands queued

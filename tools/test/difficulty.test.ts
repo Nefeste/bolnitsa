@@ -1,0 +1,196 @@
+// Ось «Управление» (spec docs/specs/2026-10-difficulty.md; решения владельца 26.10.2026, #135–#137): «Обычно» — как было, до
+// байта; у «Спокойно» и «Трудно» — множители к потоку, терпению, зарплатам и поломкам, свой предел минуса и касса начала;
+// уровень меняют командой в любой момент — с этой минуты; в сменах «Анамнеза» уровня нет.
+import { describe, expect, test } from 'bun:test';
+import type { ContentDb, Manage, ManageLevel } from '../../src/content/types';
+import { emptySite, hospitalOf } from '../../src/engine/hospital/site';
+import { siteOfPreset } from '../../src/engine/hospital/site-preset';
+import { presetStaff } from '../../src/engine/hospital/staff';
+import { apply, breakdowns, newFlowShift } from '../../src/engine/shift/engine';
+import { levelOf, manageOf } from '../../src/engine/shift/manage';
+import { accrue, offerOf, shortOf, startCash } from '../../src/engine/shift/money';
+import type { Flow, ShiftState } from '../../src/engine/shift/types';
+import { buildDb, difficultyErrors } from '../content/load';
+import { hash } from './site-kit';
+
+const { db } = buildDb();
+const HOUR = 3600;
+const AUTO: Flow = { perHour: 0, auto: true };
+const rec = db.presets['preset.city'];
+const cityHospital = hospitalOf(db, siteOfPreset(db, rec));
+const cityStaff = presetStaff(db, rec);
+
+/** Готовая городская больница с кассой начала своего уровня. */
+function city(o: { seed?: number; manage?: Manage; dbx?: ContentDb } = {}): ShiftState {
+  const d = o.dbx ?? db;
+  return newFlowShift(d, {
+    seed: o.seed ?? 1, season: 'winter', hospital: cityHospital, staff: cityStaff, flow: AUTO,
+    economy: { cash: startCash(d, 'preset', o.manage) }, ...(o.manage ? { manage: o.manage } : {}),
+  });
+}
+
+/** Прожить до часа `hour` от полуночи первых суток шагом `step`. */
+function live(s: ShiftState, hour: number, step = 60, d: ContentDb = db) {
+  while (s.t < hour * HOUR) apply(d, s, { kind: 'advance', seconds: Math.min(step, hour * HOUR - s.t) });
+}
+
+/** База, где «Спокойно» меняет одно число (остальные — как у «Обычно»): так видно, что делает каждый множитель. */
+function only(k: 'inflow' | 'patience' | 'salary' | 'breakdown', pct: number): ContentDb {
+  const calm: ManageLevel = { inflow: 100, patience: 100, salary: 100, breakdown: 100, overdraft: db.money!.overdraft, budget: 'normal', [k]: pct };
+  return { ...db, manage: { ...db.manage!, calm } };
+}
+
+describe('ось «Управление»', () => {
+  test('числа уровней — как в геймдизайне §10; «Обычно» — числа базы; сборка ловит уровень не в ту сторону', () => {
+    expect(db.manage).toEqual({
+      calm: { inflow: 80, patience: 150, salary: 85, breakdown: 50, overdraft: 500000, budget: 'generous' },
+      hard: { inflow: 120, patience: 75, salary: 115, breakdown: 150, overdraft: 150000, budget: 'modest' },
+    });
+    const normal = { inflow: 100, patience: 100, salary: 100, breakdown: 100, overdraft: db.money!.overdraft, budget: 'normal' as const };
+    expect(levelOf(db, 'normal')).toEqual(normal);
+    expect(levelOf(db, undefined)).toEqual(normal);
+    const b = db.economy.sandbox.budgets;
+    expect([startCash(db, 'empty', 'calm'), startCash(db, 'empty'), startCash(db, 'empty', 'hard')]).toEqual([2500000, 1200000, 600000]);
+    expect(startCash(db, 'preset', 'hard')).toBe(Math.floor((b.modest * db.economy.sandbox.clinicShare) / 100));
+    expect(difficultyErrors(db.manage!, db.money!.overdraft, b)).toEqual([]);
+    const wrong = difficultyErrors({ ...db.manage!, calm: { ...db.manage!.calm, inflow: 120 } }, db.money!.overdraft, b);
+    expect(wrong.some(e => e.includes('calm.inflow 120'))).toBe(true);
+    const same = difficultyErrors({ ...db.manage!, hard: normal }, db.money!.overdraft, b);
+    expect(same.some(e => e.includes('hard — те же числа'))).toBe(true);
+  });
+
+  test('«Обычно» — до байта как без уровня, и командой «Обычно» ничего не меняется', () => {
+    const a = city();
+    const b = city({ manage: 'normal' });
+    expect('manage' in b.meta).toBe(false);
+    live(a, 11);
+    live(b, 11);
+    apply(db, b, { kind: 'manage', level: 'normal' });
+    live(a, 13);
+    live(b, 13);
+    // команда — в журнале команд; остальное — то же
+    expect(b.journal.some(c => c.kind === 'manage')).toBe(true);
+    expect(hash({ ...b, journal: a.journal })).toBe(hash(a));
+  }, 60_000);
+
+  test('поток: «Трудно» — больше пришедших, «Спокойно» — меньше; множитель решает', () => {
+    const arrived = (o: { manage?: Manage; dbx?: ContentDb }) => {
+      let n = 0;
+      for (const seed of [1, 2, 3]) {
+        const s = city({ seed, ...o });
+        live(s, 14, 60, o.dbx);
+        n += s.summary.arrived;
+      }
+      return n;
+    };
+    const normal = arrived({});
+    const calm = arrived({ manage: 'calm' });
+    const hard = arrived({ manage: 'hard' });
+    expect(calm).toBeLessThan(normal);
+    expect(hard).toBeGreaterThan(normal);
+    // только поток, втрое — больше вдвое с лишним; десятая — меньше вдвое
+    expect(arrived({ manage: 'calm', dbx: only('inflow', 300) })).toBeGreaterThan(2 * normal);
+    expect(arrived({ manage: 'calm', dbx: only('inflow', 10) })).toBeLessThan(normal / 2);
+  }, 120_000);
+
+  test('терпение: те же пришедшие — каждый во столько раз терпеливее', () => {
+    const dbx = only('patience', 150);
+    const a = city();
+    const b = city({ manage: 'calm', dbx });
+    // первые полчаса приёма: никто ещё не ушёл, не дождавшись, — люди те же
+    live(a, 8.5);
+    live(b, 8.5, 60, dbx);
+    const ids = Object.keys(a.patients).filter(id => a.patients[id].patience > 0);
+    expect(ids.length).toBeGreaterThan(3);
+    expect(Object.keys(b.patients).sort()).toEqual(Object.keys(a.patients).sort());
+    for (const id of ids) expect(Math.abs(b.patients[id].patience - 1.5 * a.patients[id].patience)).toBeLessThanOrEqual(1);
+  }, 60_000);
+
+  test('зарплаты: платят по уровню, а у людей — те же зарплаты «Обычно», по ним судят о рынке', () => {
+    const dbx = only('salary', 85);
+    const a = city();
+    const b = city({ manage: 'calm', dbx });
+    live(a, 14);
+    live(b, 14, 60, dbx);
+    // зарплаты касса пишет при событиях суток (стройка, пересменка, планёрка) — здесь по эту минуту
+    accrue(db, a);
+    accrue(dbx, b);
+    expect(b.staff!.map(m => m.salary)).toEqual(a.staff!.map(m => m.salary));
+    const pa = a.economy!.ledger!.expenses.salaries;
+    const pb = b.economy!.ledger!.expenses.salaries;
+    expect(pa).toBeGreaterThan(0);
+    expect(Math.abs(pb / pa - 0.85)).toBeLessThan(0.005);
+    // поток и люди те же: от зарплат не меняются
+    expect(b.summary.arrived).toBe(a.summary.arrived);
+  }, 60_000);
+
+  test('поломки: тот же жребий утра, доля — на множитель уровня', () => {
+    const count = (d: ContentDb, manage?: Manage) => {
+      const s = city({ manage, dbx: d });
+      let n = 0;
+      for (let day = 1; day <= 120; day++) {
+        s.day = day;
+        n += breakdowns(d, s).length;
+      }
+      return n;
+    };
+    const normal = count(db);
+    expect(normal).toBeGreaterThan(5);
+    expect(count(only('breakdown', 0), 'calm')).toBe(0);
+    expect(count(only('breakdown', 300), 'calm')).toBeGreaterThan(2 * normal);
+    expect(count(db, 'calm')).toBeLessThan(normal);
+    expect(count(db, 'hard')).toBeGreaterThan(normal);
+  });
+
+  test('предел минуса: стройка из кассы и кредит банка — по уровню', () => {
+    const at = (manage: Manage | undefined, cash: number) =>
+      newFlowShift(db, { seed: 1, season: 'winter', hospital: hospitalOf(db, emptySite()), staff: [], flow: AUTO, economy: { cash }, ...(manage ? { manage } : {}) });
+    expect([shortOf(db, at('calm', 0), 400000), shortOf(db, at(undefined, 0), 400000), shortOf(db, at('hard', 0), 400000)]).toEqual([0, 100000, 250000]);
+    expect([offerOf(db, at('calm', -200000)), offerOf(db, at(undefined, -200000)), offerOf(db, at('hard', -200000))]).toEqual([undefined, undefined, 200000]);
+  });
+
+  test('смена уровня в игре — с этой минуты: зарплаты до неё — по прежнему, дальше — по новому', () => {
+    const a = city();
+    live(a, 12);
+    const b = structuredClone(a);
+    apply(db, b, { kind: 'manage', level: 'hard' });
+    expect(b.meta.manage).toBe('hard');
+    expect(b.economy!.accrued).toBe(12 * HOUR);
+    // записанное до смены — то же, что без неё
+    accrue(db, a);
+    const before = b.economy!.ledger!.expenses.salaries;
+    expect(a.economy!.ledger!.expenses.salaries).toBe(before);
+    const arrivedBefore = a.summary.arrived;
+    live(a, 16);
+    live(b, 16);
+    accrue(db, a);
+    accrue(db, b);
+    const da = a.economy!.ledger!.expenses.salaries - before;
+    const dbb = b.economy!.ledger!.expenses.salaries - before;
+    expect(Math.abs(dbb / da - 1.15)).toBeLessThan(0.01);
+    expect(b.summary.arrived - arrivedBefore).toBeGreaterThan(a.summary.arrived - arrivedBefore);
+    // и назад: «Обычно» — поля нет
+    apply(db, b, { kind: 'manage', level: 'normal' });
+    expect('manage' in b.meta).toBe(false);
+  }, 60_000);
+
+  test('тот же ход при шаге часов в 1 и 15 минут; мягкий режим — с начала', () => {
+    const a = city({ manage: 'hard' });
+    const b = city({ manage: 'hard' });
+    live(a, 12, 60);
+    live(b, 12, 900);
+    expect(hash(b)).toBe(hash(a));
+    const s = newFlowShift(db, { seed: 1, season: 'winter', hospital: cityHospital, staff: cityStaff, flow: AUTO, economy: { cash: 0 }, soft: true });
+    expect(s.meta.soft).toBe(true);
+  }, 60_000);
+
+  test('в сменах «Анамнеза» уровня нет: числа — «Обычно», команда ничего не меняет', () => {
+    const s = city({ manage: 'hard' });
+    const anamnez = { ...s, flow: undefined } as ShiftState;
+    expect(manageOf(db, anamnez).inflow).toBe(100);
+    expect(manageOf(db, s).inflow).toBe(120);
+    const copy = structuredClone(anamnez);
+    apply(db, copy, { kind: 'manage', level: 'calm' });
+    expect(copy.meta.manage).toBe('hard');
+  });
+});
