@@ -11,7 +11,7 @@ import { buildDb } from '../content/load';
 import { index, MODELS, rocketboxIndex } from './render-kit';
 
 const { db } = buildDb();
-const files = new Set([...index.kenney.map(n => `kenney/${n}`), ...index.kaykit.map(n => `kaykit/${n}`), ...index.people.map(n => `people/${n}`)]);
+const files = new Set([...index.kenney.map(n => `kenney/${n}`), ...index.kaykit.map(n => `kaykit/${n}`)]);
 const sources = JSON.parse(readFileSync(join(MODELS, 'sources.json'), 'utf8')) as Record<string, { source: string; sha256: string; out: string }>;
 
 describe('таблица моделей', () => {
