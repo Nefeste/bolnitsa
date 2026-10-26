@@ -99,65 +99,65 @@ EXT_meshopt_compression, других правок нет). Для каждог�
 
 | Вид | Кто в игре | SHA-256 `.glb` | SHA-256 `.mask.png` |
 |---|---|---|---|
-| `Medical_Male_03` | врач, специалист, лаборант — белый халат | `0362668b83c966aca3281b7f69575135979d2d0ab1abefc4592fd471eadb5137` | `ded143bc80ec4d9f9830ad2d922f977df9b8ef10eb7f242a6a3a9215b3570fe7` |
-| `Medical_Female_02` | врач, специалист, лаборант — белый халат | `1abe734c8f0e632d9739de3b84d0264af0d7a1dbce6f4a2733f70f640d71dc81` | `ac7654801e7d53caa671bf80e4ccdb0071a3c26deaa466e530301c403df292b2` |
-| `Medical_Male_01` | врач, специалист, лаборант — белый халат | `b2e93911e9e40675089e81b81a45336ec07c7d6c2d03e9b4b4f283ab8605ef49` | `0c2824d5940587c90ad03447b26b6d64a5bec756f0472bb3f2ddc99b35c0708c` |
-| `Medical_Female_01` | у женщин: медсестра, операционная медсестра, санитар, хирург, анестезиолог-реаниматолог, рентгенолаборант | `6835a091044017562d3d52d227ca931770e46310fd16dc336ae95033d6fb0fce` | `4a4952352213e110b256a0cb536d793eb25cb67c76e4c5f13e7eb02866cd4368` |
-| `Medical_Male_04` | у мужчин: хирург, анестезиолог-реаниматолог | `257f96334a8f3a0aeccd3dc6307904c076eea4e6123cd8b65a1c90086897409c` | `eb8371c793c0c38aac8a28e1d898b682143f7606c554180e558a1fb9ebb7c825` |
-| `Medical_Male_04_Scrubs` | у мужчин: медсестра, операционная медсестра, санитар | `129f42e62b67c511e3b6e3c0b3cba25b21ad5ce546dcb0501ffff3a0887718db` | `c0ae360b523e311d4866ab6ee7f4ea82f29ee0754aefdf22cf72082bb2281f96` |
-| `Medical_Male_05` | у мужчин: рентгенолаборант | `5debe9ac2faf2ab2d39a52e53ef6cb8055877e3ce2064b836a23684cd9666a17` | `b8a5f00dc4c8b14156ac525252d2d0e9bb52d07b6c9a15ba4bb6fcc5da81f5a2` |
-| `Medical_Female_03` | фельдшер скорой | `015e4e11c61ebb10a9904689efa0d0edfdee8afb5a2c9ae65fed3f1b1b2055d5` | `0538ddde45ac245ac6cbcb24d05a6a0f5c10dc3250e12c92fe736fa6f8587058` |
-| `Medical_Male_02` | фельдшер скорой | `0657a437aa44720cd8c52b9dd449c6aeaf1f1b5f9d66396f63e1c13471368672` | `a7de56afa2e0fb16a24e8fee22a393bff0a470dc4b44d2de42b03ced23c2e426` |
-| `Business_Female_01` | регистратура | `c1b146b75189ef660bf5331f52a54705c333c9c33d79893f7259e17a9291180a` | `9ab66b4509efce80434ce05a17dd9c3dea5c2f015ecddf3afd8874ad7dd3dca8` |
-| `Business_Female_03` | регистратура | `82f9c6c9e48c9dbfd974b88997abf107a3e8b9d158254b9e85aa1b8f9c7a3ab5` | `f3f934a8ba1efe84e6e42b457da3f2862663a016991e42787e9ed9db7dfc4b5c` |
-| `Business_Male_03` | регистратура | `90c0ea528d0c21d376dd5036533727ed0f1afdfcd1bc292b9c7a47aa627b58bc` | `18f21ed03bca5d21e7812e654c21972d36747cd94bb863c69203dc4124d9b532` |
-| `Business_Male_06` | регистратура | `f6b70a2f7d6dd6e024247735e9cd3072b14a73c369527c81383cbd630af47ead` | `e0610899dd1f2658153848ebba63817a6603d038e763552f5c9da8f8fef23972` |
-| `Female_Adult_01` | пациентка | `ec1de43f354ab59bc271eded368bba82bc81c8a2d23d729158311b4535e78bc7` | `1b528f4e5cf7cc0f74fd496604e29df655ed2f01cebaa6d798fa86cb6b0b5165` |
-| `Female_Adult_04` | пациентка | `68adb9dc54e61dc6e292303b60ad8a115212bfacdc2384cbd102a4a221e36f00` | `b6016ea7f2495445264fb910118c10343cba71a75042f799f11fc3307237d5a1` |
-| `Female_Adult_05` | пациентка | `61dc02bc0449f144f0dd6d01b60389a529c9ea331d7cb0f0d39ec392b6018c26` | `c247d4f8077e394f580e0ccd5b58a601b9855dbf15e359349802120192996f6e` |
-| `Female_Adult_07` | пациентка | `9f2d2c297ca31d2140ab8e77c1628eb819e3516d858883cc4a71d50776860078` | `3a087d203c270cf68f71cab6bcab9a69a24684fd8e791c7094860d64390de672` |
-| `Female_Adult_08` | пациентка | `61e1aded2bc8d193e14b93babed9ecef5982b52e91a3766c27a4f9977d40efe1` | `96821be4ada0b9a75eac65ff1911018a102d076803cc407cadb39c36f6ab439f` |
-| `Female_Adult_09` | пациентка | `ff3e5a36fc33a4e30558bdb7f605901be7c2ca7ecca71160c3ff0e54b39c8d04` | `61d96f16257f55fab69544d9d0d6bc9be179f697275e1286c198e0091b0b164e` |
-| `Female_Adult_11` | пациентка | `901810215969b3ffcbde5a6bb48f0af4e98ffbd29c7bace8bddca0de89983584` | `979a696ac52c728f790f0e23988894b4b17c5cb5787eff8364ee54466a62a4b5` |
-| `Female_Adult_13` | пациентка | `f21aab85ce5898ac948933ed7c05fbcee7fdf34ea4d9b252190c6323866c7342` | `385d95dc6b3a91e0675a684d5a4a4c487993b58c27ba4e1ac42cde75dc5a1931` |
-| `Female_Adult_14` | пациентка | `52477899cc6cc5682edf9b20ebe93b4a1d046bbfe3ea5a493531b39bbdde36a8` | `a233050a51ba3ee053bee1ae210d1c0d49ccebb8cdd93516cc5114c6b328a2b5` |
-| `Female_Adult_15` | пациентка | `325bd89d2c0c3f9313152d4d98929d59eff65cb1ffda4e9801846aba5e7def66` | `8f5bdd87d6c978d9f83b2d4bafca9f2d58417537912a440cf2b9beedbf4c1a57` |
-| `Female_Adult_17` | пациентка | `f78c5cbbcdcb41f7bec99199b4963b51b6184916fbd1132a92ff03b14241fb9e` | `7e467a56161db53bdff19fd212474b0daa9094113bd90cfdd3d3d6630863dc43` |
-| `Female_Adult_03` | пациентка | `97b4fe70df11767e78af51e06a3fc9dc33c624039843b192fc0673f59e59791d` | `b433ad6fa05272cad44c6d4fd84734b0af4d40aa1cb0fe0ebdc5b3cbba8636ff` |
-| `Female_Adult_12` | пациентка | `22742307fc83c46130ab28647e9bb47951d88b429ffe197302f827b02e7e940d` | `b11459e03d64fed56c95fc17ed45efcdc8b9b60acc9e7a24d7aee780ac227801` |
-| `Business_Female_04` | пациентка | `72eb913b3c72695c023d163dc9a799c916b77bb547832714f7d06803551ad8b6` | `27e4abcbca2962af5955cfd0da0ad9375af2fcec2097ca80ef9e0d5fd46ffab4` |
-| `Female_Adult_02` | пожилая пациентка | `e522cd7c7d5d337da932f73354389e349a0d4f5454701f29f0d1d674c37c4025` | `c1bf0da05cb5ef387c42387e2013190950f61007cbc8163959f6a37255ea436d` |
-| `Business_Female_02` | пожилая пациентка | `934dffc87fa8e376d09297e80590d8eab1a47574fe0038895a0548b93e5ed17c` | `8638c0d0a2023cbd8cb28923b84c028b87d0fde3290d78e4e2382999c09f6771` |
-| `Male_Adult_01` | пациент | `d514aa59c02470e9b0c6feb8a2804b0f930a53b15431b3be7de1dbf9a2ccf85a` | `dcef4ab3595094d1ea067ec5ccfe6d9689a382355e7f828817f45ffa296428d8` |
-| `Male_Adult_02` | пациент | `41e68d19388e3a0affc820794708a236298d52fc3dd4c7c4b4a782f6b6118211` | `1e7e93ad15597b16071d49e7fba617ecf75a13da49f093903c5f87c01e4c2bdf` |
-| `Male_Adult_04` | пациент | `2629f89b6954706ab6dfbf37ee1ef32e42f0d8f798445db973ca2d7ee7db26af` | `2be618defe8c94b0f86a93c33f097e07d7279ab4429bb4e98d5df9754e951cde` |
-| `Male_Adult_06` | пациент | `88c0d41d38e1fc2d7bf9fa46184bb0e1d1e9f3bc74351841e789b946fcc23490` | `297ad73b604dca2fac751be747c7292de9b41c1e75f32673272da9bf51254a8f` |
-| `Male_Adult_07` | пациент | `95af162cbc6c97f7c1427aa4329eaf6c90081169ccbf52b30b3411278d704778` | `4ff8c0ed5727b9a85f90315e678015500556b508406926fd2d5231f535116b79` |
-| `Male_Adult_08` | пациент | `eb1bc0c0d5751c77a59935121bb286db8953068bd69b4b10edadd9be89947381` | `321db84ea694aaa35df47869745f8189aca0b4a3b7fa5145ec6f68ed55250678` |
-| `Male_Adult_11` | пациент | `7f6d3c28a3741c075885d50992d0e84677ad881b7c1363dd6ac8b366b7143035` | `ef5f421d7400d8f44fd692ecefe4eb37af11e850f4b92bdb570b5ff2a7763249` |
-| `Male_Adult_12` | пациент | `02a789d2a4b1423e153dde28e2c4954670db8b64b5918679172a8d49c47b70ce` | `3272a0f4efea17b3f8a5c1034a4a4b272ed4e3b2200f6b44bbc4b1b4c13b327d` |
-| `Male_Adult_13` | пациент | `2e9743808226038a385d1ac27350f6e208417c151990946317c035eb3cbc1734` | `994103b30c3c03ce769647fce994485dffa996a11718daffe9443747ac83f3a0` |
-| `Male_Adult_14` | пациент | `804dd3eaf7d08e305187afa07a571c9a5eb72b78099b3ffd5a9aed8d0af210d1` | `e0ed67376326b4daa9fdd2877628c19f83adce5d1a0afa6d85b82a25d8b21580` |
-| `Male_Adult_20` | пациент | `d59d72dcd2d31b0376bf6422cbfb9ff580fd874ad024175813c61af03a3d4eba` | `de5920e871b25eb34a62e971cecb41865e977f7f6eaa4478e3b13ce1d7ee53d4` |
-| `Male_Adult_09` | пациент | `d1d5aab1ce274eece6e2c7c4c5128fed62bacf1d7d70ab34da819d79d48e75c2` | `69ac7701a3b52eef774b4123a9df144ce2103ce1aa04e133d7a5360bdfc5a53d` |
-| `Male_Adult_10` | пациент | `4ac53843f1818c30233377f1d7661bb9565f135e56d20d8f3d6ce5a51ce02bfd` | `dc8b540119eec575f2ef770380730c6e7444ad37dcd1fecd5df513c149feb37a` |
-| `Male_Adult_16` | пациент | `0215abdc3b8250c4b247227de833cae8fc66d4b8f4261d829f2c6c1080ec578e` | `fc3d5ba965a81bdc1fc3c2630592184f2cbe267f15f8a31a1bf251664175e2c1` |
-| `Male_Adult_17` | пациент | `411e48b52e7b007d613b0bffd934c99ad1c7b53734fc58866383a3dfd8cad709` | `bcc824695f7b190580d2b330baa8134128047fb5e4aa03c20446cfe1f13012bf` |
-| `Male_Adult_18` | пациент | `640bc019936a7f74c44c8694ffa58ab1c2526441ad6ac8595dd4dd662e0d2944` | `08c40809a9241c03e046ce95ee98805a72731e6802508cf6e5f66b212cf5caac` |
-| `Business_Male_01` | пациент | `b97f148d1defe5f8530e0597066b12779966f1b217c42aa2032b4707457b7ab5` | `1d82c4729da0c598fbdbb86a3e4ec8691be77a52fc2948fc61379924dca1469c` |
-| `Business_Male_02` | пациент | `2407875e2e927d06a54b9af399201afd5be590544bbbd895da680cd35eb0b035` | `797734b60bc27ce1eaeeb881daa6de10cfabfcee8ee415711940f71ecd9b1fb0` |
-| `Business_Male_04` | пациент | `98c2471b67eee6ce46dbeb3c620a14ca3a08cc9ce96709732b0b29ee47f09f35` | `38a60cfc32c50e52ab0c7c3813c51d98374e51216bd1b3a999c3c2e61de799fc` |
-| `Business_Male_05` | пациент | `4794f99faf413940860becce94585af83fc2c77dada2fa71cdfc01288ffc9ae1` | `fea8bad16a6ccb11040f53be473cee0c520fbdcca0865aff13bbdf9cfc8ab1ac` |
-| `Delivery_Male_01` | пациент | `553b6c3851fa9b61a833695cc42dbc64ccabce530d06b43fc30e16c0b9dbd9ce` | `e7726f5e12f9d95aa7c1974d8a5d4c471f1282ecf7320d790d9d82939ec51a46` |
-| `Wood_Male_01` | пациент | `697fe7078995ff86c6db2d59e8ad83229d5b6e5cfd96aaeaf5d0bcc812f850cd` | `5c0b255ee3e0e613d89e75371ce9ff23de39e9f38f33768dbeb333bf1b7d77c3` |
-| `Male_Adult_03` | пожилой пациент | `fa2c8cf55f95b90e55297e32ba84d26fb939e97402d76a0cdd1ba1c9a0d784c1` | `d66d299c08370608cc580b8fff5500dfef2dbe8f79e738160d779feabd5df0d2` |
-| `Male_Adult_05` | пожилой пациент | `d73cdc3883380173cc614e94d429d4b5687f6470faf1cc99033e51226d1ecd8b` | `e7820983f9e9d71924bd5f4a14a348ab29d0e37b17abc9634edd4bd0c73801de` |
-| `Business_Male_07` | пожилой пациент | `3b74d194cfe5a17a8c1dc912bf31bb10316c7f64362d945f71b1bd236fd25946` | `2c2148557e5d3cfb19fd67d32d2e695c9d1eba9638721fbd8b6d3e2195e99a7d` |
-| `Gardener_Male_01` | пожилой пациент | `bd22fdd66f7fa0d94e235fd2813d475fa6c061cf6d263995cdd5178a5a65145f` | `54ee3c5d7f51b8efae28cc109a7b2377240f9b13d3aad4f660a40c96e9093046` |
-| `Construction_Male_01` | пациент в спецодежде — строитель | `ead087ec770b2cf39e3daf6d8455faef4eceaec675f095cc2e3e6b77fd26bb4a` | `858fd95632d1870f4419d0ef0df068a6843c727a05e57540625d4a446db27d9e` |
-| `Construction_Male_02` | пациент в спецодежде — строитель, сварщик, шахтёр | `17c379dade97c7cd2f0edb70e1f2504ae90b3c3121fdd389909ef607dc5739d0` | `06cfe0c82ff97a73e49bcca038d609cc58701ef2409e23b8e6f113448e8b8a9c` |
-| `Construction_Female_01` | пациентка в спецодежде — строитель | `b071886c032940ee56ddd275e19b0e8f9114d1183622125938e5d5fca2914dd5` | `23615597600e1b25dfff87e5c7dc3d7d2403d48b16d11469cfce912594bc7b6b` |
-| `Chef_Female_01` | пациентка в спецодежде — повар | `1ffdb80fbc15a9b4075e1eb8900d8f24baabae676b2239e74bcc8f47cb89d5fb` | `1c820e27a41b320d51c59565a897dd8c360dc95cedb4ee7a5b254d1a7b187daf` |
+| `Medical_Male_03` | врач, специалист, лаборант — белый халат | `1aa1a972475e6653b777636c3ef249c58edddf4aed0c265e8e254a6961637b2a` | `9e682e50a3d04a15a42cb3dcf6b0df859362df3de37f02f99ebb6d0067162c50` |
+| `Medical_Female_02` | врач, специалист, лаборант — белый халат | `e160f9afa4854905a33d70246ec6ae5ba5237bd3afd30811fa07d44155de5223` | `6d6af96a0bdbbf1b7d37f711478aa9aa974a8b97558aecd6638a8c1b77c16177` |
+| `Medical_Male_01` | врач, специалист, лаборант — белый халат | `6f14dd769d7b4743d5e7bb1c87dc721cea1c19057155e002d8cbf2f856197ba3` | `236c114256de1cef8f962563e2a1efc9753be4560e2847bc8267bd4b913b110b` |
+| `Medical_Female_01` | у женщин: медсестра, операционная медсестра, санитар, хирург, анестезиолог-реаниматолог, рентгенолаборант | `7a54975c1998f66227b0389d83f2461ab5de8927fcd288db7d44d8706e361333` | `a82c6bef01fb404756346d3422843ec73c664de701dc5227b91b7b5cbc04beda` |
+| `Medical_Male_04` | у мужчин: хирург, анестезиолог-реаниматолог | `257f96334a8f3a0aeccd3dc6307904c076eea4e6123cd8b65a1c90086897409c` | `cda768ca269074e628c3291406d0c69145a9f20964c5d00c4da1ad5f5ab39070` |
+| `Medical_Male_04_Scrubs` | у мужчин: медсестра, операционная медсестра, санитар | `129f42e62b67c511e3b6e3c0b3cba25b21ad5ce546dcb0501ffff3a0887718db` | `76a653f6a45e16fe115362b532dcd277cbdbc560811acf389855b9b07f7f7b71` |
+| `Medical_Male_05` | у мужчин: рентгенолаборант | `934755375be4d5692142e27fdddbe65751003dbf9f447cb364787f3f585abc37` | `82c919fea3f4e9e342ed07d0302a7f4b7e07e22deb104f56bcdd3db473f1d3a9` |
+| `Medical_Female_03` | фельдшер скорой | `f97e702bdb5c09d7f1622603c9e12376e4f64321e2b77a53f16ea7dee335fad2` | `955583e330d2a89d9fa5a2d448fbb2d26441a882217a5b5857fa1aea5d7d7217` |
+| `Medical_Male_02` | фельдшер скорой | `9f7c17221df173c0ca97d2c21d1132751aef304522b5aa07963e7ba94cf4b085` | `fe36997790a174149b94728c2ec5d02682c5a643e41a135942e08737ee87540e` |
+| `Business_Female_01` | регистратура | `e87ea22762f39cb04509b890d517039cadc6421d36d55f6aafaa5d956fb89c16` | `afcdc26bebdef89c41a7aba0073c5b27f5b74ccbcb3b71557f0cae6a0dae77c5` |
+| `Business_Female_03` | регистратура | `92794f7c256f7a1d0cb92b260c2a719aa213b797c5fca0ba1b7cc49035d91084` | `8ddf255143d37fc382cf93b3ba178afaf4ae607a67223fc198a8cf5422fefba5` |
+| `Business_Male_03` | регистратура | `bca8362c497a5d7a2253d742dbdb0b47e497920ebe51cacbbf44c27fa32cfff1` | `c6647b4d8cea3bf07f312da2474746be0862d283306a03b450f8726122347263` |
+| `Business_Male_06` | регистратура | `c1a0bbe62465b019a143b04a19f2dda3e02ef801b0b7f75dbb93e3753abbbf7e` | `83708ee9747647177a5abb66be3ada6ae9b07ce3ec34c7513137cae068536c3d` |
+| `Female_Adult_01` | пациентка | `a311d7a593d816cb2ce97dea284b4d3d9b1d844fe3cc2a64c63a6c71d2f869ff` | `23507f7dea4242a6c42448b5a0fd0455d548eaafe94ac67c2c10a3fe53bab9b2` |
+| `Female_Adult_04` | пациентка | `ef4e8cc6eb7aa74e4e7cd370bcf71127be57078a152cc1e351391985708910cf` | `b4c117634743b27f68a9a324c4e29557ec756152ac2e3180dbe1050d0935bc14` |
+| `Female_Adult_05` | пациентка | `e736f137ccea65f463ebfcd33f21572a94ba171a9cccea96a2a5550506fd018a` | `a24309f1508f373243d14007e5d14f1129e801e2eb6c4cbdb5e18684a2e5961f` |
+| `Female_Adult_07` | пациентка | `2b04f5ad4f68a75e472b9790266381a166ff7c2ece530c248c69bc52a26a51a5` | `4d10f0bb1c45632a8bf71d93ddd4198f572ff0e3526ed1b132ea51bb37171a26` |
+| `Female_Adult_08` | пациентка | `84cb8bbdb284cfdb39c6d95ab80b838c8c7f0f005c8ec7f269944a58bd4431ad` | `ee698e02e859372b9c785710f59e0660f743783f2e677923bddf73942c5c71ba` |
+| `Female_Adult_09` | пациентка | `84241d9a4ff7183be6b1006f2de27aed83b8fbb622830c6b4c234712aefc72cf` | `fbefa95f903d0f829f94f170885859ca99c374d27213d833e36ccc7d858e4baf` |
+| `Female_Adult_11` | пациентка | `49ad757448bd2e093d4f2061d2ddd23b1db369e515177861de7fce97cf8de7ea` | `225e37d3d1eb67f01b5eda9b113a6302998d2e32250b47d34a74dfa0e0bd2c13` |
+| `Female_Adult_13` | пациентка | `4e197130cab79eb95da8da576ca50c86ff5c0509b9b9dd5099eb084235ef0b26` | `9ea1b409b90206322901d1ea621b61a4ea1f3ca7a9c0a4de58ee36a07aa805e2` |
+| `Female_Adult_14` | пациентка | `8dcdde0e86230595c9238d2207337de5278f7bef2c181058efef328918ce4712` | `02431ff0d436441bb38dc4fb414b14aeaf4d5f2e4540a8c9ba129c0a160b4f23` |
+| `Female_Adult_15` | пациентка | `57e515061aad303a89fdf9e0673263ae466e7e58b7967950b4d5909362808d0b` | `13caeff1ad25c57f2e999c08ea3d63297d94492232ea108e5d8e16aaadab66e6` |
+| `Female_Adult_17` | пациентка | `0d0f798804fb51e88f0c360d3a3685d078da8ecd3d526da038f6741b030eb577` | `00be8e89c327729ae94a2b89ddf48d7e3d5a93f7ffd727cac2b14bd275b3b214` |
+| `Female_Adult_03` | пациентка | `8edad2a15a5e6613267f6d41da9faa3b12e39a1dc1f09057bfaab2c63b6b322a` | `222e8af3a65f76dd28243b8f49992270793fe349c0c16424f491396b740b907f` |
+| `Female_Adult_12` | пациентка | `710aba46f4b9cbd9e1e1323e3c0f4c647b31e00a0583059615cdb7ef0edc5331` | `159a6c55e99827f3f369ebd4c854a9b8a4358f7cd1dcb9cd9a29904c71ef24d4` |
+| `Business_Female_04` | пациентка | `fb74630c5aca2933d5023b319ac0580a188509a38e122cd33d51cf5e11ae22dc` | `517684005fe1c23748d5ce2e1b737ffe57740332767c57adf8415b026635a03c` |
+| `Female_Adult_02` | пожилая пациентка | `527b567697f3aeae11d6f629bfdaff63c5a6962cff738627a3782ab0a5f508a9` | `2d88655854fddc2c891347b6eebf865d91890aa2cf93c8ebf48b747c7a976d08` |
+| `Business_Female_02` | пожилая пациентка | `ff2c9d93e532803ba9235cf3e7d68ac0513a0648f3d87c0370a91ec0a21ee49b` | `57ce726303cfccd322a3360281698bae8a55cdec82a2d7bc56c612770c492647` |
+| `Male_Adult_01` | пациент | `b46969c3ce3901191bca7a3e19fb4bdfade88fc9cf428dd0217323e308adf97f` | `0614a4e9077699e8c3555ebb0df119666d498809e0534d9d3e278305d0de6be9` |
+| `Male_Adult_02` | пациент | `da3e4f99345a9a6f3a28e24b8f4ff57a065b69b57de3bf10d73cb56fa98079c4` | `af9b25e27b6bbc3813fe10d3fd15c357b5648bcfdcae1a40564f9eacca8491fd` |
+| `Male_Adult_04` | пациент | `490f61f6bf06b88eef040359234a129f9e4c9ae28cea1b6d2863ab9194991521` | `51153d96b87e188f3aac6458706de9cbbdc96984b4b196093bc6ecf89ee5a9f4` |
+| `Male_Adult_06` | пациент | `362d7a649f7bd2ceaa251d89b64b922a57fe99b40ac51d11b672a92491ef4b10` | `5fa625c86a30e7448263e2f4961b24f4798a333374280579ff638b535d6cd7b6` |
+| `Male_Adult_07` | пациент | `95cdf5a5d5b6d24d42187df1cf97f03139f1df23ee3bbd9e99b2a388f1fb4cdc` | `d2eeec8c43320a89fdac5ce5510543b16f2d8b48a2e6779b31ecea98355eb1b5` |
+| `Male_Adult_08` | пациент | `1f997315fe9a0462c3e92be05c7a0628a90f53ba006ee30fb6eee14d9c66c84f` | `eb88c5ce68cb0ba49e625ada97ec2019d2b4b15482af0f06a73797696d9e0b45` |
+| `Male_Adult_11` | пациент | `6106292cc253bc4db5ea80d42ee6e45466495a574540c04d5fbedc3090038612` | `631e44cd44eeb49a342905dcac5944b7488e7595d2cda5bb59c3e58e6dc81f71` |
+| `Male_Adult_12` | пациент | `02a789d2a4b1423e153dde28e2c4954670db8b64b5918679172a8d49c47b70ce` | `57b4cfb9b2b39a0e90e7054c775a5e041b978aef95c071708d4587a97be1a182` |
+| `Male_Adult_13` | пациент | `5ccd338178d20ed584f168b31c6e0238dd1a29650c4d7470cd3b5703fa446789` | `05cb1a6e1d9eb578addfd668a6e7a754fb19fab3ebc116f5b1d3408a34a459d3` |
+| `Male_Adult_14` | пациент | `fd2bfedafcf0fcb8de83620a9f892a7446ad4cb83e8f80f2626e7ee13ce1ab89` | `099046b6aac7b258a794c698008928a6a2d566fce31a4799826009deb8c117e4` |
+| `Male_Adult_20` | пациент | `d59d72dcd2d31b0376bf6422cbfb9ff580fd874ad024175813c61af03a3d4eba` | `bf860f2520fdd149d5513156ecfef27f280520c6f47b879d1e7514fb880e05da` |
+| `Male_Adult_09` | пациент | `3dfcd6aab85909f69ff530456f1b69191f458f9a31fe423a1ed8293c19c8e29a` | `2d826f1d5efaef0447f76df89920c12b3849e8f07e393d48c7b40a5485660135` |
+| `Male_Adult_10` | пациент | `712a7ed124c9175aed595858eefa08ea2ffa6e0762f2c578c6f75abaa7cc50aa` | `81faefcef6bf237422ce3ebf57298c6e586f651a6786ff43af517c879d7797db` |
+| `Male_Adult_16` | пациент | `2ee16271fe835ceef95e3b7ee991070131e104d27a2b7cb6a34f3c1a0432e5d7` | `0b754a057725ab59505d00bac27cd981e2a4834e912b247f9885f41046d74c83` |
+| `Male_Adult_17` | пациент | `411e48b52e7b007d613b0bffd934c99ad1c7b53734fc58866383a3dfd8cad709` | `92c49a6e625e3d1134dfd4a30628d6172bcfee7c500b75ca6d27548d3f49421a` |
+| `Male_Adult_18` | пациент | `640bc019936a7f74c44c8694ffa58ab1c2526441ad6ac8595dd4dd662e0d2944` | `8f4700028f106ccd2e3b5b3c4b41677887e1fd903a94a366104d69de499107ed` |
+| `Business_Male_01` | пациент | `baef4933a57d69276c7b8aa6c28a4e20672bfd410a3bf8549ce616e55b94d6a7` | `d5d94e55d09596943517261c35a6465ed3f61af2f384401434ee749f7020816f` |
+| `Business_Male_02` | пациент | `62498791fe05f902d529d9b8a39bb91928243d37fca2ee4caf2bd0ca0c22899d` | `e26b7757dc93e23a61f214c6464a6ef4031ccbdd0b7a51c6f409149e48f19eec` |
+| `Business_Male_04` | пациент | `98c2471b67eee6ce46dbeb3c620a14ca3a08cc9ce96709732b0b29ee47f09f35` | `3f47fe1b3cf8c2c7a69eacd080e1171b1e0eec7ee9ac9896367a8b9bf1403fcf` |
+| `Business_Male_05` | пациент | `4794f99faf413940860becce94585af83fc2c77dada2fa71cdfc01288ffc9ae1` | `4bc1569b269a63786313707b7f868d03808b0159800c635250f6b591c1d7e3a5` |
+| `Delivery_Male_01` | пациент | `553b6c3851fa9b61a833695cc42dbc64ccabce530d06b43fc30e16c0b9dbd9ce` | `575563d093a6ca501493bb5587c1c5c6c531c0361811fa7e713b40f5624a4b08` |
+| `Wood_Male_01` | пациент | `697fe7078995ff86c6db2d59e8ad83229d5b6e5cfd96aaeaf5d0bcc812f850cd` | `6c567e91b12a39f562d3b7fcc5e05a21677b2e77bff6899a9b4ed035f9a7f409` |
+| `Male_Adult_03` | пожилой пациент | `9ecdc8bb4f7fb980fa39b30312dfb29b5e5a2694b77425e3808748e2901e6edf` | `d5c66b7200e5d4c248293deff13fb433a892dd046ae6f5c509283ab4377df2c5` |
+| `Male_Adult_05` | пожилой пациент | `e4a8a45f7a56b032e68526a3833cfd577c939ea367858a8771b59afc72bd04d9` | `5491a9ad03bbcff5c6268928b7b4e01e4678b8fe1b5922d5cda4e2d84f4b98a5` |
+| `Business_Male_07` | пожилой пациент | `3b74d194cfe5a17a8c1dc912bf31bb10316c7f64362d945f71b1bd236fd25946` | `9797e153e607f66dc1b3797e37ee126c873dc3377b06c1607b39a336f50bc59e` |
+| `Gardener_Male_01` | пожилой пациент | `75a6e81d8ba9b641eeab6522a1dbb041e916b98d5578e142bb378ee0d3c76e33` | `1abe672513754e43fcc9fc8c56fa3c0dedc3805b173a7e3f90b8d41dc7c3c12d` |
+| `Construction_Male_01` | пациент в спецодежде — строитель | `9c78f1f3a6f23c202e51fd877b5323dad054ba16357f8589f54c006d9a72ced3` | `8587b44eaa52c79a629b60b69252cebb6572e7dffd23011843d1de21babe6501` |
+| `Construction_Male_02` | пациент в спецодежде — строитель, сварщик, шахтёр | `17c379dade97c7cd2f0edb70e1f2504ae90b3c3121fdd389909ef607dc5739d0` | `2a0989c3fe1b2e0b16e4d2877f220a665d92612149600bbac1b70b3c7806686d` |
+| `Construction_Female_01` | пациентка в спецодежде — строитель | `0f24ebf95fdda1d6715d020817c7257c86d9c78ec6c55c708bd88427b3c4e7eb` | `f92f36bdacc67ca8c5f7beada0875c9c6ba2bbba35ce189f8a9fb5393df6aa4b` |
+| `Chef_Female_01` | пациентка в спецодежде — повар | `1ffdb80fbc15a9b4075e1eb8900d8f24baabae676b2239e74bcc8f47cb89d5fb` | `e28eaef2d888b7d07163f21617c9de4f64baf1db88faac45cef83f1b4128f401` |
 
 Исходники — путь от корня репозитория набора и полный SHA-256:
 

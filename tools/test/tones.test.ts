@@ -1,8 +1,9 @@
 // Оттенки волос и кожи (spec docs/specs/2026-10-people.md, часть 2б): у одного вида — разные волосы и кожа по зерну человека;
-// маска вида — два канала (R — одежда, G — кожа и волосы), пряди — в альфе атласа.
+// маска вида — два канала (R — одежда, G — кожа и волосы), пряди — в альфе атласа, их грани — по нормалям.
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import * as THREE from 'three';
 import { GREY, HAIR, HAIR_AS_IS, HAIR_DARKER, HAIR_LIGHTER, lumaOf, SKIN, toneOf } from '../../src/render/cast';
 import { gltfOf, MODELS, rocketboxIndex } from './render-kit';
 
@@ -87,5 +88,30 @@ describe('маска и атлас видов', () => {
     for (const name of ['Chef_Female_01', 'Delivery_Male_01', 'Construction_Male_01', 'Business_Male_04']) expect([name, hair.get(name)]).toEqual([name, 0]);
     for (const name of ['Medical_Female_02', 'Male_Adult_08', 'Female_Adult_04', 'Male_Adult_16']) expect([name, hair.get(name)! > 0]).toEqual([name, true]);
     expect([...hair.values()].filter(h => h > 0).length).toBeGreaterThanOrEqual(48);
+  });
+
+  test('грани прядей обходятся по нормалям вершин — у полной и упрощённой модели: иначе пластина темнеет, как освещённая сзади', async () => {
+    let strands = 0;
+    for (const name of rocketboxIndex.looks) {
+      const { scene } = await gltfOf(`rocketbox/${name}`);
+      for (const part of ['body', 'lod']) {
+        const mesh = scene.getObjectByName(part) as THREE.Mesh;
+        const g = mesh.geometry;
+        const [P, N, U, I] = [g.getAttribute('position'), g.getAttribute('normal'), g.getAttribute('uv'), g.getIndex()!];
+        const v = (a: typeof P, i: number) => new THREE.Vector3(a.getX(i), a.getY(i), a.getZ(i));
+        let against = 0;
+        for (let t = 0; t < I.count; t += 3) {
+          const [a, b, c] = [I.getX(t), I.getX(t + 1), I.getX(t + 2)];
+          // четверть прядей атласа: u < ½, v ≥ ½
+          if ((U.getX(a) + U.getX(b) + U.getX(c)) / 3 >= 0.5 || (U.getY(a) + U.getY(b) + U.getY(c)) / 3 < 0.5) continue;
+          strands++;
+          // против — явно (косинус меньше −0,1): у грани-щепки или стоящей ребром к нормалям знак после сжатия координат случаен
+          const face = v(P, b).sub(v(P, a)).cross(v(P, c).sub(v(P, a))).normalize();
+          if (face.dot(v(N, a).add(v(N, b)).add(v(N, c)).normalize()) < -0.1) against++;
+        }
+        expect([name, part, against]).toEqual([name, part, 0]);
+      }
+    }
+    expect(strands).toBeGreaterThan(10000);
   });
 });

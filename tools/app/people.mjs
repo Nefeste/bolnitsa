@@ -547,6 +547,21 @@ function convert(src, look) {
     const [res] = MeshoptSimplifier.simplifyWithAttributes(new Uint32Array(tri), P, 3, attrs, 5, [1, 1, 0.3, 0.3, 0.3], flags, want, 1, ['Permissive']);
     lod.push(...res);
   }
+  // пряди — пластины с двух сторон: у части граней обход против нормалей вершин, и отрисовка с двух сторон поворачивает
+  // нормаль от зрителя — пластина темнеет, как освещённая сзади. Тёмные волосы это прячут, перекрашенные светлые — пятнятся
+  // (часть 2б). Обход граней прядей — по их нормалям, у полной и упрощённой модели (после упрощения: оно от обхода зависит)
+  for (const list of [idx, lod]) {
+    for (let t = 0; t < list.length; t += 3) {
+      const [a, b, d] = [list[t], list[t + 1], list[t + 2]];
+      if (quad[PT[a]] !== QUADRANT.opacity) continue;
+      const e1 = [0, 1, 2].map(k => P[b * 3 + k] - P[a * 3 + k]);
+      const e2 = [0, 1, 2].map(k => P[d * 3 + k] - P[a * 3 + k]);
+      const g = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+      let dot = 0;
+      for (let k = 0; k < 3; k++) dot += g[k] * (N[a * 3 + k] + N[b * 3 + k] + N[d * 3 + k]);
+      if (dot < 0) [list[t + 1], list[t + 2]] = [d, b];
+    }
+  }
 
   // анимации: повороты костей тела — как в наборе (скелет у всех один, Biped), корень — по правилу клипа; высота таза —
   // в масштабе вида
@@ -721,13 +736,17 @@ async function images(src, c, face) {
     }
   }
   const strands = parts.some((p, i) => p === 'opacity' && !look.drop?.includes(parts[i]));
+  // цвет прядей — и под их прозрачными точками: издали текстура уменьшена, края прядей смешаны с соседями, и чёрные
+  // прозрачные точки темнили бы пряди — светлые волосы издали казались бы грязными
+  if (strands) bleed(atlas, 0, PART, PART, 8);
   const reg = regions(look, atlas, cloth, face, eyes, strands);
   const mask = Buffer.alloc(ATLAS * ATLAS * 3, 0);
   for (let i = 0; i < ATLAS * ATLAS; i++) {
     mask[i * 3] = cloth[i];
     mask[i * 3 + 1] = reg.g[i];
   }
-  const webp = await sharp(atlas, { raw: { width: ATLAS, height: ATLAS, channels: 4 } }).webp({ quality: 85, alphaQuality: 100, effort: 6 }).toBuffer();
+  // exact — цвет под прозрачными точками кодировщик не выбрасывает
+  const webp = await sharp(atlas, { raw: { width: ATLAS, height: ATLAS, channels: 4 } }).webp({ quality: 85, alphaQuality: 100, effort: 6, exact: true }).toBuffer();
   const png = await sharp(mask, { raw: { width: ATLAS, height: ATLAS, channels: 3 } }).png({ compressionLevel: 9 }).toBuffer();
   return { webp, png, tintRef: tintN ? tintSum / tintN : 0, tinted: tintN, hair: reg.hair, hairN: reg.hairN, skinN: reg.skinN };
 }
@@ -792,6 +811,71 @@ async function facePrior(src) {
   return boxBlur(sum, PART, 6);
 }
 
+/**
+ * Цвет непрозрачных точек квадрата атласа (x0, y0, сторона PART) — в прозрачные, `steps` шагов по соседям. Прозрачные
+ * точки не видны, но в уменьшенных копиях текстуры (издали) смешиваются с видимыми.
+ */
+function bleed(atlas, x0, y0, steps) {
+  const done = new Uint8Array(PART * PART);
+  const at = (x, y) => ((y0 + y) * ATLAS + x0 + x) * 4;
+  for (let y = 0; y < PART; y++) for (let x = 0; x < PART; x++) done[y * PART + x] = atlas[at(x, y) + 3] >= 128 ? 1 : 0;
+  for (let s = 0; s < steps; s++) {
+    const next = [];
+    for (let y = 0; y < PART; y++) {
+      for (let x = 0; x < PART; x++) {
+        if (done[y * PART + x]) continue;
+        const sum = [0, 0, 0];
+        let n = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const xx = x + dx;
+            const yy = y + dy;
+            if (xx < 0 || yy < 0 || xx >= PART || yy >= PART || !done[yy * PART + xx]) continue;
+            for (let k = 0; k < 3; k++) sum[k] += atlas[at(xx, yy) + k];
+            n++;
+          }
+        }
+        if (n) next.push([x, y, sum.map(v => Math.round(v / n))]);
+      }
+    }
+    for (const [x, y, c] of next) {
+      for (let k = 0; k < 3; k++) atlas[at(x, y) + k] = c[k];
+      done[y * PART + x] = 1;
+    }
+  }
+}
+
+/** Значения точек `has` — в пустые соседние той же четверти (кроме `skip`), `steps` шагов: среднее уже заполненных соседей. */
+function spread(val, has, skip, steps) {
+  for (let s = 0; s < steps; s++) {
+    const next = [];
+    for (let y = 0; y < ATLAS; y++) {
+      for (let x = 0; x < ATLAS; x++) {
+        const i = y * ATLAS + x;
+        if (has[i] || skip[i]) continue;
+        const qx = x >= PART ? PART : 0;
+        const qy = y >= PART ? PART : 0;
+        let sum = 0;
+        let n = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const xx = x + dx;
+            const yy = y + dy;
+            if (xx < qx || yy < qy || xx >= qx + PART || yy >= qy + PART || !has[yy * ATLAS + xx]) continue;
+            sum += val[yy * ATLAS + xx];
+            n++;
+          }
+        }
+        if (n) next.push(i, Math.round(sum / n));
+      }
+    }
+    for (let k = 0; k < next.length; k += 2) {
+      val[next[k]] = next[k + 1];
+      has[next[k]] = 1;
+    }
+  }
+}
+
 /** Сглаживание квадратом (2r + 1)² — двумя проходами скользящей суммы, края — повтором крайней точки. */
 function boxBlur(src, size, r) {
   const tmp = new Float32Array(size * size);
@@ -819,9 +903,10 @@ function boxBlur(src, size, r) {
 /**
  * Кожа и волосы вида в маске G (spec, часть 2б): кожа — ½, волосы — 1, смесь кожи и волос — между (доли мягкие и сглажены
  * на точку, но не наружу: край кожи и одежды остаётся резким). Кожа — цвета середины лица: на голове, руках, ногах; одежда в
- * цвет должности — не кожа. Волосы — пряди (кроме заколок и резинок — цвет далеко от прядей) и темя головы цвета темени; на
- * лице — только явные. Глаза — ни то ни другое. `hair` — средняя яркость волос (sRGB, luma): от неё шейдер считает новый
- * цвет.
+ * цвет должности — не кожа. Волосы — пряди (кроме заколок и резинок — цвет далеко от прядей) и темя головы цвета темени,
+ * с щелями и бликами между волосами; на лице — только явные. Глаза — ни то ни другое. Вокруг островов развёртки и под
+ * прозрачными точками прядей — значения соседей: издали текстура уменьшена, и край волос не становится кожей. `hair` —
+ * средняя яркость волос (sRGB, luma): от неё шейдер считает новый цвет.
  */
 function regions(look, atlas, cloth, face, eyes, strands) {
   const at = (buf, i) => lab(buf[i * 4], buf[i * 4 + 1], buf[i * 4 + 2]);
@@ -874,21 +959,55 @@ function regions(look, atlas, cloth, face, eyes, strands) {
       S[i] = Math.min(sk, 1 - hr);
     }
   }
+  // точки развёртки: у прядей — с альфой, у остального — не чёрные (вокруг островов развёртки атлас чёрный)
+  const isle = new Uint8Array(ATLAS * ATLAS);
+  for (let y = 0; y < ATLAS; y++) {
+    for (let x = 0; x < ATLAS; x++) {
+      const i = y * ATLAS + x;
+      isle[i] = (x < PART && y >= PART ? atlas[i * 4 + 3] >= 8 : atlas[i * 4] + atlas[i * 4 + 1] + atlas[i * 4 + 2] > 6) ? 1 : 0;
+    }
+  }
+  // щели и блики между волосами на голове — дальше от цвета темени, чем порог, ни кожа ни волосы; среди волос (их больше
+  // половины на 7 × 7 точек) — волосы. Иначе издали, в уменьшенной текстуре, волосы (1) с ними (0) дают ½ — кожу, и
+  // перекрашенное темя пятнится цветом волос вида. Лицо, угол рта и глаза не трогаются; в прядях «ни то ни другое» —
+  // заколки и резинки, они тоже как есть
+  const near = boxBlur(H, ATLAS, 3);
+  const cover = boxBlur(Float32Array.from(isle), ATLAS, 3);
+  for (let y = 0; y < PART; y++) {
+    for (let x = PART; x < ATLAS; x++) {
+      const i = y * ATLAS + x;
+      const h = y * PART + (x - PART);
+      if (!isle[i] || S[i] + H[i] >= 0.25 || near[i] < 0.5 * cover[i]) continue;
+      if (eyes[h] || face[h] >= 0.5 || (x - PART < MOUTH[0] * PART && y > MOUTH[1] * PART)) continue;
+      H[i] = 1;
+      S[i] = 0;
+    }
+  }
+  // сглаживание — только среди точек кожи и волос: пустые соседи не тянут край волос к коже
   const S2 = boxBlur(S, ATLAS, 1);
   const H2 = boxBlur(H, ATLAS, 1);
+  const C2 = boxBlur(Float32Array.from(S, (s, i) => (s || H[i] ? 1 : 0)), ATLAS, 1);
   const g = new Uint8Array(ATLAS * ATLAS);
+  const has = new Uint8Array(ATLAS * ATLAS);
   let lum = 0;
   let hairN = 0;
   let skinN = 0;
   for (let i = 0; i < ATLAS * ATLAS; i++) {
     if (!S[i] && !H[i]) continue;
-    g[i] = Math.round(Math.min(1, 0.5 * S2[i] + H2[i]) * 255);
+    g[i] = Math.round(Math.min(1, (0.5 * S2[i] + H2[i]) / C2[i]) * 255);
+    has[i] = 1;
     if (H[i] >= 0.5 && atlas[i * 4 + 3] >= 128) {
       lum += (0.2126 * atlas[i * 4] + 0.7152 * atlas[i * 4 + 1] + 0.0722 * atlas[i * 4 + 2]) / 255;
       hairN++;
     }
     if (S[i] >= 0.5) skinN++;
   }
+  // вокруг островов развёртки и под прозрачными точками прядей — значения соседей (8 точек: до уменьшения в 8 раз): иначе
+  // издали край волос смешивается с нулём и становится кожей. Точки развёртки «ни то ни другое» (глаза, рот) и четверть 3 —
+  // как есть
+  const skip = new Uint8Array(ATLAS * ATLAS);
+  for (let y = 0; y < ATLAS; y++) for (let x = 0; x < ATLAS; x++) skip[y * ATLAS + x] = isle[y * ATLAS + x] || cloth[y * ATLAS + x] || (x >= PART && y >= PART) ? 1 : 0;
+  spread(g, has, skip, 8);
   return { g, hair: hairN ? lum / hairN : 0, hairN, skinN };
 }
 
