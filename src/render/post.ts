@@ -11,9 +11,14 @@ import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { OutputShader } from 'three/addons/shaders/OutputShader.js';
 
+// Цвет по часу и виньетка (spec docs/specs/2026-10-aaa-polish.md, «Свет, часть 2») — в том же последнем проходе, до перевода
+// в тон: множитель цвета (`grade`, по часу — view.ts) и мягкое затемнение углов кадра (`vignette` — сила в углу).
 const COMPOSITE = OutputShader.fragmentShader
-  .replace('uniform sampler2D tDiffuse;', 'uniform sampler2D tDiffuse;\nuniform sampler2D tAO;\nuniform float aoIntensity;')
-  .replace('gl_FragColor = texture2D( tDiffuse, vUv );', 'gl_FragColor = texture2D( tDiffuse, vUv );\n\t\t\tgl_FragColor.rgb *= mix( 1.0, texture2D( tAO, vUv ).r, aoIntensity );');
+  .replace('uniform sampler2D tDiffuse;', 'uniform sampler2D tDiffuse;\nuniform sampler2D tAO;\nuniform float aoIntensity;\nuniform vec3 grade;\nuniform float vignette;')
+  .replace(
+    'gl_FragColor = texture2D( tDiffuse, vUv );',
+    'gl_FragColor = texture2D( tDiffuse, vUv );\n\t\t\tgl_FragColor.rgb *= mix( 1.0, texture2D( tAO, vUv ).r, aoIntensity );\n\t\t\tgl_FragColor.rgb *= grade * ( 1.0 - vignette * smoothstep( 0.35, 1.0, length( ( vUv - 0.5 ) * 1.4142 ) ) );',
+  );
 
 export class Post {
   readonly target: THREE.WebGLRenderTarget;
@@ -22,6 +27,10 @@ export class Post {
   private material: THREE.RawShaderMaterial;
   /** сила затенения 0–1 */
   intensity = 0.85;
+  /** цвет по часу — множитель (view.ts, `Daylight.grade`) */
+  readonly grade = new THREE.Color(1, 1, 1);
+  /** виньетка: на сколько темнее углы кадра */
+  vignette = 0.22;
 
   constructor(
     private renderer: THREE.WebGLRenderer,
@@ -40,7 +49,7 @@ export class Post {
     this.ao.updateGtaoMaterial({ radius: 0.55, distanceExponent: 1.2, thickness: 1.2, scale: 1, samples });
     this.ao.updatePdMaterial({ radius: 6, samples: 12 });
     this.material = new THREE.RawShaderMaterial({
-      uniforms: { ...THREE.UniformsUtils.clone(OutputShader.uniforms), tAO: { value: null }, aoIntensity: { value: this.intensity } },
+      uniforms: { ...THREE.UniformsUtils.clone(OutputShader.uniforms), tAO: { value: null }, aoIntensity: { value: this.intensity }, grade: { value: new THREE.Color(1, 1, 1) }, vignette: { value: this.vignette } },
       vertexShader: OutputShader.vertexShader,
       fragmentShader: COMPOSITE,
       defines: { SRGB_TRANSFER: '', ACES_FILMIC_TONE_MAPPING: '' },
@@ -68,6 +77,8 @@ export class Post {
     this.material.uniforms.tDiffuse.value = this.target.texture;
     this.material.uniforms.tAO.value = this.ao.pdRenderTarget.texture;
     this.material.uniforms.aoIntensity.value = this.intensity;
+    this.material.uniforms.grade.value.copy(this.grade);
+    this.material.uniforms.vignette.value = this.vignette;
     this.material.uniforms.toneMappingExposure.value = r.toneMappingExposure;
     r.setRenderTarget(null);
     this.quad.render(r);
