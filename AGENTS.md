@@ -231,13 +231,14 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   by reason, named when patience ran out — `leaving` in `engine.ts`: his doctor on a break, waited for you, or whether a
   hired doctor who would take him is on the shift now; also on the path's end, `End.why`) and `inflow` (the new day's flow
   by the hour with those on shift then — `inflowDay`); the window's «почему?» blocks are in `src/ui/Meeting.tsx`. The
-  management axis (`docs/specs/2026-10-difficulty.md`; owner's decisions #135–#137): `meta.manage` — «Спокойно» or
+  management axis (`docs/specs/2026-10-difficulty.md`; owner's decisions #135–#137, #151): `meta.manage` — «Спокойно» or
   «Трудно», none — «Обычно», the base numbers byte for byte; `shift/manage.ts` (`manageOf`, `scaled`) scales the flow
   (`flowRate`, and so the meeting's forecast `inflowDay`), an arrival's patience, wages when paid (`wageOf`/`wagesOf` take
   the level's percent; `StaffMember.salary` stays the «Обычно» pay, so the market and the mood do not change with the
-  level), the breakdown chance, the overdraft limit and the start cash (`startCash`); the `manage` command takes effect
-  from that minute; the numbers — `content/hospital/difficulty.yaml` (only «Спокойно» and «Трудно»; the content build
-  checks their direction). The window (part 2): «Сложность» on the start screen's second step (a scenario has its own
+  level), what a closed case pays — a visit (`closePatient`, and its rooms through `caseIncomeRooms`) and a ward stay
+  (`closeStay`), `pay` (#151) — the breakdown chance, the overdraft limit and the start cash (`startCash`); the `manage`
+  command takes effect from that minute; the numbers — `content/hospital/difficulty.yaml` (only «Спокойно» and «Трудно»;
+  the content build checks their direction). The window (part 2): «Сложность» on the start screen's second step (a scenario has its own
   second step) and in «Настройки» (`Difficulty` in `src/ui/App.tsx`), the URL keys `?manage=calm|hard` and `?soft=1`
   (`main.tsx`), `Game.manage`/`soft` — the window's copy of `meta.manage`/`meta.soft`, set at start or from the save and
   changed only by the `manage` and `soft` commands it sends; every salary the window shows goes through `Game.paid` (the

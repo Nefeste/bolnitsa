@@ -7,9 +7,11 @@
 # patience — терпение пришедших, %;
 # salary — зарплаты, %: так платят и так показывают; рынок, по которому люди судят о зарплате, — тот же, и настроение от
 #   уровня не меняется;
+# pay — оплата случаев, %: закрытый приём (ОМС, ДМС, платные) и случай стационара — деньги идут за уровнем, как и
+#   остальное (решение владельца 26.10.2026, #151, вариант 2);
 # breakdown — поломки аппаратов, %;
 # overdraft — до какого минуса касса оплачивает стройку, ₽ (у «Обычно» — money.yaml);
 # budget — касса начала в песочнице: бюджет песочницы economy.yaml (`sandbox.budgets`); готовая больница — его доля
 #   (`clinicShare`), как у «Обычно».
-calm: { inflow: 80, patience: 150, salary: 85, breakdown: 50, overdraft: 500000, budget: generous }
-hard: { inflow: 120, patience: 75, salary: 115, breakdown: 150, overdraft: 150000, budget: modest }
+calm: { inflow: 80, patience: 150, salary: 85, pay: 110, breakdown: 50, overdraft: 500000, budget: generous }
+hard: { inflow: 120, patience: 75, salary: 115, pay: 90, breakdown: 150, overdraft: 150000, budget: modest }

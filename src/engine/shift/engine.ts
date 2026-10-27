@@ -51,7 +51,7 @@ import { depart, leaversDue, moodMorning } from './mood';
 import { backMorning, growMorning, sickMorning, tenure } from './growth';
 import { caseIncomeRooms, caseRoom, COMMON as ROOMS_COMMON, roomExpense, roomIncome } from './rooms';
 import { cover } from './reserve';
-import { manageOf, scaled } from './manage';
+import { manageOf, scaled, scaledInt } from './manage';
 import { priorOf, referTo } from './refer';
 import { book, carriersOf, gurneyOf, lying, planRide, rideHome, ridesUntil } from './gurney';
 
@@ -2209,12 +2209,15 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient, at = s.t): 
   if (s.economy) {
     const payer = p.payer ?? 'oms';
     const ctx = hospitalCtx(db, s);
-    const x = caseIncome(db, payer, closed.diagnosis, p.done, p.indicated ?? [], closed.grades.defensibility, levelOf(db, ctx.plan, ctx.working).level);
+    // ось «Управление» (решение владельца #151): оплата случая — на множитель уровня; «Обычно» — до байта как было
+    const pay = manageOf(db, s).pay;
+    const base = caseIncome(db, payer, closed.diagnosis, p.done, p.indicated ?? [], closed.grades.defensibility, levelOf(db, ctx.plan, ctx.working).level);
+    const x = pay === 100 ? base : { ...base, paid: scaledInt(base.paid, pay), cut: scaledInt(base.cut, pay) };
     const ledger = ledgerOf(s);
     ledger.income[payer] += x.paid;
     ledger.cases[payer]++;
     // деньги по помещениям (часть 2 слоя «Показатели»): обследования — где сделали, обращение — кабинету врача
-    caseIncomeRooms(db, s, p, payer, x.paid, x.unindicated);
+    caseIncomeRooms(db, s, p, payer, x.paid, x.unindicated, pay);
     ledger.audit.cut += x.cut;
     if (x.quality < 100) ledger.audit.weak++;
     if (x.unconfirmed) ledger.audit.unconfirmed++;
@@ -3310,11 +3313,13 @@ function closeStay(db: ContentDb, s: ShiftState, p: ShiftPatient, end: StayEnd, 
     // изоляция была нужна (часть 49а)
     const unit = careUnit(chosen, recommended);
     const op = stay.op?.done ? stay.op.tx : undefined;
-    const paid = wardIncome(db, closed.diagnosis, closed.grades.defensibility, close, op, unit);
+    // ось «Управление» (решение владельца #151): и случай стационара — на множитель уровня
+    const pay = manageOf(db, s).pay;
+    const paid = scaledInt(wardIncome(db, closed.diagnosis, closed.grades.defensibility, close, op, unit), pay);
     ledger.ward.income += paid;
     // деньги по помещениям (часть 2 слоя «Показатели»): палате — случай стационара; операционной — то, что прибавила
     // операция, — разница тарифа с ней и без неё
-    const surgery = op && stay.op?.room ? paid - wardIncome(db, closed.diagnosis, closed.grades.defensibility, close, undefined, unit) : 0;
+    const surgery = op && stay.op?.room ? paid - scaledInt(wardIncome(db, closed.diagnosis, closed.grades.defensibility, close, undefined, unit), pay) : 0;
     if (surgery !== 0) roomIncome(s, stay.op!.room!, surgery);
     roomIncome(s, stay.room, paid - surgery, 'stays');
     if (close === 'interrupted') ledger.ward.interrupted++;

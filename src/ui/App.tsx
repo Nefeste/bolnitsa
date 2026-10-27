@@ -237,7 +237,7 @@ function Difficulty({ level, set, row, cash }: { level: Level; set: (l: Level) =
       </p>
       {row ? (
         <p className="muted small" id="manage-numbers">
-          {t.numbers(factor(row.inflow), factor(row.patience), factor(row.salary), factor(row.breakdown), row.overdraft !== undefined ? money(row.overdraft) : '—', cash !== undefined ? money(cash) : undefined)}
+          {t.numbers(factor(row.inflow), factor(row.patience), factor(row.salary), factor(row.pay), factor(row.breakdown), row.overdraft !== undefined ? money(row.overdraft) : '—', cash !== undefined ? money(cash) : undefined)}
         </p>
       ) : null}
       <label className="check">

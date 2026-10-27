@@ -1,6 +1,6 @@
-// Ось «Управление» (spec docs/specs/2026-10-difficulty.md; решения владельца 26.10.2026, #135–#137): «Обычно» — как было, до
-// байта; у «Спокойно» и «Трудно» — множители к потоку, терпению, зарплатам и поломкам, свой предел минуса и касса начала;
-// уровень меняют командой в любой момент — с этой минуты; в сменах «Анамнеза» уровня нет.
+// Ось «Управление» (spec docs/specs/2026-10-difficulty.md; решения владельца 26.10.2026, #135–#137, #151): «Обычно» — как
+// было, до байта; у «Спокойно» и «Трудно» — множители к потоку, терпению, зарплатам, оплате случаев и поломкам, свой предел
+// минуса и касса начала; уровень меняют командой в любой момент — с этой минуты; в сменах «Анамнеза» уровня нет.
 import { describe, expect, test } from 'bun:test';
 import type { ContentDb, Manage, ManageLevel } from '../../src/content/types';
 import { emptySite, hospitalOf } from '../../src/engine/hospital/site';
@@ -8,6 +8,7 @@ import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { presetStaff } from '../../src/engine/hospital/staff';
 import { apply, breakdowns, newFlowShift } from '../../src/engine/shift/engine';
 import { levelOf, manageOf } from '../../src/engine/shift/manage';
+import { incomeOf } from '../../src/engine/economy/economy';
 import { accrue, offerOf, shortOf, startCash } from '../../src/engine/shift/money';
 import type { Flow, ShiftState } from '../../src/engine/shift/types';
 import { buildDb, difficultyErrors } from '../content/load';
@@ -35,18 +36,18 @@ function live(s: ShiftState, hour: number, step = 60, d: ContentDb = db) {
 }
 
 /** База, где «Спокойно» меняет одно число (остальные — как у «Обычно»): так видно, что делает каждый множитель. */
-function only(k: 'inflow' | 'patience' | 'salary' | 'breakdown', pct: number): ContentDb {
-  const calm: ManageLevel = { inflow: 100, patience: 100, salary: 100, breakdown: 100, overdraft: db.money!.overdraft, budget: 'normal', [k]: pct };
+function only(k: 'inflow' | 'patience' | 'salary' | 'pay' | 'breakdown', pct: number): ContentDb {
+  const calm: ManageLevel = { inflow: 100, patience: 100, salary: 100, pay: 100, breakdown: 100, overdraft: db.money!.overdraft, budget: 'normal', [k]: pct };
   return { ...db, manage: { ...db.manage!, calm } };
 }
 
 describe('ось «Управление»', () => {
   test('числа уровней — как в геймдизайне §10; «Обычно» — числа базы; сборка ловит уровень не в ту сторону', () => {
     expect(db.manage).toEqual({
-      calm: { inflow: 80, patience: 150, salary: 85, breakdown: 50, overdraft: 500000, budget: 'generous' },
-      hard: { inflow: 120, patience: 75, salary: 115, breakdown: 150, overdraft: 150000, budget: 'modest' },
+      calm: { inflow: 80, patience: 150, salary: 85, pay: 110, breakdown: 50, overdraft: 500000, budget: 'generous' },
+      hard: { inflow: 120, patience: 75, salary: 115, pay: 90, breakdown: 150, overdraft: 150000, budget: 'modest' },
     });
-    const normal = { inflow: 100, patience: 100, salary: 100, breakdown: 100, overdraft: db.money!.overdraft, budget: 'normal' as const };
+    const normal = { inflow: 100, patience: 100, salary: 100, pay: 100, breakdown: 100, overdraft: db.money!.overdraft, budget: 'normal' as const };
     expect(levelOf(db, 'normal')).toEqual(normal);
     expect(levelOf(db, undefined)).toEqual(normal);
     const b = db.economy.sandbox.budgets;
@@ -55,6 +56,9 @@ describe('ось «Управление»', () => {
     expect(difficultyErrors(db.manage!, db.money!.overdraft, b)).toEqual([]);
     const wrong = difficultyErrors({ ...db.manage!, calm: { ...db.manage!.calm, inflow: 120 } }, db.money!.overdraft, b);
     expect(wrong.some(e => e.includes('calm.inflow 120'))).toBe(true);
+    // оплата случаев: на «Трудно» дороже «Обычно» — не в ту сторону
+    const pay = difficultyErrors({ ...db.manage!, hard: { ...db.manage!.hard, pay: 110 } }, db.money!.overdraft, b);
+    expect(pay.some(e => e.includes('hard.pay 110'))).toBe(true);
     const same = difficultyErrors({ ...db.manage!, hard: normal }, db.money!.overdraft, b);
     expect(same.some(e => e.includes('hard — те же числа'))).toBe(true);
   });
@@ -136,6 +140,41 @@ describe('ось «Управление»', () => {
     // поток и люди те же: от зарплат не меняются
     expect(b.summary.arrived).toBe(a.summary.arrived);
   }, 60_000);
+
+  // решение владельца #151, вариант 2: деньги тоже идут за уровнем — оплата закрытого приёма и случая стационара
+  test('оплата случаев: те же больные и решения — каждый случай на множитель уровня, по помещениям — та же сумма', () => {
+    const dbx = only('pay', 110);
+    const a = city();
+    const b = city({ manage: 'calm', dbx });
+    // до 10:00 вторых суток: первые сутки целиком и обход 09:00, где выписывают лежащих
+    live(a, 34, 600);
+    live(b, 34, 600, dbx);
+    expect(b.history[0].arrived).toBe(a.history[0].arrived);
+    const la = a.history[0].economy!.ledger;
+    const lb = b.history[0].economy!.ledger;
+    expect(la.cases.oms + la.cases.dms + la.cases.self).toBeGreaterThan(20);
+    for (const payer of ['oms', 'dms', 'self'] as const) {
+      expect([payer, lb.cases[payer]]).toEqual([payer, la.cases[payer]]);
+      // каждый случай — до рубля
+      expect([payer, Math.abs(lb.income[payer] - 1.1 * la.income[payer]) <= la.cases[payer]]).toEqual([payer, true]);
+    }
+    // стационар: на обходе вторых суток выписаны те же, каждый случай — на множитель
+    const wa = a.economy!.ledger!.ward!;
+    const wb = b.economy!.ledger!.ward!;
+    expect(wa.cases).toBeGreaterThan(0);
+    expect(wb.cases).toBe(wa.cases);
+    expect(Math.abs(wb.income - 1.1 * wa.income)).toBeLessThanOrEqual(wa.cases);
+    // по помещениям — та же сумма, что в кассе суток, до рубля
+    const rooms = (r: Record<string, { income: number }>) => Object.values(r).reduce((x, y) => x + y.income, 0);
+    expect(rooms(b.history[0].rooms!)).toBe(incomeOf(lb));
+    expect(rooms(b.summary.rooms!)).toBe(incomeOf(b.economy!.ledger!));
+    // меньше 100 % — меньше денег на тот же множитель (как у «Трудно»)
+    const less = only('pay', 90);
+    const hard = city({ manage: 'calm', dbx: less });
+    live(hard, 32, 600, less);
+    const lh = hard.history[0].economy!.ledger;
+    expect(Math.abs(incomeOf(lh) - 0.9 * incomeOf(la))).toBeLessThanOrEqual(la.cases.oms + la.cases.dms + la.cases.self + (la.ward?.cases ?? 0));
+  }, 120_000);
 
   test('поломки: тот же жребий утра, доля — на множитель уровня', () => {
     const count = (d: ContentDb, manage?: Manage) => {
