@@ -17,11 +17,27 @@ import { type Crowd, GURNEY_AHEAD, type Walker } from './crowd';
 import type { GurneyAt } from './gurney';
 import type { Layout } from './layout';
 import { type Paint, toneVec } from './people';
-import { doorInside, gurneyStop, gurneyYaw, nearestWalk, type Places, type Spot, standAt } from './place';
+import { bedSide, doorInside, gurneyStop, gurneyYaw, nearestWalk, type Places, type Spot, standAt } from './place';
 import { carrierGoal, riderAt, type RidePhase, ridesNow } from './rides';
 
 /** Ваша фигура на карте (spec docs/specs/2026-10-doctor-mode.md, «Вы на карте»): врач в белом халате с меткой. */
 export const YOU = 'you';
+
+/** Медсёстры каких помещений обходят занятые койки (spec docs/specs/2026-10-staff-motion.md, часть 1, п. 4). */
+const ROUND_ROOMS: ReadonlySet<Id> = new Set(['room.ward', 'room.icu', 'room.ricu']);
+/** Раз в столько секунд игры медсестра обходит койки — от и до; срок — от номера человека и обхода: соседки не разом. */
+export const ROUND_EVERY: readonly [number, number] = [3600, 5400];
+/** У стола операционной бумаг не читают: стоящие там — без бумаг в руках. */
+const NO_PAPERS: ReadonlySet<Id> = new Set(['room.or']);
+
+/** Через сколько секунд игры обход номер `n` после прежнего; первый — в первые `ROUND_EVERY[1]` секунд смены на карте. */
+export function roundGap(id: string, n: number): number {
+  let h = 0x811c9dc5;
+  const key = `${id}~${n}`;
+  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 0x01000193) >>> 0;
+  const k = (h % 1000) / 1000;
+  return n === 0 ? k * ROUND_EVERY[1] : ROUND_EVERY[0] + k * (ROUND_EVERY[1] - ROUND_EVERY[0]);
+}
 
 /** Что показать о человеке в панели; `gone` — пациент ушёл, на карте его нет (spec 2026-10-flow-ui). */
 export type PersonInfo =
@@ -173,6 +189,13 @@ export class Population {
   private medics = new Map<string, string>();
   /** где фельдшер встал с каталкой: ключ больного → у какого места и где — заново, только когда место больного другое */
   private medicStops = new Map<string, { at: string; stop: Spot }>();
+  /**
+   * обход медсестры (spec docs/specs/2026-10-staff-motion.md, часть 1, п. 4): номер в штате → ключ её поста, куда она
+   * вернётся; когда следующий обход (часы игры) и сколько их было
+   */
+  private rounds = new Map<string, string>();
+  private roundAt = new Map<string, number>();
+  private roundN = new Map<string, number>();
 
   constructor(
     private db: ContentDb,
@@ -252,8 +275,16 @@ export class Population {
     if (!room) return undefined;
     const role = this.db.roles[m.role]?.stands ?? m.role;
     const cell = room.staff[role] ?? room.staff[m.role];
-    const spot = cell ? this.places.staffSpot(m, () => cell, taken) : undefined;
+    const spot = cell ? this.staffSpot(m, room.type, cell, taken) : undefined;
     return spot ? this.orderlyPost(m, spot) : undefined;
+  }
+
+  /** Место на посту (`Places.staffSpot`); в операционной стоящие — без бумаг (`NO_PAPERS`). */
+  private staffSpot(m: StaffMember, type: Id, cell: readonly [number, number], taken: ReadonlySet<number>): Spot | undefined {
+    const spot = this.places.staffSpot(m, () => cell, taken);
+    if (spot?.work !== 'stand' || !NO_PAPERS.has(type)) return spot;
+    const { work: _, ...rest } = spot;
+    return rest;
   }
 
   /**
@@ -326,7 +357,7 @@ export class Population {
       const role = this.db.roles[m.role]?.stands ?? m.role;
       const cell = room.staff[role] ?? room.staff[m.role];
       if (!cell) continue;
-      const at = this.places.staffSpot(m, () => cell, taken);
+      const at = this.staffSpot(m, room.type, cell, taken);
       if (!at) continue;
       const spot = this.orderlyPost(m, at);
       taken.add(spot.cell);
@@ -334,9 +365,9 @@ export class Population {
       keep.add(key);
       const w = this.crowd.walkers.get(key);
       if (w) {
-        // на перерыве (spec 2026-10-staff-shifts, часть 2) или везёт каталку (spec 2026-10-orderlies) — не на посту: место за
-        // ним, назад приведут `rests` и `ridesStep`
-        if (!w.leaving && (this.going.get(m.id) || this.riding.has(m.id))) continue;
+        // на перерыве (spec 2026-10-staff-shifts, часть 2), везёт каталку (spec 2026-10-orderlies) или на обходе (spec
+        // 2026-10-staff-motion) — не на посту: место за ним, назад приведут `rests`, `ridesStep` и `roundsStep`
+        if (!w.leaving && (this.going.get(m.id) || this.riding.has(m.id) || this.rounds.has(m.id))) continue;
         if (w.leaving) this.crowd.stay(w, spot);
         else if (w.at?.key !== spot.key && !(shift && w.goals.some(g => g.key === spot.key))) this.crowd.settle(w, spot);
         continue;
@@ -395,9 +426,10 @@ export class Population {
     this.places = places;
     this.staff = staff;
     this.roomIndex = rooms.map(r => layout.plan.rooms.findIndex(p => p.id === r.id));
-    // перевозки — по новым клеткам: места заново, тот, кто везёт, идёт к ним
+    // перевозки — по новым клеткам: места заново, тот, кто везёт, идёт к ним; обход — заново по новым койкам: медсестра на посту
     this.legs.clear();
     for (const k of this.riding.keys()) this.riding.set(k, '');
+    this.rounds.clear();
     this.placeStaff();
     this.dirty = true;
   }
@@ -493,6 +525,7 @@ export class Population {
     for (const key of this.spots.keys()) if (!present.has(key)) this.spots.delete(key);
     this.ridesStep(taken);
     this.medicsStep(taken);
+    this.roundsStep(taken);
     for (const [key, w] of this.crowd.walkers) {
       if (w.staff || present.has(key)) continue;
       if (!w.leaving) this.crowd.leave(w);
@@ -580,6 +613,64 @@ export class Population {
     }
     this.held = held;
     this.legs = legs;
+  }
+
+  /**
+   * Обход (spec docs/specs/2026-10-staff-motion.md, часть 1, п. 4): медсестра палаты, ПИТ или реанимации раз в `ROUND_EVERY`
+   * секунд игры обходит занятые койки своего помещения — от ближней к ближней, у каждой стоит у изголовья с бумагами — и
+   * возвращается на пост. Дел в движке у неё на обходе нет, поэтому он только здесь; перерыв и перевозка идут поверх (`rests`,
+   * `ridesStep` ведут её по часам движка) — обход прерывается, назад на пост её приводят они.
+   */
+  private roundsStep(taken: ReadonlySet<number>) {
+    for (const m of this.staff) {
+      if (m.role !== 'role.nurse') continue;
+      const room = this.layout.plan.rooms.findIndex(r => r.id === m.room);
+      if (room < 0 || !ROUND_ROOMS.has(this.layout.plan.rooms[room].type)) continue;
+      const w = this.crowd.walkers.get(`s:${m.id}`);
+      const post = this.rounds.get(m.id);
+      if (!w || w.leaving || this.going.get(m.id) || this.riding.has(m.id)) {
+        this.rounds.delete(m.id);
+        continue;
+      }
+      if (post !== undefined) {
+        // вернулась на пост — обход кончился
+        if (w.goals.length === 0 && w.at?.key === post) this.rounds.delete(m.id);
+        continue;
+      }
+      const at = this.roundAt.get(m.id) ?? this.t + roundGap(m.id, 0);
+      this.roundAt.set(m.id, at);
+      if (this.t < at || w.goals.length > 0 || w.state === 'walk') continue;
+      const n = (this.roundN.get(m.id) ?? 0) + 1;
+      this.roundN.set(m.id, n);
+      this.roundAt.set(m.id, this.t + roundGap(m.id, n));
+      const home = this.postOf(m, taken);
+      if (!home) continue;
+      // занятые койки помещения: лежит на своей кровати, его не везут
+      const beds: Spot[] = [];
+      for (const [key, p] of this.crowd.walkers) {
+        if (!key.startsWith('p:') || p.state !== 'lie' || !p.at?.bed || p.carry !== undefined || this.held.has(key)) continue;
+        if (p.at.thing !== undefined && this.layout.things[p.at.thing].room === room) beds.push(p.at);
+      }
+      if (!beds.length) continue;
+      // у изголовья — столько, сколько длится «бумаги в руках» этого вида; от поста — к ближней, от неё — к следующей ближней
+      const dwell = this.looks[w.look].clips.Papers.duration;
+      const stops: Spot[] = [];
+      const used = new Set(taken);
+      let from = home.cell;
+      const near = (c: number) => Math.abs((c % this.layout.w) - (from % this.layout.w)) + Math.abs(((c / this.layout.w) | 0) - ((from / this.layout.w) | 0));
+      const left = beds.map(b => bedSide(this.layout, b, dwell, used)).filter((b): b is Spot => !!b);
+      while (left.length) {
+        left.sort((a, b) => near(a.cell) - near(b.cell));
+        const next = left.shift()!;
+        if (stops.some(x => x.key === next.key)) continue;
+        stops.push(next);
+        used.add(next.cell);
+        from = next.cell;
+      }
+      if (!stops.length) continue;
+      this.crowd.route(w, [...stops, home]);
+      this.rounds.set(m.id, home.key);
+    }
   }
 
   /** Куда везут: на койку — та, что в срезе, когда срез уже говорит «лежит»; на операцию — стол; к аппарату — его место. */

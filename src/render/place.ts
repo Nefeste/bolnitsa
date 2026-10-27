@@ -32,6 +32,11 @@ export interface Spot {
   thing?: number;
   /** лежит на кровати — под одеялом */
   bed?: true;
+  /**
+   * за работой (spec docs/specs/2026-10-staff-motion.md, часть 1): `desk` — сидит за столом, руки на столе, петля работы, а не
+   * отдыха; `stand` — стоит на посту, изредка берёт бумаги; `bed` — у койки на обходе, бумаги в руках, когда дошёл
+   */
+  work?: 'desk' | 'stand' | 'bed';
 }
 
 /** Анкеры предметов (furniture.ts): куда садятся и куда ложатся. */
@@ -43,6 +48,9 @@ export interface Anchors {
 /** За ними работают — к ним поворачиваются лицом стоящие (как карта «Анамнеза», orient.ts: DESKS и WORK). */
 const DESKS: ReadonlySet<ObjectKind> = new Set(['desk', 'table']);
 const WORK: ReadonlySet<ObjectKind> = new Set(['desk', 'table', 'couch', 'bed', 'ecg', 'analyzer', 'xray', 'machine', 'sink', 'cabinet', 'or_table', 'anesthesia', 'us', 'ct', 'mri', 'monitor']);
+
+/** За чем работают сидя (spec docs/specs/2026-10-staff-motion.md, часть 1): стол или монитор перед стулом. */
+const DESK_AHEAD: ReadonlySet<ObjectKind> = new Set(['desk', 'table', 'monitor']);
 
 /** Сколько секунд хотя бы стоят там, где с человеком что-то делают (как карта «Анамнеза», walkers.ts). */
 export const DWELL: Partial<Record<Doing, number>> = { registration: 1, triage: 1.5, exam: 1.5, office: 0.5 };
@@ -118,6 +126,17 @@ export function standAt(l: Layout, cell: number, kind: LegKind, dwell: number): 
   const x = cell % l.w;
   const y = (cell / l.w) | 0;
   return { key: `cell:${cell}`, cell, pose: 'stand', x: x + 0.5, y: 0, z: y + 0.5, yaw: standYaw(l, x, y), kind, dwell };
+}
+
+/** Стул места `s` смотрит на стол или монитор — в соседней клетке, куда сидящий повёрнут (spec 2026-10-staff-motion). */
+export function deskAhead(l: Layout, s: Spot): boolean {
+  if (s.pose !== 'sit' || s.thing === undefined) return false;
+  const dx = Math.round(Math.sin(s.yaw));
+  const dz = Math.round(Math.cos(s.yaw));
+  return l.things[s.thing].cells.some(([x, y]) => {
+    const t = thingAt(l, x + dx, y + dz);
+    return t >= 0 && t !== s.thing && DESK_AHEAD.has(l.things[t].kind);
+  });
 }
 
 /** Место у клетки `c` шаблона помещения: предмет в ней — на нём; свободно — стоять там. */
@@ -422,11 +441,16 @@ export class Places {
     return standAt(l, nearestWalk(l, doorInside(l, room), taken), 'wait', 0);
   }
 
-  /** Место человека штата: его клетка в помещении; на стуле — сидит. */
+  /**
+   * Место человека штата: его клетка в помещении; на стуле — сидит, а перед столом или монитором — за работой; стоит — на
+   * посту (spec docs/specs/2026-10-staff-motion.md, часть 1: изредка бумаги в руках).
+   */
   staffSpot(m: StaffMember, roleCell: (m: StaffMember) => readonly [number, number] | undefined, taken: ReadonlySet<number>): Spot | undefined {
     const c = roleCell(m);
     if (!c) return undefined;
-    return spotAtCell(this.l, this.a, c, 'wait', 0, taken);
+    const s = spotAtCell(this.l, this.a, c, 'wait', 0, taken);
+    if (s.pose === 'stand') return { ...s, work: 'stand' };
+    return deskAhead(this.l, s) ? { ...s, work: 'desk' } : s;
   }
 }
 
@@ -436,6 +460,38 @@ const DIRS: readonly Cell[] = [
   [0, -1],
   [-1, 0],
 ];
+
+/**
+ * Где встать у койки на обходе (spec docs/specs/2026-10-staff-motion.md, часть 1, п. 4): свободная клетка пола рядом с
+ * кроватью лежащего `s`, ближе всего к изголовью, — лицом к лежащему; `dwell` — сколько стоять при ×1. Нет такой — нет места.
+ */
+export function bedSide(l: Layout, s: Spot, dwell: number, taken: ReadonlySet<number>): Spot | undefined {
+  if (s.thing === undefined) return undefined;
+  const th = l.things[s.thing];
+  // изголовье — от середины постели против `yaw` (от изголовья к ногам)
+  const hx = s.x - Math.sin(s.yaw) * 0.6;
+  const hz = s.z - Math.cos(s.yaw) * 0.6;
+  const own = new Set(th.cells.map(([x, y]) => y * l.w + x));
+  let best: { c: number; d: number } | undefined;
+  for (const [x, y] of th.cells) {
+    for (const [dx, dy] of DIRS) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= l.w || ny >= l.h) continue;
+      const c = ny * l.w + nx;
+      // не в двери: там ходят
+      if (own.has(c) || !l.walk[c] || taken.has(c) || l.plan.grid.cells[c] === 4) continue;
+      const d = (nx + 0.5 - hx) ** 2 + (ny + 0.5 - hz) ** 2;
+      if (!best || d < best.d) best = { c, d };
+    }
+  }
+  if (!best) return undefined;
+  const x = (best.c % l.w) + 0.5;
+  const z = ((best.c / l.w) | 0) + 0.5;
+  // лицом к груди лежащего: между изголовьем и серединой постели
+  const yaw = Math.atan2((hx + s.x) / 2 - x, (hz + s.z) / 2 - z);
+  return { key: `bedside:${best.c}`, cell: best.c, pose: 'stand', x, y: 0, z, yaw, kind: 'act', dwell, work: 'bed' };
+}
 
 /**
  * Где встать тому, кто везёт каталку, у места `s` (spec docs/specs/2026-10-orderlies.md, «Что видно»): каталка — перед ним, её

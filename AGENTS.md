@@ -120,7 +120,8 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # and paramedic, the suit colour by role — read from the picture, people sit down, stand
                                    # up and lie, the mask in two channels on the GPU, people of one look with different hair
                                    # and skin, the hair tint seen in the frame, the elderly and «yellow» walk with the slow
-                                   # walk clip; then
+                                   # walk clip, staff at desks in the desk work loop, the seated look around and standing staff
+                                   # take papers, a ward nurse at a bed of her room on her round; then
                                    # scenario 1: «Кампания» on the start screen, the mentor's letters at the start and to the
                                    # hint states while building, the scenario's build catalog, your own office, the first three
                                    # patients set by the scenario, «Цели» and «Без обучения», «Письма» at the meeting, the
@@ -394,7 +395,13 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   feet stay planted in walk and run (`lockFeet`, a two-bone leg reach), the seated pose sits on a chair of `SEAT`
   (`catalog.ts`; `seatTo`), walk and run speed per look. The slow walk (owner's decision #132): patients from 65 and
   «yellow» walk at 0.8 of the pace — the rule and the times are the engine's (`slowWalker`, `slowOf`, `SLOW_SPEED_PC` in
-  `shift/walking.ts`), the slice marks them (`SLOW` in `P.flags`), the window walks them with the `WalkSlow` clip.
+  `shift/walking.ts`), the slice marks them (`SLOW` in `P.flags`), the window walks them with the `WalkSlow` clip. Staff in
+  motion (`docs/specs/2026-10-staff-motion.md`, part 1; window only): a post seat facing a desk or monitor is `work: 'desk'`
+  (`deskAhead` in `place.ts`) and plays the `SitWork` loop, a standing post is `work: 'stand'`; who sits or stands still plays
+  a short clip now and then by screen time (`gesture`, `gestureGap` in `crowd.ts`: `SitLook`, `Papers`, none in the OR); a
+  ward, ICU or reanimation nurse walks round the occupied beds of her room every 1–1.5 game hours (`roundsStep` in
+  `population.ts`, `bedSide`, `Crowd.route`) — a rest or a ride takes over. These clips are segments of long Rocketbox clips
+  (`span` in the converter's `CLIPS`, two segments blended into one) at 10 frames a second.
   Icons above heads — `icons.ts` (drawn after the frame); the queues overlay floor tint — `overlay.ts`.
 - `src/ui/` — panels (React) and their store; icons — `icons.tsx` (`Icon`: Carbon (IBM) under Apache 2.0, owner's decision
   #139, the text's colour, 16 points) over `icons.gen.ts` (made by `tools/app/icons.mjs`; three own icons in Carbon's style —

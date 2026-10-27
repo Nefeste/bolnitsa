@@ -2,11 +2,11 @@
 // не по связанной позе в сжатых координатах; точки опоры сидя и лёжа; бег; люди Rocketbox вместо частей Quaternius.
 //
 // Люди на видеокарте (spec docs/specs/2026-10-shell-3d.md, «Масштаб и опора»). Анимации проигрываются один раз и
-// запекаются: матрицы суставов на каждый кадр (CLIP_FPS: 30 к/с, покой — 15) всех видов лежат в одной текстуре — по три
-// верхние строки матрицы (нижняя всегда 0 0 0 1), числа в половинной точности: у 59 видов 8,6 МБ вместо 24 (spec
-// docs/specs/2026-10-people.md, «Часть 2»). Вершинный шейдер (people.ts) смешивает кадры A и B. Чистый Three.js без DOM:
-// в игре запекают потоки запекания (bake-worker.ts), то же запекание проверяют тесты в Bun (tools/test/people.test.ts) —
-// по тем же числам, что уходят на видеокарту.
+// запекаются: матрицы суставов на каждый кадр (CLIP_FPS: 30 к/с, покой — 15, жесты — 10) всех видов лежат в одной текстуре —
+// по три верхние строки матрицы (нижняя всегда 0 0 0 1), числа в половинной точности: у 59 видов с жестами 15,5 МБ вместо
+// 41 (spec docs/specs/2026-10-people.md, «Часть 2»; docs/specs/2026-10-staff-motion.md, «Часть 1: как сделано»). Вершинный
+// шейдер (people.ts) смешивает кадры A и B. Чистый Three.js без DOM: в игре запекают потоки запекания (bake-worker.ts), то же
+// запекание проверяют тесты в Bun (tools/test/people.test.ts) — по тем же числам, что уходят на видеокарту.
 //
 // Люди Rocketbox (spec docs/specs/2026-10-people.md; tools/app/people.mjs): сетка с атласом, упрощённая — своя сетка из
 // того же файла. Анимации набора сняты на одном скелете, а пропорции у видов свои: в шаге и беге ступня поправляется так,
@@ -22,16 +22,32 @@ import { SEAT } from './catalog';
 import { type LookSpec, lookSpec, statureOf } from './cast';
 
 /** Анимации вида; `Sit` — петля сидя, продолжает последнюю позу посадки (spec docs/specs/2026-10-people.md, «Анимации»). */
-// медленный шаг (spec docs/specs/2026-10-people.md, «Медленный шаг»; решение владельца #132) — последним: номера прежних те же
-export type ClipName = 'Idle' | 'Walk' | 'Run' | 'SitDown' | 'StandUp' | 'Sit' | 'WalkSlow';
-export const CLIP_NAMES: ClipName[] = ['Idle', 'Walk', 'Run', 'SitDown', 'StandUp', 'Sit', 'WalkSlow'];
+// медленный шаг (spec docs/specs/2026-10-people.md, «Медленный шаг»; решение владельца #132) — после них: номера прежних те же;
+// за работой и в ожидании (spec docs/specs/2026-10-staff-motion.md, часть 1): `SitWork` — петля за столом, `SitLook` —
+// оглядывается сидя, `Papers` — бумаги в руках стоя (разовые, от покоя до покоя) — после медленного шага
+export type ClipName = 'Idle' | 'Walk' | 'Run' | 'SitDown' | 'StandUp' | 'Sit' | 'WalkSlow' | 'SitWork' | 'SitLook' | 'Papers';
+export const CLIP_NAMES: ClipName[] = ['Idle', 'Walk', 'Run', 'SitDown', 'StandUp', 'Sit', 'WalkSlow', 'SitWork', 'SitLook', 'Papers'];
+/** Сидя на сиденье: таз опускается под сиденье `SEAT` (seatTo), ступни стоят на полу. */
+const SEATED: readonly ClipName[] = ['Sit', 'SitWork', 'SitLook'];
 /** Кадров в секунду при запекании анимаций: шаг и бег, посадка и вставание. */
 export const BAKE_FPS = 30;
 /**
  * Кадров в секунду по анимациям: покой стоя и сидя — медленные, им хватает 15 (шейдер смешивает соседние кадры), и кадров
- * запекания — на треть меньше: загрузка быстрее, текстура костей меньше.
+ * запекания — на треть меньше: загрузка быстрее, текстура костей меньше. Работа за столом, взгляд по сторонам и бумаги — тоже
+ * медленные, им хватает 10: за кадр голова и руки поворачиваются не больше чем на 3–9°.
  */
-export const CLIP_FPS: Record<ClipName, number> = { Idle: 15, Walk: BAKE_FPS, Run: BAKE_FPS, SitDown: BAKE_FPS, StandUp: BAKE_FPS, Sit: 15, WalkSlow: BAKE_FPS };
+export const CLIP_FPS: Record<ClipName, number> = {
+  Idle: 15,
+  Walk: BAKE_FPS,
+  Run: BAKE_FPS,
+  SitDown: BAKE_FPS,
+  StandUp: BAKE_FPS,
+  Sit: 15,
+  WalkSlow: BAKE_FPS,
+  SitWork: 10,
+  SitLook: 10,
+  Papers: 10,
+};
 /** Ширина текстуры костей в текселях (кратна 3: строки матрицы — 3 текселя подряд, в одной строке текстуры). */
 export const BONE_TEX_W = 1026;
 
@@ -338,7 +354,7 @@ export function bakeLook(gltf: { scene: THREE.Object3D; animations: THREE.Animat
     for (let f = 0; f < n; f++) {
       pose(cn, Math.min(clip.duration, f / fps));
       const m = frameMatrices(skeleton, norm);
-      if (feet.length && (cn === 'SitDown' || cn === 'StandUp' || cn === 'Sit')) plant(geometry, m, feet);
+      if (feet.length && (cn === 'SitDown' || cn === 'StandUp' || SEATED.includes(cn))) plant(geometry, m, feet);
       frames.push(m);
     }
   }
@@ -442,7 +458,7 @@ function seatTo(frames: Float32Array[], clips: RawLook['clips'], legs: Leg[], hi
   };
   ramp(clips.SitDown, 0, clips.SitDown.frames - 1);
   ramp(clips.StandUp, clips.StandUp.frames - 1, 0);
-  for (let f = 0; f < clips.Sit.frames; f++) shift(frames[clips.Sit.first + f], 1);
+  for (const cn of SEATED) for (let f = 0; f < clips[cn].frames; f++) shift(frames[clips[cn].first + f], 1);
 }
 
 /** Поднять кадр `m` на `d` (опустить — d < 0), ступни оставить на месте: ноги дотягиваются (reach). */

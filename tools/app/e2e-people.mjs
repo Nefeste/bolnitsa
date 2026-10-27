@@ -6,7 +6,9 @@
 // анестезиолог и операционная сестра — бирюзовые), у врача халат белый; люди садятся и встают, лежащие — на постели или
 // каталке, а не на полу. Часть 2б: маска на видеокарте — в два канала; у людей одного вида — разные волосы и кожа, и оттенок
 // виден в кадре: снимок с оттенком человека и с волосами «как у вида» разные. Медленный шаг (решение владельца #132):
-// пожилые и «жёлтые» идут анимацией медленного шага, остальные — обычного. Снимки — `e2e-people-*.jpg`.
+// пожилые и «жёлтые» идут анимацией медленного шага, остальные — обычного. Персонал в движении (spec
+// docs/specs/2026-10-staff-motion.md, часть 1): за столом на посту — петля работы; за минуту кто-то из сидящих оглядывается, а
+// кто-то из стоящих на посту берёт бумаги; медсестра палаты — у койки своей палаты с бумагами. Снимки — `e2e-people-*.jpg`.
 import { join } from 'node:path';
 
 /** Сколько видов в игре (src/render/cast.ts, LOOKS). */
@@ -242,4 +244,61 @@ export async function peoplePart({ page, port, out, ok, fail, q, shots }) {
       ok(`медленный шаг: идут ${slow.length} медленно (анимация медленного шага) и ${fast.length} обычно — как велит правило: от 65 лет или «жёлтый»`);
     } else fail(`медленный шаг: ${JSON.stringify(gait)}`);
   }
+
+  // ---------------------------------------------------------------- персонал в движении (spec 2026-10-staff-motion, часть 1)
+  // номера анимаций — src/render/crowd.ts: 5 — сидит, 7 — за столом, 8 — оглядывается сидя, 9 — бумаги в руках
+  const seated = await page.evaluate(() =>
+    [...window.__game.crowd.walkers.values()].filter(w => w.staff && w.state === 'sit' && w.at && w.key !== 'you').map(w => ({ key: w.key, work: w.at.work ?? '', clip: w.clip, x: w.x, z: w.z })),
+  );
+  const desks = seated.filter(r => r.work === 'desk');
+  if (desks.length >= 5 && desks.every(r => r.clip === 7)) ok(`за столом: ${desks.length} человек штата сидят на посту за столами — петля работы, не отдыха`);
+  else fail(`за столом: ${JSON.stringify(seated)}`);
+  if (desks.length) {
+    await look(desks[0].x, desks[0].z, 2.2);
+    ok(`снимок за столом: ${await shot('e2e-people-6.jpg')} КБ`);
+  }
+  // жесты: на ×1 за полторы минуты кто-то из сидящих на стуле или скамье оглядывается, кто-то из стоящих на посту — бумаги
+  await page.evaluate(() => {
+    window.__seen = { look: 0, papers: 0, desk: 0 };
+    window.__game.actions.setSpeed(1);
+  });
+  const gestures = await until(
+    () => {
+      const s = window.__seen;
+      for (const w of window.__game.crowd.walkers.values()) {
+        if (w.clip === 8 && w.state === 'sit') s.look++;
+        if (w.clip === 9 && w.staff && w.at?.work === 'stand') s.papers++;
+        if (w.clip === 8 && w.at?.work === 'desk') s.desk++;
+      }
+      return s.look > 0 && s.papers > 0 ? s : null;
+    },
+    null,
+    90000,
+  ).then(h => h.jsonValue(), () => page.evaluate(() => window.__seen));
+  if (gestures.look > 0 && gestures.papers > 0 && gestures.desk === 0) ok('жесты: сидящий оглядывается, стоящий на посту берёт бумаги; за столом — без них');
+  else fail(`жесты за полторы минуты: ${JSON.stringify(gestures)}`);
+  // обход: на ×12 медсестра палаты встаёт у занятой койки своей палаты с бумагами
+  await page.evaluate(() => window.__game.actions.setSpeed(12));
+  const round = await until(
+    () => {
+      const g = window.__game;
+      for (const m of g.staff) {
+        const w = g.crowd.walkers.get(`s:${m.id}`);
+        if (!w || m.role !== 'role.nurse' || w.at?.work !== 'bed' || w.state !== 'idle') continue;
+        const room = g.plan.rooms.find(r => r.id === m.room);
+        const x = Math.floor(w.x);
+        const z = Math.floor(w.z);
+        return { x: w.x, z: w.z, clip: w.clip, room: room.type, inside: x >= room.x && x < room.x + room.w && z >= room.y && z < room.y + room.h };
+      }
+      return null;
+    },
+    null,
+    180000,
+  ).then(h => h.jsonValue(), () => null);
+  await page.keyboard.press('Space');
+  await until(() => window.__game.speed === 0);
+  if (round && round.inside && ['room.ward', 'room.icu', 'room.ricu'].includes(round.room)) {
+    await look(round.x, round.z, 2.2);
+    ok(`обход: медсестра у койки своего помещения (${round.room}, анимация ${round.clip === 9 ? 'бумаг' : 'покоя'}); снимок ${await shot('e2e-people-7.jpg')} КБ`);
+  } else fail(`обход: ${JSON.stringify(round)}`);
 }
