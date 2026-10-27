@@ -281,11 +281,16 @@ function LeftTools({ hud, actions }: P) {
     body = (
       <>
         <ul className="list" id="ready-types">
-          {byGuide(hud.readyTypes, hud.scenario).map(({ row: t, step }) => {
+          {catalogEntries(hud.readyTypes, hud).map(e => {
+            if ('head' in e) return <GroupHead key={`g-${e.head.id}`} g={e.head} />;
+            const { row: t, step } = e;
             const on = b.ready?.type === t.id;
+            // миниатюра образца (spec docs/specs/2026-10-catalog.md): у выбранного — его образец, у остальных — первый
+            const thumb = hud.thumbs[`${t.id}|${on && b.ready ? b.ready.size : t.sizes[0].id}`];
             return (
               <li key={t.id} className={step?.next ? 'gnext' : undefined}>
-                <button type="button" id={`ready-${t.id.slice(5)}`} className={on ? 'on' : undefined} onClick={() => actions.pickReady(t.id)}>
+                <button type="button" id={`ready-${t.id.slice(5)}`} className={on ? 'thumbed on' : 'thumbed'} onClick={() => actions.pickReady(t.id)}>
+                  {thumb ? <img className="thumb" src={thumb} alt="" draggable={false} /> : <i className="thumb" aria-hidden="true" />}
                   <span>
                     <StepMark step={step} />
                     {t.name}
@@ -314,20 +319,24 @@ function LeftTools({ hud, actions }: P) {
   else if (b.tool === 'room')
     body = (
       <ul className="list" id="room-types">
-        {byGuide(hud.roomTypes, hud.scenario).map(({ row: t, step }) => (
-          <li key={t.id} className={step?.next ? 'gnext' : undefined}>
-            <button type="button" id={`rt-${t.id.slice(5)}`} className={b.roomType === t.id ? 'on' : undefined} onClick={() => actions.pickRoomType(t.id)}>
+        {catalogEntries(hud.roomTypes, hud).map(e =>
+          'head' in e ? (
+            <GroupHead key={`g-${e.head.id}`} g={e.head} />
+          ) : (
+          <li key={e.row.id} className={e.step?.next ? 'gnext' : undefined}>
+            <button type="button" id={`rt-${e.row.id.slice(5)}`} className={b.roomType === e.row.id ? 'on' : undefined} onClick={() => actions.pickRoomType(e.row.id)}>
               <span>
-                <StepMark step={step} />
-                {t.name}
+                <StepMark step={e.step} />
+                {e.row.name}
               </span>
               <small>
-                {t.min} · {t.price}
+                {e.row.min} · {e.row.price}
               </small>
             </button>
-            {why(step)}
+            {why(e.step)}
           </li>
-        ))}
+          ),
+        )}
       </ul>
     );
   // отделение (spec docs/specs/2026-10-departments.md, часть 2): в какое переводить; «Без отметки» — снять отметку
@@ -428,6 +437,33 @@ function LeftTools({ hud, actions }: P) {
       <div className="hint">{T.build.keys}</div>
     </div>
   );
+}
+
+/** Группа каталога стройки (spec docs/specs/2026-10-catalog.md): заголовок строкой списка, у отделения — квадратик его цвета. */
+type CatalogGroup = Hud['catalogGroups'][number];
+
+const GroupHead = ({ g }: { g: CatalogGroup }) => (
+  <li className="ghead" data-group={g.id}>
+    {g.color ? <span className="swatch" style={{ background: g.color }} /> : null}
+    {g.name}
+  </li>
+);
+
+/**
+ * Строки каталога стройки: шаги порядка стройки сценария — первыми, с номером (решение владельца #114); остальное — по
+ * группам каталога, с заголовком (spec docs/specs/2026-10-catalog.md).
+ */
+function catalogEntries<R extends { id: Id; group: string }>(rows: readonly R[], hud: Hud): ({ head: CatalogGroup } | ReturnType<typeof byGuide<R>>[number])[] {
+  const all = byGuide(rows, hud.scenario);
+  const rest = all.filter(x => !x.step);
+  const out: ({ head: CatalogGroup } | (typeof all)[number])[] = all.filter(x => x.step);
+  for (const g of hud.catalogGroups) {
+    const rs = rest.filter(x => x.row.group === g.id);
+    if (rs.length) out.push({ head: g }, ...rs);
+  }
+  // группа не из списка — в конце, без заголовка
+  out.push(...rest.filter(x => !hud.catalogGroups.some(g => g.id === x.row.group)));
+  return out;
 }
 
 /** Карточка помещения больницы ПК: состояние, нужное, должности, «Обставить», «Снести»; у кабинета врача — «Мой кабинет». */

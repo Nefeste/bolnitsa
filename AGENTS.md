@@ -137,8 +137,10 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # minute, the level in the save row; then departments on the map:
                                    # stripes at department doors, the «Отделение» tool and its ghost, a ward to surgery
                                    # with no scene rebuild, Ctrl+Z, the «Отделения» layer and legend, L in a cycle, the
-                                   # room card's department and its select, the «Пациенты» filter by department);
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|28` for one part, `-- --only 7,10,11` —
+                                   # room card's department and its select, the «Пациенты» filter by department; then
+                                   # the build catalog: groups by department in order, thumbnails of ready rooms, the
+                                   # chosen sample's thumbnail, the same groups for «Помещение»);
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|29` for one part, `-- --only 7,10,11` —
                                    # several in a row on one page, as in the full run
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
                                                      # (`-- --flow 40,4` — a bigger crowd, about 180 people,
@@ -337,7 +339,11 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   with its keys; `backdrop.ts` — the camera's circle over the rooms, pure), the player's
   settings (`settings.ts`: walls, camera, quality «auto», text size — `TEXT_SCALES` 1/1.15/1.3 as `--ui-k`: `zoom` of `#ui`,
   the font of map labels; kept in page storage, not in saves — bench and build change the view through
-  `showWalls`/`showQuality`, which do not write them); people and flow:
+  `showWalls`/`showQuality`, which do not write them); the build catalog (`docs/specs/2026-10-catalog.md`): groups by
+  department — `groups.ts` (`groupOf`, `groupOrder`, `grouped`), thumbnails of ready rooms — `thumbs.ts` (`sampleOf`: the
+  sample on its own small lot by `addReady`; `ThumbQueue`: one at a time while the catalog is open), drawn by
+  `src/render/thumbs.ts` (the map's floors, walls, doors and furniture, an ortho camera at the map's angle) into a PNG of
+  `src/render/png.ts` without waiting for the GPU; people and flow:
   pure window logic (`flow.ts` — path lines, room load and state, patient rows) and room status chips (`chips.ts`); popup
   notices under the clock — `toasts.ts` (the last three, real-time fade, only fresh ones; the «Журнал» tab keeps them all). The
   «Показатели» layer (`docs/specs/2026-10-metrics-layer.md`): `metrics.ts` — a room's column from its load (`columnOf`: height,

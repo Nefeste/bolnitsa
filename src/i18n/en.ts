@@ -110,6 +110,8 @@ export const en: Strings = {
     deptSame: (dept: string) => `already in «${dept}»`,
     deptNoMark: 'there is no mark',
     deptOk: 'Room department changed',
+    groupService: 'Diagnostics',
+    groupCommon: 'Shared',
     failed: (why: string) => `Not possible: ${why}`,
   },
   site: {

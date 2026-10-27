@@ -52,9 +52,9 @@ export class Stage {
   private floors: THREE.Mesh[];
   /** слитые сетки мебели — пересобираются стройкой */
   private furniture: THREE.Mesh[];
-  /** текстуры пола — одни на сцену: стройка пересобирает полы, а не рисует их заново */
-  private floorTex = new Map<FloorKind, FloorTex>();
-  private aniso: number;
+  /** текстуры пола — одни на сцену: стройка пересобирает полы, а не рисует их заново; их же берут миниатюры каталога */
+  readonly floorTex = new Map<FloorKind, FloorTex>();
+  readonly aniso: number;
   private marks: THREE.InstancedMesh;
   /** выделение и наведение: рамки помещений, кольца у людей, вспышки стройки */
   readonly highlight = new Highlight();

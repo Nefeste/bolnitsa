@@ -135,6 +135,14 @@
     .left .label { color: var(--muted); margin: 2px 0 0; }
     .list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
     .list button { width: 100%; display: flex; justify-content: space-between; gap: 8px; text-align: left; }
+    /* группы каталога стройки (spec docs/specs/2026-10-catalog.md): заголовок — тише строк, с квадратиком отделения */
+    .list li.ghead { margin: 6px 2px 1px; font-size: 11px; color: var(--muted); letter-spacing: .02em; }
+    .list li.ghead:first-child { margin-top: 0; }
+    /* строка готового помещения с миниатюрой: картинка слева на две строки, справа — название и цена */
+    .list button.thumbed { display: grid; grid-template-columns: 80px 1fr; grid-template-rows: auto auto; column-gap: 8px; row-gap: 2px; align-items: center; }
+    .list button.thumbed .thumb { grid-row: 1 / 3; width: 80px; height: 50px; border-radius: 3px; background: #2a3236; display: block; }
+    .list button.thumbed > span { align-self: end; }
+    .list button.thumbed > small { align-self: start; white-space: normal; }
     .list small { color: var(--muted); white-space: nowrap; }
     .list button.on small { color: #0b1a1e; }
     .ghostline { padding: 4px 6px; border-radius: 4px; background: rgba(0,0,0,.25); }

@@ -117,6 +117,9 @@ export const ru = {
     deptSame: (dept: string) => `отделение уже «${dept}»`,
     deptNoMark: 'отметки нет',
     deptOk: 'Отделение помещения изменено',
+    /** группы каталога (spec docs/specs/2026-10-catalog.md): без отделения — служба диагностики и общие помещения */
+    groupService: 'Диагностика',
+    groupCommon: 'Общие',
     failed: (why: string) => `Нельзя: ${why}`,
   },
   site: {
