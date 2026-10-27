@@ -118,7 +118,8 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # then the people: 59 Rocketbox looks with atlas and mask, the look by role, profession
                                    # and paramedic, the suit colour by role — read from the picture, people sit down, stand
                                    # up and lie, the mask in two channels on the GPU, people of one look with different hair
-                                   # and skin, the hair tint seen in the frame; then
+                                   # and skin, the hair tint seen in the frame, the elderly and «yellow» walk with the slow
+                                   # walk clip; then
                                    # scenario 1: «Кампания» on the start screen, the mentor's letters at the start and to the
                                    # hint states while building, the scenario's build catalog, your own office, the first three
                                    # patients set by the scenario, «Цели» and «Без обучения», «Письма» at the meeting, the
@@ -349,7 +350,9 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   lies in a bed (`Spot.bed`), shaped by the look's lying heights (`lie` in `bake.ts`). `bake.ts`
   bakes them in the bake workers (`bake-worker.ts` → `dist/bake.js`; `toWire`/`fromWire` hand them over without a copy):
   feet stay planted in walk and run (`lockFeet`, a two-bone leg reach), the seated pose sits on a chair of `SEAT`
-  (`catalog.ts`; `seatTo`), walk and run speed per look.
+  (`catalog.ts`; `seatTo`), walk and run speed per look. The slow walk (owner's decision #132): patients from 65 and
+  «yellow» walk at 0.8 of the pace — the rule and the times are the engine's (`slowWalker`, `slowOf`, `SLOW_SPEED_PC` in
+  `shift/walking.ts`), the slice marks them (`SLOW` in `P.flags`), the window walks them with the `WalkSlow` clip.
   Icons above heads — `icons.ts` (drawn after the frame); the queues overlay floor tint — `overlay.ts`.
 - `src/ui/` — panels (React) and their store; `src/ui/doctor/` — the patient card window, the doctor's panel and the
   «Просят посмотреть» tab, driven by `src/app/doctor.ts` (your own card — the timeline «Ход приёма» and one open step of

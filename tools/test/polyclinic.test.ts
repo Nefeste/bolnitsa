@@ -111,13 +111,16 @@ describe('поликлиника — план из базы', () => {
     expect(hash(day(2))).toBe(hash(day(2)));
   });
 
-  test('сутки: пациенты приходят, их принимают нанятые терапевты, без ушедших', () => {
+  test('сутки: пациенты приходят, их принимают нанятые терапевты, ушедших — не больше 2 %', () => {
     const s = shift(1);
     while (s.t < 32 * 3600) apply(db, s, { kind: 'advance', seconds: 600 });
     const d = s.history[0];
     const seen = Object.values(d.colleagues ?? {}).reduce((n, c) => n + c.seen, d.seen);
     expect(d.arrived).toBeGreaterThan(50);
     expect(seen).toBeGreaterThanOrEqual(d.arrived - 5);
-    expect(d.left).toBe(0);
+    // до медленного шага (0.42.0, решение владельца #132) в этих сутках не ушёл никто; теперь пожилые и «жёлтые» дольше
+    // идут к врачу и на обследования, и один из 85 не дождался: молодого «зелёного» обогнали «жёлтые». За неделю
+    // симулятора экономики в поликлинике ушли 1,6 % (до того — 1,9 %)
+    expect(d.left / d.arrived).toBeLessThanOrEqual(0.02);
   });
 });

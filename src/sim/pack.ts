@@ -9,6 +9,7 @@
 import type { Patient } from '../engine/med/types';
 import type { Doing, PersonSlice, ShiftSlice } from '../engine/shift/slice';
 import type { ShiftState, Triage, VisitKind } from '../engine/shift/types';
+import { slowOf } from '../engine/shift/walking';
 
 /** Заголовок: чисел (с частью 5б — касса за сутки и репутация, spec docs/specs/2026-10-economy.md). */
 export const HEADER = 14;
@@ -34,6 +35,8 @@ export const KINDS: VisitKind[] = ['appointment', 'walkIn', 'return', 'ambulance
  * «направлен к гастроэнтерологу» в карточке и в «Пациентах».
  */
 export const REFERRED = 4;
+/** Идёт медленным шагом — пожилой или «жёлтый» (spec docs/specs/2026-10-people.md, «Медленный шаг»; решение владельца #132). */
+export const SLOW = 8;
 /** Вид визита из `P.flags`. */
 export const kindOf = (flags: number): VisitKind => KINDS[flags & 3] ?? 'walkIn';
 
@@ -134,7 +137,7 @@ export function packSlice(
     buf[o + P.doing] = DOINGS.indexOf(p.doing);
     buf[o + P.bed] = p.bed ?? -1;
     const sp = s.patients[p.id];
-    buf[o + P.flags] = KINDS.indexOf(p.kind) | (sp?.ref !== undefined && sp.ref === sp.by ? REFERRED : 0);
+    buf[o + P.flags] = KINDS.indexOf(p.kind) | (sp?.ref !== undefined && sp.ref === sp.by ? REFERRED : 0) | (s.flow && sp && slowOf(sp) ? SLOW : 0);
     // часть 3 (spec docs/specs/2026-10-flow-ui.md): время текущего занятия, терпение, просьба врача
     buf[o + P.since] = p.since ?? slice.t;
     buf[o + P.limit] = p.limit ?? NO_TIME;
@@ -178,6 +181,8 @@ export interface PersonView {
   approve?: { at: number; until: number };
   /** направлен к тому, кто его ведёт (spec docs/specs/2026-10-specialists.md, часть 2) */
   ref?: true;
+  /** идёт медленным шагом (spec docs/specs/2026-10-people.md, «Медленный шаг») */
+  slow?: true;
 }
 
 export function personAt(buf: Int32Array, i: number): PersonView {
@@ -192,6 +197,7 @@ export function personAt(buf: Int32Array, i: number): PersonView {
     bed: buf[o + P.bed],
     kind: kindOf(buf[o + P.flags]),
     ...(buf[o + P.flags] & REFERRED ? { ref: true as const } : {}),
+    ...(buf[o + P.flags] & SLOW ? { slow: true as const } : {}),
     since: buf[o + P.since],
     limit: buf[o + P.limit],
     ...(buf[o + P.askUntil] !== NO_TIME ? { ask: { at: buf[o + P.askAt], until: buf[o + P.askUntil] } } : {}),
