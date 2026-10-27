@@ -40,8 +40,15 @@ export async function savesPart({ page, port, out, ok, fail, q, shots }) {
   await page.keyboard.press('Digit3');
   await until(() => window.__game.t >= 9.5 * 3600, null, 180000);
   await page.evaluate(() => window.__game.actions.setSpeed(0));
-  await page.waitForTimeout(300);
-  const before = await now();
+  // пауза доходит до потока расчёта не сразу: последний срез с часами и кассой может прийти после неё — ждать, пока окно
+  // дважды подряд видит одно и то же
+  let before = await now();
+  for (let i = 0; i < 40; i++) {
+    await page.waitForTimeout(300);
+    const next = await now();
+    if (JSON.stringify(next) === JSON.stringify(before)) break;
+    before = next;
+  }
 
   // «Игра» → «Сохранить»
   await page.click('#game-menu-open');

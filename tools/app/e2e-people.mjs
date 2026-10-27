@@ -5,7 +5,8 @@
 // профессий; цвет костюма — по должности: снимок с человеком и без него, разница — его цвета (медсестра — голубая,
 // анестезиолог и операционная сестра — бирюзовые), у врача халат белый; люди садятся и встают, лежащие — на постели или
 // каталке, а не на полу. Часть 2б: маска на видеокарте — в два канала; у людей одного вида — разные волосы и кожа, и оттенок
-// виден в кадре: снимок с оттенком человека и с волосами «как у вида» разные. Снимки — `e2e-people-*.jpg`.
+// виден в кадре: снимок с оттенком человека и с волосами «как у вида» разные. Медленный шаг (решение владельца #132):
+// пожилые и «жёлтые» идут анимацией медленного шага, остальные — обычного. Снимки — `e2e-people-*.jpg`.
 import { join } from 'node:path';
 
 /** Сколько видов в игре (src/render/cast.ts, LOOKS). */
@@ -212,5 +213,33 @@ export async function peoplePart({ page, port, out, ok, fail, q, shots }) {
     const n5 = await shot('e2e-people-5.jpg');
     if (diff >= 15) ok(`оттенок виден: у ${dyed.look} волосы ${hairOf(dyed)} вместо своих — ${diff} точек кадра другие (снимок ${n5} КБ)`);
     else fail(`оттенок не виден: ${diff} точек, ${dyed.look}, ${hairOf(dyed)}`);
+  }
+
+  // медленный шаг (spec, «Медленный шаг»; решение владельца #132): пожилые от 65 и «жёлтые» идут анимацией медленного шага,
+  // остальные пациенты — обычного; кто медленный — по пометке движка в срезе, и она та же, что правило
+  await page.evaluate(() => window.__game.actions.setSpeed(1));
+  const gait = await until(
+    () => {
+      const g = window.__game;
+      const rows = [];
+      for (const w of g.crowd.walkers.values()) {
+        if (w.staff || w.state !== 'walk' || !(w.v > 0) || !w.key.startsWith('p:')) continue;
+        const p = g.pop.now(w.key);
+        if (!p) continue;
+        rows.push({ slow: !!w.slow, clip: w.clip, rule: p.row.age >= 65 || p.triage === 'yellow', v: w.v });
+      }
+      return rows.some(r => r.slow) && rows.some(r => !r.slow) ? rows : null;
+    },
+    null,
+    90000,
+  ).then(h => h.jsonValue(), () => null);
+  if (!gait) fail('медленный шаг: за полторы минуты не нашлось сразу идущих медленно и обычно');
+  else {
+    const slow = gait.filter(r => r.slow);
+    const fast = gait.filter(r => !r.slow);
+    // номера анимаций — src/render/crowd.ts: 1 — шаг, 6 — медленный шаг
+    if (gait.every(r => r.slow === r.rule) && slow.every(r => r.clip === 6) && fast.every(r => r.clip === 1)) {
+      ok(`медленный шаг: идут ${slow.length} медленно (анимация медленного шага) и ${fast.length} обычно — как велит правило: от 65 лет или «жёлтый»`);
+    } else fail(`медленный шаг: ${JSON.stringify(gait)}`);
   }
 }
