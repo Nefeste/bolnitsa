@@ -179,7 +179,7 @@ function levelsOf(db: ContentDb): Record<Manage, LevelRow> {
   const row = (m: Manage): LevelRow => {
     const l = levelOf(db, m);
     return {
-      inflow: l.inflow, patience: l.patience, salary: l.salary, breakdown: l.breakdown, ...(l.overdraft !== undefined ? { overdraft: l.overdraft } : {}),
+      inflow: l.inflow, patience: l.patience, salary: l.salary, pay: l.pay, breakdown: l.breakdown, ...(l.overdraft !== undefined ? { overdraft: l.overdraft } : {}),
       cash: { empty: startCash(db, 'empty', m), preset: startCash(db, 'preset', m), poly: startCash(db, 'poly', m) },
     };
   };

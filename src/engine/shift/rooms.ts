@@ -8,6 +8,7 @@ import type { ContentDb, Id } from '../../content/types';
 import type { Payer } from '../economy/economy';
 import { roomUpkeep, type Site } from '../hospital/site';
 import { type StaffMember, wageOf } from '../hospital/staff';
+import { scaledInt } from './manage';
 import { DAY, type RoomDay, type ShiftPatient, type ShiftState } from './types';
 
 /** Общее: коридор, стройка, кредит, проценты, выплаты уволенным, учёба, люди в резерве и остаток округлений. */
@@ -92,9 +93,10 @@ export function accrueRooms(db: ContentDb, s: ShiftState, dt: number, total: num
 /**
  * Закрытый приём заплатил `paid` ₽ (`caseIncome` в src/engine/economy/economy.ts): оплаченные обследования — помещениям, где
  * их сделали (`examRooms`; нет — кабинету врача), по той же цене, что там; обращение — остаток — кабинету врача (`caseRoom`).
- * Не оплаченные обследования (`unindicated`) — по одному на каждое такое среди сделанных, как там.
+ * Не оплаченные обследования (`unindicated`) — по одному на каждое такое среди сделанных, как там. `pay` — множитель оплаты
+ * уровня «Управления», % (решение владельца #151): им же умножена каждая цена обследования, остаток — опять обращению.
  */
-export function caseIncomeRooms(db: ContentDb, s: ShiftState, p: ShiftPatient, payer: Payer, paid: number, unindicated: readonly Id[]) {
+export function caseIncomeRooms(db: ContentDb, s: ShiftState, p: ShiftPatient, payer: Payer, paid: number, unindicated: readonly Id[], pay = 100) {
   if (!pc(s)) return;
   const t = db.economy.tariffs;
   const price = payer === 'oms' ? t.omsExam : payer === 'dms' ? t.dms.price : t.self.price;
@@ -102,7 +104,7 @@ export function caseIncomeRooms(db: ContentDb, s: ShiftState, p: ShiftPatient, p
   const office = caseRoom(s, p);
   let exams = 0;
   for (const id of p.done) {
-    const sum = Math.round(((db.exams[id]?.cost ?? 0) * price) / 100);
+    const sum = scaledInt(Math.round(((db.exams[id]?.cost ?? 0) * price) / 100), pay);
     if (sum === 0) continue;
     const i = cut.indexOf(id);
     if (i >= 0) {

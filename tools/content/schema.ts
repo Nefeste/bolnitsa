@@ -999,6 +999,7 @@ const manageLevel = z.strictObject({
   inflow: z.number().int().min(10).max(300),
   patience: z.number().int().min(10).max(300),
   salary: z.number().int().min(10).max(300),
+  pay: z.number().int().min(10).max(300),
   breakdown: z.number().int().min(0).max(300),
   overdraft: z.number().int().min(0),
   budget: z.enum(['modest', 'normal', 'generous']),

@@ -265,12 +265,12 @@ export const en: Strings = {
     axis: 'Management',
     name: { calm: 'Calm', normal: 'Normal', hard: 'Hard' },
     line: {
-      calm: 'Fewer patients, and they wait longer; staff cost less, machines break less often; more money at the start.',
-      normal: 'Flow, patience, wages and cash as designed.',
-      hard: 'More patients, and they wait less; staff cost more, machines break more often; less money at the start.',
+      calm: 'Fewer patients, and they wait longer; staff cost less, machines break less often; treatment pays more, and there is more money at the start.',
+      normal: 'Flow, patience, wages, payments and cash as designed.',
+      hard: 'More patients, and they wait less; staff cost more, machines break more often; treatment pays less, and there is less money at the start.',
     },
-    numbers: (inflow: string, patience: string, salary: string, breakdown: string, limit: string, cash?: string) =>
-      `flow ${inflow} · patience ${patience} · wages ${salary} · breakdowns ${breakdown} · overdraft down to ${limit}${cash ? ` · cash ${cash}` : ''}`,
+    numbers: (inflow: string, patience: string, salary: string, pay: string, breakdown: string, limit: string, cash?: string) =>
+      `flow ${inflow} · patience ${patience} · wages ${salary} · payments ${pay} · breakdowns ${breakdown} · overdraft down to ${limit}${cash ? ` · cash ${cash}` : ''}`,
     soft: 'Soft mode',
     softHint: 'Whoever was to die is transferred to the regional hospital in a severe state instead. The case review is the same.',
     medicine: 'Hints in the patient card — from «Intern» to «Doctor» — are chosen in the doctor window.',

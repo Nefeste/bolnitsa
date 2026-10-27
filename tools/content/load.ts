@@ -59,17 +59,17 @@ export function dayErrors(day: DaySrc): string[] {
  */
 /**
  * Уровни «Управления» (spec docs/specs/2026-10-difficulty.md): у «Спокойно» каждое число не труднее «Обычно», у «Трудно» — не
- * легче, и хоть одно у каждого — другое: поток и поломки — меньше или больше, терпение, предел минуса и касса начала —
- * наоборот. Зарплаты — дешевле на «Спокойно», дороже на «Трудно». `overdraft` и `budgets` — «Обычно» из money.yaml и
- * economy.yaml.
+ * легче, и хоть одно у каждого — другое: поток и поломки — меньше или больше, терпение, оплата случаев, предел минуса и
+ * касса начала — наоборот. Зарплаты — дешевле на «Спокойно», дороже на «Трудно». `overdraft` и `budgets` — «Обычно» из
+ * money.yaml и economy.yaml.
  */
 export function difficultyErrors(d: DifficultySrc, overdraft: number, budgets: Record<'modest' | 'normal' | 'generous', number>): string[] {
   const out: string[] = [];
   const f = 'hospital/difficulty.yaml';
-  const n = { inflow: 100, patience: 100, salary: 100, breakdown: 100, overdraft, budget: budgets.normal };
+  const n = { inflow: 100, patience: 100, salary: 100, pay: 100, breakdown: 100, overdraft, budget: budgets.normal };
   const of = (l: DifficultySrc['calm']) => ({ ...l, budget: budgets[l.budget] });
-  // больше — легче: терпение, предел минуса, касса начала; меньше — легче: поток, зарплаты, поломки
-  const easier = (k: keyof typeof n, a: number, b: number) => (k === 'patience' || k === 'overdraft' || k === 'budget' ? a >= b : a <= b);
+  // больше — легче: терпение, оплата случаев, предел минуса, касса начала; меньше — легче: поток, зарплаты, поломки
+  const easier = (k: keyof typeof n, a: number, b: number) => (k === 'patience' || k === 'pay' || k === 'overdraft' || k === 'budget' ? a >= b : a <= b);
   for (const [level, l, sign] of [['calm', of(d.calm), 1], ['hard', of(d.hard), -1]] as const) {
     let same = true;
     for (const k of Object.keys(n) as (keyof typeof n)[]) {

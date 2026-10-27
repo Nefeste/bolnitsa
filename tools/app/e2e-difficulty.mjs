@@ -56,14 +56,14 @@ export async function difficultyPart({ page, port, out, ok, fail, q, shots }) {
   await page.waitForSelector('#start-roles #difficulty', { timeout: 10000 });
   const a = await choice();
   const heads = await page.$$eval('#start-roles h2', els => els.map(e => e.textContent ?? ''));
-  if (JSON.stringify(a.on) === '["normal"]' && a.soft === false && heads[0] === 'Сложность' && heads.includes('Кто вы') && /^поток ×1 · терпение ×1 · зарплаты ×1 · поломки ×1 · в минус — до 300 000 ₽ · касса /.test(flat(a.numbers))) {
+  if (JSON.stringify(a.on) === '["normal"]' && a.soft === false && heads[0] === 'Сложность' && heads.includes('Кто вы') && /^поток ×1 · терпение ×1 · зарплаты ×1 · оплата ×1 · поломки ×1 · в минус — до 300 000 ₽ · касса /.test(flat(a.numbers))) {
     ok(`второй шаг: «Сложность» над «Кто вы»; по умолчанию «Обычно», мягкий режим выключен; «${flat(a.numbers)}»`);
   } else fail(`второй шаг по умолчанию: ${JSON.stringify({ a, heads })}`);
   await page.click('#manage-calm');
   await page.click('#soft');
   const b = await choice();
   const calmCash = rub(flat(b.numbers).split('касса ')[1] ?? '');
-  if (JSON.stringify(b.on) === '["calm"]' && b.soft === true && b.line.startsWith('Больных меньше') && /^поток ×0,8 · терпение ×1,5 · зарплаты ×0,85 · поломки ×0,5 · в минус — до 500 000 ₽ · касса /.test(flat(b.numbers)) && calmCash > rub(flat(a.numbers).split('касса ')[1] ?? '')) {
+  if (JSON.stringify(b.on) === '["calm"]' && b.soft === true && b.line.startsWith('Больных меньше') && /^поток ×0,8 · терпение ×1,5 · зарплаты ×0,85 · оплата ×1,1 · поломки ×0,5 · в минус — до 500 000 ₽ · касса /.test(flat(b.numbers)) && calmCash > rub(flat(a.numbers).split('касса ')[1] ?? '')) {
     ok(`«Спокойно» и мягкий режим: «${b.line}» — «${flat(b.numbers)}» (снимок ${await shot('e2e-difficulty-1-start.jpg')} КБ)`);
   } else fail(`«Спокойно» на втором шаге: ${JSON.stringify(b)}`);
 

@@ -1467,6 +1467,8 @@ export interface ManageLevel {
   inflow: number;
   patience: number;
   salary: number;
+  /** оплата случаев — закрытого приёма и стационара, % (решение владельца #151) */
+  pay: number;
   breakdown: number;
   overdraft: number;
   budget: 'modest' | 'normal' | 'generous';

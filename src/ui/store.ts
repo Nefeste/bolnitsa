@@ -230,6 +230,8 @@ export interface LevelRow {
   inflow: number;
   patience: number;
   salary: number;
+  /** оплата случаев (решение владельца #151) */
+  pay: number;
   breakdown: number;
   overdraft?: number;
   cash: Record<'empty' | 'preset' | 'poly', number>;
