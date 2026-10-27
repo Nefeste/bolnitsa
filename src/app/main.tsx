@@ -87,6 +87,8 @@ const actions: Actions = {
   toggleLayers: later('toggleLayers'),
   toggleQueues: later('toggleQueues'),
   toggleDepts: later('toggleDepts'),
+  toggleProblems: later('toggleProblems'),
+  goProblem: later('goProblem'),
   setMetric: later('setMetric'),
   doctor: later('doctor'),
   money: later('money'),

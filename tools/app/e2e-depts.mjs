@@ -160,17 +160,17 @@ export async function deptsPart({ page, port, out, ok, fail, q, shots }) {
   if (inside && !place.menu && place.hit.length === 0 && place.rows === layer.legend.length)
     ok(`легенда при закрытом меню: справа внизу (${Math.round(place.legend.l)}–${Math.round(place.legend.r)} × ${Math.round(place.legend.t)}–${Math.round(place.legend.b)} на ${place.w} × ${place.h}), ни на какую панель не ложится (снимок ${await shot('e2e-depts-2.jpg')} КБ)`);
   else fail(`легенда при закрытом меню: ${JSON.stringify(place)}`);
-  // L — по кругу: «Отделения» → выключены → «Очереди» → «Отделения»
+  // L — по кругу: «Отделения» → «Проблемы» (с 0.47.0, spec docs/specs/2026-10-layers.md) → выключены → «Очереди» → «Отделения»
   const layersNow = () => page.evaluate(() => {
     const l = window.__game.store.get().layers;
-    return `${l.queues ? 'q' : '-'}${l.depts ? 'd' : '-'}`;
+    return `${l.queues ? 'q' : '-'}${l.depts ? 'd' : '-'}${l.problems ? 'p' : '-'}`;
   });
   const seq = [];
-  for (let k = 0; k < 3; k++) {
+  for (let k = 0; k < 4; k++) {
     await page.keyboard.press('KeyL');
     seq.push(await layersNow());
   }
-  if (seq.join(' ') === '-- q- -d') ok(`L по кругу: ${seq.join(' → ')}`);
+  if (seq.join(' ') === '--p --- q-- -d-') ok(`L по кругу: ${seq.join(' → ')}`);
   else fail(`L по кругу: ${seq.join(' → ')}`);
 
   // ---------------------------------------------------------------- карточка палаты
