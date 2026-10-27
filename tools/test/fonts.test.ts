@@ -32,7 +32,9 @@ describe('шрифт игры', () => {
     const faces = [...page.matchAll(/@font-face \{ font-family: "IBM Plex Sans"; src: url\("assets\/fonts\/([^"]+)"\)[^}]*font-style: (normal|italic);/g)];
     expect(faces.map(f => f[2]).sort()).toEqual(['italic', 'normal']);
     for (const f of faces) expect(existsSync(join(fonts, f[1]))).toBe(true);
-    expect(page).toMatch(/html, body \{[^}]*font: 13px\/1\.35 "IBM Plex Sans", system-ui/);
+    // основной размер — токен шкалы, 13 px (spec docs/specs/2026-10-clinical-style.md)
+    expect(page).toMatch(/html, body \{[^}]*font: var\(--fs-body\)\/1\.35 "IBM Plex Sans", system-ui/);
+    expect(page).toMatch(/--fs-body: 13px;/);
     // своими адресами: CSP страницы пускает только свои файлы
     expect(page).toContain("default-src 'self'");
     expect(readFileSync(join(root, 'tools/app/build.mjs'), 'utf8')).toContain("cpSync(join(root, 'assets/fonts'), join(out, 'assets/fonts'), { recursive: true });");

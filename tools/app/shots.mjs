@@ -139,7 +139,9 @@ try {
     await page.waitForFunction(() => (window.__game.store.get().doctor?.state?.asks.length ?? 0) > 0, null, { timeout: 120000 });
     const id = await page.evaluate(() => window.__game.store.get().doctor.state.asks[0].id);
     await page.click(`#ask-look-${id}`);
-    await page.waitForSelector('#dcard', { timeout: 30000 });
+    // больной сначала идёт к вам в кабинет (spec docs/specs/2026-10-owner-play-2.md): часы ×12, карта — когда вошёл
+    await page.keyboard.press('Digit3');
+    await page.waitForSelector('#dcard', { timeout: 120000 });
     await page.waitForTimeout(400);
     await shot('6-doctor-card');
   }

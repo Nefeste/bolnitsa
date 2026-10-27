@@ -393,7 +393,11 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   `data-enc` (or `data-exam`) under the cursor opens its article; `src/i18n/` — every player-facing string, Russian and
   English (English typed as the Russian; the medical database is Russian-only for now and shows as is in English mode);
   `tools/test/i18n.test.ts` fails on Cyrillic in strings elsewhere in `src/app`, `src/ui`, `src/render`, `src/sim`.
-- `electron/` — the main process (window, `app://`, no network) and preload; `app/index.html` — the page.
+- `electron/` — the main process (window, `app://`, no network) and preload; `app/index.html` — the page. Its CSS takes
+  colours, font sizes and radii only from the `:root` tokens — the dark clinical style (owner's decision #69,
+  `docs/specs/2026-10-clinical-style.md`): surfaces, text, accent (`--accent-text` for text), states, seven font sizes;
+  `tools/test/style.test.ts` fails on a colour or a font size outside the tokens and on text below 4.5:1 over a white or
+  black floor behind the glass.
 - `assets/` — CC0 models, Rocketbox people under MIT (`assets/models/rocketbox/`, made by `tools/app/people.mjs`), the
   game's font IBM Plex Sans under SIL OFL 1.1 (`assets/fonts/`, unmodified files with `OFL.txt`; owner's decision #107)
   and `LICENSES.md` (sources, licenses, SHA-256; MIT text verbatim); never add a model or a font without its line there.
