@@ -14,11 +14,13 @@
 // Расталкивание — только здесь, движок не трогается: идущие держатся правой стороны прохода и раздвигаются, если ближе
 // SPACE; встречные в двери пропускают друг друга.
 import { SLOW_PACE, WALK_SPEED_PC } from '../engine/shift/walking';
-import type { Look } from './bake';
+import type { ClipName, Look } from './bake';
 import type { Layout } from './layout';
 import type { Paths } from './path';
 import type { Spot } from './place';
 
+/** Анимации по номерам — как CLIP_NAMES в bake.ts (здесь без Three.js; тест сверяет списки). */
+export const CLIPS: readonly ClipName[] = ['Idle', 'Walk', 'Run', 'SitDown', 'StandUp', 'Sit', 'WalkSlow', 'SitWork', 'SitLook', 'Papers'];
 /** Номера анимаций — как CLIP_NAMES в bake.ts. */
 export const IDLE = 0;
 export const WALK = 1;
@@ -28,6 +30,18 @@ export const STANDUP = 4;
 export const SIT = 5;
 /** медленный шаг (spec docs/specs/2026-10-people.md, «Медленный шаг»): пожилые и «жёлтые» */
 export const WALK_SLOW = 6;
+/** за работой и в ожидании (spec docs/specs/2026-10-staff-motion.md, часть 1): петля за столом, оглядывается сидя, бумаги */
+export const SIT_WORK = 7;
+export const SIT_LOOK = 8;
+export const PAPERS = 9;
+
+/**
+ * Жесты поверх покоя (spec docs/specs/2026-10-staff-motion.md, часть 1): первый — через `GESTURE_FIRST` секунд на экране, как
+ * человек сел или встал на пост (при ×1 ждущий сидит в зале меньше минуты на экране), дальше — раз в `GESTURE`; от и до, срок —
+ * от ключа человека и номера жеста: соседи не в такт.
+ */
+export const GESTURE_FIRST: readonly [number, number] = [2, 15];
+export const GESTURE: readonly [number, number] = [20, 40];
 
 /** Сколько секунд одна анимация переходит в другую (смешивание поз, people.ts): без рывка. */
 export const FADE = 0.25;
@@ -99,6 +113,13 @@ export interface Walker {
   /** темп покоя, 0,85–1,15 по ключу: стоящие и ждущие не дышат в такт (spec 2026-10-aaa-polish, «Жизнь») */
   idle: number;
   /**
+   * жест поверх покоя (spec docs/specs/2026-10-staff-motion.md, часть 1): играет ли сейчас разовый клип (`clip`), через
+   * сколько секунд на экране следующий и сколько их было — от номера и ключа срок следующего
+   */
+  once: boolean;
+  gap: number;
+  gestures: number;
+  /**
    * везут на каталке (spec docs/specs/2026-10-orderlies.md): ключ того, кто везёт; лежит на ней перед ним, пока не отпустят
    * (`release`); перекладывают на неё — `t` и (fx, fy, fz), как у других переходов
    */
@@ -107,11 +128,31 @@ export interface Walker {
   out?: 'ambulance';
 }
 
-/** Темп покоя по ключу: ровный разброс 0,85–1,15, один и тот же у одного человека (хэш FNV-1a — перемешивает все знаки). */
-export function idleRate(key: string): number {
+/** Хэш FNV-1a ключа: перемешивает все знаки. */
+function hashOf(key: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 0x01000193) >>> 0;
-  return 0.85 + (h % 31) / 100;
+  return h;
+}
+
+/** Темп покоя по ключу: ровный разброс 0,85–1,15, один и тот же у одного человека. */
+export function idleRate(key: string): number {
+  return 0.85 + (hashOf(key) % 31) / 100;
+}
+
+/**
+ * Через сколько секунд на экране жест номер `n` после прежнего (spec docs/specs/2026-10-staff-motion.md, часть 1): первый
+ * (`n` = 0) — `GESTURE_FIRST`, следующие — `GESTURE`; срок идёт, только пока человек сидит или стоит на месте.
+ */
+export function gestureGap(key: string, n: number): number {
+  const k = (hashOf(`${key}#${n}`) % 1000) / 1000;
+  const [lo, hi] = n === 0 ? GESTURE_FIRST : GESTURE;
+  return lo + k * (hi - lo);
+}
+
+/** С какой доли петли начинает человек: соседи за столами поворачивают голову не разом. */
+export function loopPhase(key: string): number {
+  return (hashOf(`${key}@`) % 1000) / 1000;
 }
 
 /** Каталка (spec docs/specs/2026-10-orderlies.md): верх матраса — на этой высоте лежит пациент, м. */
@@ -147,6 +188,8 @@ export class Crowd {
   /** длительности анимаций SitDown и StandUp по виду, с */
   private sitDur: number[];
   private standDur: number[];
+  /** длительности анимаций по виду и номеру, с — разовые клипы кончаются по ним */
+  private dur: number[][];
   /** куда выйти из больницы: точка на улице за главным входом */
   exit: { x: number; z: number; cell: number };
   /** откуда входит привезённый скорой: за входом для скорой (у больницы ПК; иначе — главный) */
@@ -159,6 +202,7 @@ export class Crowd {
   ) {
     this.sitDur = looks.map(k => k.clips.SitDown.duration);
     this.standDur = looks.map(k => k.clips.StandUp.duration);
+    this.dur = looks.map(k => CLIPS.map(c => k.clips[c].duration));
     this.exit = exitOf(l, 'main');
     this.ambulance = exitOf(l, 'ambulance');
   }
@@ -184,7 +228,7 @@ export class Crowd {
     const w: Walker = {
       key, look, staff, x: from.x, y: 0, z: from.z, heading: 0, lie: 0, lat: KEEP_RIGHT, state: 'idle', pts: null, cum: null, seg: 0, due,
       at: undefined, goals: [], dwell: 0, t: 0, fx: 0, fz: 0, fy: 0, clip: IDLE, clipTime: (key.length * 0.37) % 3, loop: true, leaving: false,
-      fromClip: IDLE, fromTime: 0, fromLoop: true, fade: 0, yield: 0, v: 0, idle: idleRate(key),
+      fromClip: IDLE, fromTime: 0, fromLoop: true, fade: 0, yield: 0, v: 0, idle: idleRate(key), once: false, gap: gestureGap(key, 0), gestures: 0,
     };
     this.walkers.set(key, w);
     if (staff && !enter) this.settle(w, spot);
@@ -209,9 +253,14 @@ export class Crowd {
       w.y = r.y;
       w.heading = spot.yaw;
       w.state = 'sit';
-      // сидит — петля сидя, с секунды по ключу: соседи на скамье дышат не в такт
-      this.setClip(w, SIT, true);
-      w.clipTime = (w.key.length * 0.71) % 5;
+      // сидит — петля сидя, с секунды по ключу: соседи на скамье дышат не в такт; за столом — петля работы с доли по ключу
+      if (spot.work === 'desk') {
+        this.setClip(w, SIT_WORK, true);
+        w.clipTime = loopPhase(w.key) * this.dur[w.look][SIT_WORK];
+      } else {
+        this.setClip(w, SIT, true);
+        w.clipTime = (w.key.length * 0.71) % 5;
+      }
       w.lie = 0;
     } else if (spot.pose === 'lie') {
       w.x = spot.x;
@@ -335,9 +384,51 @@ export class Crowd {
       w.fromLoop = w.loop;
       w.fade = FADE;
       w.clipTime = 0;
+      w.once = false;
     }
     w.clip = c;
     w.loop = loop;
+  }
+
+  /** Разовый клип (жест), потом — снова петля покоя (`gesture`). */
+  private play(w: Walker, c: number) {
+    this.setClip(w, c, false);
+    w.once = true;
+  }
+
+  /** Петля покоя на месте: сидя за столом — работа, сидя — покой сидя, иначе — стоя. */
+  private restClip(w: Walker): number {
+    if (w.state !== 'sit') return IDLE;
+    return w.at?.work === 'desk' ? SIT_WORK : SIT;
+  }
+
+  /**
+   * Жесты поверх покоя (spec docs/specs/2026-10-staff-motion.md, часть 1): сидящий на стуле или скамье (ждёт, отдыхает)
+   * оглядывается, стоящий на посту берёт бумаги — в свой срок (`gestureGap`); доиграл — снова петля покоя. Лежащие, сидящие
+   * за столом и те, кому идти дальше, — без жестов; в паузе часы стоят (dt = 0).
+   */
+  private gesture(w: Walker, dt: number) {
+    if (w.once) {
+      if (w.clipTime >= this.dur[w.look][w.clip]) this.setClip(w, this.restClip(w), true);
+      return;
+    }
+    const sit = w.state === 'sit' && w.clip === SIT && w.at?.work === undefined;
+    const papers = w.state === 'idle' && w.staff && w.clip === IDLE && w.at?.work === 'stand' && w.goals.length === 0 && !w.leaving;
+    if (!sit && !papers) return;
+    w.gap -= dt;
+    if (w.gap > 0) return;
+    this.play(w, sit ? SIT_LOOK : PAPERS);
+    w.gap = gestureGap(w.key, ++w.gestures);
+  }
+
+  /**
+   * Обход (spec docs/specs/2026-10-staff-motion.md, часть 1): остановки подряд — у каждой стоит её `dwell` (секунд при ×1),
+   * у койки берёт бумаги; последняя — где останется.
+   */
+  route(w: Walker, spots: readonly Spot[]) {
+    w.due = NaN;
+    w.goals = [...spots];
+    if (w.state === 'walk') this.startWalk(w, w.goals[0]);
   }
 
   /** Путь от того места, где человек сейчас, к цели (`null` — к выходу). */
@@ -429,6 +520,7 @@ export class Crowd {
         const go = (next && next.key !== w.at?.key) || w.leaving;
         if (!go || w.dwell > 0 || v === 0) {
           if (next && next.key === w.at?.key) w.goals.shift();
+          this.gesture(w, dt);
           return;
         }
         if (w.state === 'sit') {
@@ -498,8 +590,8 @@ export class Crowd {
         if (w.t >= dur) {
           w.state = 'sit';
           w.heading = spot.yaw;
-          // петля сидя начинается с последней позы посадки (tools/app/people.mjs, `seated`)
-          this.setClip(w, SIT, true);
+          // петля сидя начинается с последней позы посадки (tools/app/people.mjs, `seated`); за столом — петля работы
+          this.setClip(w, this.restClip(w), true);
         }
         return;
       }
@@ -616,7 +708,9 @@ export class Crowd {
         } else {
           w.state = 'idle';
           if (!Number.isNaN(goal.yaw)) w.heading = goal.yaw;
-          this.setClip(w, IDLE, true);
+          // у койки на обходе — бумаги в руках (spec docs/specs/2026-10-staff-motion.md, часть 1)
+          if (goal.work === 'bed') this.play(w, PAPERS);
+          else this.setClip(w, IDLE, true);
         }
       }
     }

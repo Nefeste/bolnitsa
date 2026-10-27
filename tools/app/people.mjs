@@ -14,7 +14,8 @@
 //   непрозрачность прядей; маска — PNG: R — одежда, которая красится цветом должности, G — кожа (½) и волосы (1), их
 //   красит оттенок человека (spec, часть 2б);
 // - анимации набора: стоит, идёт, бежит, садится, встаёт; у ходьбы и бега корень — на месте, а скорость шага — в extras
-//   корня; посадка и вставание — с движением таза назад и вперёд, без неподвижного начала и конца.
+//   корня; посадка и вставание — с движением таза назад и вперёд, без неподвижного начала и конца; за столом, оглядывается
+//   сидя и бумаги в руках — отрезки длинных клипов набора (`span`).
 //
 // Node 22: fetch ходит через HTTPS_PROXY только с NODE_USE_ENV_PROXY=1 — скрипт перезапускает себя с ним сам (как
 // spikes/realistic-people/tools/fetch.mjs).
@@ -142,9 +143,16 @@ const FACE_REF = ['Medical_Female_02', 'Medical_Male_01', 'Male_Adult_08', 'Busi
  * петля шага, смещение вычитается, `keep` — как в наборе (таз уходит назад на стул), `after` — продолжение посадки:
  * начинается там, где она кончилась, `seated` — петля сидя (spec, «Анимации», часть 2): таз там, где посадка кончилась, а
  * петля начинается с кадра, ближайшего к последней позе посадки, — переход без рывка.
+ *
+ * `span` — отрезок файла по полу, с: `[от, до]`; два отрезка — склейка: конец первого переходит в начало второго за `BLEND`
+ * (повороты костей — сферически). Отрезки выбраны пробой (spec docs/specs/2026-10-staff-motion.md, «Проба»): петля — с
+ * ровным швом и с движением внутри, разовый клип — от позы покоя до неё же; в наборе клипы по 8–46 с, текстуре костей
+ * столько кадров не нужно.
  */
 /** Длина петли сидя, с: от и до — выбирается кадр, где поза ближе всего к первой (шов петли). */
 const SEATED = [3, 8];
+/** Сколько секунд конец первого отрезка склейки смешивается с началом второго. */
+const BLEND = 0.4;
 
 const CLIPS = [
   { name: 'Idle', file: 'all_animations_max_motextr_static/{s}_idle_breathe_01.max.fbx', root: 'fixed' },
@@ -155,6 +163,11 @@ const CLIPS = [
   { name: 'Sit', file: 'all_animations_max_motextr_static/{s}_sit_chair_idle_neutral_01.max.fbx', root: 'seated' },
   // медленный шаг пожилых и «жёлтых» (spec, «Медленный шаг»; решение владельца #132) — последним: прежние клипы те же
   { name: 'WalkSlow', file: 'all_animations_max_motextr_xy/{s}_walk_slow_01.max.fbx', root: 'loop' },
+  // персонал в движении (spec docs/specs/2026-10-staff-motion.md, часть 1) — после прежних, их номера те же: за столом — петля
+  // с поворотом головы; оглядывается сидя и бумаги в руках (поднял, прочёл, опустил) — разовые, от покоя до покоя
+  { name: 'SitWork', file: 'all_animations_max_motextr_static/{s}_sit_table_idle_neutral_01.max.fbx', root: 'seated', span: { m: [18.1, 22.1], f: [3.8, 8.37] } },
+  { name: 'SitLook', file: 'all_animations_max_motextr_static/{s}_sit_chair_idle_look_around.max.fbx', root: 'seated', span: { m: [0, 5.07], f: [[0, 2.93], [6.4, 7.17]] } },
+  { name: 'Papers', file: 'all_animations_max_motextr_static/{s}_documents_check.max.fbx', root: 'fixed', span: { m: [[0.3, 4], [13.3, 16.1]], f: [[1.5, 6], [9.6, 12.13]] } },
 ];
 
 /** Кости тела: Biped → имя в игре (как у людей Quaternius; GLTFLoader убирает из имён точки — `UpperArmL`). */
@@ -577,6 +590,8 @@ function convert(src, look) {
   let sitEnd = null;
   /** петля сидя: с какого кадра из скольких, насколько далека её первая поза от последней позы посадки, разница таза, см */
   let seated = null;
+  /** клипы-отрезки (`span`): какие кадры файла и шов — для строки сборки */
+  const spans = {};
   for (const c of CLIPS) {
     const clip = fbx(src, `Assets/Animations/${c.file.replace('{s}', sex)}`).animations[0];
     const track = name => clip.tracks.find(t => t.name === name);
@@ -592,16 +607,28 @@ function convert(src, look) {
     // петля сидя — с кадра, ближайшего к последней позе посадки (сумма 1 − |cos| половин углов по костям тела), и до кадра
     // через 3–8 с, ближайшего к первому: в наборе петля — 33–36 с, столько кадров текстуре костей не нужно
     let from = 0;
-    if (c.root === 'seated') {
-      const quat = (f, bip) => {
-        const t = track(`${bip}.quaternion`);
-        return t ? Array.from(t.values.slice(f * 4, f * 4 + 4)) : null;
-      };
-      const gap = (f, pose) => ORDER.reduce((sum, bip) => {
-        const a = quat(f, bip);
-        const q = pose(bip);
-        return a && q ? sum + 1 - Math.abs(a[0] * q[0] + a[1] * q[1] + a[2] * q[2] + a[3] * q[3]) : sum;
-      }, 0);
+    const quat = (f, bip) => {
+      const t = track(`${bip}.quaternion`);
+      return t ? Array.from(t.values.slice(f * 4, f * 4 + 4)) : null;
+    };
+    const gap = (f, pose) => ORDER.reduce((sum, bip) => {
+      const a = quat(f, bip);
+      const q = pose(bip);
+      return a && q ? sum + 1 - Math.abs(a[0] * q[0] + a[1] * q[1] + a[2] * q[2] + a[3] * q[3]) : sum;
+    }, 0);
+    // отрезок файла (`span`): кадры — ближайшие к секундам; два отрезка — склейка
+    const span = c.span?.[sex];
+    const frameAt = s => Math.max(0, Math.min(nk - 1, Math.round(s / step0)));
+    const cut = Array.isArray(span?.[0]) ? span.map(p => p.map(frameAt)) : null;
+    if (cut && c.root !== 'fixed' && c.root !== 'seated') throw new Error(`${c.name}: склейка — только у клипа на месте или сидя`);
+    if (cut) {
+      a = from = cut[0][0];
+      b = cut[1][1];
+    } else if (span) {
+      a = from = frameAt(span[0]);
+      b = frameAt(span[1]);
+      spans[c.name] = `${a}–${b}, шов ${gap(b, bip => quat(a, bip)).toFixed(3)}`;
+    } else if (c.root === 'seated') {
       const toSit = f => gap(f, bip => sitEnd?.rot[bip]);
       for (let f = 1; f < nk; f++) if (toSit(f) < toSit(from)) from = f;
       const lo = Math.round(SEATED[0] / step0);
@@ -621,17 +648,27 @@ function convert(src, look) {
       a = Math.max(0, a - 6);
       b = Math.min(nk - 1, b + 6);
     }
+    // кадры: [кадр, кадр второго отрезка, его доля] — у склейки последние BLEND с первого отрезка смешиваются с первыми второго
     const keys = [];
-    for (let f = a; f <= b; f++) keys.push(f);
-    const out = keys.map(f => times[f] - times[a]);
+    if (cut) {
+      const [[a0, a1], [b0, b1]] = cut;
+      const n = Math.round(BLEND / step0);
+      for (let f = a0; f <= a1 - n; f++) keys.push([f, f, 0]);
+      for (let i = 1; i <= n; i++) keys.push([a1 - n + i, b0 + i - 1, i / (n + 1)]);
+      for (let f = b0 + n; f <= b1; f++) keys.push([f, f, 0]);
+      spans[c.name] = `${a0}–${a1} + ${b0}–${b1}, шов ${gap(a1, bip => quat(b0, bip)).toFixed(3)}`;
+    } else for (let f = a; f <= b; f++) keys.push([f, f, 0]);
+    const out = cut ? keys.map((_, i) => i * step0) : keys.map(([f]) => times[f] - times[a]);
     const dx = rp[(nk - 1) * 3] - rp[0];
     const dz = rp[(nk - 1) * 3 + 2] - rp[2];
     if (c.root === 'loop') speeds[c.name] = (Math.hypot(dx, dz) * k) / T;
     const tr = [];
-    for (const f of keys) {
-      let x = rp[f * 3] - rp[0];
-      let z = rp[f * 3 + 2] - rp[2];
-      const y = rp[f * 3 + 1];
+    for (const [f, g, w] of keys) {
+      // корень в кадре; в склейке — между кадрами двух отрезков
+      const P = i => (w ? rp[f * 3 + i] + (rp[g * 3 + i] - rp[f * 3 + i]) * w : rp[f * 3 + i]);
+      let x = P(0) - rp[0];
+      let z = P(2) - rp[2];
+      const y = P(1);
       if (c.root === 'fixed') x = z = 0;
       if (c.root === 'loop') {
         const s = (times[f] - times[0]) / T;
@@ -643,7 +680,7 @@ function convert(src, look) {
       const az = c.root === 'after' && last ? last[2] : 0;
       if (c.root === 'seated') {
         // таз — там, где посадка кончилась, и на той же высоте; дальше — как дышит петля
-        tr.push((rp[f * 3] - rp[from * 3]) * k + (last?.[0] ?? 0) + rest.x, (y - rp[from * 3 + 1]) * k + (sitEnd?.y ?? y * k), (rp[f * 3 + 2] - rp[from * 3 + 2]) * k + (last?.[2] ?? 0) + rest.z);
+        tr.push((P(0) - rp[from * 3]) * k + (last?.[0] ?? 0) + rest.x, (y - rp[from * 3 + 1]) * k + (sitEnd?.y ?? y * k), (P(2) - rp[from * 3 + 2]) * k + (last?.[2] ?? 0) + rest.z);
         continue;
       }
       tr.push(x * k + ax + rest.x, y * k, z * k + az + rest.z);
@@ -662,13 +699,20 @@ function convert(src, look) {
       const t = track(`${bip}.quaternion`);
       if (!t) continue;
       const q = [];
-      for (const f of keys) q.push(t.values[f * 4], t.values[f * 4 + 1], t.values[f * 4 + 2], t.values[f * 4 + 3]);
+      const mix = [0, 0, 0, 0];
+      for (const [f, g, w] of keys) {
+        if (!w) q.push(t.values[f * 4], t.values[f * 4 + 1], t.values[f * 4 + 2], t.values[f * 4 + 3]);
+        else {
+          THREE.Quaternion.slerpFlat(mix, 0, t.values, f * 4, t.values, g * 4, w);
+          q.push(...mix);
+        }
+      }
       rot[bip] = q;
     }
     clips.push({ name: c.name, times: out, translation: tr, rotation: rot });
   }
 
-  return { root, sm, mats, code, parts, quad, half, bones, sex, geo, idx, lod, clips, speeds, look, seated, eyes, eyeTris: eyeTris.length };
+  return { root, sm, mats, code, parts, quad, half, bones, sex, geo, idx, lod, clips, speeds, look, seated, spans, eyes, eyeTris: eyeTris.length };
 }
 
 // ---------------------------------------------------------------- атлас, маска, glb
@@ -1115,7 +1159,8 @@ for (const look of LOOKS) {
     `${look.name.padEnd(18)} ${String(c.geo.attributes.position.count).padStart(5)} вершин, ${String(c.idx.length / 3).padStart(5)} / ${String(c.lod.length / 3).padStart(4)} треуг.; ` +
       `glb ${Math.round(glb.byteLength / 1024)} КБ, маска ${Math.round(img.png.length / 1024)} КБ; одежда ${img.tinted} точек, кожа ${img.skinN}, волосы ${img.hairN} (яркость ${img.hair.toFixed(3)}), глаза ${c.eyeTris} гр.; ` +
       `шаг ${(c.speeds.Walk / 100).toFixed(2)} м/с, бег ${(c.speeds.Run / 100).toFixed(2)} м/с; ` +
-      `сидя — кадры ${c.seated.from}–${c.seated.end} из ${c.seated.of}, от посадки ${c.seated.gap.toFixed(3)}, шов ${c.seated.seam.toFixed(3)}, таз ${c.seated.y} см; ${Math.round(performance.now() - t0)} мс`,
+      `сидя — кадры ${c.seated.from}–${c.seated.end} из ${c.seated.of}, от посадки ${c.seated.gap.toFixed(3)}, шов ${c.seated.seam.toFixed(3)}, таз ${c.seated.y} см; ` +
+      `${Object.entries(c.spans).map(([n, v]) => `${n} ${v}`).join('; ')}; ${Math.round(performance.now() - t0)} мс`,
   );
 }
 if (probe) process.exit(0);
