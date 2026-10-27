@@ -497,6 +497,10 @@ export class Population {
     }
     // дошли до выхода — значок больше не нужен
     for (const key of this.angry) if (!this.crowd.walkers.has(key)) this.angry.delete(key);
+    // и окраска с именем тоже: номера людей в срезе не повторяются — без уборки они копились бы за каждым, кто приходил
+    // (долгий прогон, docs/05-process.md); строки пришедших для «Ушли» и карточки ушедшего — в `rows`
+    for (const key of this.paints.keys()) if (!this.crowd.walkers.has(key)) this.paints.delete(key);
+    for (const h of this.names.keys()) if (!this.crowd.walkers.has(`p:${h}`) && !this.crowd.walkers.has(`m:${h}`)) this.names.delete(h);
   }
 
   /**

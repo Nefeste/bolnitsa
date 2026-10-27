@@ -147,6 +147,12 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # all, an hour of play — more moves, off — no paint, L in a cycle);
                                    # screenshots in tools/app/out/; `-- --only 1|2|…|31` for one part, `-- --only 7,10,11` —
                                    # several in a row on one page, as in the full run
+node tools/app/soak.mjs --days 3   # after build: a long run in headless Chromium — the ready city at ×12 for three game days,
+                                   # the meeting closed each morning; window memory after GC, DOM nodes, people, sim lag and
+                                   # frames every game hour, the engine snapshot every six → tools/app/out/soak.json; fails on a
+                                   # console error, a crash, a stopped clock, window memory growing over 8 MB a day from the
+                                   # second day or more patient names kept than patients on the scene (`--start poly` — the
+                                   # polyclinic; docs/05-process.md, «Долгий прогон»)
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
                                                      # (`-- --flow 40,4` — a bigger crowd, about 180 people,
                                                      # `-- --metric load` — with the «Показатели» layer)
@@ -177,6 +183,8 @@ bun tools/sim/economy.ts --seeds 1,2,3         # economy simulator: scripted hos
                                                # (`docs/specs/2026-10-why.md`)
 bun tools/sim/halls.ts --flow 14               # the polyclinic under load: waiting halls by the offices vs at the entrance
                                                # (both: `--hall 0` — seats of the whole hospital, `--bench 0` — no door benches)
+bun tools/bench/state.ts --days 14             # the engine snapshot at the end of each game day without the window: its size and the
+                                               # biggest fields (`--hospital poly`; docs/reports/2026-10-soak.md)
 bun --cpu-prof --cpu-prof-dir=tools/bench/out/prof tools/bench/bench.ts --mode flow --only 200 --quick --until 11
 bun tools/bench/profile.ts tools/bench/out/prof/<file>.cpuprofile 30 --under catchUp
 bun tools/test/make-review-fixture.ts          # only with the ORIGINAL engine: fingerprints of the eager review
@@ -398,7 +406,7 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
 - `assets/` — CC0 models, Rocketbox people under MIT (`assets/models/rocketbox/`, made by `tools/app/people.mjs`), the
   game's font IBM Plex Sans under SIL OFL 1.1 (`assets/fonts/`, unmodified files with `OFL.txt`; owner's decision #107)
   and `LICENSES.md` (sources, licenses, SHA-256; MIT text verbatim); never add a model or a font without its line there.
-- `tools/app/` — page build, model preparation, browser scenario, headless bench, the release update archive — one
-  `resources/app.asar` (`update-zip.mjs`); `tools/test/` — Bun tests;
-  `tools/content/` — database build; `tools/bench/` — engine bench.
+- `tools/app/` — page build, model preparation, browser scenario, headless bench, the long run (`soak.mjs`), the release
+  update archive — one `resources/app.asar` (`update-zip.mjs`); `tools/test/` — Bun tests;
+  `tools/content/` — database build; `tools/bench/` — engine bench and the snapshot by day (`state.ts`).
 - `spikes/` — probes, kept as they were; code taken from them carries `// из spikes/<probe>: <path>` on its first line.
