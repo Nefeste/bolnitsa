@@ -2,6 +2,8 @@ id: room.or
 name: { ru: "Операционная" }
 gen: { ru: "операционной" }
 staff: [role.surgeon, role.anesthetist, role.or_nurse, role.orderly]
+# отделение по виду помещения (spec docs/specs/2026-10-departments.md)
+department: dept.surgery
 # работает и ночью (spec docs/specs/2026-10-staff-shifts.md): готовая больница — и с ночной сменой
 night: true
 needsEquipment: true

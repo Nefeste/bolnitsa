@@ -2,6 +2,8 @@ id: room.triage
 name: { ru: "Доврачебный кабинет" }
 gen: { ru: "доврачебного кабинета" }
 staff: [role.nurse]
+# отделение по виду помещения (spec docs/specs/2026-10-departments.md)
+department: dept.emergency
 sizes:
   - id: S
     w: 6

@@ -54,6 +54,11 @@ export interface SiteRoom {
   items: SiteItem[];
   /** снесут, когда освободится */
   leaving?: true;
+  /**
+   * отделение по отметке инструмента «Отделение» (spec docs/specs/2026-10-departments.md, часть 1): палату или кабинет —
+   * в другое; нет — по тем, кто в нём работает (`deptOf`)
+   */
+  dept?: Id;
 }
 
 export interface Site {
@@ -88,6 +93,8 @@ export interface Works {
  * Снимок до действия стройки: больница, штат, счётчик; `room` — помещение, которое действие меняло. Действия с людьми (spec
  * docs/specs/2026-10-staff-mood.md): `paid` — выплата уволенному, ₽, отмена возвращает её в кассу; `mood` — настроение:
  * уволенного — запись целиком (`was`), поднятому и переведённому — прибавка (`d`) и снятое «собирается уйти» (`quit`, `low`).
+ * `keep` — действие помещение не перестраивало (отметка отделения, spec docs/specs/2026-10-departments.md): отмена не
+ * закрывает его на перестройку, а оставляет перестройку, какая есть.
  */
 export interface WorksStep {
   site: Site;
@@ -97,6 +104,7 @@ export interface WorksStep {
   room?: string;
   paid?: number;
   mood?: MoodStep;
+  keep?: true;
 }
 
 /** Настроение в шаге отмены (spec docs/specs/2026-10-staff-mood.md): чьё и что вернуть. */
@@ -1030,6 +1038,24 @@ export function removeDecor(db: ContentDb, site: Site, x: number, y: number): Do
   return { ok: true, site: { ...site, decor: site.decor.filter(o => o !== d) }, cost: -refundOf(db, priceOf(db, d.kind)) };
 }
 
+
+/**
+ * Инструмент «Отделение» (spec docs/specs/2026-10-departments.md, часть 1; решение владельца #142): палату или кабинет — в
+ * другое отделение, `dept` нет — снять отметку, и отделение снова по тем, кто работает. Бесплатно и отменяется, как
+ * стройка; в другие помещения отметку не ставят — их отделение по виду (смотровая приёмного, операционная, бокс).
+ */
+export function markDept(db: ContentDb, site: Site, roomId: string, dept?: Id): Done {
+  const room = site.rooms.find(r => r.id === roomId);
+  if (!room || room.leaving) return { ok: false, error: { kind: 'unknown' } };
+  if (!db.rooms[room.type]?.paint) return { ok: false, error: { kind: 'notHere' } };
+  if (dept !== undefined && !db.departments?.[dept]?.paint) return { ok: false, error: { kind: 'unknown' } };
+  if (room.dept === dept) return { ok: false, error: { kind: 'nothing' } };
+  const next: SiteRoom = { ...room };
+  if (dept === undefined) delete next.dept;
+  else next.dept = dept;
+  return { ok: true, site: { ...site, rooms: site.rooms.map(r => (r.id === roomId ? next : r)) }, cost: 0, room: roomId };
+}
+
 /** Цена и предметы «Обставить» — только пустое помещение. */
 export function furnishOf(db: ContentDb, site: Site, roomId: string): { ok: true; cost: number; items: ItemDraft[]; size: RoomSizeId } | { ok: false; error: SiteError } {
   const room = site.rooms.find(r => r.id === roomId);
@@ -1474,7 +1500,9 @@ export type SiteCommand =
   | { kind: 'office'; room?: string }
   /** скамья в коридор и убрать предмет коридора — скамью или растение (spec docs/specs/2026-10-door-benches.md) */
   | { kind: 'bench'; x: number; y: number }
-  | { kind: 'undecor'; x: number; y: number };
+  | { kind: 'undecor'; x: number; y: number }
+  /** инструмент «Отделение» (spec docs/specs/2026-10-departments.md, часть 1): `dept` нет — снять отметку */
+  | { kind: 'dept'; room: string; dept?: Id };
 
 /** Что вышло: извещение движка `{ kind: 'site', … }`. */
 export interface SiteResult {

@@ -1,5 +1,5 @@
 {
-  "version": "0.21.1",
+  "version": "0.43.0",
   "base": 78,
   "ids": {
     "achievements": [
@@ -410,6 +410,14 @@
       "cond.variceal_bleeding/early",
       "cond.vt/acute",
       "cond.wrist_contusion/acute"
+    ],
+    "departments": [
+      "dept.emergency",
+      "dept.icu",
+      "dept.infectious",
+      "dept.neurology",
+      "dept.surgery",
+      "dept.therapy"
     ],
     "equipment": [
       "eq.anesthesia",
