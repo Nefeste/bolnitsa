@@ -52,6 +52,8 @@ import { Doctor } from './doctor';
 import { chipShown, dur, medicLine, moodOf, pathCard, type PatientRow, patientRows, roomChip, roomLoads, tintOf, wheelLine } from './flow';
 import { type HintKey, hintOf } from './hints';
 import { problemList, problemTint, roomLevel, sameList, shiftGap } from './problems';
+import { endsOf, heatOf, heatPixels, legKey, legRows, lengthOf } from './paths';
+import type { Leg } from '../sim/legs';
 import { DEFAULT_ROLE, firstOffice, type Role, ROLE_SETS, startFor } from './roles';
 import { type NoticeRow, type Tone } from './toasts';
 import { ScenarioDesk, scenarioTitle } from './scenario';
@@ -326,6 +328,13 @@ export class Game {
   /** ошибки нанятых врачей за сутки (spec docs/specs/2026-10-two-ways.md, F5) — как прислал поток расчёта; планёрка их снимает */
   errors: ErrorList = { rows: [], total: 0 };
   private problems: ({ kind: Problem['kind'] | 'broken' | 'offShift'; text: string } | undefined)[] = [];
+  /**
+   * слой «Пути пациентов» (spec docs/specs/2026-10-layers.md, часть 2): переходы за сутки — как прислал поток расчёта; их пути
+   * клетками — по паре помещений, до новой стройки; поиск пути — тот, что ведёт людей
+   */
+  private legs: Leg[] = [];
+  private legRoutes = new Map<string, Int32Array | null>();
+  private walkPaths!: Paths;
   private broken = new Set<string>();
   /** усталость и перерывы врачей в смене — как прислал поток расчёта (spec docs/specs/2026-10-staff-shifts.md, часть 2) */
   private crew = new Map<string, CrewView>();
@@ -520,6 +529,8 @@ export class Game {
     const open = new Uint8Array(walk.length);
     for (let i = 0; i < open.length; i++) open[i] = plan.grid.cells[i] === 1 || plan.grid.cells[i] === 2 || plan.grid.cells[i] === 4 ? 1 : 0;
     const paths = new Paths(layout.w, layout.h, walk, open);
+    this.walkPaths = paths;
+    this.legRoutes.clear();
     // скамьи у дверей кабинетов (spec docs/specs/2026-10-door-benches.md) — по числу базы, как в движке
     const places = new Places(layout, furnished, db.inflow?.bench);
     if (first) {
@@ -554,6 +565,8 @@ export class Game {
     this.plan = plan;
     this.onDuty();
     this.builder.refresh();
+    // слой «Пути пациентов»: пол новой раскладки пуст, а переходы те же — поток их не пришлёт; пути пар — по новому плану
+    if (!first) this.showPaths();
   }
 
   /**
@@ -575,6 +588,39 @@ export class Game {
   private offShift(p: Problem | undefined, r: Plan['rooms'][number]): string | undefined {
     if (p?.kind !== 'noStaff' || problemsOf(this.db, this.plan, r, this.full).some(x => x.kind === 'noStaff')) return undefined;
     return T.problem.offShift(clock(this.nextShift()));
+  }
+
+  /**
+   * Слой пола (геймдизайн §3): пол красит один — «Очереди и загрузка», «Отделения», «Пути пациентов» или «Проблемы»; `null`
+   * — ни один. Переходы для «Путей» поток расчёта шлёт, только пока они включены.
+   */
+  private floorLayer(on: 'queues' | 'depts' | 'paths' | 'problems' | null) {
+    const l = this.store.get().layers;
+    if ((on === 'paths') !== l.paths) this.client.legs(on === 'paths');
+    this.store.set({ layers: { ...l, queues: on === 'queues', depts: on === 'depts', paths: on === 'paths', problems: on === 'problems' } });
+    if (on === 'paths') this.showPaths();
+    this.hud();
+  }
+
+  /**
+   * Слой «Пути пациентов» (spec docs/specs/2026-10-layers.md, часть 2): переходы за сутки — по клеткам плана тем же поиском
+   * пути, что ведёт людей, в «тепло» пола (`FloorHeat`) и в список «где прошли больше всего метров». Клетка помещения —
+   * снаружи середины его двери; вход и вход для скорой — их двери. Выбрана строка — на полу только её путь.
+   */
+  private showPaths() {
+    const hud = this.store.get();
+    if (!hud.layers.paths) return;
+    const { layout, plan, db } = this;
+    const doors = endsOf(layout, this.walkPaths.walk, c => this.walkPaths.nearest(c));
+    const sel = hud.paths.sel !== null && this.legs.some(l => legKey(l) === hud.paths.sel) ? hud.paths.sel : null;
+    const { heat, max } = heatOf(this.legs, layout.w * layout.h, room => doors.get(room) ?? -1, (a, b) => this.walkPaths.find(a, b), this.legRoutes, sel ?? undefined);
+    const { rgba, lit } = heatPixels(heat, max);
+    this.stage.heat.set(rgba, lit);
+    const names = (room: string) => {
+      const r = plan.rooms.find(x => x.id === room);
+      return r ? named(db.rooms[r.type]?.name, r.type) : room;
+    };
+    this.store.set({ paths: { ...legRows(this.legs, names, key => lengthOf(this.legRoutes, key)), sel } });
   }
 
   /**
@@ -953,6 +999,11 @@ export class Game {
     // перевозки на каталке (spec docs/specs/2026-10-orderlies.md): санитар идёт за больным и везёт его; кто везёт — в
     // «Персонале», когда перевозка началась или кончилась
     if (s.rides) this.pop.setRides(s.rides);
+    // переходы за сутки (слой «Пути пациентов»): поток шлёт их, пока слой включён
+    if (s.legs) {
+      this.legs = s.legs;
+      this.showPaths();
+    }
     this.pop.sync(s.buf, s.names);
     const riding = this.pop.ridingNow;
     if (s.crew || s.moods || riding !== this.riding) this.store.set({ staffList: this.staffRows() });
@@ -1365,6 +1416,8 @@ export class Game {
     const problems = sameList(list, hud.problems) ? hud.problems : list;
     // слой «Отделения» (spec docs/specs/2026-10-departments.md, часть 2): цвета пола — с отделениями (`showDepts`)
     this.stage.deptTint.group.visible = hud.layers.depts;
+    // слой «Пути пациентов» (spec docs/specs/2026-10-layers.md, часть 2): тепло пола — с переходами (`showPaths`)
+    this.stage.heat.group.visible = hud.layers.paths;
     // слой «Показатели»: столбик помещения по его нагрузке; не работает, нет людей, закрыто или не в смене — плашка, в
     // подписи — почему (по значку: красный бывает и у долгой очереди — она столбик)
     const metric = hud.layers.metric;
@@ -1724,20 +1777,24 @@ export class Game {
     loadGame: slot => reopen({ load: slot }),
     deleteGame: slot => void removeSlot(this.disk, slot).then(() => this.refreshSaves()),
     newGame: () => reopen({}),
-    // пол красит один слой: «Очереди и загрузка», «Отделения» или «Проблемы»
-    toggleQueues: () => {
-      const l = this.store.get().layers;
-      this.store.set({ layers: { ...l, queues: !l.queues, depts: false, problems: false } });
-      this.hud();
-    },
-    toggleDepts: () => {
-      const l = this.store.get().layers;
-      this.store.set({ layers: { ...l, depts: !l.depts, queues: false, problems: false } });
-      this.hud();
-    },
-    toggleProblems: () => {
-      const l = this.store.get().layers;
-      this.store.set({ layers: { ...l, problems: !l.problems, queues: false, depts: false } });
+    // пол красит один слой: «Очереди и загрузка», «Отделения», «Пути пациентов» или «Проблемы»
+    toggleQueues: () => this.floorLayer(this.store.get().layers.queues ? null : 'queues'),
+    toggleDepts: () => this.floorLayer(this.store.get().layers.depts ? null : 'depts'),
+    togglePaths: () => this.floorLayer(this.store.get().layers.paths ? null : 'paths'),
+    toggleProblems: () => this.floorLayer(this.store.get().layers.problems ? null : 'problems'),
+    // строка списка «Пути пациентов» (spec docs/specs/2026-10-layers.md, часть 2): на полу — только её путь, камера к его
+    // середине; ещё раз — снова все
+    pickLeg: key => {
+      const p = this.store.get().paths;
+      const sel = key === null || key === p.sel ? null : key;
+      this.store.set({ paths: { ...p, sel } });
+      this.showPaths();
+      const cells = sel ? this.legRoutes.get(sel) : undefined;
+      if (cells && cells.length > 0) {
+        const c = cells[cells.length >> 1];
+        this.following = undefined;
+        this.stage.cam.flyTo((c % this.layout.w) + 0.5, Math.floor(c / this.layout.w) + 0.5);
+      }
       this.hud();
     },
     // строка списка «Проблемы»: помещение — камера к нему и его карточка; человек — как «Найти»; касса — «Отчёты»
@@ -2012,13 +2069,11 @@ export class Game {
       // «Вся больница» (spec docs/specs/2026-10-settings.md): кнопки вида на экране больше нет
       else if (k === 'Home') this.actions.overview();
       else if (k === 'Escape') this.cancel();
-      // часть 3: L — слои пола по кругу: «Очереди и загрузка», «Отделения», «Проблемы», выключены (геймдизайн §3); Tab —
-      // «Пациенты» (§12)
+      // часть 3: L — слои пола по кругу: «Очереди и загрузка», «Отделения», «Пути пациентов», «Проблемы», выключены
+      // (геймдизайн §3); Tab — «Пациенты» (§12)
       else if (k === 'KeyL') {
         const l = this.store.get().layers;
-        if (l.queues) this.actions.toggleDepts();
-        else if (l.depts || l.problems) this.actions.toggleProblems();
-        else this.actions.toggleQueues();
+        this.floorLayer(l.queues ? 'depts' : l.depts ? 'paths' : l.paths ? 'problems' : l.problems ? null : 'queues');
       }
       // M — слой «Показатели» по кругу: загрузка, ожидание, выключен (spec docs/specs/2026-10-metrics-layer.md)
       else if (k === 'KeyM') {

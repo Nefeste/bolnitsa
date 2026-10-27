@@ -142,8 +142,11 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # chosen sample's thumbnail, the same groups for «Помещение»; then the «Проблемы» layer:
                                    # the list bottom-right, a day lab tech dismissed — «в этой смене никого», the night one
                                    # too — the red floor, chip and row «не работает: нет лаборанта», the number in the menu,
-                                   # a click on the row flies to the lab and opens its card, L in a cycle);
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|30` for one part, `-- --only 7,10,11` —
+                                   # a click on the row flies to the lab and opens its card, L in a cycle; then the «Пути
+                                   # пациентов» layer: the corridor floor painted, the list by metres a day, every pair of
+                                   # rooms has a path, a row — only its path on the floor and the camera at its middle, again —
+                                   # all, an hour of play — more moves, off — no paint, L in a cycle);
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|31` for one part, `-- --only 7,10,11` —
                                    # several in a row on one page, as in the full run
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
                                                      # (`-- --flow 40,4` — a bigger crowd, about 180 people,
@@ -350,9 +353,13 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   pure window logic (`flow.ts` — path lines, room load and state, patient rows) and room status chips (`chips.ts`); the
   «Проблемы» layer (`docs/specs/2026-10-layers.md`, part 1): `problems.ts` — what holds the hospital back now (rooms by
   their chips, a gap in the shift — `shiftGap`, staff about to quit or tired, lying patients without a gurney, cash), the
-  list bottom-right (`ProblemsPanel` in `src/ui/flow.tsx`), a row flies there (`goProblem`); L cycles queues, departments,
-  problems, off; popup notices under the clock — `toasts.ts` (the last three, real-time fade, only fresh ones; the
-  «Журнал» tab keeps them all). The
+  list bottom-right (`ProblemsPanel` in `src/ui/flow.tsx`), a row flies there (`goProblem`); the «Пути пациентов» layer
+  (part 2): the sim sends a day's moves from the engine's paths only while it is on (`src/sim/legs.ts`, `legs` in the
+  protocol, every `LEGS_EVERY`), `paths.ts` routes each pair of rooms with the walkers' search (`endsOf` — the cell outside
+  the middle of a door), sums the cells into heat and lists where the most metres were walked (`legRows`),
+  `src/render/heat.ts` — one plane over the lot, a texel per cell; `PathsPanel`, a row shows only its path (`pickLeg`); L
+  cycles queues, departments, paths, problems, off; popup notices under the clock — `toasts.ts` (the last three, real-time
+  fade, only fresh ones; the «Журнал» tab keeps them all). The
   «Показатели» layer (`docs/specs/2026-10-metrics-layer.md`): `metrics.ts` — a room's column from its load (`columnOf`: height,
   colour, the hover line, the number), `collabels.ts` — numbers over the columns, `src/render/columns.ts` — one instanced mesh
   of shaded boxes, picked by a ray; the chosen metric is a player setting (`metric`), M cycles it, `?metric=load` for bench.

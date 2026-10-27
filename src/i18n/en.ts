@@ -597,6 +597,22 @@ export const en: Strings = {
     deptAll: 'All departments',
     deptFilterHint: 'Department — of the room the patient is in now, or of their doctor’s office',
     legend: (a: number, b: number) => `Floor: green — waiting under ${a} min, yellow — ${a}–${b} min, red — ${b} min or longer; wards — by beds taken.`,
+    paths: {
+      title: 'Patient paths · last 24 h',
+      none: 'No moves in the last 24 hours yet',
+      hint: 'Brighter floor — patients walk there more often. On top — where the most metres were walked in 24 hours: often and far. Click a row to show only that path, again — all of them.',
+      total: (n: number, m: number) => `${n} ${n === 1 ? 'move' : 'moves'} in 24 hours, ${m < 1000 ? `${m} m` : `${(m / 1000).toFixed(1)} km`} walked`,
+      more: (n: number) => `${n} more`,
+      entrance: 'Entrance',
+      exit: 'Exit',
+      ambulance: 'Ambulance entrance',
+      row: (from: string, to: string, n: number, m?: number, walk?: string) =>
+        `${from} → ${to} — ${n} ${n === 1 ? 'time' : 'times'}${m !== undefined ? `, ${m} m` : ''}${walk ? ` · walk ${walk}` : ''}`,
+      walk: (sec: number) => {
+        const r = Math.round(sec);
+        return r < 60 ? `${r} s` : `${Math.floor(r / 60)} min${r % 60 ? ` ${r % 60} s` : ''}`;
+      },
+    },
     problems: {
       count: (n: number) => (n > 0 ? `Problems · ${n}` : 'Problems'),
       none: 'No problems — everything works',
