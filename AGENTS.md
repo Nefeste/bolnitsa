@@ -82,7 +82,8 @@ npm run typecheck                  # content + tsc --noEmit (src incl. .tsx, too
 npm test                           # content + bun test tools/test (~5 min)
 npm run build                      # content + page and worker (esbuild) → dist/ (not in git)
 npm run electron                   # build + the game window
-npm run e2e                        # after build: the game in headless Chromium, real clicks (preset; then building six rooms
+npm run e2e                        # after build: the game in headless Chromium, real clicks (preset — and the Carbon icons in
+                                   # the game and in build mode, no Unicode symbols or emoji left; then building six rooms
                                    # by mouse in the empty building; people and flow at 13:00 — icons, «Пациенты», the
                                    # patient's path, the queues overlay, the camera gliding after a right-button drag; then
                                    # the doctor mode: a consult, a whole case, «Take the case», «My office»; then money:
@@ -163,6 +164,8 @@ npm run assets -- <sources dir>    # rebuild assets/models/*.glb from the CC0 pa
 node tools/app/people.mjs --fetch <dir>   # Rocketbox people (MIT): download the pinned sources, check SHA-256
 node tools/app/people.mjs <dir>    # then rebuild assets/models/rocketbox/ (glb + mask, byte-identical; docs/specs/2026-10-people.md)
 bun tools/app/people-licenses.ts   # then the Rocketbox tables of assets/LICENSES.md from sources.json and cast.ts
+node tools/app/icons.mjs --fetch <dir>    # the window's icons (owner's decision #139): @carbon/icons from npm, check SHA-256
+node tools/app/icons.mjs <dir>     # then src/ui/icons.gen.ts and assets/licenses/carbon-icons.txt (byte-identical)
 npm run bench -- --mode flow --quick           # engine: time per game minute at 50/100/200/300 patients (PC flow)
 npm run bench -- --mode desks --quick          # the same with Anamnez's appointment slots
 npm run bench -- --mode flow --day             # the whole day to 10:00 of day 2: day and night minutes, 08:00 meeting, 09:00 round
@@ -393,7 +396,10 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   «yellow» walk at 0.8 of the pace — the rule and the times are the engine's (`slowWalker`, `slowOf`, `SLOW_SPEED_PC` in
   `shift/walking.ts`), the slice marks them (`SLOW` in `P.flags`), the window walks them with the `WalkSlow` clip.
   Icons above heads — `icons.ts` (drawn after the frame); the queues overlay floor tint — `overlay.ts`.
-- `src/ui/` — panels (React) and their store; `src/ui/doctor/` — the patient card window, the doctor's panel and the
+- `src/ui/` — panels (React) and their store; icons — `icons.tsx` (`Icon`: Carbon (IBM) under Apache 2.0, owner's decision
+  #139, the text's colour, 16 points) over `icons.gen.ts` (made by `tools/app/icons.mjs`; three own icons in Carbon's style —
+  doors and a bench); never put a Unicode symbol or emoji in the window instead of an icon (`tools/test/icons.test.ts`);
+  `src/ui/doctor/` — the patient card window, the doctor's panel and the
   «Просят посмотреть» tab, driven by `src/app/doctor.ts` (your own card — the timeline «Ход приёма» and one open step of
   four, owner's decision #104, `docs/specs/2026-10-own-card.md`); `src/ui/flow.tsx` — the «Пациенты» tab, the patient's path and
   the map layers menu; `src/ui/Encyclopedia.tsx` — the encyclopedia window (`docs/specs/2026-10-encyclopedia.md`): its
@@ -408,8 +414,9 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   `tools/test/style.test.ts` fails on a colour or a font size outside the tokens and on text below 4.5:1 over a white or
   black floor behind the glass.
 - `assets/` — CC0 models, Rocketbox people under MIT (`assets/models/rocketbox/`, made by `tools/app/people.mjs`), the
-  game's font IBM Plex Sans under SIL OFL 1.1 (`assets/fonts/`, unmodified files with `OFL.txt`; owner's decision #107)
-  and `LICENSES.md` (sources, licenses, SHA-256; MIT text verbatim); never add a model or a font without its line there.
+  game's font IBM Plex Sans under SIL OFL 1.1 (`assets/fonts/`, unmodified files with `OFL.txt`; owner's decision #107),
+  the Carbon icons' Apache 2.0 text (`assets/licenses/carbon-icons.txt`) and `LICENSES.md` (sources, licenses, SHA-256; MIT
+  text verbatim); never add a model, a font or an icon set without its line there.
 - `tools/app/` — page build, model preparation, browser scenario, headless bench, the long run (`soak.mjs`), the release
   update archive — one `resources/app.asar` (`update-zip.mjs`); `tools/test/` — Bun tests;
   `tools/content/` — database build; `tools/bench/` — engine bench and the snapshot by day (`state.ts`).
