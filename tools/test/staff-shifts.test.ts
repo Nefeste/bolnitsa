@@ -113,7 +113,9 @@ describe('смены персонала', () => {
     const started = Object.values(s.patients).filter(p => p.by !== undefined && day.has(p.by) && (p.status === 'inRoom' || p.status === 'away' || p.status === 'waiting'));
     expect(started.length).toBeGreaterThan(0);
     const ids = new Set(started.map(p => p.id));
-    liveTo(db, s, 23);
+    // медленный шаг (0.42.0): пожилые и «жёлтые» дольше ходят на обследования, и к 20:00 у дневного врача открыто пять
+    // приёмов, а не один; последний он закрывает в 23:10 — смотрим в полночь
+    liveTo(db, s, 24);
     // после 20:00 дневные врачи не позвали ни одного нового: кого позвали — позвал ночной
     const called = Object.values(s.patients).filter(p => p.calledT !== undefined && p.calledT >= t20 && p.by !== undefined);
     expect(called.length).toBeGreaterThan(0);

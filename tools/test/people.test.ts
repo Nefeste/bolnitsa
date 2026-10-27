@@ -21,8 +21,9 @@ describe('люди', () => {
         for (let f = 0; f < c.frames; f++) {
           for (const g of [look.geometry, look.lod]) {
             const y = skinnedY(p, look, c.start + f, g).min;
-            // шаг и бег отрывают ступню; в фазе полёта бега обе ноги в воздухе
-            const [lo, hi] = cn === 'Run' ? [-0.06, 0.2] : cn === 'Walk' ? [-0.02, 0.025] : [-0.012, 0.012];
+            // шаг и бег отрывают ступню; в фазе полёта бега обе ноги в воздухе; медленный шаг (часть 2б) — тот же перекат с
+            // пятки на носок: нижняя точка до 1,23 см, у шага — до 1,77 см
+            const [lo, hi] = cn === 'Run' ? [-0.06, 0.2] : cn === 'Walk' || cn === 'WalkSlow' ? [-0.02, 0.025] : [-0.012, 0.012];
             expect([look.name, cn, f, y >= lo && y <= hi]).toEqual([look.name, cn, f, true]);
           }
         }
