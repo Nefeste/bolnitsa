@@ -22,15 +22,16 @@ import { SEAT } from './catalog';
 import { type LookSpec, lookSpec, statureOf } from './cast';
 
 /** Анимации вида; `Sit` — петля сидя, продолжает последнюю позу посадки (spec docs/specs/2026-10-people.md, «Анимации»). */
-export type ClipName = 'Idle' | 'Walk' | 'Run' | 'SitDown' | 'StandUp' | 'Sit';
-export const CLIP_NAMES: ClipName[] = ['Idle', 'Walk', 'Run', 'SitDown', 'StandUp', 'Sit'];
+// медленный шаг (spec docs/specs/2026-10-people.md, «Медленный шаг»; решение владельца #132) — последним: номера прежних те же
+export type ClipName = 'Idle' | 'Walk' | 'Run' | 'SitDown' | 'StandUp' | 'Sit' | 'WalkSlow';
+export const CLIP_NAMES: ClipName[] = ['Idle', 'Walk', 'Run', 'SitDown', 'StandUp', 'Sit', 'WalkSlow'];
 /** Кадров в секунду при запекании анимаций: шаг и бег, посадка и вставание. */
 export const BAKE_FPS = 30;
 /**
  * Кадров в секунду по анимациям: покой стоя и сидя — медленные, им хватает 15 (шейдер смешивает соседние кадры), и кадров
  * запекания — на треть меньше: загрузка быстрее, текстура костей меньше.
  */
-export const CLIP_FPS: Record<ClipName, number> = { Idle: 15, Walk: BAKE_FPS, Run: BAKE_FPS, SitDown: BAKE_FPS, StandUp: BAKE_FPS, Sit: 15 };
+export const CLIP_FPS: Record<ClipName, number> = { Idle: 15, Walk: BAKE_FPS, Run: BAKE_FPS, SitDown: BAKE_FPS, StandUp: BAKE_FPS, Sit: 15, WalkSlow: BAKE_FPS };
 /** Ширина текстуры костей в текселях (кратна 3: строки матрицы — 3 текселя подряд, в одной строке текстуры). */
 export const BONE_TEX_W = 1026;
 
@@ -63,6 +64,8 @@ export interface Look {
   /** скорость шага и бега при ×1 проигрывания, м/с: ступня не скользит */
   walk: number;
   run: number;
+  /** медленный шаг, м/с при ×1: при ней опорная ступня стоит на месте */
+  walkSlow: number;
   geometry: THREE.BufferGeometry;
   /** упрощённая геометрия для дальнего плана — те же вершины, меньше треугольников */
   lod: THREE.BufferGeometry;
@@ -145,6 +148,8 @@ export interface RawLook {
   hair: number;
   walk: number;
   run: number;
+  /** медленный шаг, м/с при ×1: при ней опорная ступня стоит на месте */
+  walkSlow: number;
   /** матрицы суставов по кадрам: [кадр][сустав] — 16 чисел, уже с приведением к росту и полу */
   frames: Float32Array[];
   clips: Record<ClipName, { first: number; frames: number; duration: number; fps: number }>;
@@ -258,7 +263,7 @@ function texturedParts(root: THREE.Object3D, body: THREE.SkinnedMesh, lodMesh: T
     for (const k of Object.keys(g.attributes)) if (!keep.includes(k)) g.deleteAttribute(k);
     return g;
   };
-  const extras = (root.getObjectByName('rocketbox')?.userData ?? {}) as { speeds?: { Walk?: number; Run?: number }; tintRef?: number; hair?: number };
+  const extras = (root.getObjectByName('rocketbox')?.userData ?? {}) as { speeds?: { Walk?: number; Run?: number; WalkSlow?: number }; tintRef?: number; hair?: number };
   const map = (body.material as THREE.MeshStandardMaterial).map ?? undefined;
   return { geometry: own(body), lod: own(lodMesh), map, tintRef: extras.tintRef ?? 0, hair: extras.hair ?? 0, speeds: extras.speeds ?? {} };
 }
@@ -412,11 +417,12 @@ export function bakeLook(gltf: { scene: THREE.Object3D; animations: THREE.Animat
   };
 
   // шаг и бег: опорная ступня стоит на полу (lockFeet); нет опоры в клипе — скорость по смещению корня
-  if (!textured.speeds.Walk || !textured.speeds.Run) throw new Error(`${name}: no walk or run speed`);
+  if (!textured.speeds.Walk || !textured.speeds.Run || !textured.speeds.WalkSlow) throw new Error(`${name}: no walk, run or slow walk speed`);
   const soles = (['L', 'R'] as const).map(side => bodyVertices(geometry, skeleton.bones, new RegExp(`^(Foot|Toes)${side}$`)).filter(v => idle[v * 3 + 1] < 0.12));
   const walk = lockFeet(geometry, frames, clips.Walk, legs, soles) ?? textured.speeds.Walk * s;
   const run = lockFeet(geometry, frames, clips.Run, legs, soles) ?? textured.speeds.Run * s;
-  return { name, female, geometry, lod: textured.lod, map: textured.map, tintRef: textured.tintRef, hair: textured.hair, walk, run, frames, clips, joints, height, headRatio, collapse, seat, lie, soles };
+  const walkSlow = lockFeet(geometry, frames, clips.WalkSlow, legs, soles) ?? textured.speeds.WalkSlow * s;
+  return { name, female, geometry, lod: textured.lod, map: textured.map, tintRef: textured.tintRef, hair: textured.hair, walk, run, walkSlow, frames, clips, joints, height, headRatio, collapse, seat, lie, soles };
 }
 
 /**
@@ -758,7 +764,7 @@ export function packPeople(raws: RawLook[]): People {
     looks.push({
       name: r.name, female: r.female, spec: lookSpec(r.name)!, geometry: r.geometry, lod, clips, joints: r.joints, tris: r.geometry.index!.count / 3, lodTris: lod.index!.count / 3,
       height: r.height, headRatio: r.headRatio, collapse: r.collapse, seat: r.seat, lie: r.lie, soles: r.soles,
-      map: r.map, mask: r.mask, tintRef: r.tintRef, hair: r.hair, walk: r.walk, run: r.run,
+      map: r.map, mask: r.mask, tintRef: r.tintRef, hair: r.hair, walk: r.walk, run: r.run, walkSlow: r.walkSlow,
     });
     frame0 += r.frames.length;
   });

@@ -666,16 +666,30 @@ async function partThree() {
   // щелчок по строке о больном — камера к нему; на паузе новых нет, и строки гаснут сами
   const toasts = await until(() => document.querySelectorAll('#toasts .toast').length > 0, null, 60000).then(() => true).catch(() => false);
   await page.evaluate(() => window.__game.actions.setSpeed(0));
-  const shown = await page.evaluate(() => [...document.querySelectorAll('#toasts .toast')].map(e => ({ text: e.textContent, go: e.classList.contains('go') })));
+  // о ком строка и на карте ли он: страница, открывшаяся под нагрузкой поздно, показывает и тех, кто уже вышел из больницы
+  const shown = await page.evaluate(() =>
+    [...document.querySelectorAll('#toasts .toast')].map(e => {
+      const who = e.dataset.who;
+      const pop = window.__game.pop;
+      return { text: e.textContent, go: e.classList.contains('go'), who, here: !!who && !!(pop.keyOf(who) ?? pop.walkerKey(who)) };
+    }),
+  );
   if (toasts && shown.length >= 1 && shown.length <= 3) ok(`извещения под часами: ${shown.length} — «${shown[0].text}»`);
   else fail(`извещения под часами: ${JSON.stringify(shown)}`);
-  const go = shown.findIndex(x => x.go);
-  if (go >= 0) {
+  // кто на карте — камера к нему; кто уже вышел — открывается его карточка («Найти»: ушёл — карточка с путём)
+  const here = shown.findIndex(x => x.go && x.here);
+  const go = here >= 0 ? here : shown.findIndex(x => x.go);
+  if (go >= 0 && shown[go].here) {
     const was = await page.evaluate(() => [window.__game.stage.cam.target.x, window.__game.stage.cam.target.z]);
     await page.click(`#toasts .toast:nth-child(${go + 1})`);
     const flew = await until(w => { const t = window.__game.stage.cam.target; return window.__game.stage.cam.flying || Math.hypot(t.x - w[0], t.z - w[1]) > 0.5; }, was, 10000).then(() => true).catch(() => false);
     if (flew) ok(`щелчок по извещению «${shown[go].text}» — камера к больному`);
     else fail('щелчок по извещению о больном — камера на месте');
+  } else if (go >= 0) {
+    await page.click(`#toasts .toast:nth-child(${go + 1})`);
+    const card = await until(id => window.__game.selected === `id:${id}`, shown[go].who, 10000).then(() => true).catch(() => false);
+    if (card) ok(`щелчок по извещению «${shown[go].text}» — он уже вышел из больницы: его карточка`);
+    else fail(`щелчок по извещению о вышедшем — карточки нет: ${JSON.stringify(shown[go])}`);
   }
   const faded = await until(() => !document.getElementById('toasts'), null, 15000).then(() => true).catch(() => false);
   if (faded) ok('на паузе извещения гаснут сами (обычное — 6 с, срочное — 12 с)');

@@ -153,6 +153,8 @@ const CLIPS = [
   { name: 'SitDown', file: 'all_animations_max_motextr_xyz/{s}_sit_down_chair_01.max.fbx', root: 'keep' },
   { name: 'StandUp', file: 'all_animations_max_motextr_xyz/{s}_sit_stand_up_chair_01.max.fbx', root: 'after' },
   { name: 'Sit', file: 'all_animations_max_motextr_static/{s}_sit_chair_idle_neutral_01.max.fbx', root: 'seated' },
+  // медленный шаг пожилых и «жёлтых» (spec, «Медленный шаг»; решение владельца #132) — последним: прежние клипы те же
+  { name: 'WalkSlow', file: 'all_animations_max_motextr_xy/{s}_walk_slow_01.max.fbx', root: 'loop' },
 ];
 
 /** Кости тела: Biped → имя в игре (как у людей Quaternius; GLTFLoader убирает из имён точки — `UpperArmL`). */
