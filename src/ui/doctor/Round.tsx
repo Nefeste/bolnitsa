@@ -7,6 +7,7 @@ import type { Id } from '../../content/types';
 import { T } from '../../i18n';
 import type { RoundView } from '../../sim/doctor';
 import type { Actions } from '../store';
+import { Icon } from '../icons';
 
 /** Ключ для id в DOM: точки в номерах базы мешают селекторам (как `dom` в Card.tsx). */
 const dom = (id: string) => id.replace(/\./g, '_');
@@ -72,7 +73,7 @@ export function Round({ id, r, actions }: { id: string; r: RoundView; actions: A
         {r.suggested.length > 0 ? <div className="label">{t.suggested}</div> : null}
         {r.suggested.map(row)}
         <button type="button" className="linkish" id="dcard-round-all" onClick={() => setAll(!all)}>
-          {all ? '▾' : '▸'} {t.all}
+          <Icon name={all ? 'fold' : 'open'} /> {t.all}
         </button>
         {all
           ? r.groups.map(g => (

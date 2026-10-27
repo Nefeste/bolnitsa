@@ -24,6 +24,7 @@ import { SECTIONS, sectionOf } from './sections';
 import type { DoctorHud } from './types';
 import { db } from './db';
 import { Round } from './Round';
+import { Icon } from '../icons';
 
 /** Ключ для id в DOM: точки в номерах базы мешают селекторам. */
 export const dom = (id: string) => id.replace(/\./g, '_');
@@ -71,7 +72,7 @@ function CardWindow({ v, level, meanwhile, next, actions }: P) {
         </div>
         {read ? null : <Levels level={level} actions={actions} prefix="card" />}
         <button type="button" id="dcard-close" className="close" onClick={() => actions.doctor({ kind: 'close' })} title={`Esc — ${read ? c.closeReadHint : c.closeHint}`}>
-          ✕ {c.close}
+          <Icon name="close" /> {c.close}
         </button>
       </div>
       <div className="dsub">
@@ -315,7 +316,7 @@ function MentorTip({ tip, at, actions }: { tip?: TipView; at: string; actions: A
   return (
     <div className="dtip" id="dcard-tip" data-tip={tip.id}>
       <button type="button" className="close small" id="tip-skip" onClick={close} title={t.skip}>
-        ✕
+        <Icon name="close" />
       </button>
       <div className="lhead">
         <span className="lbadge" aria-hidden="true">
@@ -434,7 +435,9 @@ function Section({ title, extra, children, id, open: start = true }: { title: st
   return (
     <div className="dsec" id={id}>
       <button type="button" className="dsechead" onClick={() => setOpen(!open)} aria-expanded={open}>
-        <span>{open ? '▾' : '▸'} {title}</span>
+        <span>
+          <Icon name={open ? 'fold' : 'open'} /> {title}
+        </span>
         {extra ? <small>{extra}</small> : null}
       </button>
       {open ? <div className="dsecbody">{children}</div> : null}
@@ -547,7 +550,7 @@ function ExamRow({ v, id, onExam, explain, check }: { v: CardView; id: Id; onExa
     return (
       <div className={gs[0]?.fresh ? 'xrow done fresh' : 'xrow done'} id={`x-${dom(id)}`} data-exam={id}>
         <div className="xhead">
-          ✓ {info.name}
+          <Icon name="done" /> {info.name}
           {gs[0]?.fresh ? <span className="new">{t.fresh}</span> : null}
           {ready ? <span className="stamp">{t.readyAt(ready.at)}</span> : null}
         </div>
@@ -751,7 +754,13 @@ function DecideColumn({ v, act, explain }: { v: CardView; act: (c: Command) => v
                   {x.name} — {x.word ?? p.similar(x.outOf10)}
                 </span>
                 <button type="button" id={`likely-${dom(x.id)}`} className={inRow.has(x.id) ? 'small on' : 'small'} disabled={!v.active} onClick={() => act({ kind: 'hypothesis', id: x.id })}>
-                  {inRow.has(x.id) ? h.inRow : h.toRow}
+                  {inRow.has(x.id) ? (
+                    <>
+                      <Icon name="done" /> {h.inRow}
+                    </>
+                  ) : (
+                    h.toRow
+                  )}
                 </button>
               </div>
             ))}

@@ -11,8 +11,7 @@ import type { AskRule } from '../../engine/shift/types';
 import type { Actions, Hud, RoomCard } from '../store';
 import { Levels } from './Card';
 import { type Role, ROLES } from '../../app/roles';
-
-const VERDICT: Record<string, string> = { correct: '✓', partly: '≈', wrong: '✗' };
+import { Icon } from '../icons';
 
 function Row({ r, children, hint, find }: { r: PatientRow; children?: ReactNode; hint?: string; find?: (id: string) => void }) {
   return (
@@ -80,7 +79,7 @@ export function Dock({ hud, actions }: { hud: Hud; actions: Actions }) {
     return (
       <div className="dock panel folded" id="dock">
         <button type="button" id="dock-unfold" onClick={() => actions.doctor({ kind: 'fold', folded: false })}>
-          ▸ {t.role.title[d.role]} · {status}
+          <Icon name="open" /> {t.role.title[d.role]} · {status}
           {st.yours.length > 0 ? ` · ${t.lists.yours}: ${st.yours.length}` : ''}
         </button>
       </div>
@@ -93,7 +92,7 @@ export function Dock({ hud, actions }: { hud: Hud; actions: Actions }) {
           {status}
         </span>
         <button type="button" className="close" onClick={() => actions.doctor({ kind: 'fold', folded: true })}>
-          ▾
+          <Icon name="fold" />
         </button>
       </div>
       {/* сценарий кампании — в роли «Врач», без смены (решение владельца #115: цель считает только ваши приёмы) */}
@@ -181,7 +180,7 @@ export function Dock({ hud, actions }: { hud: Hud; actions: Actions }) {
         {st.theirs.length > 0 ? (
           <>
             <button type="button" className="small" id="dock-theirs" onClick={() => actions.doctor({ kind: 'theirsOpen', open: !d.theirsOpen })}>
-              {d.theirsOpen ? '▾' : '▸'} {t.lists.theirs(st.theirs.length)}
+              <Icon name={d.theirsOpen ? 'fold' : 'open'} /> {t.lists.theirs(st.theirs.length)}
             </button>
             {d.theirsOpen ? (
               <ul id="dock-theirs-list">
@@ -197,7 +196,7 @@ export function Dock({ hud, actions }: { hud: Hud; actions: Actions }) {
             <div className="label">{t.lists.closed}</div>
             <ul>
               {st.closed.slice(0, 6).map(r => (
-                <Row key={r.id} r={r} hint={`${VERDICT[r.verdict]} ${r.diagnosis} · ${r.overall}`}>
+                <Row key={r.id} r={r} hint={`${T.case.patient[r.verdict]} — ${r.diagnosis} · ${r.overall}`}>
                   <button type="button" className="small" id={`dock-review-${r.id}`} onClick={() => open(r.id)}>
                     {t.review}
                   </button>
@@ -225,7 +224,11 @@ function WardItem({ r, worse, actions }: { r: WardRow; worse: boolean; actions: 
           {r.diagnosis} · {w.days(r.days, r.norm)}
         </div>
         <div className={`small ${r.state === 'worse' || r.state === 'reaction' ? 'bad' : r.state === 'ready' || r.state === 'better' ? 'ok' : 'muted'}`}>
-          {worse ? `⚠ ${T.round.worseShort} · ` : ''}
+          {worse ? (
+            <>
+              <Icon name="warn" /> {T.round.worseShort} ·{' '}
+            </>
+          ) : null}
           {r.stateText}
         </div>
         {r.unit ? <div className="small muted">{r.unit}</div> : null}

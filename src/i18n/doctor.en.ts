@@ -276,7 +276,7 @@ export const doctorEn: DoctorStrings = {
       empty: 'The list is empty. Add the diseases you suspect: each shows what speaks for and against it, what is unchecked and how to confirm it.',
       add: 'Add a hypothesis',
       toRow: '+ to list',
-      inRow: '✓ in list',
+      inRow: 'in list',
       outOf10: (n: number) => (n > 0 ? `likely in ${n} of 10` : 'less than 1 in 10'),
       count: (pro: number, con: number) => `for — ${pro}, against — ${con}`,
       proTitle: 'For',

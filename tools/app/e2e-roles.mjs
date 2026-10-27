@@ -49,8 +49,9 @@ export async function rolesPart({ page, port, out, ok, fail, q, shots }) {
   if (m.role === 'manager' && same(m.rules, []) && m.office === null && m.mine === null && m.therapist && !m.autopause && m.folded) {
     ok('«Управляющий»: «ни о чём», без своего кабинета — в нём нанятый терапевт, автопаузы нет, окно врача свёрнуто');
   } else fail(`«Управляющий»: ${JSON.stringify(m)}`);
-  const fold = flat(await page.textContent('#dock-unfold').catch(() => ''));
-  if (fold.startsWith('▸ Вы — управляющий')) ok(`окно врача свёрнуто: «${fold}»`);
+  const fold = flat(await page.textContent('#dock-unfold').catch(() => '')).trim();
+  const chevron = await page.$('#dock-unfold svg.icon[data-icon="open"]');
+  if (fold.startsWith('Вы — управляющий') && chevron) ok(`окно врача свёрнуто: «${fold}», значок «раскрыть»`);
   else fail(`свёрнутое окно врача: «${fold}»`);
   // «Управляющему» — что делать (часы идут — подсказка после «пробела»)
   await page.evaluate(() => window.__game.actions.setSpeed(1));

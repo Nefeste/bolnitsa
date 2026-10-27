@@ -7,6 +7,7 @@ import { loadContent } from '../app/content';
 import { article, type Article, type Block, type Ref, search, type Section, sectionOf, sectionsOf, sectionView } from '../app/encyclopedia';
 import type { ContentDb, Id } from '../content/types';
 import { lang, T } from '../i18n';
+import { Icon } from './icons';
 
 interface View {
   open: boolean;
@@ -135,10 +136,10 @@ export function Encyclopedia() {
         <b className="enc-name">{e.title}</b>
         <input className="search" id="enc-search" type="search" value={v.query} placeholder={e.search} onChange={x => set({ query: x.target.value })} />
         <button type="button" id="enc-back" disabled={v.back.length === 0} onClick={back}>
-          ← {e.ui.back}
+          <Icon name="back" /> {e.ui.back}
         </button>
         <button type="button" className="close" id="enc-close" title={`Esc · F1 — ${e.ui.close}`} onClick={closeEncyclopedia}>
-          ✕
+          <Icon name="close" />
         </button>
       </div>
       <div className="enc-note">{e.disclaimer}</div>
