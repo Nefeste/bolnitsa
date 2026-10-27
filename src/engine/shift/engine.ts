@@ -38,7 +38,7 @@ import { type Ask, askFor, askLong } from './consult';
 import { type ApproveAsk, approveFor, ASK_RULES, asksDecisions, asksOf, DEFAULT_ASKS } from './approve';
 import { backAt, beginRest, blurredOf, dropCrew, dueOf, restLeft, shiftEnded, slowedOf, startRest, tiredOf, wakeOf, worked } from './crew';
 import * as journey from './journey';
-import { AT_DOOR, doorBenches, fromDesk, hallNear, moveTo, PER_QUEUED, readyAt, route, toDoctor, toDoor, WALK_SPEED_PC, waitsAt, walkPc } from './walking';
+import { AT_DOOR, doorBenches, fromDesk, hallNear, moveTo, PER_QUEUED, readyAt, route, slowOf, patientSpeed, toDoctor, toDoor, WALK_SPEED_PC, waitsAt, walkPc } from './walking';
 import { COMPLICATION_DAYS, complicationAt, complicationsOf, deathsOf, onsetHours, operationFor } from './surgery';
 import { dueIn, type TargetPlace, targetResults } from './targets';
 import { occupied, siteCommand, siteFree } from './site';
@@ -1714,6 +1714,9 @@ export function walkTo(db: ContentDb, s: ShiftState, p: ShiftPatient): number {
 /** Скорость пешком: в потоке для ПК — как люди идут на экране (spec 2026-10-walk), в сменах «Анамнеза» — прежняя. */
 export const walkSpeed = (s: ShiftState): number => (s.flow ? WALK_SPEED_PC : WALK_SPEED);
 
+/** Скорость пешком пациента: в потоке для ПК — его шагом (spec 2026-10-people, «Медленный шаг»), иначе — `walkSpeed`. */
+const paceOf = (s: ShiftState, p: ShiftPatient): number => (s.flow ? patientSpeed(p) : WALK_SPEED);
+
 /**
  * Через сколько секунд врач и больной встретятся (FR-HOS-4): позвать — минута, как и прежде, а врач тем временем идёт к
  * нему в смотровую или обратно в кабинет; дорога дольше минуты — столько, сколько идти.
@@ -1919,7 +1922,7 @@ export function atDoctor(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: 
  */
 function outFrom(ctx: HospitalCtx, s: ShiftState, p: ShiftPatient, to: string, leave: number): { at: number; walk: number } {
   const out = p.out && p.out.back > s.t ? p.out : undefined;
-  const v = walkSpeed(s);
+  const v = paceOf(s, p);
   return out ? { at: Math.max(leave, out.until), walk: walkSeconds(ctx.plan, out.room, to, v) } : { at: leave, walk: walkSeconds(ctx.plan, fromRoom(ctx, p), to, v) };
 }
 
@@ -1928,7 +1931,7 @@ function outFrom(ctx: HospitalCtx, s: ShiftState, p: ShiftPatient, to: string, l
  * 2026-10-owner-play-2), — в этот час извещение «вошёл к вам».
  */
 function goOut(ctx: HospitalCtx, s: ShiftState, p: ShiftPatient, exam: Id, room: string, until: number) {
-  p.out = { exam, room, until, back: until + walkSeconds(ctx.plan, room, fromRoom(ctx, p), walkSpeed(s)) };
+  p.out = { exam, room, until, back: until + walkSeconds(ctx.plan, room, fromRoom(ctx, p), paceOf(s, p)) };
   if (s.flow && !p.by) schedule(s, p.out.back, { kind: 'reach', id: p.id });
 }
 
@@ -2058,7 +2061,7 @@ function examSetup(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id) {
   // дорога (FR-HOS-4, spec 2026-10-walk-breakdowns): снимок и функциональное — в своём кабинете, материал берут там, где
   // записано (кровь — в процедурном, тропонин и пункцию — в смотровой приёмного); у лежачего — у постели
   const to = queued ? room?.id : e.collect && !bed ? (wheel ? p.bay!.room : collectRoom(ctx, p, e.collect, s.flow !== undefined)) : undefined;
-  const walk = to ? walkSeconds(ctx.plan, fromRoom(ctx, p), to, walkSpeed(s)) : 0;
+  const walk = to ? walkSeconds(ctx.plan, fromRoom(ctx, p), to, paceOf(s, p)) : 0;
   return { e, ctx, bed, queued, room, eqId, roomPct, walk, to, wheel };
 }
 
@@ -3594,7 +3597,7 @@ function seatPc(db: ContentDb, s: ShiftState, p: ShiftPatient, ctx: HospitalCtx,
     if (bench !== undefined) p.bench = bench;
     else if (p.patience > 0) p.patience = Math.round(p.patience / 2);
   }
-  const r = route(ctx.plan, ctx.working, door ? office : hall, nurse, s.t);
+  const r = route(ctx.plan, ctx.working, door ? office : hall, nurse, s.t, slowOf(p));
   if (door) {
     p.next = office;
     p.nextAt = r.seatAt;
@@ -4208,7 +4211,7 @@ function takeOver(db: ContentDb, s: ShiftState, id: string): Notice[] {
       const meet = meetIn(db, s, p);
       // поток для ПК (spec 2026-10-walk): от врача — из его кабинета, из зала или от двери — оттуда
       const walk = s.flow && !p.bay
-        ? walkToYou(db, s, p, (ctx, office) => (was === 'inRoom' && room ? walkPc(ctx.plan, room, office) : toDoctor(ctx.plan, p, office, busy)), busy)
+        ? walkToYou(db, s, p, (ctx, office) => (was === 'inRoom' && room ? walkPc(ctx.plan, room, office, slowOf(p)) : toDoctor(ctx.plan, p, office, busy)), busy)
         : 0;
       delete p.next;
       delete p.nextAt;

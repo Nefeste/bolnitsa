@@ -77,7 +77,17 @@ export async function ownerTwoPart({ page, port, out, ok, fail, q, shots }) {
   await page.waitForSelector('#card-follow', { timeout: 10000 });
   const from = await page.evaluate(k => ({ x: window.__game.crowd.walkers.get(k).x, z: window.__game.crowd.walkers.get(k).z }), key);
   await page.click('#card-follow');
-  await page.waitForTimeout(2500);
+  // камера догоняет плавно: ждать, пока она у него и он прошёл свой метр, — под нагрузкой кадров мало, и пауза не годится
+  await until(
+    ([k, x0, z0]) => {
+      const g = window.__game;
+      const w = g.crowd.walkers.get(k);
+      const c = g.stage.cam.target;
+      return !w || (Math.hypot(c.x - w.x, c.z - w.z) < 1.5 && Math.hypot(w.x - x0, w.z - z0) > 1);
+    },
+    [key, from.x, from.z],
+    20000,
+  ).catch(() => {});
   const f = await page.evaluate(k => {
     const g = window.__game;
     const w = g.crowd.walkers.get(k);
@@ -101,7 +111,16 @@ export async function ownerTwoPart({ page, port, out, ok, fail, q, shots }) {
   await page.evaluate(k => window.__game.actions.select(k), nurse);
   await page.waitForSelector('#card-follow', { timeout: 10000 });
   await page.click('#card-follow');
-  await page.waitForTimeout(1500);
+  await until(
+    k => {
+      const g = window.__game;
+      const w = g.crowd.walkers.get(k);
+      const c = g.stage.cam.target;
+      return !w || Math.hypot(c.x - w.x, c.z - w.z) < 1;
+    },
+    nurse,
+    20000,
+  ).catch(() => {});
   const s = await page.evaluate(k => {
     const g = window.__game;
     const w = g.crowd.walkers.get(k);
