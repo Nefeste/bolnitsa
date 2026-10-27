@@ -10,7 +10,7 @@ import { onDuty, ORDERLY, type StaffMember } from '../engine/hospital/staff';
 import type { CrewView } from '../engine/shift/crew';
 import type { Doing } from '../engine/shift/slice';
 import type { Rest, Ride, Triage } from '../engine/shift/types';
-import { DOINGS, H, HEADER, kindOf, type NameRow, NO_TIME, P, REFERRED, STATUSES, STRIDE, TRIAGES } from '../sim/pack';
+import { DOINGS, H, HEADER, kindOf, type NameRow, NO_TIME, P, REFERRED, SLOW, STATUSES, STRIDE, TRIAGES } from '../sim/pack';
 import type { Look } from './bake';
 import { COAT, OLD_AGE, PARAMEDIC, roleColor, toneOf, WORKWEAR } from './cast';
 import { type Crowd, GURNEY_AHEAD, type Walker } from './crowd';
@@ -476,9 +476,12 @@ export class Population {
         // привезённый скорой — через вход для скорой, на каталке бригады: её везёт фельдшер (spec 2026-10-orderlies)
         const ambulance = kindOf(buf[o + P.flags]) === 'ambulance';
         const pw = this.crowd.add(key, look, spot, false, ambulance, due);
+        // медленный шаг (spec docs/specs/2026-10-people.md, «Медленный шаг»): по флагу движка — он и считает его дорогу
+        pw.slow = (buf[o + P.flags] & SLOW) !== 0;
         if (ambulance && doing === 'ambulance') this.medic(key, pw, row.seed, spot, taken);
         continue;
       }
+      w.slow = (buf[o + P.flags] & SLOW) !== 0;
       // его место назначает перевозка или фельдшер скорой (spec 2026-10-orderlies)
       if (this.held.has(key) || this.medics.has(key)) continue;
       // к врачу зовут — идёт сразу, без остановок; после стройки — к новому месту (то же место — тот же ключ: не встаёт)
