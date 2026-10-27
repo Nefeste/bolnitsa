@@ -15,7 +15,7 @@ import { ROLES } from '../app/roles';
 import { toastsOf } from '../app/toasts';
 import { type QualityMode, TEXT_SCALES } from '../app/settings';
 import { Meeting, Reports, signed } from './Meeting';
-import { Layers, PathSection, PatientsTab } from './flow';
+import { DeptLegend, Layers, PathSection, PathsPanel, PatientsTab, ProblemsPanel } from './flow';
 import { byGuide, GoalsTab, GuideToggle, LetterCard, ScenarioDone, StepMark } from './Scenario';
 import { type Actions, type Hud, type Level, type LevelRow, type RoomCard, type Speed, type Store, type Tab, type Tool, useHud } from './store';
 import { Icon, type IconName } from './icons';
@@ -282,11 +282,16 @@ function LeftTools({ hud, actions }: P) {
     body = (
       <>
         <ul className="list" id="ready-types">
-          {byGuide(hud.readyTypes, hud.scenario).map(({ row: t, step }) => {
+          {catalogEntries(hud.readyTypes, hud).map(e => {
+            if ('head' in e) return <GroupHead key={`g-${e.head.id}`} g={e.head} />;
+            const { row: t, step } = e;
             const on = b.ready?.type === t.id;
+            // миниатюра образца (spec docs/specs/2026-10-catalog.md): у выбранного — его образец, у остальных — первый
+            const thumb = hud.thumbs[`${t.id}|${on && b.ready ? b.ready.size : t.sizes[0].id}`];
             return (
               <li key={t.id} className={step?.next ? 'gnext' : undefined}>
-                <button type="button" id={`ready-${t.id.slice(5)}`} className={on ? 'on' : undefined} onClick={() => actions.pickReady(t.id)}>
+                <button type="button" id={`ready-${t.id.slice(5)}`} className={on ? 'thumbed on' : 'thumbed'} onClick={() => actions.pickReady(t.id)}>
+                  {thumb ? <img className="thumb" src={thumb} alt="" draggable={false} /> : <i className="thumb" aria-hidden="true" />}
                   <span>
                     <StepMark step={step} />
                     {t.name}
@@ -315,20 +320,45 @@ function LeftTools({ hud, actions }: P) {
   else if (b.tool === 'room')
     body = (
       <ul className="list" id="room-types">
-        {byGuide(hud.roomTypes, hud.scenario).map(({ row: t, step }) => (
-          <li key={t.id} className={step?.next ? 'gnext' : undefined}>
-            <button type="button" id={`rt-${t.id.slice(5)}`} className={b.roomType === t.id ? 'on' : undefined} onClick={() => actions.pickRoomType(t.id)}>
+        {catalogEntries(hud.roomTypes, hud).map(e =>
+          'head' in e ? (
+            <GroupHead key={`g-${e.head.id}`} g={e.head} />
+          ) : (
+          <li key={e.row.id} className={e.step?.next ? 'gnext' : undefined}>
+            <button type="button" id={`rt-${e.row.id.slice(5)}`} className={b.roomType === e.row.id ? 'on' : undefined} onClick={() => actions.pickRoomType(e.row.id)}>
               <span>
-                <StepMark step={step} />
-                {t.name}
+                <StepMark step={e.step} />
+                {e.row.name}
               </span>
               <small>
-                {t.min} · {t.price}
+                {e.row.min} · {e.row.price}
               </small>
             </button>
-            {why(step)}
+            {why(e.step)}
+          </li>
+          ),
+        )}
+      </ul>
+    );
+  // отделение (spec docs/specs/2026-10-departments.md, часть 2): в какое переводить; «Без отметки» — снять отметку
+  else if (b.tool === 'dept')
+    body = (
+      <ul className="list" id="dept-list">
+        {hud.departments.map(d => (
+          <li key={d.id}>
+            <button type="button" id={`dept-${d.id.slice(5)}`} className={b.dept === d.id ? 'on' : undefined} onClick={() => actions.pickDept(d.id)}>
+              <span>
+                <span className="swatch" style={{ background: d.color }} />
+                {d.name}
+              </span>
+            </button>
           </li>
         ))}
+        <li>
+          <button type="button" id="dept-none" className={b.dept === null ? 'on' : undefined} onClick={() => actions.pickDept(null)} title={T.build.deptNoneHint}>
+            <span>{T.build.deptNone}</span>
+          </button>
+        </li>
       </ul>
     );
   else if (b.tool === 'item')
@@ -372,6 +402,16 @@ function LeftTools({ hud, actions }: P) {
           </button>
         ))}
       </div>
+      {hud.departments.length ? (
+        <button type="button" id="tool-dept" className={`wide${b.tool === 'dept' ? ' on' : ''}`} onClick={() => actions.setTool(b.tool === 'dept' ? undefined : 'dept')} title={T.build.deptHint}>
+          <span className="swatches">
+            {hud.departments.map(d => (
+              <span key={d.id} className="swatch" style={{ background: d.color }} />
+            ))}
+          </span>
+          {T.build.dept}
+        </button>
+      ) : null}
       <div className="row">
         <button type="button" id="undo" disabled={b.undo === 0} onClick={actions.undo} title="Ctrl+Z">
           <Icon name="undo" /> {T.build.undo} ({b.undo})
@@ -398,6 +438,33 @@ function LeftTools({ hud, actions }: P) {
       <div className="hint">{T.build.keys}</div>
     </div>
   );
+}
+
+/** Группа каталога стройки (spec docs/specs/2026-10-catalog.md): заголовок строкой списка, у отделения — квадратик его цвета. */
+type CatalogGroup = Hud['catalogGroups'][number];
+
+const GroupHead = ({ g }: { g: CatalogGroup }) => (
+  <li className="ghead" data-group={g.id}>
+    {g.color ? <span className="swatch" style={{ background: g.color }} /> : null}
+    {g.name}
+  </li>
+);
+
+/**
+ * Строки каталога стройки: шаги порядка стройки сценария — первыми, с номером (решение владельца #114); остальное — по
+ * группам каталога, с заголовком (spec docs/specs/2026-10-catalog.md).
+ */
+function catalogEntries<R extends { id: Id; group: string }>(rows: readonly R[], hud: Hud): ({ head: CatalogGroup } | ReturnType<typeof byGuide<R>>[number])[] {
+  const all = byGuide(rows, hud.scenario);
+  const rest = all.filter(x => !x.step);
+  const out: ({ head: CatalogGroup } | (typeof all)[number])[] = all.filter(x => x.step);
+  for (const g of hud.catalogGroups) {
+    const rs = rest.filter(x => x.row.group === g.id);
+    if (rs.length) out.push({ head: g }, ...rs);
+  }
+  // группа не из списка — в конце, без заголовка
+  out.push(...rest.filter(x => !hud.catalogGroups.some(g => g.id === x.row.group)));
+  return out;
 }
 
 /** Карточка помещения больницы ПК: состояние, нужное, должности, «Обставить», «Снести»; у кабинета врача — «Мой кабинет». */
@@ -434,6 +501,26 @@ function SiteCard({ r, actions, hud }: { r: RoomCard; actions: Actions; hud: Hud
             ))}
           </dd>
         </div>
+        {r.dept ? (
+          <div>
+            <dt>{T.card.dept}</dt>
+            <dd id="card-dept">
+              <span className="swatch" style={{ background: r.dept.color }} />
+              <span id="card-dept-name">{r.dept.name}</span>
+              {r.dept.why ? <span className="muted"> · {r.dept.why}</span> : null}
+              {r.dept.value !== undefined ? (
+                <select id="card-dept-pick" value={r.dept.value} title={T.card.deptPickHint} onChange={e => actions.markDept(r.id, e.target.value || null)}>
+                  <option value="">{T.build.deptNone}</option>
+                  {hud.departments.map(d => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+            </dd>
+          </div>
+        ) : null}
         <div className="posts">
           <dt>{T.card.posts}</dt>
           <dd>
@@ -1173,6 +1260,9 @@ export function App({ store, actions, names }: { store: Store; actions: Actions;
       <SettingsPanel {...p} />
       <RightTabs {...p} />
       <BottomCard {...p} />
+      <DeptLegend hud={hud} />
+      <PathsPanel hud={hud} actions={actions} />
+      <ProblemsPanel hud={hud} actions={actions} />
       {!hud.build.on ? <Dock hud={hud} actions={actions} /> : null}
       {hud.doctor?.card ? <Card key={hud.doctor.card.id} v={hud.doctor.card} level={hud.doctor.level} meanwhile={hud.doctor.meanwhile} next={hud.doctor.next} actions={actions} /> : null}
       {/* планёрка в 08:00 (spec docs/specs/2026-10-economy.md) — когда карта пациента закрыта */}

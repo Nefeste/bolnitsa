@@ -2,6 +2,8 @@ id: role.therapist
 name: { ru: "Терапевт" }
 gen: { ru: "терапевта" }
 salary: [3500, 6500]
+# его кабинет — в этом отделении (spec docs/specs/2026-10-departments.md)
+department: dept.therapy
 # встаёт на место врача в кабинете врача — любом, кроме вашего; нужно место в ординаторской
 stands: role.doctor
 needs: room.staff

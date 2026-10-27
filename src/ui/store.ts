@@ -16,13 +16,18 @@ import type { NoticeRow } from '../app/toasts';
 import type { QualityMode, TextScale } from '../app/settings';
 import type { ScenarioAction, ScenarioHud } from '../app/scenario';
 import type { Metric } from '../app/metrics';
+import type { ProblemGo, ProblemList } from '../app/problems';
+import type { LegRow } from '../app/paths';
 
 /** Скорость игры (spec docs/specs/2026-10-walk.md): ×1, ×3, ×12; 0 — пауза. */
 export type Speed = 0 | 1 | 3 | 12;
 export type Tab = 'patients' | 'staff' | 'asks' | 'journal' | 'reports' | 'goals';
 
-/** Инструменты стройки (spec docs/specs/2026-10-build.md, «Экран и управление»; готовое — docs/specs/2026-10-ready-rooms.md). */
-export type Tool = 'ready' | 'room' | 'item' | 'door' | 'door2' | 'bench' | 'demolish';
+/**
+ * Инструменты стройки (spec docs/specs/2026-10-build.md, «Экран и управление»; готовое — docs/specs/2026-10-ready-rooms.md;
+ * «Отделение» — docs/specs/2026-10-departments.md, часть 2).
+ */
+export type Tool = 'ready' | 'room' | 'item' | 'door' | 'door2' | 'bench' | 'demolish' | 'dept';
 
 export interface BuildHud {
   on: boolean;
@@ -33,6 +38,8 @@ export interface BuildHud {
   /** «С персоналом»: готовое — с людьми на всех должностях */
   withStaff: boolean;
   item?: { kind: ObjectKind; eq?: Id };
+  /** «Отделение»: в какое переводить; null — снять отметку (отделение снова по тем, кто работает) */
+  dept?: Id | null;
   /** переставляют поставленный предмет */
   moving: boolean;
   /** строка призрака: что, размер, цена — или почему нельзя */
@@ -75,6 +82,11 @@ export interface RoomCard {
   furnish?: { ok: boolean; text: string };
   demolish?: string;
   /**
+   * отделение (spec docs/specs/2026-10-departments.md, часть 2): название, цвет, откуда оно; `value` — у палаты и кабинета,
+   * которые можно перевести: отметка инструмента, `''` — её нет
+   */
+  dept?: { name: string; color: string; why: string; value?: Id | '' };
+  /**
    * деньги помещения по суткам (spec docs/specs/2026-10-metrics-layer.md, часть 2): прошедшие (последние 14) и сегодня до сих
    * пор (`day: null`) — для графика; `service` — служебное: выручки нет, оно работает на всю больницу
    */
@@ -87,6 +99,8 @@ export interface RoomCard {
 export interface RoomTypeRow {
   id: Id;
   name: string;
+  /** группа каталога (spec docs/specs/2026-10-catalog.md): отделение, `service` или `common` */
+  group: string;
   min: string;
   price: string;
 }
@@ -95,6 +109,7 @@ export interface RoomTypeRow {
 export interface ReadyTypeRow {
   id: Id;
   name: string;
+  group: string;
   sizes: { id: RoomSizeId; text: string }[];
   /** у одного образца — его размер и цена; у нескольких — «от» самой низкой цены */
   price: string;
@@ -146,7 +161,20 @@ export interface Hud {
    * `day` — сутки денег на слое (часть 2): номер прошедших суток, `null` — сегодня до сих пор; `days` — какие прошедшие
    * сутки есть (последние 14)
    */
-  layers: { open: boolean; queues: boolean; metric: Metric | null; day: number | null; days: number[] };
+  layers: { open: boolean; queues: boolean; depts: boolean; paths: boolean; problems: boolean; metric: Metric | null; day: number | null; days: number[] };
+  /**
+   * слой «Пути пациентов» (spec docs/specs/2026-10-layers.md, часть 2): переходы за сутки, где прошли больше всего метров;
+   * сколько переходов всего, сколько метров и сколько строк не вошло; `sel` — выбранный переход (на полу — только он)
+   */
+  paths: { rows: LegRow[]; total: number; meters: number; more: number; sel: string | null };
+  /** слой «Проблемы» (spec docs/specs/2026-10-layers.md, часть 1): что сейчас мешает больнице — список и число в меню */
+  problems: ProblemList;
+  /**
+   * отделения (spec docs/specs/2026-10-departments.md, часть 2): в какие переводит инструмент — по порядку записи; легенда
+   * слоя и фильтр «Пациентов» — отделения этой больницы, сколько помещений, `''` — без отделения
+   */
+  departments: { id: Id; name: string; color: string }[];
+  deptLegend: { id: Id | ''; name: string; color: string; rooms: number }[];
   /** вкладка «Персонал»: `on` — сейчас в смене (spec docs/specs/2026-10-staff-shifts.md) */
   /** «Персонал»: строка человека; `on` — в смене; `bad` — собирается уйти или уходит (spec docs/specs/2026-10-staff-mood.md) */
   staffList: { key: string; text: string; on?: true; bad?: true }[];
@@ -156,6 +184,10 @@ export interface Hud {
   build: BuildHud;
   roomTypes: RoomTypeRow[];
   readyTypes: ReadyTypeRow[];
+  /** группы каталога стройки по порядку (spec docs/specs/2026-10-catalog.md); у отделения — его цвет */
+  catalogGroups: { id: string; name: string; color?: string }[];
+  /** миниатюры готовых помещений (spec docs/specs/2026-10-catalog.md): `вид|образец` → PNG адресом `blob:`; пусто — не вышла */
+  thumbs: Record<string, string>;
   /** больница ПК закрыта — почему (пациенты не приходят) */
   closed?: string;
   /** не та смена (spec docs/specs/2026-10-staff-shifts.md): пришедших сами не примут до утра — спокойной строкой */
@@ -231,17 +263,23 @@ export const initial: Hud = {
   notices: [],
   patients: [],
   patientsAll: 0,
-  patientFilter: { triage: 'all', where: 'all', long: false, list: 'present' },
+  patientFilter: { triage: 'all', where: 'all', dept: 'all', long: false, list: 'present' },
   gone: [],
   seenRows: [],
   seenAll: 0,
-  layers: { open: false, queues: false, metric: null, day: null, days: [] },
+  layers: { open: false, queues: false, depts: false, paths: false, problems: false, metric: null, day: null, days: [] },
+  paths: { rows: [], total: 0, meters: 0, more: 0, sel: null },
+  problems: { rows: [], more: 0, count: 0 },
+  departments: [],
+  deptLegend: [],
   staffList: [],
   reserveHire: [],
   debug: false,
   build: { on: false, withStaff: true, moving: false, spent: 0, undo: 0 },
   roomTypes: [],
   readyTypes: [],
+  catalogGroups: [],
+  thumbs: {},
   fps: 0,
   cpuMs: 0,
   gpuMs: null,
@@ -294,6 +332,9 @@ export interface Actions {
   pickReady(id: Id, size?: RoomSizeId): void;
   toggleReadyStaff(): void;
   pickItem(kind: ObjectKind, eq?: Id): void;
+  /** «Отделение» (spec docs/specs/2026-10-departments.md, часть 2): какое — инструменту; помещению — из его карточки */
+  pickDept(dept: Id | null): void;
+  markDept(room: string, dept: Id | null): void;
   undo(): void;
   done(): void;
   furnish(room: string): void;
@@ -328,6 +369,14 @@ export interface Actions {
   follow(): void;
   toggleLayers(): void;
   toggleQueues(): void;
+  /** слой «Отделения» (spec docs/specs/2026-10-departments.md, часть 2): вместо «Очередей» — пол красят они */
+  toggleDepts(): void;
+  /** слой «Проблемы» (spec docs/specs/2026-10-layers.md, часть 1): пол красит он; строка списка — туда, куда она ведёт */
+  toggleProblems(): void;
+  /** слой «Пути пациентов» (часть 2): пол коридоров по частоте; строка списка — только её путь, ещё раз — все */
+  togglePaths(): void;
+  pickLeg(key: string | null): void;
+  goProblem(go: ProblemGo): void;
   /** слой «Показатели»: показатель или выключить (`null`); сутки денег — прошедшие или сегодня (`null`) */
   setMetric(m: Metric | null): void;
   setMetricDay(day: number | null): void;

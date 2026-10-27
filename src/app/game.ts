@@ -7,6 +7,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { Cell, ContentDb, Id, Manage, Season } from '../content/types';
 import { type HospitalState, type Plan, planOf } from '../engine/hospital/build';
+import { deptsOf, deptWhy, paintsOf } from '../engine/hospital/departments';
 import { type Block, DOCTOR, doctorRoom, openBlocks, type Problem, problemsOf, standInOf, standInsOf, type Staffing, workingRooms } from '../engine/hospital/requirements';
 import { demolishRefund, emptySite, furnishOf, hospitalOf, priceOf, readyCost, rulesOf, type Site, type SiteCommand, type SiteResult } from '../engine/hospital/site';
 import { siteOfPlan } from '../engine/hospital/site-plan';
@@ -25,6 +26,7 @@ import type { BakeTask, Baked } from '../render/bake-worker';
 import { CATALOG, EXTRA_MODELS } from '../render/catalog';
 import { Crowd } from '../render/crowd';
 import { furnish, type Furnished } from '../render/furniture';
+import { Thumbs } from '../render/thumbs';
 import { Ghosts } from '../render/ghost';
 import { Gurneys } from '../render/gurney';
 import type { RoomRect } from '../render/highlight';
@@ -43,10 +45,15 @@ import type { PathView, World } from '../sim/protocol';
 import type { Actions, Hud, RoomCard, Speed, Store, Tab } from '../ui/store';
 import { Builder, objectName, whyText } from './build';
 import { Chips } from './chips';
+import { colorOf, css, layerColors, legendOf, NO_DEPT, patientDept, planDepts, stripeColors } from './departments';
+import { grouped, groupOf, groupOrder } from './groups';
 import { loadContent } from './content';
 import { Doctor } from './doctor';
 import { chipShown, dur, medicLine, moodOf, pathCard, type PatientRow, patientRows, roomChip, roomLoads, tintOf, wheelLine } from './flow';
 import { type HintKey, hintOf } from './hints';
+import { problemList, problemTint, roomLevel, sameList, shiftGap } from './problems';
+import { endsOf, heatOf, heatPixels, legKey, legRows, lengthOf } from './paths';
+import type { Leg } from '../sim/legs';
 import { DEFAULT_ROLE, firstOffice, type Role, ROLE_SETS, startFor } from './roles';
 import { type NoticeRow, type Tone } from './toasts';
 import { ScenarioDesk, scenarioTitle } from './scenario';
@@ -55,6 +62,7 @@ import { ColumnLabels } from './collabels';
 import { applyText, AutoQuality, type QualityMode, readSettings, type Settings, type TextScale, writeSettings } from './settings';
 import { HoverLabel } from './hover';
 import { Labels } from './labels';
+import { ThumbQueue, thumbKey } from './thumbs';
 import { Money } from './money';
 import { staffName } from './people';
 import { startCash } from '../engine/shift/money';
@@ -255,6 +263,8 @@ export class Game {
   ghosts!: Ghosts;
   /** каталки на карте (spec docs/specs/2026-10-orderlies.md) — и для сценария в браузере: сколько видно */
   gurneys!: Gurneys;
+  /** миниатюры каталога стройки (spec docs/specs/2026-10-catalog.md) */
+  thumbs!: ThumbQueue;
   /** кто вёз каталку в прошлом срезе — «Персонал» заново, когда изменилось */
   private riding = '';
   readonly builder = new Builder(this);
@@ -318,6 +328,13 @@ export class Game {
   /** ошибки нанятых врачей за сутки (spec docs/specs/2026-10-two-ways.md, F5) — как прислал поток расчёта; планёрка их снимает */
   errors: ErrorList = { rows: [], total: 0 };
   private problems: ({ kind: Problem['kind'] | 'broken' | 'offShift'; text: string } | undefined)[] = [];
+  /**
+   * слой «Пути пациентов» (spec docs/specs/2026-10-layers.md, часть 2): переходы за сутки — как прислал поток расчёта; их пути
+   * клетками — по паре помещений, до новой стройки; поиск пути — тот, что ведёт людей
+   */
+  private legs: Leg[] = [];
+  private legRoutes = new Map<string, Int32Array | null>();
+  private walkPaths!: Paths;
   private broken = new Set<string>();
   /** усталость и перерывы врачей в смене — как прислал поток расчёта (spec docs/specs/2026-10-staff-shifts.md, часть 2) */
   private crew = new Map<string, CrewView>();
@@ -329,6 +346,8 @@ export class Game {
   /** первая зона ожидания (общая очередь к врачам) и кабинет человека штата — номера в плане */
   private hall = -1;
   private office: number[] = [];
+  /** отделение каждого помещения плана (spec docs/specs/2026-10-departments.md, часть 2); у служб и общих — нет */
+  private depts: (Id | undefined)[] = [];
   speed: Speed = 1;
   /** промотка «до утра» (заглушка части 2а): до 20:00 или до первого срочного */
   ff = false;
@@ -510,6 +529,8 @@ export class Game {
     const open = new Uint8Array(walk.length);
     for (let i = 0; i < open.length; i++) open[i] = plan.grid.cells[i] === 1 || plan.grid.cells[i] === 2 || plan.grid.cells[i] === 4 ? 1 : 0;
     const paths = new Paths(layout.w, layout.h, walk, open);
+    this.walkPaths = paths;
+    this.legRoutes.clear();
     // скамьи у дверей кабинетов (spec docs/specs/2026-10-door-benches.md) — по числу базы, как в движке
     const places = new Places(layout, furnished, db.inflow?.bench);
     if (first) {
@@ -521,6 +542,8 @@ export class Game {
       this.stage = new Stage({ host: this.host, layout, furnished, people: this.people, quality, capacity: 600 });
       this.ghosts = new Ghosts(this.models);
       this.stage.scene.add(this.ghosts.group);
+      // миниатюры каталога стройки (spec docs/specs/2026-10-catalog.md): тем же отрисовщиком, по одной за раз
+      this.thumbs = new ThumbQueue(db, this.models, new Thumbs(this.stage.renderer, this.stage.floorTex, this.stage.aniso), done => this.store.set({ thumbs: Object.fromEntries(done) }));
       // каталки (spec docs/specs/2026-10-orderlies.md, «Что видно»): у санитаров и у фельдшеров скорой
       this.gurneys = new Gurneys();
       this.stage.scene.add(this.gurneys.group);
@@ -542,6 +565,8 @@ export class Game {
     this.plan = plan;
     this.onDuty();
     this.builder.refresh();
+    // слой «Пути пациентов»: пол новой раскладки пуст, а переходы те же — поток их не пришлёт; пути пар — по новому плану
+    if (!first) this.showPaths();
   }
 
   /**
@@ -563,6 +588,65 @@ export class Game {
   private offShift(p: Problem | undefined, r: Plan['rooms'][number]): string | undefined {
     if (p?.kind !== 'noStaff' || problemsOf(this.db, this.plan, r, this.full).some(x => x.kind === 'noStaff')) return undefined;
     return T.problem.offShift(clock(this.nextShift()));
+  }
+
+  /**
+   * Слой пола (геймдизайн §3): пол красит один — «Очереди и загрузка», «Отделения», «Пути пациентов» или «Проблемы»; `null`
+   * — ни один. Переходы для «Путей» поток расчёта шлёт, только пока они включены.
+   */
+  private floorLayer(on: 'queues' | 'depts' | 'paths' | 'problems' | null) {
+    const l = this.store.get().layers;
+    if ((on === 'paths') !== l.paths) this.client.legs(on === 'paths');
+    this.store.set({ layers: { ...l, queues: on === 'queues', depts: on === 'depts', paths: on === 'paths', problems: on === 'problems' } });
+    if (on === 'paths') this.showPaths();
+    this.hud();
+  }
+
+  /**
+   * Слой «Пути пациентов» (spec docs/specs/2026-10-layers.md, часть 2): переходы за сутки — по клеткам плана тем же поиском
+   * пути, что ведёт людей, в «тепло» пола (`FloorHeat`) и в список «где прошли больше всего метров». Клетка помещения —
+   * снаружи середины его двери; вход и вход для скорой — их двери. Выбрана строка — на полу только её путь.
+   */
+  private showPaths() {
+    const hud = this.store.get();
+    if (!hud.layers.paths) return;
+    const { layout, plan, db } = this;
+    const doors = endsOf(layout, this.walkPaths.walk, c => this.walkPaths.nearest(c));
+    const sel = hud.paths.sel !== null && this.legs.some(l => legKey(l) === hud.paths.sel) ? hud.paths.sel : null;
+    const { heat, max } = heatOf(this.legs, layout.w * layout.h, room => doors.get(room) ?? -1, (a, b) => this.walkPaths.find(a, b), this.legRoutes, sel ?? undefined);
+    const { rgba, lit } = heatPixels(heat, max);
+    this.stage.heat.set(rgba, lit);
+    const names = (room: string) => {
+      const r = plan.rooms.find(x => x.id === room);
+      return r ? named(db.rooms[r.type]?.name, r.type) : room;
+    };
+    this.store.set({ paths: { ...legRows(this.legs, names, key => lengthOf(this.legRoutes, key)), sel } });
+  }
+
+  /**
+   * Отделения помещений (spec docs/specs/2026-10-departments.md, часть 2) — по плану и штату, как их считает движок
+   * (`deptsOf`): полосы на полу у дверей, пол слоя «Отделения», его легенда, список инструмента. Отметка, найм и увольнение
+   * меняют их без пересборки сцены (`staffOnly` в src/sim/host.ts).
+   */
+  private showDepts() {
+    const { db, plan } = this;
+    const site = this.hospital.site;
+    this.depts = site ? planDepts(plan, deptsOf(db, site, this.staff)) : plan.rooms.map(() => undefined);
+    this.stage.stripes.set(stripeColors(this.depts));
+    this.stage.deptTint.set(layerColors(this.depts));
+    const legend = db.departments ? legendOf(Object.keys(db.departments), this.depts) : [];
+    const f = this.store.get().patientFilter;
+    // отделения, выбранного в «Пациентах», в больнице больше нет — все
+    const gone = f.dept !== 'all' && !legend.some(x => (x.id || 'none') === f.dept);
+    this.store.set({
+      departments: paintsOf(db).map(id => ({ id, name: this.deptName(id), color: css(colorOf(id)) })),
+      deptLegend: legend.map(x => ({ ...x, name: x.id === '' ? T.flow.deptOther : this.deptName(x.id), color: css(colorOf(x.id || undefined)) })),
+      ...(gone ? { patientFilter: { ...f, dept: 'all' as const } } : {}),
+    });
+  }
+
+  private deptName(id: Id): string {
+    return named(this.db.departments?.[id]?.name, id);
   }
 
   /** Когда начнётся другая смена — час суток в секундах. */
@@ -704,13 +788,17 @@ export class Game {
     });
     this.hall = plan.rooms.findIndex(r => r.type === 'room.waiting' && r.door.length > 0);
     this.office = this.staff.map(m => plan.rooms.findIndex(r => r.id === m.room));
+    this.showDepts();
     this.labels.set(
-      plan.rooms.map(r => {
+      plan.rooms.map((r, i) => {
         const why = problemsOf(db, plan, r, this.staffed);
         const off = this.offShift(why[0], r);
+        const d = this.depts[i];
         return {
           id: r.id, x: r.x + r.w / 2, z: r.y + r.h / 2, name: named(db.rooms[r.type]?.name, r.type), state: off ?? (why.length ? T.problem.down(this.problemText(why[0])) : T.problem.works), ok: why.length === 0,
           ...(off ? { rest: true } : {}),
+          // табличка отделения (spec docs/specs/2026-10-departments.md, часть 2): полоса его цвета и название
+          ...(d !== undefined ? { dept: { name: this.deptName(d), color: css(colorOf(d)) } } : {}),
         };
       }),
     );
@@ -723,7 +811,10 @@ export class Game {
         .filter(t => this.buildable(t.id))
         .map(t => {
           const r = rulesOf(db, t.id)!;
-          return { id: t.id, name: named(t.name, t.id), min: T.build.from(r.smallest.w, r.smallest.h), price: T.build.perM2(money(r.smallest.cost / (r.smallest.w * r.smallest.h))) };
+          return {
+            id: t.id, name: named(t.name, t.id), group: groupOf(db, t.id), min: T.build.from(r.smallest.w, r.smallest.h),
+            price: T.build.perM2(money(r.smallest.cost / (r.smallest.w * r.smallest.h))),
+          };
         })
         .sort((a, b) => a.name.localeCompare(b.name, document.documentElement.lang || undefined)),
       // готовые помещения (spec docs/specs/2026-10-ready-rooms.md): образцы и цена готового целиком
@@ -732,10 +823,22 @@ export class Game {
         .map(t => {
           const sizes = t.sizes.map(z => ({ id: z.id, text: T.build.readySize(z.id, z.w, z.h, money(readyCost(db, t.id, z.id))) }));
           const low = Math.min(...t.sizes.map(z => readyCost(db, t.id, z.id)));
-          return { id: t.id, name: named(t.name, t.id), sizes, price: sizes.length === 1 ? sizes[0].text : T.build.readyFrom(money(low)) };
+          return { id: t.id, name: named(t.name, t.id), group: groupOf(db, t.id), sizes, price: sizes.length === 1 ? sizes[0].text : T.build.readyFrom(money(low)) };
         })
         .sort((a, b) => a.name.localeCompare(b.name, document.documentElement.lang || undefined)),
+      // группы каталога (spec docs/specs/2026-10-catalog.md): отделения по записи, затем служба и общие
+      catalogGroups: groupOrder(db).map(g =>
+        g === 'service' ? { id: g, name: T.build.groupService } : g === 'common' ? { id: g, name: T.build.groupCommon } : { id: g, name: this.deptName(g), color: css(colorOf(g)) },
+      ),
     });
+  }
+
+  /** Миниатюры каталога «Готовое помещение» по порядку групп; у выбранного помещения — его образец, и он первым. */
+  private thumbKeys(): string[] {
+    const sel = this.builder.ready;
+    const rows = grouped(this.db, this.store.get().readyTypes).flatMap(g => g.rows);
+    const keys = rows.map(r => thumbKey(r.id, sel?.type === r.id ? sel.size : r.sizes[0].id));
+    return sel ? [thumbKey(sel.type, sel.size), ...keys] : keys;
   }
 
   /** В каталоге стройки: у сценария — только помещения его списка (spec docs/specs/2026-10-scenario-1.md), остальных нет. */
@@ -819,6 +922,8 @@ export class Game {
     if (light) {
       this.pop.setStaff(w.staff);
       this.onDuty();
+      // отметка отделения (spec docs/specs/2026-10-departments.md, часть 2): призрак — по новой больнице
+      this.builder.refresh();
       return;
     }
     this.setWorld(false);
@@ -894,6 +999,11 @@ export class Game {
     // перевозки на каталке (spec docs/specs/2026-10-orderlies.md): санитар идёт за больным и везёт его; кто везёт — в
     // «Персонале», когда перевозка началась или кончилась
     if (s.rides) this.pop.setRides(s.rides);
+    // переходы за сутки (слой «Пути пациентов»): поток шлёт их, пока слой включён
+    if (s.legs) {
+      this.legs = s.legs;
+      this.showPaths();
+    }
     this.pop.sync(s.buf, s.names);
     const riding = this.pop.ridingNow;
     if (s.crew || s.moods || riding !== this.riding) this.store.set({ staffList: this.staffRows() });
@@ -1076,9 +1186,15 @@ export class Game {
     const b = performance.now();
     this.pickUnder();
     this.stage.frame(dt, (this.t % 86400) / 3600, this.crowd, this.pop.paint, k => this.pop.triageOf(k), this.ringKey(), this.pickOf());
-    this.labels.visible = this.builder.on;
+    // миниатюры каталога (spec docs/specs/2026-10-catalog.md) — пока открыто «Готовое помещение», по одной за раз
+    if (this.builder.on && this.builder.tool === 'ready') {
+      this.thumbs.ask(this.thumbKeys());
+      this.thumbs.step();
+    }
+    // подписи помещений — в стройке и в слое «Отделения» (spec docs/specs/2026-10-departments.md, часть 2); значки — вместо них
+    this.labels.visible = this.builder.on || this.store.get().layers.depts;
     this.labels.frame();
-    this.chips.visible = !this.builder.on && !this.backdrop;
+    this.chips.visible = !this.labels.visible && !this.backdrop;
     this.chips.frame();
     this.colLabels.frame();
     // карта вашего больного — когда его фигура вошла (замечание владельца 25.10.2026)
@@ -1253,19 +1369,55 @@ export class Game {
   };
 
   /** 10 раз в секунду: значки и цвет пола помещений, вкладка «Пациенты», «Приняты», «Ушли», путь выбранного. */
-  private flowHud(): Pick<Hud, 'patients' | 'patientsAll' | 'gone' | 'seenRows' | 'seenAll' | 'path'> {
+  private flowHud(): Pick<Hud, 'patients' | 'patientsAll' | 'gone' | 'seenRows' | 'seenAll' | 'path' | 'problems'> {
     const { db, plan, t } = this;
     const hud = this.store.get();
     const people = [...this.pop.patients()];
     const loads = roomLoads(people.map(([, p]) => p), plan, by => this.office[by] ?? -1, this.hall, t, type => !!(db.rooms[type]?.beds || db.rooms[type]?.emergency));
     const mine = doctorRoom(plan);
-    this.chips.detailed = hud.layers.queues;
+    this.chips.detailed = hud.layers.queues || hud.layers.problems;
     const chips = plan.rooms.map((r, i) => roomChip(loads[i], this.problems[i], r.id === mine));
+    // слой «Проблемы» (spec docs/specs/2026-10-layers.md, часть 1): уровень помещения — по его значку; в этой смене никого —
+    // днём у любого помещения, ночью у работающего и ночью
+    const [dayFrom, dayTo] = db.economy.staff.shifts?.day ?? [8, 20];
+    const hour = (t % 86400) / 3600;
+    const day = hour >= dayFrom && hour < dayTo;
+    const night = plan.rooms.map(r => !!db.rooms[r.type]?.night);
+    const levels = chips.map((c, i) => roomLevel(c, this.problems[i]?.kind, shiftGap(this.problems[i]?.kind, day, night[i])));
     // состояние словами — и у помещений без значка: его показывает подпись под курсором
     this.roomState = chips.map(c => c.long ?? c.text);
-    this.chips.set(plan.rooms.flatMap((r, i) => (chipShown(chips[i], hud.layers.queues) ? [{ id: r.id, x: r.x + r.w / 2, z: r.y + r.h / 2, chip: chips[i] }] : [])));
-    this.stage.tint.group.visible = hud.layers.queues;
+    const shown = (i: number) => (hud.layers.problems ? levels[i] !== undefined : chipShown(chips[i], hud.layers.queues));
+    this.chips.set(plan.rooms.flatMap((r, i) => (shown(i) ? [{ id: r.id, x: r.x + r.w / 2, z: r.y + r.h / 2, chip: chips[i] }] : [])));
+    this.stage.tint.group.visible = hud.layers.queues || hud.layers.problems;
     if (hud.layers.queues) this.stage.tint.set(loads.map((l, i) => tintOf(l, this.problems[i] !== undefined)));
+    else if (hud.layers.problems) this.stage.tint.set(levels.map(problemTint));
+    // список «Проблемы»: помещения, люди штата, лежачие без каталки, касса; тот же — прежний объект, панель не перерисовать
+    const fatigue = db.economy.staff.fatigue;
+    const list = problemList({
+      rooms: plan.rooms.map((r, i) => ({
+        id: r.id, name: named(db.rooms[r.type]?.name, r.type), chip: chips[i], load: loads[i], kind: this.problems[i]?.kind, why: this.problems[i]?.text, night: night[i],
+      })),
+      day,
+      staff: this.staff.map(m => {
+        const mood = this.moods.get(m.id);
+        const c = this.crew.get(m.id);
+        return {
+          key: `s:${m.id}`, who: this.staffWho(m), ...(mood?.quit !== undefined ? { quit: true } : {}), ...(mood?.go !== undefined ? { go: true } : {}),
+          ...(c ? { fatigue: c.f, ...(c.rest ? { resting: true } : {}) } : {}),
+        };
+      }),
+      ...(fatigue ? { tired: fatigue.tired } : {}),
+      gurney: people.flatMap(([key, p]) => (p.doing === 'gurney' ? [{ key, since: p.since }] : [])),
+      ...(this.money.hud.cash !== undefined ? { cash: this.money.hud.cash } : {}),
+      limit: this.money.hud.limit,
+      t,
+      money,
+    });
+    const problems = sameList(list, hud.problems) ? hud.problems : list;
+    // слой «Отделения» (spec docs/specs/2026-10-departments.md, часть 2): цвета пола — с отделениями (`showDepts`)
+    this.stage.deptTint.group.visible = hud.layers.depts;
+    // слой «Пути пациентов» (spec docs/specs/2026-10-layers.md, часть 2): тепло пола — с переходами (`showPaths`)
+    this.stage.heat.group.visible = hud.layers.paths;
     // слой «Показатели»: столбик помещения по его нагрузке; не работает, нет людей, закрыто или не в смене — плашка, в
     // подписи — почему (по значку: красный бывает и у долгой очереди — она столбик)
     const metric = hud.layers.metric;
@@ -1296,7 +1448,11 @@ export class Game {
         const ref = Number(p.kind) & REFERRED ? this.pop.staffAt(p.by)?.role : undefined;
         return ref ? `${who} · ${T.card.referred(this.names().dat(ref), p.row.sex === 'f')}` : who;
       };
-      const list = people.map(([key, p]) => ({ ...p, key, id: p.row.id, title: title(p) }));
+      // отделение пациента (часть 2): помещения, где он, или кабинета его врача
+      const list = people.map(([key, p]) => {
+        const dept = patientDept(p, this.depts, by => this.office[by] ?? -1);
+        return { ...p, key, id: p.row.id, title: title(p), ...(dept !== undefined ? { dept } : {}) };
+      });
       ({ rows: patients, total: patientsAll } = patientRows(list, t, hud.patientFilter));
     }
     // ушёл, когда кончилось терпение: час — его срок из среза (извещение при промотке приходит позже), ждал — до него
@@ -1322,7 +1478,7 @@ export class Game {
     }
     let path: Hud['path'];
     if (id && this.path?.id === id) path = this.path.journey ? pathCard(this.path.journey, this.pop.rows.get(id)?.sex === 'f', t, this.pathNames) : { none: true };
-    return { patients, patientsAll, gone, seenRows, seenAll: this.seen.total, path };
+    return { patients, patientsAll, gone, seenRows, seenAll: this.seen.total, path, problems };
   }
 
   /** Панели — заново сейчас, а не через 100 мс (режим врача: ответ потока, открыть и закрыть карту). */
@@ -1534,6 +1690,12 @@ export class Game {
       this.builder.pickItem(kind, eq);
       this.hud();
     },
+    // «Отделение» (spec docs/specs/2026-10-departments.md, часть 2): инструмент — какое; карточка помещения — сразу командой
+    pickDept: dept => {
+      this.builder.pickDept(dept);
+      this.hud();
+    },
+    markDept: (room, dept) => this.command({ kind: 'dept', room, ...(dept ? { dept } : {}) }),
     undo: () => this.command({ kind: 'undo' }),
     done: () => {
       if (this.builder.on) this.builder.toggle();
@@ -1615,10 +1777,35 @@ export class Game {
     loadGame: slot => reopen({ load: slot }),
     deleteGame: slot => void removeSlot(this.disk, slot).then(() => this.refreshSaves()),
     newGame: () => reopen({}),
-    toggleQueues: () => {
-      const l = this.store.get().layers;
-      this.store.set({ layers: { ...l, queues: !l.queues } });
+    // пол красит один слой: «Очереди и загрузка», «Отделения», «Пути пациентов» или «Проблемы»
+    toggleQueues: () => this.floorLayer(this.store.get().layers.queues ? null : 'queues'),
+    toggleDepts: () => this.floorLayer(this.store.get().layers.depts ? null : 'depts'),
+    togglePaths: () => this.floorLayer(this.store.get().layers.paths ? null : 'paths'),
+    toggleProblems: () => this.floorLayer(this.store.get().layers.problems ? null : 'problems'),
+    // строка списка «Пути пациентов» (spec docs/specs/2026-10-layers.md, часть 2): на полу — только её путь, камера к его
+    // середине; ещё раз — снова все
+    pickLeg: key => {
+      const p = this.store.get().paths;
+      const sel = key === null || key === p.sel ? null : key;
+      this.store.set({ paths: { ...p, sel } });
+      this.showPaths();
+      const cells = sel ? this.legRoutes.get(sel) : undefined;
+      if (cells && cells.length > 0) {
+        const c = cells[cells.length >> 1];
+        this.following = undefined;
+        this.stage.cam.flyTo((c % this.layout.w) + 0.5, Math.floor(c / this.layout.w) + 0.5);
+      }
       this.hud();
+    },
+    // строка списка «Проблемы»: помещение — камера к нему и его карточка; человек — как «Найти»; касса — «Отчёты»
+    goProblem: go => {
+      if ('room' in go) {
+        const r = this.plan.rooms.find(x => x.id === go.room);
+        this.following = undefined;
+        if (r) this.stage.cam.flyTo(r.x + r.w / 2, r.y + r.h / 2);
+        this.selectRoomId(go.room);
+      } else if ('person' in go) this.actions.focus(go.person);
+      else this.actions.setTab('reports');
     },
     // слой «Показатели» (spec docs/specs/2026-10-metrics-layer.md): показатель запоминается в настройках игрока
     setMetric: (m: Metric | null) => {
@@ -1729,12 +1916,20 @@ export class Game {
       });
     });
     const f = furnishOf(db, site, id);
+    // отделение (spec docs/specs/2026-10-departments.md, часть 2): какое и откуда; палату и кабинет можно перевести отсюда же
+    const dw = db.departments ? deptWhy(db, room, this.staff) : undefined;
+    const dept: RoomCard['dept'] = !db.departments ? undefined : {
+      ...(dw
+        ? { name: this.deptName(dw.dept), color: css(colorOf(dw.dept)), why: dw.by === 'mark' ? T.card.deptMark : dw.by === 'staff' ? T.card.deptStaff(lowerFirst(named(db.roles[dw.role!]?.name, dw.role!))) : T.card.deptType }
+        : { name: T.card.deptNone, color: css(NO_DEPT), why: '' }),
+      ...(t.paint && !room.leaving ? { value: room.dept ?? '' } : {}),
+    };
     // каталка ночью (spec docs/specs/2026-10-orderlies.md, «Что видно»): у помещения с санитаром, когда в ночной смене есть
     // люди, а санитара — ни одного во всей больнице: лежачих повезут медсёстры
     const night = t.staff.includes(ORDERLY) && this.staff.some(m => m.shift === 'night') && !this.staff.some(m => m.role === ORDERLY && m.shift !== 'day');
     return {
       ...base, size: `${r.w} × ${r.h}`, ok: why.length === 0, state: why.length ? T.problem.down(this.problemText(why[0])) : T.problem.works,
-      problems: why.map(p => this.problemText(p)), needs, posts, ...(night ? { note: T.card.nightCarrier } : {}),
+      problems: why.map(p => this.problemText(p)), needs, posts, ...(night ? { note: T.card.nightCarrier } : {}), ...(dept ? { dept } : {}),
       // деньги по суткам (spec docs/specs/2026-10-metrics-layer.md, часть 2): прошедшие и сегодня — графиком
       money: [...this.roomsMoney.days.map(d => ({ day: d.day as number | null, r: d.rooms[id] })), { day: null, r: this.roomsMoney.now[id] }].map(x => ({
         day: x.day, income: x.r?.income ?? 0, expenses: x.r?.expenses ?? 0,
@@ -1874,8 +2069,12 @@ export class Game {
       // «Вся больница» (spec docs/specs/2026-10-settings.md): кнопки вида на экране больше нет
       else if (k === 'Home') this.actions.overview();
       else if (k === 'Escape') this.cancel();
-      // часть 3: L — слой «Очереди и загрузка», Tab — вкладка «Пациенты» (геймдизайн §12)
-      else if (k === 'KeyL') this.actions.toggleQueues();
+      // часть 3: L — слои пола по кругу: «Очереди и загрузка», «Отделения», «Пути пациентов», «Проблемы», выключены
+      // (геймдизайн §3); Tab — «Пациенты» (§12)
+      else if (k === 'KeyL') {
+        const l = this.store.get().layers;
+        this.floorLayer(l.queues ? 'depts' : l.depts ? 'paths' : l.paths ? 'problems' : l.problems ? null : 'queues');
+      }
       // M — слой «Показатели» по кругу: загрузка, ожидание, выключен (spec docs/specs/2026-10-metrics-layer.md)
       else if (k === 'KeyM') {
         const now = this.store.get().layers.metric;

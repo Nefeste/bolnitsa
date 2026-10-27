@@ -135,9 +135,26 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # screen's second step — «Обычно» and soft mode off by default, the level's numbers, «Спокойно»
                                    # and soft mode open the game with `manage=calm&soft=1`, the engine, the start cash, the
                                    # overdraft limit and the room card's wages on that level, «Трудно» in «Настройки» from that
-                                   # minute, the level in the save row);
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|27` for one part, `-- --only 7,10,11` —
+                                   # minute, the level in the save row; then departments on the map:
+                                   # stripes at department doors, the «Отделение» tool and its ghost, a ward to surgery
+                                   # with no scene rebuild, Ctrl+Z, the «Отделения» layer and legend, L in a cycle, the
+                                   # room card's department and its select, the «Пациенты» filter by department; then
+                                   # the build catalog: groups by department in order, thumbnails of ready rooms, the
+                                   # chosen sample's thumbnail, the same groups for «Помещение»; then the «Проблемы» layer:
+                                   # the list bottom-right, a day lab tech dismissed — «в этой смене никого», the night one
+                                   # too — the red floor, chip and row «не работает: нет лаборанта», the number in the menu,
+                                   # a click on the row flies to the lab and opens its card, L in a cycle; then the «Пути
+                                   # пациентов» layer: the corridor floor painted, the list by metres a day, every pair of
+                                   # rooms has a path, a row — only its path on the floor and the camera at its middle, again —
+                                   # all, an hour of play — more moves, off — no paint, L in a cycle);
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|31` for one part, `-- --only 7,10,11` —
                                    # several in a row on one page, as in the full run
+node tools/app/soak.mjs --days 3   # after build: a long run in headless Chromium — the ready city at ×12 for three game days,
+                                   # the meeting closed each morning; window memory after GC, DOM nodes, people, sim lag and
+                                   # frames every game hour, the engine snapshot every six → tools/app/out/soak.json; fails on a
+                                   # console error, a crash, a stopped clock, window memory growing over 8 MB a day from the
+                                   # second day or more patient names kept than patients on the scene (`--start poly` — the
+                                   # polyclinic; docs/05-process.md, «Долгий прогон»)
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
                                                      # (`-- --flow 40,4` — a bigger crowd, about 180 people,
                                                      # `-- --metric load` — with the «Показатели» layer)
@@ -170,6 +187,8 @@ bun tools/sim/economy.ts --seeds 1,2,3         # economy simulator: scripted hos
                                                # (`docs/specs/2026-10-why.md`)
 bun tools/sim/halls.ts --flow 14               # the polyclinic under load: waiting halls by the offices vs at the entrance
                                                # (both: `--hall 0` — seats of the whole hospital, `--bench 0` — no door benches)
+bun tools/bench/state.ts --days 14             # the engine snapshot at the end of each game day without the window: its size and the
+                                               # biggest fields (`--hospital poly`; docs/reports/2026-10-soak.md)
 bun --cpu-prof --cpu-prof-dir=tools/bench/out/prof tools/bench/bench.ts --mode flow --only 200 --quick --until 11
 bun tools/bench/profile.ts tools/bench/out/prof/<file>.cpuprofile 30 --under catchUp
 bun tools/test/make-review-fixture.ts          # only with the ORIGINAL engine: fingerprints of the eager review
@@ -196,7 +215,9 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   `docs/specs/2026-10-ready-rooms.md`), `hospital/site-preset.ts` (the preset as a lot), `hospital/site-plan.ts` (a
   hospital of ready rooms from a `content/hospital/sites/` record — the polyclinic,
   `docs/specs/2026-10-real-hospital.md`) and `shift/site.ts` (the `site` command: deferred removal, undo, hiring) —
-  `docs/specs/2026-10-build.md`. The whole 24-hour day of the PC flow is ours as well: `shift/day.ts` (outpatient hours,
+  `docs/specs/2026-10-build.md`. Undo reopens the room a rebuilding step changed; a step that rebuilds nothing (hire,
+  dismissal, pay, shift, reserve, «Мой кабинет», a corridor bench, a department mark — `keep` in the undo step, `KEEPS`)
+  leaves the rebuild as it is. The whole 24-hour day of the PC flow is ours as well: `shift/day.ts` (outpatient hours,
   arrivals by hour of day), the 08:00 meeting and the morning round in `engine.ts`, shapes in `content/hospital/day.yaml`
   — `docs/specs/2026-10-day.md`. Who left the state (`evict`) keeps their card in `s.past` for a day, at most 600, like
   their path — read-only, for «Открыть карту» and «Приняты» (`docs/specs/2026-10-discharged-card.md`).
@@ -274,6 +295,18 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   consult or an approval, a referral — goes through `handOver`, which sets `ShiftPatient.ref`. The path's `own` step with
   `refer` (and `from` when a doctor referred) is never dropped as a zero wait; the slice marks the referred with the
   `REFERRED` bit of `P.flags` (`kindOf` reads the visit kind).
+- Departments (`docs/specs/2026-10-departments.md`, part 1; owner's decisions #140, #142): `content/hospital/departments.yaml`
+  — the six departments of the game design's §4 table in its order (`paint` — the «Отделение» tool moves wards and offices
+  into them; `takes` — disease departments it also takes: trauma goes to surgery); a room's department — `deptOf`/`deptsOf`
+  in `hospital/departments.ts`: the tool's mark (`SiteRoom.dept`, the `dept` site command, free and undoable), else the first
+  staff member working there whose role has a `department`, else the room type's `department`; diagnostics and common rooms
+  have none. Nothing in the shift reads it yet (routing by complaint is for the demo), so the flow is the same with or without marks.
+  Undoing a mark keeps whatever room is being rebuilt (`keep` in the undo step): a mark never closes a room.
+  The window (part 2) calls `deptsOf` itself. `src/app/departments.ts` — Okabe–Ito colours (`tools/test/departments-ui.test.ts`
+  keeps all seven apart under three kinds of colour blindness), stripes, the «Отделения» layer and its legend, a patient's
+  department for the «Пациенты» filter (the room they are in, else their doctor's office); `src/render/stripes.ts` — floor
+  stripes at department doors, lit like the floor; the «Отделение» build tool and the room card's select send the `dept`
+  site command; a marks-only change keeps the scene (`onlyDeptsChanged`, `staffOnly` in `src/sim/host.ts`).
 - The chief approves (`docs/specs/2026-10-two-ways.md`, part 2): `shift/approve.ts` — the rule checkboxes (`meta.asks`, none
   — «unsure» and «long case» as before) and whether a hired doctor's decision waits for the chief. The decision waits in
   `ShiftPatient.approve` (the patient at the office door, no patience; the doctor calls the next); answers — the `approve`
@@ -323,9 +356,21 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   with its keys; `backdrop.ts` — the camera's circle over the rooms, pure), the player's
   settings (`settings.ts`: walls, camera, quality «auto», text size — `TEXT_SCALES` 1/1.15/1.3 as `--ui-k`: `zoom` of `#ui`,
   the font of map labels; kept in page storage, not in saves — bench and build change the view through
-  `showWalls`/`showQuality`, which do not write them); people and flow:
-  pure window logic (`flow.ts` — path lines, room load and state, patient rows) and room status chips (`chips.ts`); popup
-  notices under the clock — `toasts.ts` (the last three, real-time fade, only fresh ones; the «Журнал» tab keeps them all). The
+  `showWalls`/`showQuality`, which do not write them); the build catalog (`docs/specs/2026-10-catalog.md`): groups by
+  department — `groups.ts` (`groupOf`, `groupOrder`, `grouped`), thumbnails of ready rooms — `thumbs.ts` (`sampleOf`: the
+  sample on its own small lot by `addReady`; `ThumbQueue`: one at a time while the catalog is open), drawn by
+  `src/render/thumbs.ts` (the map's floors, walls, doors and furniture, an ortho camera at the map's angle) into a PNG of
+  `src/render/png.ts` without waiting for the GPU; people and flow:
+  pure window logic (`flow.ts` — path lines, room load and state, patient rows) and room status chips (`chips.ts`); the
+  «Проблемы» layer (`docs/specs/2026-10-layers.md`, part 1): `problems.ts` — what holds the hospital back now (rooms by
+  their chips, a gap in the shift — `shiftGap`, staff about to quit or tired, lying patients without a gurney, cash), the
+  list bottom-right (`ProblemsPanel` in `src/ui/flow.tsx`), a row flies there (`goProblem`); the «Пути пациентов» layer
+  (part 2): the sim sends a day's moves from the engine's paths only while it is on (`src/sim/legs.ts`, `legs` in the
+  protocol, every `LEGS_EVERY`), `paths.ts` routes each pair of rooms with the walkers' search (`endsOf` — the cell outside
+  the middle of a door), sums the cells into heat and lists where the most metres were walked (`legRows`),
+  `src/render/heat.ts` — one plane over the lot, a texel per cell; `PathsPanel`, a row shows only its path (`pickLeg`); L
+  cycles queues, departments, paths, problems, off; popup notices under the clock — `toasts.ts` (the last three, real-time
+  fade, only fresh ones; the «Журнал» tab keeps them all). The
   «Показатели» layer (`docs/specs/2026-10-metrics-layer.md`): `metrics.ts` — a room's column from its load (`columnOf`: height,
   colour, the hover line, the number), `collabels.ts` — numbers over the columns, `src/render/columns.ts` — one instanced mesh
   of shaded boxes, picked by a ray; the chosen metric is a player setting (`metric`), M cycles it, `?metric=load` for bench.
@@ -362,12 +407,16 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   `data-enc` (or `data-exam`) under the cursor opens its article; `src/i18n/` — every player-facing string, Russian and
   English (English typed as the Russian; the medical database is Russian-only for now and shows as is in English mode);
   `tools/test/i18n.test.ts` fails on Cyrillic in strings elsewhere in `src/app`, `src/ui`, `src/render`, `src/sim`.
-- `electron/` — the main process (window, `app://`, no network) and preload; `app/index.html` — the page.
+- `electron/` — the main process (window, `app://`, no network) and preload; `app/index.html` — the page. Its CSS takes
+  colours, font sizes and radii only from the `:root` tokens — the dark clinical style (owner's decision #69,
+  `docs/specs/2026-10-clinical-style.md`): surfaces, text, accent (`--accent-text` for text), states, seven font sizes;
+  `tools/test/style.test.ts` fails on a colour or a font size outside the tokens and on text below 4.5:1 over a white or
+  black floor behind the glass.
 - `assets/` — CC0 models, Rocketbox people under MIT (`assets/models/rocketbox/`, made by `tools/app/people.mjs`), the
   game's font IBM Plex Sans under SIL OFL 1.1 (`assets/fonts/`, unmodified files with `OFL.txt`; owner's decision #107),
   the Carbon icons' Apache 2.0 text (`assets/licenses/carbon-icons.txt`) and `LICENSES.md` (sources, licenses, SHA-256; MIT
   text verbatim); never add a model, a font or an icon set without its line there.
-- `tools/app/` — page build, model preparation, browser scenario, headless bench, the release update archive — one
-  `resources/app.asar` (`update-zip.mjs`); `tools/test/` — Bun tests;
-  `tools/content/` — database build; `tools/bench/` — engine bench.
+- `tools/app/` — page build, model preparation, browser scenario, headless bench, the long run (`soak.mjs`), the release
+  update archive — one `resources/app.asar` (`update-zip.mjs`); `tools/test/` — Bun tests;
+  `tools/content/` — database build; `tools/bench/` — engine bench and the snapshot by day (`state.ts`).
 - `spikes/` — probes, kept as they were; code taken from them carries `// из spikes/<probe>: <path>` on its first line.

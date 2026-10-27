@@ -12,6 +12,8 @@ import { Highlight, type RoomRect } from './highlight';
 import { Icons } from './icons';
 import { buildLamps, type Lamps } from './lamps';
 import { Columns } from './columns';
+import { DoorStripes } from './stripes';
+import { FloorHeat } from './heat';
 import { FloorTint } from './overlay';
 import { type Layout, roomAt } from './layout';
 import { type Paint, PeopleView } from './people';
@@ -51,9 +53,9 @@ export class Stage {
   private floors: THREE.Mesh[];
   /** слитые сетки мебели — пересобираются стройкой */
   private furniture: THREE.Mesh[];
-  /** текстуры пола — одни на сцену: стройка пересобирает полы, а не рисует их заново */
-  private floorTex = new Map<FloorKind, FloorTex>();
-  private aniso: number;
+  /** текстуры пола — одни на сцену: стройка пересобирает полы, а не рисует их заново; их же берут миниатюры каталога */
+  readonly floorTex = new Map<FloorKind, FloorTex>();
+  readonly aniso: number;
   private marks: THREE.InstancedMesh;
   /** выделение и наведение: рамки помещений, кольца у людей, вспышки стройки */
   readonly highlight = new Highlight();
@@ -64,6 +66,11 @@ export class Stage {
   iconOf: (w: Walker) => number = () => -1;
   /** слой «Очереди и загрузка»: цвет пола помещений */
   readonly tint = new FloorTint();
+  /** отделения (spec docs/specs/2026-10-departments.md, часть 2): слой «Отделения» и полосы на полу у дверей */
+  readonly deptTint = new FloorTint();
+  readonly stripes = new DoorStripes();
+  /** слой «Пути пациентов» (spec docs/specs/2026-10-layers.md, часть 2): где больные ходят чаще — пол светлее */
+  readonly heat = new FloorHeat();
   /** слой «Показатели» (spec docs/specs/2026-10-metrics-layer.md): столбики над помещениями */
   readonly columns = new Columns();
   /** метка вашей фигуры */
@@ -120,6 +127,12 @@ export class Stage {
     this.over.add(this.icons.mesh);
     this.tint.setLayout(layout);
     this.scene.add(this.tint.group);
+    this.deptTint.setLayout(layout);
+    this.scene.add(this.deptTint.group);
+    this.stripes.setLayout(layout, this.lamps.lightMap);
+    this.scene.add(this.stripes.group);
+    this.heat.setLayout(layout);
+    this.scene.add(this.heat.group);
     this.columns.setLayout(layout);
     this.scene.add(this.columns.group);
     // ваша фигура (spec docs/specs/2026-10-doctor-mode.md): синяя стрелка остриём вниз над головой
@@ -165,6 +178,9 @@ export class Stage {
     this.furniture = batchMeshes(furnished.batch);
     for (const m of this.furniture) this.scene.add(m);
     this.tint.setLayout(layout);
+    this.deptTint.setLayout(layout);
+    this.stripes.setLayout(layout, this.lamps.lightMap);
+    this.heat.setLayout(layout);
     this.columns.setLayout(layout);
     // свет пола и светильники — по часу заново
     this.hourShown = -1;
@@ -210,7 +226,8 @@ export class Stage {
     if (Math.abs(hour - this.hourShown) > 0.02) {
       this.hourShown = hour;
       this.light.setHour(hour);
-      this.lamps.setHour(hour, this.floors.map(m => m.material as THREE.MeshStandardMaterial));
+      // полосы у дверей — в свете пола (stripes.ts)
+      this.lamps.setHour(hour, [...this.floors.map(m => m.material as THREE.MeshStandardMaterial), this.stripes.material]);
       u.uNight.value = this.light.night;
     }
     const fog = this.scene.fog as THREE.Fog;

@@ -4,6 +4,7 @@
 // порядок сообщений даёт то же состояние, что и в основном потоке. Срез упаковывается (pack.ts). Путь пациента, которого
 // показывает окно (`watch`, spec docs/specs/2026-10-flow-ui.md), — в срезе, когда он изменился.
 import type { ContentDb } from '../content/types';
+import { onlyDeptsChanged } from '../engine/hospital/departments';
 import { apply, catchUp, crewList, lateOf, newFlowShift, prepareFinish } from '../engine/shift/engine';
 import { crewOf, type CrewView } from '../engine/shift/crew';
 import { moodsOf, type MoodView } from '../engine/shift/mood';
@@ -12,8 +13,9 @@ import type { Command, Notice, Ride, ShiftState } from '../engine/shift/types';
 import { scenarioKey, scenarioView, type ScenarioView } from './campaign';
 import { patientName } from './caseView';
 import { comingAt, DoctorDesk, officeOf, takeCommand } from './doctor';
+import { type Leg, legsOf } from './legs';
 import { Handles, packSlice } from './pack';
-import { type DoctorOut, type FromSim, type PathView, ROOMS_DAYS, type RoomsMoney, type ToSim, type World } from './protocol';
+import { type DoctorOut, type FromSim, LEGS_EVERY, type PathView, ROOMS_DAYS, type RoomsMoney, type ToSim, type World } from './protocol';
 
 /** Счёт до `ms` от сейчас; одно событие — всегда (как `budget` в session.ts «Анамнеза»). */
 function budget(ms: number): () => boolean {
@@ -38,7 +40,7 @@ export function createSim(db: ContentDb): SimHost {
   let owed = 0;
   const handles = new Handles();
   // номера помещений и штата в срезе — по спискам больницы; меняются вместе с ними
-  let shown: { hospital: unknown; staff: unknown } = { hospital: undefined, staff: undefined };
+  let shown: { hospital: ShiftState['hospital']; staff: ShiftState['staff'] } = { hospital: undefined, staff: undefined };
   /** список сломанных аппаратов, который окно уже получило; null — ещё никакого */
   let sentBroken: unknown = null;
   /** кто из ушедших со сменой ещё в больнице — как окно уже получило (номера в списке штата через запятую) */
@@ -58,6 +60,10 @@ export function createSim(db: ContentDb): SimHost {
   /** чей путь показывает окно и каким он был отправлен */
   let watch: string | null = null;
   let sentPath: string | undefined;
+  /** слой «Пути пациентов» (spec docs/specs/2026-10-layers.md, часть 2): включён ли, когда посчитаны переходы и какими отправлены */
+  let legsOn = false;
+  let legsAt = -Infinity;
+  let sentLegs = '';
   let rooms = new Map<string, number>();
   let staff = new Map<string, number>();
   // режим врача (spec docs/specs/2026-10-doctor-mode.md): что окно уже получило — состояние врача и вид карты
@@ -65,7 +71,10 @@ export function createSim(db: ContentDb): SimHost {
   const slice = (notices: Notice[], refused?: DoctorOut['refused']): FromSim => {
     let world: World | undefined;
     if (s!.hospital !== shown.hospital || s!.staff !== shown.staff) {
-      const staffOnly = s!.hospital === shown.hospital;
+      // отметки отделений (spec docs/specs/2026-10-departments.md, часть 2) — та же сцена: меняются полосы, слой и подписи
+      const was = shown.hospital?.site;
+      const now = s!.hospital?.site;
+      const staffOnly = s!.hospital === shown.hospital || (!!was && !!now && onlyDeptsChanged(was, now));
       shown = { hospital: s!.hospital, staff: s!.staff };
       rooms = new Map((s!.hospital?.rooms ?? []).map((r, i) => [r.id, i]));
       staff = new Map((s!.staff ?? []).map((m, i) => [m.id, i]));
@@ -158,9 +167,20 @@ export function createSim(db: ContentDb): SimHost {
         }
       }
     }
+    // переходы за сутки — пока слой «Пути пациентов» включён: сразу, потом раз в десять игровых минут или после стройки
+    let legs: Leg[] | undefined;
+    if (legsOn && s!.flow && (s!.t - legsAt >= LEGS_EVERY || world)) {
+      legsAt = s!.t;
+      const now = legsOf(s!, officeOf(db, s!));
+      const sig = JSON.stringify(now);
+      if (sig !== sentLegs) {
+        sentLegs = sig;
+        legs = now;
+      }
+    }
     const lag = owed + (s!.until !== undefined ? s!.until - s!.t : 0);
     const { buf, names } = packSlice(s!, sliceOf(s!, officeOf(db, s!)), lag, handles, rooms, staff, patientName);
-    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...(late ? { late } : {}), ...(crew ? { crew } : {}), ...(moods ? { moods } : {}), ...(rides ? { rides } : {}), ...(scenario ? { scenario } : {}), ...(money ? { money } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
+    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...(late ? { late } : {}), ...(crew ? { crew } : {}), ...(moods ? { moods } : {}), ...(rides ? { rides } : {}), ...(scenario ? { scenario } : {}), ...(money ? { money } : {}), ...(legs ? { legs } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
   };
   const fresh = () => {
     owed = 0;
@@ -176,6 +196,8 @@ export function createSim(db: ContentDb): SimHost {
     scenarioAt = [];
     sentScenario = '';
     sentPath = undefined;
+    legsAt = -Infinity;
+    sentLegs = '';
     desk.reset();
   };
   /** Дожить время, которое часы игры уже прошли: команда видит больницу такой, как игрок. */
@@ -251,6 +273,12 @@ export function createSim(db: ContentDb): SimHost {
           case 'watch':
             watch = msg.id;
             sentPath = undefined;
+            if (!s) return { kind: 'error', message: 'нет смены' };
+            return slice([]);
+          case 'legs':
+            legsOn = msg.on;
+            legsAt = -Infinity;
+            sentLegs = '';
             if (!s) return { kind: 'error', message: 'нет смены' };
             return slice([]);
           case 'pack':

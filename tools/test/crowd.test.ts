@@ -135,6 +135,35 @@ describe('толпа по срезу потока', () => {
     expect(w.state).toBe('gone');
   }, 180_000);
 
+  // долгий прогон (docs/05-process.md, «Долгий прогон»): номера людей в срезе не повторяются, и окно, которое помнит имя и
+  // окраску каждого, кто когда-либо приходил, прибавляло по полмегабайта за игровые сутки — помнить их нужно, пока человек
+  // на сцене
+  test('имя и окраска — только у тех, кто на сцене: ушедшие не копятся', async () => {
+    const { hospital, staff, crowd, pop } = await cityScene();
+    const sim = createSim(db);
+    const first = sim.handle({ kind: 'start', seed: 5, season: 'winter', hospital, staff, flow: { perHour: 8, ambulancePerHour: 2 } });
+    if (first.kind !== 'slice') throw new Error(first.kind);
+    const seen = new Set<number>();
+    // 4 часа на ×12 при 60 к/с; сверка — после шага толпы: дошедших до выхода толпа убирает в конце шага, а таблицы
+    // чистит следующая сверка
+    for (let f = 0; f < (4 * 3600) / 4; f++) {
+      const r = sim.handle({ kind: 'tick', seconds: 4, budgetMs: 50 });
+      if (r.kind !== 'slice') throw new Error(r.kind === 'error' ? r.message : r.kind);
+      crowd.t = r.buf[H.t];
+      crowd.update(1 / 60);
+      pop.sync(r.buf, r.names);
+      for (const n of r.names) seen.add(n.h);
+    }
+    const paints = pop['paints'];
+    // окраска — у каждого на сцене (без неё кадр не нарисовать) и ни у кого больше
+    expect([...paints.keys()].sort()).toEqual([...crowd.walkers.keys()].sort());
+    // имя — у пациента на сцене или у привезённого, которого ещё ведёт фельдшер
+    for (const h of pop.names.keys()) expect(crowd.walkers.has(`p:${h}`) || crowd.walkers.has(`m:${h}`)).toBe(true);
+    // а ушли и забыты — больше десятка
+    expect(seen.size).toBeGreaterThan(20);
+    expect(seen.size - pop.names.size).toBeGreaterThan(10);
+  }, 180_000);
+
   // spec docs/specs/2026-10-staff-shifts.md: на карте — кто в смене; в 20:00 дневные идут к выходу, ночные входят с улицы на
   // свои места; кто уже уходил, но ещё нужен (доводит приём), — снова на своём месте
   test('пересменка: ночные входят с улицы и встают на места, дневные уходят; передумавший уходить — снова на месте', async () => {

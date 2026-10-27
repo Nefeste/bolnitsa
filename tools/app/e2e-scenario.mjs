@@ -131,10 +131,18 @@ export async function scenarioPart({ page, port, out, ok, fail, q, shots }) {
   // отметка уходит в поток расчёта и приходит назад с видом сценария; каталог перерисует следующий кадр панели
   await until(() => window.__game.scenario.view?.guideOff === true && !document.querySelector('#ready-types .gstep'), null, 5000).catch(() => {});
   rows = await readyRows();
-  const names = await page.$$eval('#ready-types > li button span', els => els.map(e => e.textContent ?? ''));
-  const sorted = [...names].sort((a, b) => a.localeCompare(b, 'ru'));
-  if (rows.every(r => !r.step && !r.why) && JSON.stringify(names) === JSON.stringify(sorted)) ok('«Порядок стройки» выключен — каталог по алфавиту, без номеров');
-  else fail(`порядок выключен: ${JSON.stringify({ rows, names })}`);
+  // без порядка стройки — группы каталога (spec docs/specs/2026-10-catalog.md), в группе — по алфавиту
+  const groups = await page.$$eval('#ready-types > li', els => {
+    const out = [];
+    for (const e of els) {
+      if (e.classList.contains('ghead')) out.push([]);
+      else if (out.length) out[out.length - 1].push(e.querySelector('button > span')?.textContent ?? '');
+    }
+    return out;
+  });
+  const sortedIn = groups.every(g => g.join('|') === [...g].sort((a, b) => a.localeCompare(b, 'ru')).join('|'));
+  if (rows.every(r => !r.step && !r.why) && groups.length > 0 && sortedIn) ok(`«Порядок стройки» выключен — каталог по группам, в группе по алфавиту, без номеров: ${groups.map(g => g.length).join(' + ')}`);
+  else fail(`порядок выключен: ${JSON.stringify({ rows, groups })}`);
   await page.click('#guide-toggle');
   await until(() => window.__game.scenario.view && !window.__game.scenario.view.guideOff, null, 5000).catch(() => fail('«Порядок стройки» не включился'));
   await page.click('#build');

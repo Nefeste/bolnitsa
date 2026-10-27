@@ -7,12 +7,13 @@
 // кто-то есть) убирается, когда освободится: проверка — событием очереди `siteFree`, поэтому итог не зависит от того,
 // каким шагом идут часы. Койка лежащего — номер в помещении; после стройки номер переносится на тот же предмет. С кассой
 // (spec docs/specs/2026-10-economy.md) стройка платится из неё сразу и не ниже предела минуса: не хватает — отказ `money`.
+// Инструмент «Отделение» (spec docs/specs/2026-10-departments.md, часть 1) — отметка в плане больницы, бесплатно.
 import { scenarioOf } from '../campaign/campaign';
 import { Rng } from '../core/rng';
 import { DOCTOR, standInOf } from '../hospital/requirements';
 import {
-  addBench, addItem, addReady, addRoom, bedOrder, demolish, type Done, FREE_CHECK, furnish, hospitalOf, type MoodStep, moveItem, removeDecor, removeDoor, removedBetween,
-  removeItem, removeRoom, setDoor, setOffice, type Site, type SiteCommand, type SiteError, type SiteRoom, SITE_UNDO, type Works,
+  addBench, addItem, addReady, addRoom, bedOrder, demolish, type Done, FREE_CHECK, furnish, hospitalOf, markDept, type MoodStep, moveItem, removeDecor, removeDoor,
+  removedBetween, removeItem, removeRoom, setDoor, setOffice, type Site, type SiteCommand, type SiteError, type SiteRoom, SITE_UNDO, type Works,
 } from '../hospital/site';
 import { covers, nightHospital, salaryOf, type Shift, type StaffMember, wageOf } from '../hospital/staff';
 import { growthNumbers, studyUntil } from './growth';
@@ -144,14 +145,17 @@ function commit(db: ContentDb, s: ShiftState, before: Site, after: Site) {
   if (leavingIn(after)) scheduleFree(s);
 }
 
+/** Действия, которые помещение не перестраивают: их отмена оставляет перестройку, какая есть (`WorksStep.keep`). */
+const KEEPS = new Set<SiteCommand['kind']>(['dept', 'bench', 'undecor']);
+
 /**
  * Снимок для отмены: до действия. С людьми (spec docs/specs/2026-10-staff-mood.md) — и выплата уволенному (`paid`), и что
  * вернуть настроению (`mood`).
  */
-function remember(s: ShiftState, works: Works, site: Site, room?: string, more: { paid?: number; mood?: MoodStep } = {}) {
+function remember(s: ShiftState, works: Works, site: Site, room?: string, more: { paid?: number; mood?: MoodStep; keep?: true } = {}) {
   works.undo.push({
     site, staff: s.staff ?? [], ...(s.nextStaff !== undefined ? { nextStaff: s.nextStaff } : {}), spent: works.spent, ...(room ? { room } : {}),
-    ...(more.paid ? { paid: more.paid } : {}), ...(more.mood ? { mood: more.mood } : {}),
+    ...(more.paid ? { paid: more.paid } : {}), ...(more.mood ? { mood: more.mood } : {}), ...(more.keep ? { keep: true as const } : {}),
   });
   if (works.undo.length > SITE_UNDO) works.undo.splice(0, works.undo.length - SITE_UNDO);
 }
@@ -191,7 +195,7 @@ function siteCommandOf(db: ContentDb, s: ShiftState, cmd: SiteCommand): Notice[]
       if (occupied(db, s).staff.has(m.id)) return no(cmd.kind, { kind: 'busy' });
       // выплата за смены (spec 2026-10-staff-mood; геймдизайн §7) — и ниже предела минуса: уволить можно всегда
       const paid = severanceOf(db, m, manageOf(db, s).salary);
-      remember(s, works, site, m.room, { paid, mood: moodOut(s, m.id) });
+      remember(s, works, site, m.room, { paid, mood: moodOut(s, m.id), keep: true });
       s.staff = s.staff!.filter(x => x.id !== m.id);
       paySeverance(s, paid);
       nudge(s);
@@ -206,7 +210,7 @@ function siteCommandOf(db: ContentDb, s: ShiftState, cmd: SiteCommand): Notice[]
     // «Нанять в резерв» (часть 5): без места и смены; как найм — в отмене стройки
     case 'reserve': {
       if (!db.roles[cmd.role]?.hire) return no(cmd.kind, { kind: 'unknown' });
-      remember(s, works, site);
+      remember(s, works, site, undefined, { keep: true });
       const { id, sex, seed } = newcomer(s);
       s.staff = [...(s.staff ?? []), { id, role: cmd.role, sex, seed, skill: 3, salary: salaryOf(db, cmd.role, 3), days: 0 }];
       nudge(s);
@@ -255,12 +259,17 @@ function siteCommandOf(db: ContentDb, s: ShiftState, cmd: SiteCommand): Notice[]
     case 'undecor':
       r = removeDecor(db, site, cmd.x, cmd.y);
       break;
+    // инструмент «Отделение» (spec docs/specs/2026-10-departments.md, часть 1): бесплатно, в отмене — как стройка
+    case 'dept':
+      r = markDept(db, site, cmd.room, cmd.dept);
+      break;
   }
   if (!r.ok) return no(cmd.kind, r.error);
   // касса (spec 2026-10-economy): трата не уведёт её ниже предела минуса — иначе стройка ждёт денег
   const need = shortOf(db, s, r.cost);
   if (need > 0) return no(cmd.kind, { kind: 'money', need });
-  remember(s, works, site, r.room ?? ('room' in cmd ? cmd.room : undefined));
+  // отметка отделения и скамья в коридоре помещение не перестраивают — и отмена не закрывает его на перестройку (`keep`)
+  remember(s, works, site, r.room ?? ('room' in cmd ? cmd.room : undefined), KEEPS.has(cmd.kind) ? { keep: true } : {});
   // готовое «С персоналом»: люди на все должности — в том же шаге отмены; со сменами (spec 2026-10-staff-shifts) — на
   // дневную, а в помещении, что работает ночью, в больнице, что работает ночью, — и на ночную, как у готовой больницы
   let hired: number | undefined;
@@ -290,7 +299,10 @@ function undo(db: ContentDb, s: ShiftState, works: Works, site: Site): Notice[] 
   if ((s.staff ?? []).some(m => busy.staff.has(m.id) && !step.staff.some(x => x.id === m.id))) return no('undo', { kind: 'busy' });
   works.undo.pop();
   const restored: Site = { ...step.site };
-  if (step.room && restored.rooms.some(r => r.id === step.room)) restored.editing = step.room;
+  // помещение, которое действие перестраивало, — снова перестраивается; действие без перестройки (`keep`: отметка отделения,
+  // найм, увольнение, зарплата, смена, резерв, «Мой кабинет», скамья в коридоре) — перестройка, какая есть
+  const editing = step.keep ? site.editing : step.room;
+  if (editing !== undefined && restored.rooms.some(r => r.id === editing)) restored.editing = editing;
   else delete restored.editing;
   const cost = step.spent - works.spent;
   s.staff = mergeStaff(s.staff ?? [], step.staff);
@@ -355,7 +367,7 @@ function raise(db: ContentDb, s: ShiftState, works: Works, site: Site, id: strin
   if (!m) return no('raise', { kind: 'nothing' });
   if (leavingOf(s, id)) return no('raise', { kind: 'leaving' });
   const salary = raisedOf(db, m);
-  remember(s, works, site, undefined, { mood: cheer(db, s, m, 'raise') });
+  remember(s, works, site, undefined, { mood: cheer(db, s, m, 'raise'), keep: true });
   s.staff = s.staff!.map(x => (x.id === id ? { ...x, salary } : x));
   return [{ kind: 'site', cmd: 'raise', ok: true, cost: 0 }];
 }
@@ -378,7 +390,7 @@ function reshift(db: ContentDb, s: ShiftState, works: Works, site: Site, id: str
   if (there.some(x => x.shift === undefined)) return no('reshift', { kind: 'nothing' });
   const busy = occupied(db, s).staff;
   if (busy.has(m.id) || (other && busy.has(other.id))) return no('reshift', { kind: 'busy' });
-  remember(s, works, site, undefined, { mood: cheer(db, s, m, 'moved') });
+  remember(s, works, site, undefined, { mood: cheer(db, s, m, 'moved'), keep: true });
   s.staff = s.staff!.map(x => (x === m ? { ...x, shift: to } : x === other ? { ...x, shift: was } : x));
   nudge(s);
   return [{ kind: 'site', cmd: 'reshift', ok: true, cost: 0 }];
@@ -402,7 +414,7 @@ function hire(db: ContentDb, s: ShiftState, works: Works, site: Site, cmd: Extra
   const post = (m: StaffMember) => db.roles[m.role]?.stands ?? m.role;
   const shift = cmd.shift ?? 'day';
   if ((s.staff ?? []).some(m => m.room === room.id && post(m) === cmd.role && covers(m, shift))) return no('hire', { kind: 'nothing' });
-  remember(s, works, site, room.id);
+  remember(s, works, site, room.id, { keep: true });
   staffPost(db, s, site, room.id, cmd.role, role, shift);
   nudge(s);
   return [{ kind: 'site', cmd: 'hire', ok: true, cost: 0, room: room.id }];
@@ -454,8 +466,8 @@ function office(db: ContentDb, s: ShiftState, works: Works, site: Site, room: st
   const there = room === undefined ? [] : (s.staff ?? []).filter(m => m.room === room && post(m) === DOCTOR);
   const busy = occupied(db, s).staff;
   if (there.some(m => busy.has(m.id))) return no('office', { kind: 'busy' });
-  // без помещения в отмене: отмена «Моего» не закрывает кабинет на перестройку
-  remember(s, works, site);
+  // отмена «Моего» не закрывает кабинет на перестройку и не открывает тот, что перестраивают
+  remember(s, works, site, undefined, { keep: true });
   if (there.length > 0) {
     const old = site.mine && site.rooms.some(x => x.id === site.mine && !x.leaving) ? site.mine : undefined;
     s.staff = s.staff!.map(m => {

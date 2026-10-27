@@ -40,7 +40,7 @@
 // Ошибок в консоли и запросов наружу нет.
 // Снимки — tools/app/out/e2e.png, e2e-build-*.png и e2e-flow-*.png; `--shots high` — снимки частей 2 и 3 в этом качестве
 // (на время снимка).
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|…|27 или 7,10,11] [--shots low|medium|high] [--port 8093]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|…|31 или 7,10,11] [--shots low|medium|high] [--port 8093]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -65,6 +65,10 @@ import { dischargedPart } from './e2e-discharged.mjs';
 import { difficultyPart } from './e2e-difficulty.mjs';
 import { readyPart } from './e2e-ready.mjs';
 import { referralPart } from './e2e-referral.mjs';
+import { deptsPart } from './e2e-depts.mjs';
+import { catalogPart } from './e2e-catalog.mjs';
+import { problemsPart } from './e2e-problems.mjs';
+import { pathsPart } from './e2e-paths.mjs';
 import { savesPart } from './e2e-saves.mjs';
 import { scenarioPart } from './e2e-scenario.mjs';
 import { shiftsPart } from './e2e-shifts.mjs';
@@ -182,6 +186,11 @@ try {
   if (run(26)) await referralPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   // часть 27 — сложность (spec docs/specs/2026-10-difficulty.md, часть 2): tools/app/e2e-difficulty.mjs
   if (run(27)) await difficultyPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  // часть 28 — отделения на карте (spec docs/specs/2026-10-departments.md, часть 2): tools/app/e2e-depts.mjs
+  if (run(28)) await deptsPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  if (run(29)) await catalogPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  if (run(30)) await problemsPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  if (run(31)) await pathsPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);
@@ -877,6 +886,10 @@ async function partThree() {
   }, hall);
   await page.waitForTimeout(400);
   await shotAs('e2e-flow-3.png');
+  // L по кругу (геймдизайн §3): после «Очередей» — «Отделения», «Пути пациентов», «Проблемы», ещё раз — слои выключены
+  await page.keyboard.press('KeyL');
+  await page.keyboard.press('KeyL');
+  await page.keyboard.press('KeyL');
   await page.keyboard.press('KeyL');
   // ушедший, не дождавшись, идёт к выходу со значком «недоволен»
   const left0 = await page.evaluate(() => window.__game.left.length);

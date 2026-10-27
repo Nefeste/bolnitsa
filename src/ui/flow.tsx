@@ -98,6 +98,17 @@ export function PatientsTab({ hud, actions }: P) {
                 </Seg>
               ))}
             </span>
+            {/* отделение (spec docs/specs/2026-10-departments.md, часть 2): где пациент сейчас или кабинет его врача */}
+            {hud.deptLegend.length ? (
+              <select id="pf-dept" value={f.dept} title={T.flow.deptFilterHint} onChange={e => set({ dept: e.target.value as PatientFilter['dept'] })}>
+                <option value="all">{T.flow.deptAll}</option>
+                {hud.deptLegend.map(d => (
+                  <option key={d.id || 'none'} value={d.id || 'none'}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            ) : null}
             <Seg id="pf-long" on={f.long} onClick={() => set({ long: !f.long })}>
               {T.flow.longOnly(LONG_WAIT / 60)}
             </Seg>
@@ -178,15 +189,15 @@ export function PathSection({ hud }: { hud: Hud }) {
 }
 
 /**
- * Кнопка «Слои» слева и меню: «Очереди и загрузка» (L) и «Показатели» (M, spec docs/specs/2026-10-metrics-layer.md) работают,
- * остальные слои геймдизайна §3 — позже.
+ * Кнопка «Слои» слева и меню: слои пола — «Очереди и загрузка», «Отделения», «Пути пациентов», «Проблемы» (L по кругу), и
+ * «Показатели» (M, spec docs/specs/2026-10-metrics-layer.md); «Комфорт и чистота» геймдизайна §3 — позже.
  */
 export function Layers({ hud, actions }: P) {
-  const soon: (keyof typeof T.flow.layer)[] = ['departments', 'paths', 'comfort', 'problems'];
+  const soon: (keyof typeof T.flow.layer)[] = ['comfort'];
   const metric = hud.layers.metric;
   return (
     <>
-      <button type="button" id="layers" className={hud.layers.open || hud.layers.queues || metric ? 'on' : undefined} onClick={actions.toggleLayers} title="L">
+      <button type="button" id="layers" className={hud.layers.open || hud.layers.queues || hud.layers.depts || hud.layers.paths || hud.layers.problems || metric ? 'on' : undefined} onClick={actions.toggleLayers} title="L">
         <Icon name="layers" /> {T.flow.layers}
       </button>
       {hud.layers.open ? (
@@ -194,11 +205,23 @@ export function Layers({ hud, actions }: P) {
           <button type="button" id="layer-queues" className={hud.layers.queues ? 'on' : undefined} onClick={actions.toggleQueues} title="L">
             {T.flow.layer.queues}
           </button>
+          {/* «Отделения» (spec docs/specs/2026-10-departments.md, часть 2): пол помещений в цвет отделения и подписи */}
+          <button type="button" id="layer-depts" className={hud.layers.depts ? 'on' : undefined} onClick={actions.toggleDepts} title="L">
+            {T.flow.layer.departments}
+          </button>
+          {/* «Пути пациентов» (spec docs/specs/2026-10-layers.md, часть 2): где больные ходят чаще — пол ярче */}
+          <button type="button" id="layer-paths" className={hud.layers.paths ? 'on' : undefined} onClick={actions.togglePaths} title="L">
+            {T.flow.layer.paths}
+          </button>
           {soon.map(k => (
             <button key={k} type="button" disabled title={T.flow.layerSoon}>
               {T.flow.layer[k]}
             </button>
           ))}
+          {/* «Проблемы» (spec docs/specs/2026-10-layers.md, часть 1): сколько красных и жёлтых — сразу на кнопке */}
+          <button type="button" id="layer-problems" className={hud.layers.problems ? 'on' : undefined} onClick={actions.toggleProblems} title="L">
+            {T.flow.problems.count(hud.problems.count)}
+          </button>
           {hud.layers.queues ? <p className="hint">{T.flow.legend(WAIT_OK / 60, WAIT_BAD / 60)}</p> : null}
           {/* «Показатели»: столбики над помещениями; выручка и прибыль — за сутки, с ползунком по суткам (часть 2) */}
           <div className="metrics" id="metrics-menu" title={T.metrics.hint}>
@@ -216,6 +239,98 @@ export function Layers({ hud, actions }: P) {
         </div>
       ) : null}
     </>
+  );
+}
+
+/**
+ * Легенда слоя «Отделения» — справа внизу, пока слой включён, и при закрытом меню «Слои»: отделения этой больницы в их
+ * цвете, сколько помещений, и «без отделения». В меню слева она не помещалась: на 1280 × 720 вытесняла «Показатели» за
+ * край экрана и ложилась на окно врача. Как ею пользоваться — во всплывающей подсказке.
+ */
+export function DeptLegend({ hud }: { hud: Hud }) {
+  if (!hud.layers.depts || !hud.deptLegend.length) return null;
+  return (
+    <div className="deptlegend panel" id="dept-legend-panel" title={T.flow.deptLegend}>
+      <b>{T.flow.layer.departments}</b>
+      <ul id="dept-legend">
+        {hud.deptLegend.map(d => (
+          <li key={d.id || 'none'} data-dept={d.id}>
+            <span className="swatch" style={{ background: d.color }} />
+            {d.name} <span className="muted">· {T.flow.deptRooms(d.rooms)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * Список слоя «Проблемы» (spec docs/specs/2026-10-layers.md, часть 1) — справа внизу, на месте легенды отделений, пока слой
+ * включён: красные, жёлтые, серые; щелчок по строке — туда, куда она ведёт.
+ */
+export function ProblemsPanel({ hud, actions }: P) {
+  if (!hud.layers.problems) return null;
+  const p = hud.problems;
+  return (
+    <div className="deptlegend problems panel" id="problems-panel" title={T.flow.problems.hint}>
+      <b>{T.flow.problems.count(p.count)}</b>
+      {p.rows.length === 0 ? (
+        <p className="muted" id="problems-none">
+          {T.flow.problems.none}
+        </p>
+      ) : (
+        <ul id="problems">
+          {p.rows.map(r => (
+            <li key={r.key}>
+              <button type="button" className={`prow p-${r.level}`} data-key={r.key} data-level={r.level} onClick={() => actions.goProblem(r.go)}>
+                <span className="swatch" />
+                <span>
+                  <b>{r.where}</b> — {r.what}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {p.more > 0 ? <p className="muted">{T.flow.problems.more(p.more)}</p> : null}
+    </div>
+  );
+}
+
+/**
+ * Список слоя «Пути пациентов» (spec docs/specs/2026-10-layers.md, часть 2) — справа внизу, на месте легенды отделений, пока
+ * слой включён: где за сутки прошли больше всего метров. Щелчок по строке — на полу только её путь и камера к нему; ещё раз
+ * — снова все.
+ */
+export function PathsPanel({ hud, actions }: P) {
+  if (!hud.layers.paths) return null;
+  const p = hud.paths;
+  const t = T.flow.paths;
+  return (
+    <div className="deptlegend legs panel" id="paths-panel" title={t.hint}>
+      <b>{t.title}</b>
+      {p.rows.length === 0 ? (
+        <p className="muted" id="paths-none">
+          {t.none}
+        </p>
+      ) : (
+        <>
+          <ul id="paths">
+            {p.rows.map(r => (
+              <li key={r.key}>
+                <button type="button" className={`lrow${p.sel === r.key ? ' on' : ''}`} data-key={r.key} data-n={r.n} data-m={r.m} onClick={() => actions.pickLeg(r.key)}>
+                  {r.text}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <p className="muted" id="paths-total">
+            {t.total(p.total, p.meters)}
+            {p.more > 0 ? ` · ${t.more(p.more)}` : ''}
+          </p>
+        </>
+      )}
+    </div>
   );
 }
 
