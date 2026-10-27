@@ -4,7 +4,7 @@
 // кабинеты, места смотровой, сразу после стройки; узкие места суток; «Почему?» у цифр планёрки — пришли по виду, ушли по
 // причинам, поток на сутки; «стало хуже»; обход в карте; долгий случай нанятого врача; детерминизм при разном шаге и в
 // потоке расчёта; сборка базы.
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -28,6 +28,9 @@ import type { ToSim } from '../../src/sim/protocol';
 import { buildDb, CONTENT_DIR } from '../content/load';
 import { hash } from './scenario';
 import { PROTO, site } from './site-kit';
+
+// сутки потока и испорченные копии базы (шесть в одном тесте) — по нескольку секунд: под нагрузкой пяти не хватает
+setDefaultTimeout(60_000);
 
 const { db } = buildDb();
 useDb(db);

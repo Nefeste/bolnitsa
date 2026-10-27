@@ -13,7 +13,7 @@
 //
 // Расталкивание — только здесь, движок не трогается: идущие держатся правой стороны прохода и раздвигаются, если ближе
 // SPACE; встречные в двери пропускают друг друга.
-import { WALK_SPEED_PC } from '../engine/shift/walking';
+import { SLOW_PACE, WALK_SPEED_PC } from '../engine/shift/walking';
 import type { Look } from './bake';
 import type { Layout } from './layout';
 import type { Paths } from './path';
@@ -26,6 +26,8 @@ export const RUN = 2;
 export const SITDOWN = 3;
 export const STANDUP = 4;
 export const SIT = 5;
+/** медленный шаг (spec docs/specs/2026-10-people.md, «Медленный шаг»): пожилые и «жёлтые» */
+export const WALK_SLOW = 6;
 
 /** Сколько секунд одна анимация переходит в другую (смешивание поз, people.ts): без рывка. */
 export const FADE = 0.25;
@@ -85,6 +87,11 @@ export interface Walker {
   fade: number;
   /** уходит: дошёл до выхода — исчезает */
   leaving: boolean;
+  /**
+   * идёт медленным шагом — пожилой или «жёлтый» (spec docs/specs/2026-10-people.md, «Медленный шаг»; решение владельца
+   * #132): обычная скорость — `SLOW_PACE` %, анимация — медленного шага; движок считает его дорогу так же
+   */
+  slow?: boolean;
   /** сколько секунд ждёт встречного в двери */
   yield: number;
   /** скорость в последнем кадре, м/с — для бенча и проверок */
@@ -409,7 +416,8 @@ export class Crowd {
     }
     const look = this.looks[w.look];
     // шаг и бег — со скоростью вида (bake.ts, lockFeet: при ней опорная ступня стоит на месте): ступня не скользит
-    w.clipTime += dt * (w.clip === WALK || w.clip === RUN ? Math.max(0.2, w.v / (w.clip === RUN ? look.run : look.walk)) : w.clip === SITDOWN || w.clip === STANDUP ? fast : w.idle);
+    w.clipTime +=
+      dt * (w.clip === WALK || w.clip === RUN || w.clip === WALK_SLOW ? Math.max(0.2, w.v / (w.clip === RUN ? look.run : w.clip === WALK_SLOW ? look.walkSlow : look.walk)) : w.clip === SITDOWN || w.clip === STANDUP ? fast : w.idle);
     if (w.fade > 0) w.fade = Math.max(0, w.fade - dt * fast);
     w.v = 0;
     switch (w.state) {
@@ -532,12 +540,14 @@ export class Crowd {
         }
         const pts = w.pts!;
         const last = pts.length / 2 - 1;
-        let speed = v;
+        // медленным шагом — своя обычная скорость, к ней и доли `PACE`
+        const base = w.slow ? (v * SLOW_PACE) / 100 : v;
+        let speed = base;
         // к сроку движка: к последней цели — так, чтобы дойти к `due`; опаздывает — быстрее, но не бегом
         if (w.goals.length <= 1 && !Number.isNaN(w.due)) {
           const left = (w.due - this.t) / this.rate;
           const want = left > 0 ? this.rest(w) / left : Number.POSITIVE_INFINITY;
-          speed = Math.max(PACE[0] * v, Math.min(PACE[1] * v, want));
+          speed = Math.max(PACE[0] * base, Math.min(PACE[1] * base, want));
         }
         if (w.yield > 0) {
           w.yield -= dt * fast;
@@ -577,7 +587,7 @@ export class Crowd {
         w.z = az + dz * f + rz * w.lat * latK;
         w.y = 0;
         w.v = speed;
-        this.setClip(w, speed / fast > RUN_FROM ? RUN : speed > 0 ? WALK : IDLE, true);
+        this.setClip(w, speed / fast > RUN_FROM ? RUN : speed > 0 ? (w.slow ? WALK_SLOW : WALK) : IDLE, true);
         if (!done) return;
         w.pts = null;
         w.cum = null;
