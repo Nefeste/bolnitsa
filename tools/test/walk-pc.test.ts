@@ -14,7 +14,7 @@ import { metersFromEntrance } from '../../src/engine/hospital/walk';
 import { apply, colleaguesOf, hospitalCtx, newFlowShift } from '../../src/engine/shift/engine';
 import { sliceOf } from '../../src/engine/shift/slice';
 import { REGISTRATION, type ShiftPatient, type ShiftState, TRIAGE } from '../../src/engine/shift/types';
-import { AT_DOOR, hallNear, readyAt, toDoctor, WALK_SPEED_PC, walkPc } from '../../src/engine/shift/walking';
+import { AT_DOOR, hallNear, patientSpeed, readyAt, slowOf, toDoctor, walkPc } from '../../src/engine/shift/walking';
 import { FLOW, liveTo, site } from './site-kit';
 
 const rec = db.presets['preset.city'];
@@ -65,9 +65,11 @@ describe('ходьба в движке', () => {
     const hall = roomOf(s, 'room.waiting');
     expect(Math.round(walkPc(plan, hall, 'r28') / 60)).toBe(13);
     expect([p!.stands, p!.hall, p!.next]).toEqual(['far', undefined, 'r28']);
-    expect(p!.regAt).toBe(p!.arriveT + Math.round(metersFromEntrance(plan, reception)! / WALK_SPEED_PC));
-    expect(p!.triAt).toBe(p!.regAt! + REGISTRATION + walkPc(plan, reception, triage));
-    expect(p!.seatAt).toBe(p!.triAt! + TRIAGE + walkPc(plan, triage, 'r28'));
+    // своим шагом: пожилые и «жёлтые» — медленным (spec docs/specs/2026-10-people.md, «Медленный шаг»)
+    const slow = slowOf(p!);
+    expect(p!.regAt).toBe(p!.arriveT + Math.round(metersFromEntrance(plan, reception)! / patientSpeed(p!)));
+    expect(p!.triAt).toBe(p!.regAt! + REGISTRATION + walkPc(plan, reception, triage, slow));
+    expect(p!.seatAt).toBe(p!.triAt! + TRIAGE + walkPc(plan, triage, 'r28', slow));
     expect(p!.nextAt).toBe(p!.seatAt);
     expect(readyAt(p!)).toBe(p!.triAt! + TRIAGE);
     // терпение — с того, как встал у двери
