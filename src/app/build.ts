@@ -2,9 +2,10 @@
 // Проверки — те же чистые функции движка (src/engine/hospital/site.ts) над той больницей, что прислал поток расчёта:
 // призрак говорит то же, что скажет движок. Команда уходит в поток (`site`), ответ — извещением и новой больницей.
 import type { Cell, ContentDb, Id, ObjectKind, RoomSizeId, Rot } from '../content/types';
+import { deptWhy } from '../engine/hospital/departments';
 import { DOCTOR, standInOf } from '../engine/hospital/requirements';
 import {
-  autoRot, cellsOf, checkBench, checkDoor, checkItem, checkReady, checkRoom, demolishRefund, DOOR_PRICE, FACE, isInterior, priceOf, type ReadyDraft, readyCorner,
+  autoRot, cellsOf, checkBench, checkDoor, checkItem, checkReady, checkRoom, demolishRefund, DOOR_PRICE, FACE, isInterior, markDept, priceOf, type ReadyDraft, readyCorner,
   readyTurn, refundOf, rulesOf, sideOf, type Site, type SiteCommand, type SiteError, type SiteResult, targetAt,
 } from '../engine/hospital/site';
 import { nightHospital, payOf, salaryOf, type Shift } from '../engine/hospital/staff';
@@ -13,6 +14,7 @@ import { GHOST_BAD, GHOST_DOOR, GHOST_OK } from '../render/ghost';
 import { type Thing, yawOf } from '../render/layout';
 import { objectTurns } from '../render/orient';
 import type { BuildHud, Tool } from '../ui/store';
+import { colorOf } from './departments';
 import type { Game } from './game';
 
 /** Название предмета: в помещении — своё (стойка регистратуры, пульт), аппарат — по каталогу. */
@@ -103,6 +105,8 @@ export class Builder {
   /** «С персоналом»: готовое — с людьми на всех должностях */
   withStaff = true;
   item?: { kind: ObjectKind; eq?: Id };
+  /** «Отделение» (spec docs/specs/2026-10-departments.md, часть 2): в какое переводить; null — снять отметку; нет — не выбрано */
+  dept?: Id | null;
   /** переставляют: помещение и номер предмета */
   moving?: { room: string; id: number };
   rot: Rot = 0;
@@ -133,7 +137,7 @@ export class Builder {
   hud(): BuildHud {
     return {
       on: this.on, ...(this.tool ? { tool: this.tool } : {}), ...(this.roomType ? { roomType: this.roomType } : {}), ...(this.ready ? { ready: this.ready } : {}),
-      withStaff: this.withStaff, ...(this.item ? { item: this.item } : {}),
+      withStaff: this.withStaff, ...(this.item ? { item: this.item } : {}), ...(this.dept !== undefined ? { dept: this.dept } : {}),
       moving: !!this.moving, ...(this.ghost ? { ghost: this.ghost } : {}), ...(this.result ? { result: this.result } : {}),
       spent: this.g.works.spent, undo: this.g.works.undo,
     };
@@ -169,6 +173,14 @@ export class Builder {
     this.tool = t;
     if (t !== 'room') this.roomType = undefined;
     if (t !== 'ready') this.ready = undefined;
+    if (t !== 'dept') this.dept = undefined;
+    this.update();
+  }
+
+  /** «Отделение»: в какое переводить палаты и кабинеты; null — снимать отметку. */
+  pickDept(dept: Id | null) {
+    this.setTool('dept');
+    this.dept = dept;
     this.update();
   }
 
@@ -210,7 +222,8 @@ export class Builder {
     } else if (this.ready) {
       this.ready = undefined;
       this.turned = false;
-    } else if (this.tool) {
+    } else if (this.dept !== undefined) this.dept = undefined;
+    else if (this.tool) {
       this.tool = undefined;
       this.roomType = undefined;
     } else this.toggle();
@@ -285,6 +298,14 @@ export class Builder {
         // скамья в коридоре (spec docs/specs/2026-10-door-benches.md); денег не хватает — ответит движок
         if (checkBench(this.db, site, x, y).ok) this.g.command({ kind: 'bench', x, y });
         break;
+      // отделение (spec docs/specs/2026-10-departments.md, часть 2): не выбрано — щелчок выбирает помещение, как без инструмента
+      case 'dept': {
+        const r = this.roomAt(cell);
+        if (r && this.dept !== undefined) {
+          if (markDept(this.db, site, r.id, this.dept ?? undefined).ok) this.g.command({ kind: 'dept', room: r.id, ...(this.dept ? { dept: this.dept } : {}) });
+        } else this.g.selectRoomAt(cell);
+        break;
+      }
       case 'demolish': {
         const t = targetAt(site, x, y);
         if (t?.kind === 'item') this.g.command({ kind: 'remove', room: t.room, id: t.id });
@@ -321,6 +342,7 @@ export class Builder {
     else if (n.cmd === 'raise') this.result = { ok: true, text: T.build.raised };
     else if (n.cmd === 'reshift') this.result = { ok: true, text: T.build.reshifted };
     else if (n.cmd === 'study') this.result = { ok: true, text: T.build.studied(money(n.cost ?? 0)) };
+    else if (n.cmd === 'dept') this.result = { ok: true, text: T.build.deptOk };
     else if ((n.cost ?? 0) < 0) this.result = { ok: true, text: T.build.backOk(money(-(n.cost ?? 0))) };
     else if (n.hired !== undefined) this.result = { ok: true, text: T.build.spentHired(money(n.cost ?? 0), n.hired) };
     else this.result = { ok: true, text: T.build.spentOk(money(n.cost ?? 0)) };
@@ -376,6 +398,46 @@ export class Builder {
       }
     }
     return who.length ? T.build.ghostStaff(who.join(', '), money(salary)) : '';
+  }
+
+  /** Помещение под курсором — внутри стен, не то, что сносят. */
+  private roomAt(cell: Cell) {
+    return this.site?.rooms.find(r => !r.leaving && isInterior(r, cell[0], cell[1]));
+  }
+
+  /**
+   * «Отделение» над помещением: клетки — в цвет отделения, которое у него будет; нельзя — красным и почему. Проверка — та же
+   * функция, что у движка (`markDept`).
+   */
+  private deptGhost(site: Site, hover: Cell | undefined) {
+    const db = this.db;
+    const gh = this.g.ghosts;
+    const dept = this.dept;
+    const name = (id: Id | undefined) => (id === undefined ? T.card.deptNone : named(db.departments?.[id]?.name, id));
+    if (dept === undefined) {
+      this.ghost = { ok: true, text: T.build.hintDeptPick };
+      return;
+    }
+    const r = hover ? this.roomAt(hover) : undefined;
+    if (!r) {
+      this.ghost = { ok: true, text: dept ? T.build.hintDept(name(dept)) : T.build.hintDeptNone };
+      return;
+    }
+    const cells: Cell[] = [];
+    for (let y = r.y + 1; y < r.y + r.h - 1; y++) for (let x = r.x + 1; x < r.x + r.w - 1; x++) cells.push([x, y]);
+    const room = named(db.rooms[r.type]?.name, r.type);
+    const c = markDept(db, site, r.id, dept ?? undefined);
+    if (c.ok) {
+      // без отметки — каким оно станет: по тем, кто работает, или по виду
+      const after = dept ?? deptWhy(db, { ...r, dept: undefined }, this.g.staff)?.dept;
+      gh.cells(cells, colorOf(after));
+      this.ghost = { ok: true, text: dept ? T.build.ghostDept(room, name(dept)) : T.build.ghostDeptNone(room, name(after)) };
+      return;
+    }
+    gh.cells(cells, GHOST_BAD);
+    const e = c.error;
+    const why = e.kind === 'notHere' ? T.build.deptFixed : e.kind === 'nothing' ? (dept ? T.build.deptSame(name(dept)) : T.build.deptNoMark) : whyText(db, site, e);
+    this.ghost = { ok: false, text: T.build.ghostBad(room, why) };
   }
 
   /** Куда и как ставится предмет под курсором: помещение, поворот, клетки, можно ли. */
@@ -538,6 +600,9 @@ export class Builder {
           : c.ok ? { ok: true, text: `${what} · ${T.build.benchHint}` } : { ok: false, text: T.build.ghostBad(upper(T.objects.bench), whyText(db, site, c.error)) };
         break;
       }
+      case 'dept':
+        this.deptGhost(site, hover);
+        break;
       case 'demolish': {
         const t = hover ? targetAt(site, hover[0], hover[1]) : undefined;
         if (!t) {

@@ -1,7 +1,7 @@
 {
   "name": "bolnitsa",
   "productName": "Bolnitsa",
-  "version": "0.43.0",
+  "version": "0.45.1",
   "private": true,
   "description": "«Больница» — симулятор больницы для ПК студии «Горница»: движок и медицинская база (из «Анамнеза»), оболочка Electron и 3D-вид на Three.js",
   "author": "Горница",

@@ -13,6 +13,8 @@ export interface LabelRow {
   ok: boolean;
   /** не его смена (spec docs/specs/2026-10-staff-shifts.md): «закрыто до …» — не поломка */
   rest?: boolean;
+  /** табличка отделения (spec docs/specs/2026-10-departments.md, часть 2): полоса сверху в его цвет и название */
+  dept?: { name: string; color: string };
 }
 
 export class Labels {
@@ -41,16 +43,26 @@ export class Labels {
       let el = this.els.get(r.id);
       if (!el) {
         el = document.createElement('div');
+        el.dataset.room = r.id;
         this.root.appendChild(el);
         this.els.set(r.id, el);
       }
       el.className = r.ok ? 'rlabel ok' : r.rest ? 'rlabel rest' : 'rlabel bad';
       el.textContent = '';
+      el.style.borderTopColor = r.dept?.color ?? '';
+      el.dataset.dept = r.dept?.name ?? '';
       const b = document.createElement('b');
       b.textContent = r.name;
+      el.append(b);
+      if (r.dept) {
+        const d = document.createElement('span');
+        d.className = 'rdept';
+        d.textContent = r.dept.name;
+        el.append(d);
+      }
       const s = document.createElement('span');
       s.textContent = r.state;
-      el.append(b, s);
+      el.append(s);
     }
   }
 

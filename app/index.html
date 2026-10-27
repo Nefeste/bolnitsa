@@ -184,12 +184,20 @@
     .card .row { display: flex; gap: 6px; margin-top: 6px; }
     button.small { padding: 1px 6px; font-size: 12px; }
     .labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-    .rlabel { position: absolute; left: 0; top: 0; padding: 2px 7px; border-radius: 4px; background: rgba(22,30,34,.84); border-left: 3px solid var(--green); font-size: calc(11px * var(--ui-k, 1)); line-height: 1.25; white-space: nowrap; color: var(--text); }
+    .rlabel { position: absolute; left: 0; top: 0; padding: 2px 7px; border-radius: 4px; background: rgba(22,30,34,.84); border-left: 3px solid var(--green); border-top: 3px solid transparent; font-size: calc(11px * var(--ui-k, 1)); line-height: 1.25; white-space: nowrap; color: var(--text); }
     .rlabel.bad { border-left-color: var(--red); }
     .rlabel.rest { border-left-color: var(--muted); }
     .rlabel b { display: block; font-size: calc(12px * var(--ui-k, 1)); }
     .rlabel span { color: var(--muted); }
     .rlabel.bad span { color: #ffb4a6; }
+    /* табличка отделения (spec docs/specs/2026-10-departments.md, часть 2): полоса сверху — в его цвет, название — строкой */
+    .rlabel span.rdept { display: block; color: var(--text); }
+    .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
+    .swatches { display: inline-flex; gap: 2px; margin-right: 6px; vertical-align: -1px; }
+    .swatches .swatch { margin-right: 0; width: 7px; }
+    #card-dept select { margin-left: 6px; }
+    .deptlegend { position: absolute; right: 8px; bottom: 10px; z-index: 3; width: 240px; padding: 6px 10px; font-size: 12px; }
+    .deptlegend ul { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
     .start { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 22px 26px; display: flex; flex-direction: column; gap: 10px; width: 480px; }
     .start .game { font-size: 28px; font-weight: 600; letter-spacing: .01em; }
     .start .intro { margin: 0 0 6px; color: var(--muted); line-height: 1.45; }

@@ -134,8 +134,11 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # screen's second step — «Обычно» and soft mode off by default, the level's numbers, «Спокойно»
                                    # and soft mode open the game with `manage=calm&soft=1`, the engine, the start cash, the
                                    # overdraft limit and the room card's wages on that level, «Трудно» in «Настройки» from that
-                                   # minute, the level in the save row);
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|27` for one part, `-- --only 7,10,11` —
+                                   # minute, the level in the save row; then departments on the map:
+                                   # stripes at department doors, the «Отделение» tool and its ghost, a ward to surgery
+                                   # with no scene rebuild, Ctrl+Z, the «Отделения» layer and legend, L in a cycle, the
+                                   # room card's department and its select, the «Пациенты» filter by department);
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|28` for one part, `-- --only 7,10,11` —
                                    # several in a row on one page, as in the full run
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
                                                      # (`-- --flow 40,4` — a bigger crowd, about 180 people,
@@ -193,7 +196,9 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   `docs/specs/2026-10-ready-rooms.md`), `hospital/site-preset.ts` (the preset as a lot), `hospital/site-plan.ts` (a
   hospital of ready rooms from a `content/hospital/sites/` record — the polyclinic,
   `docs/specs/2026-10-real-hospital.md`) and `shift/site.ts` (the `site` command: deferred removal, undo, hiring) —
-  `docs/specs/2026-10-build.md`. The whole 24-hour day of the PC flow is ours as well: `shift/day.ts` (outpatient hours,
+  `docs/specs/2026-10-build.md`. Undo reopens the room a rebuilding step changed; a step that rebuilds nothing (hire,
+  dismissal, pay, shift, reserve, «Мой кабинет», a corridor bench, a department mark — `keep` in the undo step, `KEEPS`)
+  leaves the rebuild as it is. The whole 24-hour day of the PC flow is ours as well: `shift/day.ts` (outpatient hours,
   arrivals by hour of day), the 08:00 meeting and the morning round in `engine.ts`, shapes in `content/hospital/day.yaml`
   — `docs/specs/2026-10-day.md`. Who left the state (`evict`) keeps their card in `s.past` for a day, at most 600, like
   their path — read-only, for «Открыть карту» and «Приняты» (`docs/specs/2026-10-discharged-card.md`).
@@ -278,6 +283,11 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   staff member working there whose role has a `department`, else the room type's `department`; diagnostics and common rooms
   have none. Nothing in the shift reads it yet (routing by complaint is for the demo), so the flow is the same with or without marks.
   Undoing a mark keeps whatever room is being rebuilt (`keep` in the undo step): a mark never closes a room.
+  The window (part 2) calls `deptsOf` itself. `src/app/departments.ts` — Okabe–Ito colours (`tools/test/departments-ui.test.ts`
+  keeps all seven apart under three kinds of colour blindness), stripes, the «Отделения» layer and its legend, a patient's
+  department for the «Пациенты» filter (the room they are in, else their doctor's office); `src/render/stripes.ts` — floor
+  stripes at department doors, lit like the floor; the «Отделение» build tool and the room card's select send the `dept`
+  site command; a marks-only change keeps the scene (`onlyDeptsChanged`, `staffOnly` in `src/sim/host.ts`).
 - The chief approves (`docs/specs/2026-10-two-ways.md`, part 2): `shift/approve.ts` — the rule checkboxes (`meta.asks`, none
   — «unsure» and «long case» as before) and whether a hired doctor's decision waits for the chief. The decision waits in
   `ShiftPatient.approve` (the patient at the office door, no patience; the doctor calls the next); answers — the `approve`

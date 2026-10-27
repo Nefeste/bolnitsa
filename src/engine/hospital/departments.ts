@@ -12,14 +12,23 @@ import type { StaffMember } from './staff';
  * диагностика. Без записи отделений (база тестов) отделений нет.
  */
 export function deptOf(db: ContentDb, room: SiteRoom, staff: readonly StaffMember[]): Id | undefined {
+  return deptWhy(db, room, staff)?.dept;
+}
+
+/**
+ * Отделение помещения и откуда оно (часть 2: карточка помещения говорит почему): `mark` — отметка инструмента, `staff` —
+ * по должности `role` того, кто работает, `type` — по виду помещения.
+ */
+export function deptWhy(db: ContentDb, room: SiteRoom, staff: readonly StaffMember[]): { dept: Id; by: 'mark' | 'staff' | 'type'; role?: Id } | undefined {
   if (!db.departments) return undefined;
-  if (room.dept !== undefined) return room.dept;
+  if (room.dept !== undefined) return { dept: room.dept, by: 'mark' };
   for (const m of staff) {
     if (m.room !== room.id) continue;
     const d = db.roles[m.role]?.department;
-    if (d !== undefined) return d;
+    if (d !== undefined) return { dept: d, by: 'staff', role: m.role };
   }
-  return db.rooms[room.type]?.department;
+  const d = db.rooms[room.type]?.department;
+  return d === undefined ? undefined : { dept: d, by: 'type' };
 }
 
 /** Отделения помещений больницы: номер помещения → отделение; общих и служб здесь нет. */
@@ -34,3 +43,17 @@ export function deptsOf(db: ContentDb, site: Site, staff: readonly StaffMember[]
 
 /** В какие отделения инструмент «Отделение» переводит палату или кабинет — по порядку записи. */
 export const paintsOf = (db: ContentDb): Id[] => Object.values(db.departments ?? {}).filter(d => d.paint).map(d => d.id);
+
+/**
+ * Больница изменилась только отметками отделений (часть 2): те же помещения на тех же местах, с теми же дверями и вещами,
+ * те же предметы коридора. Окно тогда не пересобирает сцену — только полосы, слой и подписи.
+ */
+export function onlyDeptsChanged(a: Site, b: Site): boolean {
+  if (a === b) return true;
+  if (a.rooms.length !== b.rooms.length || a.decor !== b.decor || a.editing !== b.editing || a.mine !== b.mine) return false;
+  return a.rooms.every((r, i) => {
+    const q = b.rooms[i];
+    if (r === q) return true;
+    return r.id === q.id && r.type === q.type && r.x === q.x && r.y === q.y && r.w === q.w && r.h === q.h && r.door === q.door && r.items === q.items && r.leaving === q.leaving;
+  });
+}
