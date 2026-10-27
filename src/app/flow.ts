@@ -74,6 +74,8 @@ export function whereOf(p: Pick<Seen, 'status' | 'doing'>): Where {
 export interface PatientFilter {
   triage: Triage | 'all';
   where: Where | 'all';
+  /** отделение (spec docs/specs/2026-10-departments.md, часть 2): `none` — не в отделении (`patientDept` в departments.ts) */
+  dept: Id | 'all' | 'none';
   /** только ждущие `LONG_WAIT` и дольше */
   long: boolean;
   /**
@@ -83,7 +85,7 @@ export interface PatientFilter {
   list: 'present' | 'seen' | 'gone';
 }
 
-export const NO_FILTER: PatientFilter = { triage: 'all', where: 'all', long: false, list: 'present' };
+export const NO_FILTER: PatientFilter = { triage: 'all', where: 'all', dept: 'all', long: false, list: 'present' };
 
 export interface PatientRow {
   /** человек на экране (`p:<номер>`); ушедший — `id:<номер в движке>` */
@@ -96,13 +98,16 @@ export interface PatientRow {
   mood?: Mood;
 }
 
-/** Строки списка: ждущие — сверху, дольше всех ждущий — первым; фильтры — срочность, место, долгое ожидание. */
+/** Строки списка: ждущие — сверху, дольше всех ждущий — первым; фильтры — срочность, место, отделение, долгое ожидание. */
 export function patientRows(
-  list: readonly (Pick<Seen, 'status' | 'triage' | 'doing' | 'since' | 'limit' | 'ask' | 'approve'> & { key: string; id: string; title: string })[],
+  list: readonly (Pick<Seen, 'status' | 'triage' | 'doing' | 'since' | 'limit' | 'ask' | 'approve'> & { key: string; id: string; title: string; dept?: Id })[],
   t: number,
   f: PatientFilter,
 ): { rows: PatientRow[]; total: number } {
-  const picked = list.filter(p => (f.triage === 'all' || p.triage === f.triage) && (f.where === 'all' || whereOf(p) === f.where) && (!f.long || (waits(p) && t - p.since >= LONG_WAIT)));
+  const inDept = (d: Id | undefined) => f.dept === 'all' || (f.dept === 'none' ? d === undefined : d === f.dept);
+  const picked = list.filter(
+    p => (f.triage === 'all' || p.triage === f.triage) && (f.where === 'all' || whereOf(p) === f.where) && inDept(p.dept) && (!f.long || (waits(p) && t - p.since >= LONG_WAIT)),
+  );
   const rank = (p: Pick<Seen, 'status' | 'doing'>) => (waits(p) ? 0 : 1);
   picked.sort((a, b) => rank(a) - rank(b) || a.since - b.since || (a.id < b.id ? -1 : 1));
   const rows = picked.map(p => {
