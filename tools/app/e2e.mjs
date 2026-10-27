@@ -838,21 +838,27 @@ async function partThree() {
   if (path.includes('ожидание врача') && /заняты|ждёт вас|не принимает/.test(path)) ok(`путь пациента: «${path.slice(0, 160)}…»`);
   else fail(`путь пациента без причины ожидания: «${path}»`);
   // сидя или стоя — по своему залу (spec docs/specs/2026-10-own-hall.md): зал этой больницы — в 37–63 м от кабинета
-  // терапевта, его больные ждут стоя у двери кабинета; в пути — почему
+  // терапевта, его больные ждут стоя у двери кабинета; в пути — почему. Кто сел на скамью у двери (spec
+  // docs/specs/2026-10-door-benches.md), не стоит: в его пути — «на скамье у кабинета». «Стоя» путь пишет у ожидания
+  // врача; вернувшийся с обследования ждёт своего врача у той же двери без этой пометки — поэтому смотрим всех стоящих
   const standing = await page.evaluate(() => {
     const g = window.__game;
     const keys = [];
-    for (const [key, p] of g.pop.patients()) if (p.doing === 'waiting' && p.room >= 0 && g.plan.rooms[p.room].type !== 'room.waiting') keys.push(key);
+    for (const [key, p] of g.pop.patients()) if (p.doing === 'waiting' && p.seat < 0 && p.room >= 0 && g.plan.rooms[p.room].type !== 'room.waiting') keys.push(key);
     return keys;
   });
   if (standing.length > 0) {
-    await page.evaluate(k => window.__game.actions.select(k), standing[0]);
-    const why = await until(() => {
-      const t = document.getElementById('path')?.textContent ?? '';
-      return t.includes('стоя у кабинета') ? t : null;
-    }, null, 20000).then(h => h.jsonValue(), () => '');
+    let why = '';
+    for (const k of standing) {
+      await page.evaluate(key => window.__game.actions.select(key), k);
+      why = await until(() => {
+        const t = document.getElementById('path')?.textContent ?? '';
+        return t.includes('стоя у кабинета') ? t : null;
+      }, null, 5000).then(h => h.jsonValue(), () => '');
+      if (why) break;
+    }
     if (why) ok(`у двери кабинета стоят ${standing.length}; в пути — «${why.slice(why.indexOf('стоя у кабинета'), why.indexOf('стоя у кабинета') + 80)}»`);
-    else fail(`стоящий у двери: в пути нет «стоя у кабинета» — «${(await page.textContent('#path')) ?? ''}»`);
+    else fail(`стоящие у двери (${standing.length}): ни в одном пути нет «стоя у кабинета» — последний: «${(await page.textContent('#path')) ?? ''}»`);
     await page.evaluate(() => window.__game.actions.select(undefined));
   } else fail('у двери кабинета терапевта никто не стоит');
   // «Ушли»: путь ушедшего — почему ушёл
