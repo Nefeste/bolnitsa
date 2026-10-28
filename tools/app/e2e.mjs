@@ -796,29 +796,50 @@ async function partThree() {
   const rows = await page.$$eval('#patients .patrow', els => els.map(e => e.textContent ?? ''));
   if (rows.length > 0 && rows.every(t => t.includes('ждёт врача'))) ok(`вкладка «Пациенты», ждут врача: ${rows.length}; первый — «${rows[0]}»`);
   else fail(`вкладка «Пациенты»: ${JSON.stringify(rows.slice(0, 5))}`);
-  // скольжение после протяжки (spec docs/specs/2026-10-aaa-polish.md, «Камера»): быстрая протяжка правой кнопкой — после
-  // отпускания карта идёт дальше и останавливается сама
-  await page.evaluate(() => {
-    const c = window.__game.stage.cam;
-    c.overview();
-    c.half = 14;
-  });
-  await page.mouse.move(640, 380);
-  await page.mouse.down({ button: 'right' });
-  await page.mouse.move(560, 380, { steps: 6 });
-  await page.mouse.up({ button: 'right' });
-  const up = await page.evaluate(() => {
-    const c = window.__game.stage.cam;
-    return { gliding: c.gliding, x: c.target.x, z: c.target.z };
-  });
+  // скольжение после протяжки (spec docs/specs/2026-10-aaa-polish.md, «Камера с инерцией»): быстрая протяжка правой кнопкой —
+  // после отпускания карта идёт дальше и останавливается сама; рука перед отпусканием стояла — не идёт. Скорость руки камера
+  // берёт по времени самих событий, а `page.mouse` шлёт сдвиг, когда страница взяла прежний, — без видеокарты раз в кадр, около
+  // четырёх в секунду: по времени событий такая протяжка медленная и стоит кадр перед отпусканием. Поэтому события — через CDP
+  // со своим временем, как от мыши: 80 точек за 48 мс, отпущена через `hold` мс после последнего сдвига
+  const cdp = await page.context().newCDPSession(page);
+  const flick = async hold => {
+    await page.evaluate(() => {
+      const c = window.__game.stage.cam;
+      c.overview();
+      c.half = 14;
+    });
+    await page.mouse.move(640, 380);
+    const t0 = Date.now() / 1000;
+    const at = (type, x, ms, more) =>
+      cdp.send('Input.dispatchMouseEvent', { type, x, y: 380, button: 'right', buttons: type === 'mouseReleased' ? 0 : 2, timestamp: t0 + ms / 1000, ...more });
+    await at('mousePressed', 640, 0, { clickCount: 1 });
+    for (let i = 1; i <= 6; i++) await at('mouseMoved', 640 - (80 * i) / 6, 8 * i);
+    await at('mouseReleased', 560, 48 + hold, { clickCount: 1 });
+    return page.evaluate(() => {
+      const c = window.__game.stage.cam;
+      return { gliding: c.gliding, x: c.target.x, z: c.target.z };
+    });
+  };
+  const up = await flick(8);
   const stopped = await until(() => !window.__game.stage.cam.gliding, null, 15000).then(() => true, () => false);
   const end = await page.evaluate(() => {
     const t = window.__game.stage.cam.target;
     return { x: t.x, z: t.z };
   });
   const slid = Math.hypot(end.x - up.x, end.z - up.z);
-  if (up.gliding && stopped && slid > 0.5) ok(`протяжка правой кнопкой — после отпускания карта скользит ещё ${slid.toFixed(1)} м и останавливается сама`);
+  if (up.gliding && stopped && slid > 0.5) ok(`быстрая протяжка правой кнопкой — после отпускания карта скользит ещё ${slid.toFixed(1)} м и останавливается сама`);
   else fail(`скольжение после протяжки: ${JSON.stringify({ up, end, stopped })}`);
+  // рука стояла перед отпусканием 120 мс — не скользит; при редких кадрах страница может взять последний сдвиг и отпускание
+  // почти вместе, и различает их только время событий
+  const held = await flick(120);
+  await page.waitForTimeout(1000);
+  const after = await page.evaluate(() => {
+    const t = window.__game.stage.cam.target;
+    return { x: t.x, z: t.z };
+  });
+  if (!held.gliding && Math.hypot(after.x - held.x, after.z - held.z) < 0.01) ok('рука перед отпусканием стояла 120 мс — карта не скользит');
+  else fail(`рука стояла перед отпусканием, а карта скользит: ${JSON.stringify({ held, after })}`);
+  await cdp.detach();
   await page.evaluate(() => window.__game.stage.cam.overview());
   await page.waitForTimeout(200);
   const cam0 = await page.evaluate(() => window.__game.stage.cam.half);

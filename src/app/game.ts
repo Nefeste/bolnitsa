@@ -389,7 +389,7 @@ export class Game {
   readonly frames: { interval: number[]; sim: number[]; draw: number[] } = { interval: [], sim: [], draw: [] };
   onFrame: ((ts: number) => void) | null = null;
   private mouse = { x: 0, y: 0, inside: false, drag: null as null | { x: number; y: number; moved: number; button: number }, keys: new Set<string>() };
-  /** сдвиги протяжки за последние 100 мс — скорость руки при отпускании (скольжение камеры) */
+  /** сдвиги протяжки за последние 100 мс по времени событий — скорость руки при отпускании (скольжение камеры) */
   private dragSamples: DragSample[] = [];
   /** скорость сдвига клавишами и краями окна, точек экрана в секунду: набирается и гаснет плавно */
   private keyPan = { x: 0, y: 0 };
@@ -2022,10 +2022,18 @@ export class Game {
       const dy = e.clientY - this.mouse.drag.y;
       if (dx || dy) this.unfollow();
       this.stage.cam.pan(dx, dy, el.clientHeight);
+      // скорость руки — по времени самих событий, а не их обработки: при редких кадрах страница берёт события с опозданием и
+      // неровно, и по времени обработки отпущенная на ходу карта не скользила, а отпущенная после остановки — скользила;
+      // сдвиги, слитые браузером в одно событие, — каждый со своим временем (spec 2026-10-aaa-polish, «Камера с инерцией»)
+      let { x, y } = this.mouse.drag;
+      const hand = e.getCoalescedEvents?.() ?? [];
+      for (const c of hand.length ? hand : [e]) {
+        this.dragSamples.push({ t: c.timeStamp, dx: c.clientX - x, dy: c.clientY - y });
+        x = c.clientX;
+        y = c.clientY;
+      }
       this.mouse.drag = { x: e.clientX, y: e.clientY, moved: this.mouse.drag.moved + Math.abs(dx) + Math.abs(dy), button: this.mouse.drag.button };
-      const now = performance.now();
-      this.dragSamples.push({ t: now, dx, dy });
-      while (this.dragSamples.length && now - this.dragSamples[0].t > 100) this.dragSamples.shift();
+      while (this.dragSamples.length && e.timeStamp - this.dragSamples[0].t > 100) this.dragSamples.shift();
     });
     el.addEventListener('pointerup', e => {
       if (e.button === 0 && this.builder.on) {
@@ -2039,7 +2047,7 @@ export class Game {
       // (spec 2026-10-aaa-polish, «Камера»)
       if (e.button === 2 && d.moved < 5) this.cancel();
       else {
-        const v = releaseVelocity(this.dragSamples, performance.now());
+        const v = releaseVelocity(this.dragSamples, e.timeStamp);
         if (v) this.stage.cam.glideFrom(v.x, v.y, el.clientHeight);
       }
       this.dragSamples = [];
