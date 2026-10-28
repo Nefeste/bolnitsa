@@ -199,7 +199,10 @@ bun tools/test/make-save-fixture.ts 0.7.0      # a save sample for tools/test/fi
 The browser scenario and the headless bench need Chromium: `PLAYWRIGHT_BROWSERS_PATH` (default `/opt/pw-browsers`) or
 `CHROMIUM_PATH`. Electron in a container without a GPU: `xvfb-run -a node_modules/electron/dist/electron . --no-sandbox
 --swiftshader` (add `--bench --secs 5 --qualities low` for the auto-bench; results land in the working directory).
-Software WebGL numbers say nothing about a player's GPU — the owner's PC is the reference.
+Software WebGL numbers say nothing about a player's GPU — the owner's PC is the reference. Without a GPU the page draws about
+four frames a second, and `page.mouse` sends each move only after the page has taken the previous one — once a frame; the
+window reads a drag's speed from the events' own `timeStamp`, so a drag whose speed matters goes through CDP
+`Input.dispatchMouseEvent` with `timestamp` (`flick` in part 3 of `tools/app/e2e.mjs`).
 
 If the environment sets `BUN_OPTIONS=--smol`, unset it for the bench (`env -u BUN_OPTIONS …`). Any change to
 `src/engine/` re-runs the bench and compares with `docs/reports/2026-10-engine-speed.md`; a change to inference must

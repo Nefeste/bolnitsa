@@ -180,12 +180,12 @@ const GLIDE_TAU = 0.22;
 const GLIDE_STOP = 0.02;
 const GLIDE_MAX = 2.5;
 
-/** Сдвиг протяжкой: точки экрана и время события, мс. */
+/** Сдвиг протяжкой: точки экрана и время события (`timeStamp` — когда двинулась рука, а не когда страница его взяла), мс. */
 export type DragSample = { t: number; dx: number; dy: number };
 
 /**
  * Скорость руки при отпускании, точек экрана в секунду, — по сдвигам последних 80 мс; если рука перед отпусканием стояла
- * (последний сдвиг старше 50 мс), скольжения нет.
+ * (последний сдвиг старше 50 мс), скольжения нет. `now` — время события отпускания, на тех же часах, что и сдвиги.
  */
 export function releaseVelocity(samples: readonly DragSample[], now: number): { x: number; y: number } | null {
   const last = samples[samples.length - 1];
