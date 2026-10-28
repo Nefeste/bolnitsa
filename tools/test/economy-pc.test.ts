@@ -8,6 +8,7 @@ import { describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { db } from '../../src/content';
 import type { ContentDb } from '../../src/content/types';
 import { emptyLedger, expensesOf, incomeOf, salariesOf } from '../../src/engine/economy/economy';
 import { emptySite, hospitalOf, roomPrice, type Site } from '../../src/engine/hospital/site';
@@ -32,7 +33,6 @@ import { PROTO, site } from './site-kit';
 // сутки потока и испорченные копии базы (шесть в одном тесте) — по нескольку секунд: под нагрузкой пяти не хватает
 setDefaultTimeout(60_000);
 
-const { db } = buildDb();
 useDb(db);
 setLang('ru');
 const HOUR = 3600;

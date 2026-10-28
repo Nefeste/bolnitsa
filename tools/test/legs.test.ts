@@ -2,6 +2,7 @@
 // ходили, сколько раз и сколько шли. Поток расчёта шлёт их окну, только пока слой включён: сразу, потом не чаще раза в
 // `LEGS_EVERY` и только изменившиеся; на ход смены слой не влияет.
 import { describe, expect, test } from 'bun:test';
+import { db } from '../../src/content';
 import { hospitalOf } from '../../src/engine/hospital/site';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { presetStaff } from '../../src/engine/hospital/staff';
@@ -11,10 +12,8 @@ import type { Flow } from '../../src/engine/shift/types';
 import { createSim } from '../../src/sim/host';
 import { AMBULANCE, journeyLegs, legsOf, STREET } from '../../src/sim/legs';
 import { type FromSim, LEGS_EVERY } from '../../src/sim/protocol';
-import { buildDb } from '../content/load';
 import { hash, liveUntil } from './scenario';
 
-const { db } = buildDb();
 // город игры — участок с двумя входами, как в окне (src/engine/hospital/site-preset.ts)
 const preset = db.presets['preset.city'];
 const city = { hospital: hospitalOf(db, siteOfPreset(db, preset)), staff: presetStaff(db, preset) };

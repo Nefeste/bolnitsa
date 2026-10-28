@@ -2,6 +2,7 @@
 // на перерыве и в ожидании — покой сидя; сидящий на стуле или скамье изредка оглядывается, стоящий на посту — берёт бумаги,
 // у каждого в свой срок; медсестра палаты обходит занятые койки своего помещения и уступает перевозке.
 import { describe, expect, test } from 'bun:test';
+import { db } from '../../src/content';
 import { withNightShift } from '../../src/engine/hospital/staff';
 import { GAME_PER_REAL } from '../../src/engine/shift/walking';
 import { CLIP_NAMES } from '../../src/render/bake';
@@ -13,10 +14,8 @@ import { bedSide, Places, type Spot } from '../../src/render/place';
 import { Population, ROUND_EVERY, roundGap } from '../../src/render/population';
 import { createSim } from '../../src/sim/host';
 import { H } from '../../src/sim/pack';
-import { buildDb } from '../content/load';
 import { bakedPeople, furnitureModels, presetLayout } from './render-kit';
 
-const { db } = buildDb();
 
 /** Городская больница на отрисовке, как в tools/test/crowd.test.ts: раскладка, пути, толпа на ×12 и население, часы — 08:00. */
 async function cityScene(shifts = false) {

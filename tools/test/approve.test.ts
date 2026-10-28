@@ -3,6 +3,7 @@
 // «Взять», «Направить к …», «Ещё обследование»; молчание до срока — решение врача в силе, и исход тот же; выписка — через
 // утверждение на утреннем обходе. По умолчанию — «не уверен» и «долгий случай», как прежде.
 import { describe, expect, test } from 'bun:test';
+import { db } from '../../src/content';
 import type { Id } from '../../src/content/types';
 import { approveFor, asksOf, BELOW, DEFAULT_ASKS } from '../../src/engine/shift/approve';
 import { apply, candidatesOf, examsHere, newFlowShift } from '../../src/engine/shift/engine';
@@ -16,12 +17,10 @@ import { hospitalOf } from '../../src/engine/hospital/site';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { presetStaff } from '../../src/engine/hospital/staff';
 import { groupsOf } from '../../src/engine/shift/consult';
-import { buildDb } from '../content/load';
 import { hospitalFor } from '../bench/hospital';
 import { FLOW } from './site-kit';
 import { hash } from './scenario';
 
-const { db } = buildDb();
 const wait = db.consults!.wait * 60;
 const layout = hospitalFor(db, 6, 100, { emergency: true });
 const flow = { perHour: 12, ambulancePerHour: 2 };

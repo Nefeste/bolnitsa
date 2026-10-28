@@ -6,6 +6,7 @@ import { describe, expect, test } from 'bun:test';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { db } from '../../src/content';
 import type { Id } from '../../src/content/types';
 import { askFor, askWhy } from '../../src/engine/shift/consult';
 import { apply, candidatesOf, newFlowShift, newSingle, reviewedCase, SANDBOX_VENUE } from '../../src/engine/shift/engine';
@@ -21,7 +22,6 @@ import { buildDb, CONTENT_DIR } from '../content/load';
 import { hospitalFor } from '../bench/hospital';
 import { hash, liveUntil } from './scenario';
 
-const { db } = buildDb();
 const consults = db.consults!;
 const layout = hospitalFor(db, 6, 100, { emergency: true });
 const flow = { perHour: 12, ambulancePerHour: 2 };

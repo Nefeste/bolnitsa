@@ -8,8 +8,8 @@ import {
   COLOR, COLUMN_FLAT, COLUMN_MAX, COLUMN_MIN, columnOf, LOAD_FULL, METRICS, METRICS_READY, MONEY, MONEY_METRICS, moneyColumnOf, moneyTop, serviceRoom, shortMoney, WAIT_FULL,
 } from '../../src/app/metrics';
 import { parseSettings } from '../../src/app/settings';
+import { db } from '../../src/content';
 import { money, setLang } from '../../src/i18n';
-import { buildDb } from '../content/load';
 
 const load = (over: Partial<RoomLoad> = {}): RoomLoad => ({ queue: 0, wait: 0, busy: false, ask: false, ...over });
 
@@ -71,7 +71,6 @@ describe('слой «Показатели»: столбики', () => {
 });
 
 describe('слой «Показатели»: деньги по помещениям (часть 2)', () => {
-  const { db } = buildDb();
   test('служебные помещения — те, что выручки не приносят никогда (решение владельца #120)', () => {
     const service = Object.keys(db.rooms).filter(t => serviceRoom(db, t)).sort();
     expect(service).toEqual(['room.procedure', 'room.reception', 'room.staff', 'room.toilet', 'room.triage', 'room.waiting']);

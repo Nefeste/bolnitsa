@@ -2,13 +2,12 @@
 // строками журнала; детерминизм — тот же хэш у двух смен с одним зерном и при другом шаге времени; «красных»,
 // повторных и привезённых скорой ведут нанятые врачи. Сутки — целиком, итог — на планёрке в 08:00 (spec 2026-10-day).
 import { describe, expect, test } from 'bun:test';
+import { db } from '../../src/content';
 import { apply, newFlowShift } from '../../src/engine/shift/engine';
 import { DAY, type ShiftState } from '../../src/engine/shift/types';
-import { buildDb } from '../content/load';
 import { hospitalFor } from '../bench/hospital';
 import { hash, liveUntil } from './scenario';
 
-const { db } = buildDb();
 const layout = hospitalFor(db, 6, 100, { emergency: true });
 const start = (seed: number): ShiftState =>
   newFlowShift(db, { seed, season: 'winter', hospital: layout.hospital, staff: layout.staff, flow: { perHour: 12, ambulancePerHour: 2 } });

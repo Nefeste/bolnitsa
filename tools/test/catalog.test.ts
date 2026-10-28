@@ -6,11 +6,10 @@ import { describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { db } from '../../src/content';
 import { CATALOG, entryOf, EXTRA_MODELS } from '../../src/render/catalog';
-import { buildDb } from '../content/load';
 import { index, MODELS, rocketboxIndex } from './render-kit';
 
-const { db } = buildDb();
 const files = new Set([...index.kenney.map(n => `kenney/${n}`), ...index.kaykit.map(n => `kaykit/${n}`)]);
 const sources = JSON.parse(readFileSync(join(MODELS, 'sources.json'), 'utf8')) as Record<string, { source: string; sha256: string; out: string }>;
 

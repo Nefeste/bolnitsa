@@ -3,6 +3,7 @@
 // садятся на стулья, ложатся на койки, не уходят в стены и не стоят друг в друге; число людей — из движка. Ходьба в
 // движке (spec docs/specs/2026-10-walk.md): человек доходит к часу, который назвал движок.
 import { describe, expect, test } from 'bun:test';
+import { db } from '../../src/content';
 import { H } from '../../src/sim/pack';
 import { createSim } from '../../src/sim/host';
 import { Crowd, idleRate, PACE } from '../../src/render/crowd';
@@ -13,10 +14,8 @@ import { doorInside, Places, standAt } from '../../src/render/place';
 import { Population } from '../../src/render/population';
 import { CATALOG, EXTRA_MODELS } from '../../src/render/catalog';
 import { withNightShift } from '../../src/engine/hospital/staff';
-import { buildDb } from '../content/load';
 import { bakedPeople, furnitureModels, presetLayout } from './render-kit';
 
-const { db } = buildDb();
 
 /**
  * Городская больница на отрисовке: раскладка, пути, толпа на ×12 и население со штатом на местах. `shifts` — штат со сменами,

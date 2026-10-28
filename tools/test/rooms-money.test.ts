@@ -3,6 +3,7 @@
 // операция — операционной, зарплаты и содержание — помещению их мест; то же при любом шаге часов; в больнице «Анамнеза» —
 // ничего этого нет.
 import { describe, expect, test } from 'bun:test';
+import { db } from '../../src/content';
 import { expensesOf, incomeOf } from '../../src/engine/economy/economy';
 import { hospitalOf } from '../../src/engine/hospital/site';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
@@ -11,10 +12,8 @@ import { apply, newFlowShift, newShift } from '../../src/engine/shift/engine';
 import { startCash } from '../../src/engine/shift/money';
 import { COMMON } from '../../src/engine/shift/rooms';
 import type { DaySummary, ShiftState } from '../../src/engine/shift/types';
-import { buildDb } from '../content/load';
 import { hash } from './scenario';
 
-const { db } = buildDb();
 const H = 3600;
 const DAY = 24 * H;
 const rec = db.presets['preset.city'];

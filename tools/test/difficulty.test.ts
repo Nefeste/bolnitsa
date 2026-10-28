@@ -2,6 +2,7 @@
 // было, до байта; у «Спокойно» и «Трудно» — множители к потоку, терпению, зарплатам, оплате случаев и поломкам, свой предел
 // минуса и касса начала; уровень меняют командой в любой момент — с этой минуты; в сменах «Анамнеза» уровня нет.
 import { describe, expect, test } from 'bun:test';
+import { db } from '../../src/content';
 import type { ContentDb, Manage, ManageLevel } from '../../src/content/types';
 import { emptySite, hospitalOf } from '../../src/engine/hospital/site';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
@@ -11,10 +12,9 @@ import { levelOf, manageOf } from '../../src/engine/shift/manage';
 import { incomeOf } from '../../src/engine/economy/economy';
 import { accrue, offerOf, shortOf, startCash } from '../../src/engine/shift/money';
 import type { Flow, ShiftState } from '../../src/engine/shift/types';
-import { buildDb, difficultyErrors } from '../content/load';
+import { difficultyErrors } from '../content/load';
 import { hash } from './site-kit';
 
-const { db } = buildDb();
 const HOUR = 3600;
 const AUTO: Flow = { perHour: 0, auto: true };
 const rec = db.presets['preset.city'];

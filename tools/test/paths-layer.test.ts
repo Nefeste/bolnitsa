@@ -3,6 +3,7 @@
 // без DOM и Three.js; пути — тот же поиск, что ведёт людей (src/render/path.ts), на плане городской больницы.
 import { afterAll, describe, expect, test } from 'bun:test';
 import { endsOf, heatColor, heatOf, heatPixels, legRows, lengthOf, MAX_LEGS } from '../../src/app/paths';
+import { db } from '../../src/content';
 import { planOf } from '../../src/engine/hospital/build';
 import { emptySite, hospitalOf } from '../../src/engine/hospital/site';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
@@ -11,7 +12,6 @@ import { setLang } from '../../src/i18n';
 import { layoutOf } from '../../src/render/layout';
 import { Paths } from '../../src/render/path';
 import { AMBULANCE, type Leg, STREET } from '../../src/sim/legs';
-import { buildDb } from '../content/load';
 import { staffCells } from './render-kit';
 
 setLang('ru');
@@ -129,7 +129,6 @@ describe('список', () => {
 
 describe('концы переходов на плане городской больницы', () => {
   // город игры — участок с двумя входами, как в окне (src/engine/hospital/site-preset.ts)
-  const { db } = buildDb();
   const city = db.presets['preset.city'];
   const hospital = hospitalOf(db, siteOfPreset(db, city));
   const plan = planOf(db, hospital);

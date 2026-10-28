@@ -4,11 +4,10 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { db } from '../../src/content';
 import { apply, reviewedCase, reviewsDue, settleReviews } from '../../src/engine/shift/engine';
-import { buildDb } from '../content/load';
 import { CASES, hash, hiredClosed, liveUntil, startShift } from './scenario';
 
-const { db } = buildDb();
 const eager = JSON.parse(readFileSync(join(import.meta.dir, 'fixtures/eager-review.json'), 'utf8')) as {
   venue: string; seed: number; atNoon: { count: number; hash: string }; hired: number; closed: string;
 }[];

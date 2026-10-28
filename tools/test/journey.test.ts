@@ -2,6 +2,7 @@
 // было и почему он ждал; смены «Анамнеза» — без пути. Причины ожидания — из состояния движка; детерминизм — тот же путь
 // при любом шаге времени и в потоке расчёта; хранится сутки после ухода, законченных — не больше MAX_DONE.
 import { describe, expect, test } from 'bun:test';
+import { db } from '../../src/content';
 import { SYSTEMS } from '../../src/content/types';
 import type { StaffMember } from '../../src/engine/hospital/staff';
 import { apply, newFlowShift, newShift, newSingle } from '../../src/engine/shift/engine';
@@ -10,12 +11,10 @@ import { sliceOf } from '../../src/engine/shift/slice';
 import { DAY, type Flow, type Notice, type ShiftState } from '../../src/engine/shift/types';
 import { createSim } from '../../src/sim/host';
 import { Handles, packSlice, peopleOf } from '../../src/sim/pack';
-import { buildDb } from '../content/load';
 import { hospitalFor, type Layout } from '../bench/hospital';
 import { presetLayout } from './render-kit';
 import { hash, liveUntil } from './scenario';
 
-const { db } = buildDb();
 const city = presetLayout(db, 'preset.city');
 const bench = hospitalFor(db, 6, 100, { emergency: true });
 const CITY: Flow = { perHour: 6, ambulancePerHour: 1 };
