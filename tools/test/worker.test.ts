@@ -29,7 +29,8 @@ describe('поток расчёта', () => {
     const end = 14 * 3600;
     while (s.t < end) apply(db, s, { kind: 'advance', seconds: Math.min(60, end - s.t) });
 
-    const w = new Worker(new URL('./sim-worker.ts', import.meta.url).href);
+    // URL объектом, а не строкой: с Bun 1.4, как в Node, `worker_threads` не берёт file: и data: строкой (ERR_WORKER_PATH)
+    const w = new Worker(new URL('./sim-worker.ts', import.meta.url));
     try {
       const first = await call(w, { kind: 'start', seed: 21, season: 'winter', hospital: layout.hospital, staff: layout.staff, flow });
       expect(first.kind).toBe('slice');
@@ -85,7 +86,7 @@ describe('поток расчёта', () => {
     t0 = performance.now();
     for (let i = 0; i < N; i++) packSlice(s, slice, 0, handles, rooms, team);
     const pack = (performance.now() - t0) / N;
-    const w = new Worker('data:text/javascript,' + encodeURIComponent("const { parentPort } = require('node:worker_threads'); parentPort.on('message', m => parentPort.postMessage(m, [m.buf.buffer]));"));
+    const w = new Worker(new URL('data:text/javascript,' + encodeURIComponent("const { parentPort } = require('node:worker_threads'); parentPort.on('message', m => parentPort.postMessage(m, [m.buf.buffer]));")));
     const send = () =>
       new Promise<void>(resolve => {
         const m = packSlice(s, slice, 0, handles, rooms, team);
