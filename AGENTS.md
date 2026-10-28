@@ -205,6 +205,14 @@ If the environment sets `BUN_OPTIONS=--smol`, unset it for the bench (`env -u BU
 `src/engine/` re-runs the bench and compares with `docs/reports/2026-10-engine-speed.md`; a change to inference must
 keep `tools/test/infer-speed.test.ts` and the golden fingerprints green (same numbers to the bit).
 
+`bun test tools/test` runs every file in one process, in directory-listing order, and keeps each file's module to the end
+of the run. So a test takes the database from `src/content` (the bundle, deep-equal to `buildDb()`) and builds its own only
+inside a test that checks the build (three files copied from Anamnez keep theirs, as there); an engine cache that grows
+with patients or steps (like the inference memos) has one bound for the whole process, not one per database
+(`UNKNOWNS_KEEP` in `src/engine/med/infer.ts`). If `npm test` stops with a core at 100 % and RSS frozen, compare
+`wc -l < /proc/<pid>/maps` with `/proc/sys/vm/max_map_count`: at that limit Bun's allocator retries `madvise` forever
+(`docs/reports/2026-10-test-hang.md`).
+
 Never write Three.js, Electron, React or esbuild code from memory: read the docs of the pinned versions
 (`package.json`) first — their APIs change between releases (e.g. `GTAOPass` in three r186).
 

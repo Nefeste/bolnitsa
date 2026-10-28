@@ -2,17 +2,16 @@
 // потоками»): Int32Array туда и обратно — то же, что срез объектами; строки — только у новых; номер человека не меняется,
 // пока он в больнице; что делает — по правилам карты «Анамнеза»; детерминизм — тот же хэш, что без упаковки.
 import { describe, expect, test } from 'bun:test';
+import { db } from '../../src/content';
 import { hospitalOf } from '../../src/engine/hospital/site';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { apply, newFlowShift } from '../../src/engine/shift/engine';
 import { sliceOf } from '../../src/engine/shift/slice';
 import { createSim } from '../../src/sim/host';
 import { DOINGS, H, Handles, HEADER, NO_CASH, packSlice, peopleOf, STRIDE } from '../../src/sim/pack';
-import { buildDb } from '../content/load';
 import { presetLayout } from './render-kit';
 import { hash } from './scenario';
 
-const { db } = buildDb();
 const { hospital, staff } = presetLayout(db, 'preset.city');
 const flow = { perHour: 6, ambulancePerHour: 1 };
 

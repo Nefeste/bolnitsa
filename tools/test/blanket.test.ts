@@ -2,16 +2,15 @@
 // по высоте живота, ног и носков его вида; на кушетке, столе, аппарате и каталке одеяла нет.
 import { describe, expect, test } from 'bun:test';
 import * as THREE from 'three';
+import { db } from '../../src/content';
 import { CATALOG, EXTRA_MODELS } from '../../src/render/catalog';
 import { Crowd } from '../../src/render/crowd';
 import { furnish } from '../../src/render/furniture';
 import { Paths } from '../../src/render/path';
 import { type Paint, PeopleView } from '../../src/render/people';
 import { Places, spotOn } from '../../src/render/place';
-import { buildDb } from '../content/load';
 import { bakedPeople, furnitureModels, presetLayout } from './render-kit';
 
-const { db } = buildDb();
 
 describe('одеяло', () => {
   test('лежащий на кровати — под одеялом своей высоты; на кушетке — без', async () => {

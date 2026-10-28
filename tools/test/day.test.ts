@@ -7,6 +7,7 @@ import { describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { db } from '../../src/content';
 import { emptyLedger } from '../../src/engine/economy/economy';
 import { presetHospital } from '../../src/engine/hospital/build';
 import { presetStaff } from '../../src/engine/hospital/staff';
@@ -22,7 +23,6 @@ import { hash, liveUntil } from './scenario';
 // испорченная копия базы собирается целиком — около 0,7 с, а копий в тесте семь: под нагрузкой пяти секунд не хватает
 setDefaultTimeout(60_000);
 
-const { db } = buildDb();
 const day = db.day!;
 const layout = hospitalFor(db, 6, 100, { emergency: true });
 const H = 3600;

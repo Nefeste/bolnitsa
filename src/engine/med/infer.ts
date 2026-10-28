@@ -205,21 +205,30 @@ export function contextOf(db: ContentDb, patient: { sex: Sex; age: number; seaso
  * Неизвестное — одно на то, от чего оно зависит (spec 2026-10-engine-speed, ч. 4): пол, возраст, профессия, известные
  * факторы риска и болезни, жалобы и ответы о себе (`hx.`). От шага к шагу врача это обычно одно и то же, и тогда шаг
  * получает тот же объект — а с ним и всё, что запомнено по нему: доли кандидатов, их признаки, вероятности признаков
- * (`fpTable`). Числа те же: `unknownsOf` от тех же входов.
+ * (`fpTable`). Числа те же: `unknownsOf` от тех же входов. Предел `UNKNOWNS_KEEP` — на весь процесс, а не на каждую базу:
+ * у игры база одна, а в процессе тестов их много (свои базы файлов, копии `{ ...db, … }`), и с пределом на каждую там
+ * копились гигабайты запомненного — пока аллокатор Bun не упирался в предел числа отображений памяти (`vm.max_map_count`)
+ * и не вставал.
  */
-const unknownsCache = new WeakMap<ContentDb, Map<string, Unknowns>>();
-const UNKNOWNS_KEEP = 256;
+let unknownsCache = new WeakMap<ContentDb, Map<string, Unknowns>>();
+let unknownsKept = 0;
+export const UNKNOWNS_KEEP = 256;
 
 function sameUnknowns(db: ContentDb, observations: readonly Observation[], ctx: Omit<InferContext, 'unknowns'>): Unknowns {
-  let byKey = unknownsCache.get(db);
-  if (!byKey) unknownsCache.set(db, (byKey = new Map()));
   let key = `${ctx.sex}|${ctx.age}|${ctx.job ?? ''}|${ctx.knownRisks.join(',')}|${ctx.knownConditions.join(',')}|${complaintsOf(observations).join(',')}`;
   for (const o of observations) if (o.f.startsWith('hx.')) key += `|${JSON.stringify(o)}`;
-  let out = byKey.get(key);
+  let byKey = unknownsCache.get(db);
+  let out = byKey?.get(key);
   if (!out) {
-    // память — не правда: забытое посчитается заново тем же
-    if (byKey.size >= UNKNOWNS_KEEP) byKey.clear();
+    // память — не правда: забытое посчитается заново тем же; забывается всё сразу, у всех баз
+    if (unknownsKept >= UNKNOWNS_KEEP) {
+      unknownsCache = new WeakMap();
+      unknownsKept = 0;
+      byKey = undefined;
+    }
+    if (!byKey) unknownsCache.set(db, (byKey = new Map()));
     byKey.set(key, (out = unknownsOf(db, observations, ctx)));
+    unknownsKept++;
   }
   return out;
 }

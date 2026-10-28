@@ -4,17 +4,16 @@
 // docs/specs/2026-10-build.md, «Тесты»): то же — у помещений, построенных протяжкой и обставленных, и у готовой больницы,
 // переведённой в стройку.
 import { describe, expect, test } from 'bun:test';
+import { db } from '../../src/content';
 import type { Rot } from '../../src/content/types';
 import { planOf } from '../../src/engine/hospital/build';
 import { addRoom, emptySite, furnish, planOfSite, setDoor, type Site } from '../../src/engine/hospital/site';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { presetStaff } from '../../src/engine/hospital/staff';
-import { buildDb } from '../content/load';
 import { isLong, layoutOf, type Layout } from '../../src/render/layout';
 import { accessOf, doorInside, thingAt } from '../../src/render/place';
 import { oneRoom, presetLayout, staffCells } from './render-kit';
 
-const { db } = buildDb();
 
 /** Клетки, до которых можно дойти от `from` по проходимым. */
 function reach(l: Layout, from: number): Set<number> {

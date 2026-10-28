@@ -2,6 +2,7 @@
 // везёт, где больной, куда встать с каталкой у кровати; в городской больнице со сменами санитар идёт за привезённым с
 // пустой каталкой, перекладывает, везёт его лёжа и возвращается на место; привезённого ввозит фельдшер скорой и уходит.
 import { describe, expect, test } from 'bun:test';
+import { db } from '../../src/content';
 import { withNightShift } from '../../src/engine/hospital/staff';
 import { GAME_PER_REAL } from '../../src/engine/shift/walking';
 import type { Ride } from '../../src/engine/shift/types';
@@ -14,10 +15,8 @@ import { Population } from '../../src/render/population';
 import { carrierGoal, ridePhase, riderAt, ridesNow } from '../../src/render/rides';
 import { createSim } from '../../src/sim/host';
 import { H } from '../../src/sim/pack';
-import { buildDb } from '../content/load';
 import { bakedPeople, furnitureModels, presetLayout } from './render-kit';
 
-const { db } = buildDb();
 const MIN = 60;
 
 /** Перевозка на койку: вышел в 10:00, у больного в 10:05, переложил к 10:07, довёз к 10:15, переложил к 10:17, на месте к 10:22. */

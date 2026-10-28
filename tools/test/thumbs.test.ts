@@ -5,14 +5,13 @@ import { describe, expect, test } from 'bun:test';
 import { inflateSync } from 'node:zlib';
 import * as THREE from 'three';
 import { aroundOf, sampleOf } from '../../src/app/thumbs';
+import { db } from '../../src/content';
 import { CELL } from '../../src/engine/hospital/grid';
 import { CATALOG, EXTRA_MODELS } from '../../src/render/catalog';
 import { crc32, pngOf } from '../../src/render/png';
 import { frameOf } from '../../src/render/thumbs';
-import { buildDb } from '../content/load';
 import { furnitureModels } from './render-kit';
 
-const { db } = buildDb();
 
 /** Куски PNG: тип, данные и CRC каждого — после подписи. */
 function chunksOf(png: Uint8Array): { type: string; data: Uint8Array; crc: number; want: number }[] {

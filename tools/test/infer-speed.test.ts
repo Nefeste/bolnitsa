@@ -2,15 +2,14 @@
 // (tools/test/reference/infer.ts — копия до ускорения): уверенность во всех болезнях и польза каждого обследования на
 // каждом шаге разумного врача, у больных всех отделений, с записью к специалисту и без.
 import { describe, expect, test } from 'bun:test';
+import { db } from '../../src/content';
 import { Rng } from '../../src/engine/core/rng';
 import { complaintObservations, runExam } from '../../src/engine/med/exams';
 import { generatePatient } from '../../src/engine/med/generate';
-import { contextOf, expectedGain, gainBound, posterior } from '../../src/engine/med/infer';
+import { contextOf, expectedGain, gainBound, posterior, UNKNOWNS_KEEP } from '../../src/engine/med/infer';
 import { runDoctor } from '../../src/engine/med/policy';
-import { buildDb } from '../content/load';
 import * as ref from './reference/infer';
 
-const { db } = buildDb();
 const DEPARTMENTS = ['dept.therapy', 'dept.surgery', 'dept.trauma', 'dept.neurology', 'dept.infectious'];
 const SEASONS = ['winter', 'spring', 'summer', 'autumn'] as const;
 
@@ -41,4 +40,17 @@ describe('ускоренный вывод — те же числа', () => {
     }
     expect(steps).toBeGreaterThan(500);
   }, 300_000);
+
+  // предел запомненного — на весь процесс: в процессе тестов баз много (свои базы файлов, копии `{ ...db, … }`), и с
+  // пределом на каждую память копилась до предела числа отображений ядра (vm.max_map_count), а там `bun test` вставал
+  test('неизвестных помнится не больше UNKNOWNS_KEEP на все базы сразу; забытое считается заново тем же', () => {
+    const p = generatePatient(db, 9_400_000, { department: 'dept.therapy', departments: DEPARTMENTS, season: 'winter' });
+    const obs = complaintObservations(p);
+    const first = contextOf(db, p, obs).unknowns;
+    expect(contextOf(db, p, obs).unknowns).toBe(first);
+    for (let i = 0; i < UNKNOWNS_KEEP; i++) contextOf({ ...db }, p, obs);
+    const again = contextOf(db, p, obs).unknowns;
+    expect(again).not.toBe(first);
+    expect(again).toEqual(first);
+  });
 });
