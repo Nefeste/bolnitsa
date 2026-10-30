@@ -3,7 +3,8 @@
 Правило студии: контент — только из названного источника с правовым основанием (устав, `docs/06-content.md`, ADR студии
 0012); графика ПК-игры может быть и из генераторов, но только по ADR студии 0020 — с журналом и одобрением владельца. **В
 этой части генераторов нет**: только модели под **CC0 1.0**, люди Microsoft Rocketbox под **MIT** (раздел 4), шрифт IBM
-Plex Sans под **SIL Open Font License 1.1** (раздел 5), значки окна Carbon под **Apache 2.0** (раздел 6) и своё (код).
+Plex Sans под **SIL Open Font License 1.1** (раздел 5), значки окна Carbon под **Apache 2.0** (раздел 6) и своё: код
+(раздел 7) и модели пилота Blender из своих скриптов (раздел 8).
 
 Мебель — те же наборы, что у пробы 3D-вида (`spikes/render-3d/assets/LICENSES.md`), взятые 16.10.2026 из тех же
 репозиториев и тех же коммитов (ниже). Страницы авторов (kenney.nl, itch.io) прочитаны в тот день — лицензия на каждой
@@ -492,3 +493,19 @@ SOFTWARE.
   монитор с дефибриллятором, тележка ЭКГ, лабораторный анализатор, аппарат УЗИ, эндоскопическая стойка, стойка
   регистратуры, пульт рентгена, столик для инструментов, процедурный столик, микроскоп, штатив с пробирками, перегородки
   кабинок санузла.
+
+## 8. Своё — модели пилота Blender
+
+Пилот Blender ([#175](https://github.com/Nefeste/bolnitsa/issues/175), [отчёт](../docs/reports/2026-11-blender-pilot.md)):
+файлы собраны скриптами `blender/` в **Blender 4.5.15 LTS** — пакет `bpy` 4.5.15 с PyPI, тот же Blender как модуль Python
+(почему не программа Blender — в отчёте), — без внешних файлов: геометрия из частей, цвета — палитра игры, затенение и свет
+запечены в Cycles. Права — свои, полные. Размеры — из игры (`blender/sizes.json`, `tools/app/blender-sizes.ts`). Запуск
+дважды даёт те же файлы до байта; тест `tools/test/blender.test.ts` сверяет файлы с этой таблицей.
+
+| Файл | Что | Скрипт | Blender | SHA-256 |
+|---|---|---|---|---|
+| `assets/models/blender/bed.glb` | кровать: 13 частей | `blender/models.py` (`bed`), `blender/build.py` | 4.5.15 | `a8c27a232109dc47b45a1f3c1579723d72ae17ad271709fe6de948fb4e958ed8` |
+| `assets/models/blender/monitor.glb` | монитор с дефибриллятором: 7 частей | `blender/models.py` (`monitor`), `blender/build.py` | 4.5.15 | `ed9b09b394b887e46fa2adfe36e978ac59059d47cc70c3cae9986d5a17644d2f` |
+| `assets/models/blender/xray.glb` | рентген: 8 частей | `blender/models.py` (`xray`), `blender/build.py` | 4.5.15 | `c769241cf005649b6fd74b45d4766a0e15c6f0b9181b3c5daa5888653a638276` |
+| `assets/models/blender/room-xray-M.png` | свет на полу рентген-кабинета M | `blender/room.py`, `blender/build.py` | 4.5.15 | `cf99cd1cb591592d36bb4b209704d89c8cb54108db0d4392d94650d34a518e75` |
+| `assets/models/blender/room-xray-M.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `8f914b676c2b8105e70646d263600df6a41b19824a044e6afc5e4d452d860419` |

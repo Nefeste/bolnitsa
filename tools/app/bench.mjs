@@ -4,9 +4,12 @@
 // Итог — JSON того же вида, что у бенча в Electron (`electron . --bench`), и PNG.
 //   node tools/app/bench.mjs [--secs 15] [--warm 3] [--capped] [--qualities low,high] [--shots 0]
 //                            [--out tools/app/out/имя] [--size 1280x720] [--metric load] [--flow 40,4]
+//                            [--keys models=blender&baked=1]
 // --flow 40,4 — поток числами (сами в час, машин скорой в час) вместо сцены бенча: толпа больше (spec
 // docs/specs/2026-10-people.md, «Проверки»: бенч при 200 людях).
 // --metric load — со слоем «Показатели» (spec docs/specs/2026-10-metrics-layer.md): столбики над помещениями.
+// --keys — ещё ключи страницы как есть: `models=blender&baked=1` — модели и свет пилота Blender
+// (docs/reports/2026-11-blender-pilot.md).
 // --capped — с вертикальной синхронизацией; без него — без неё (видно запас). Программный WebGL (SwiftShader): числа
 // говорят о процессоре контейнера, не о видеокарте игрока.
 import { chromium } from 'playwright-core';
@@ -28,6 +31,7 @@ const capped = flag('capped');
 const [vw, vh] = arg('size', '1280x720').split('x').map(Number);
 const metric = arg('metric', '');
 const flow = arg('flow', '');
+const keys = arg('keys', '');
 const port = 8094;
 const server = await serve(port);
 const args = ['--ignore-gpu-blocklist', '--enable-unsafe-swiftshader', '--use-angle=swiftshader'];
@@ -45,7 +49,7 @@ page.on('pageerror', e => {
   console.log(`  pageerror ${e.message}`);
   errors.push(e.message);
 });
-const url = `http://127.0.0.1:${port}/index.html?bench=1&secs=${secs}&warm=${warm}&qualities=${qualities}&shots=${shots ? 1 : 0}&lang=ru${metric ? `&metric=${metric}` : ''}${flow ? `&flow=${flow}` : ''}`;
+const url = `http://127.0.0.1:${port}/index.html?bench=1&secs=${secs}&warm=${warm}&qualities=${qualities}&shots=${shots ? 1 : 0}&lang=ru${metric ? `&metric=${metric}` : ''}${flow ? `&flow=${flow}` : ''}${keys ? `&${keys}` : ''}`;
 console.log(`→ ${url}`);
 const tStart = Date.now();
 await page.goto(url);
@@ -68,7 +72,7 @@ await browser.close();
 server.close();
 const out = new URL('./out/', import.meta.url).pathname;
 mkdirSync(out, { recursive: true });
-const base = arg('out', `${out}bench-headless-${capped ? 'vsync' : 'uncapped'}${metric ? `-${metric}` : ''}${flow ? `-flow${flow.replace(',', '-')}` : ''}`);
+const base = arg('out', `${out}bench-headless-${capped ? 'vsync' : 'uncapped'}${metric ? `-${metric}` : ''}${flow ? `-flow${flow.replace(',', '-')}` : ''}${keys ? `-${keys.replace(/[^a-z0-9]+/gi, '-')}` : ''}`);
 for (const s of shotList) {
   const name = `${base}-${s.name.replace(/^(bench|shot)-[^-]*(-\d{4}-\d\d-\d\dT[\d-]+)?-/, '')}`;
   writeFileSync(name, Buffer.from(s.dataUrl.split(',')[1], 'base64'));
