@@ -3,7 +3,8 @@
 // 10:00, дальше ×12, пока не запишут перевозку на койку; ×3 — пока её везут: больной лежит на каталке перед тем, кто везёт,
 // каталка под ним; карточка санитара — «везёт на каталке: …, … → …», «Следить» — камера за ним; карточка больного — «везут
 // на каталке: … → …»; в пути — «на каталке: … → …»; «Персонал» — «везёт больного до …»; довезли — лежит на койке, с каталки
-// сняли. Привезённых скорой ввозит фельдшер скорой и уходит. Снимок — `e2e-gurney-1.jpg`.
+// сняли. Привезённых скорой ввозит фельдшер скорой и уходит. Кто везёт каталку — с меткой каталки (`gurney`): каталки идут
+// друг за другом (crowd.ts, `convoy`). Снимок — `e2e-gurney-1.jpg`.
 import { join } from 'node:path';
 
 /** @param {{ page: import('playwright-core').Page, port: number, out: string, ok: (m: string) => void, fail: (m: string) => void, q: string, shots: string }} x */
@@ -44,7 +45,8 @@ export async function gurneyPart({ page, port, out, ok, fail, q, shots }) {
       const key = g.pop.walkerKey(x);
       const w = key ? g.crowd.walkers.get(key) : undefined;
       const under = w ? g.pop.gurneys().some(c => Math.hypot(c.x - w.x, c.z - w.z) < 0.1) : false;
-      return { t: g.t, phase: ph && ph.r.id === x ? ph.ph : null, by: r?.by, key, carry: w?.carry ?? null, state: w?.state, pose: w?.at?.pose, under, shown: g.gurneys.shown };
+      const cart = r ? g.crowd.walkers.get(`s:${r.by}`)?.gurney === true : false;
+      return { t: g.t, phase: ph && ph.r.id === x ? ph.ph : null, by: r?.by, key, carry: w?.carry ?? null, state: w?.state, pose: w?.at?.pose, under, shown: g.gurneys.shown, cart };
     }, id);
 
   await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&hospital=preset&seed=3`);
@@ -65,15 +67,20 @@ export async function gurneyPart({ page, port, out, ok, fail, q, shots }) {
   await ffTo(10);
   await page.evaluate(() => window.__game.actions.setSpeed(12));
   const medics = new Set();
+  // фельдшеры без метки каталки: везут, а каталки впереди не видят
+  const bare = new Set();
   let ride = null;
   for (let i = 0; i < 600 && !ride; i++) {
     const r = await page.evaluate(() => {
       const g = window.__game;
-      const m = [...g.crowd.walkers.keys()].filter(k => k.startsWith('m:'));
+      const m = [...g.crowd.walkers].filter(([k]) => k.startsWith('m:')).map(([k, w]) => [k, w.gurney === true]);
       const bed = g.pop.rides.find(x => x.why === 'bed' && x.pick > g.t);
       return { m, bed: bed ? { ...bed } : null };
     });
-    for (const k of r.m) medics.add(k);
+    for (const [k, cart] of r.m) {
+      medics.add(k);
+      if (!cart) bare.add(k);
+    }
     ride = r.bed;
     if (!ride) await page.waitForTimeout(300);
   }
@@ -92,7 +99,7 @@ export async function gurneyPart({ page, port, out, ok, fail, q, shots }) {
   await page.evaluate(() => window.__game.setSpeed(0));
   await page.waitForTimeout(300);
   s = await now(ride.id);
-  if (s.phase === 'carry' && s.carry === `s:${ride.by}` && s.under && s.shown >= 1) ok(`везут: больной лежит на каталке перед тем, кто везёт (${s.carry}), каталок на карте — ${s.shown}`);
+  if (s.phase === 'carry' && s.carry === `s:${ride.by}` && s.under && s.shown >= 1 && s.cart) ok(`везут: больной лежит на каталке перед тем, кто везёт (${s.carry}, с меткой каталки), каталок на карте — ${s.shown}`);
   else fail(`везут: ${JSON.stringify(s)}`);
 
   // ---------------------------------------------------------------- карточка санитара, «Следить», карточка больного, путь
@@ -143,6 +150,6 @@ export async function gurneyPart({ page, port, out, ok, fail, q, shots }) {
 
   // ---------------------------------------------------------------- фельдшер скорой
   const left = await page.evaluate(() => [...window.__game.crowd.walkers].filter(([k, w]) => k.startsWith('m:') && w.leaving).length);
-  if (medics.size > 0) ok(`привезённых скорой ввозят фельдшеры: ${medics.size}${left ? `, уходят к машине — ${left}` : ''}`);
-  else fail('фельдшеров скорой не было');
+  if (medics.size > 0 && bare.size === 0) ok(`привезённых скорой ввозят фельдшеры: ${medics.size}, все с меткой каталки${left ? `, уходят к машине — ${left}` : ''}`);
+  else fail(medics.size ? `фельдшеры без метки каталки: ${[...bare].join(', ')}` : 'фельдшеров скорой не было');
 }

@@ -158,7 +158,8 @@ node tools/app/soak.mjs --days 3   # after build: a long run in headless Chromiu
                                    # polyclinic; docs/05-process.md, «Долгий прогон»)
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
                                                      # (`-- --flow 40,4` — a bigger crowd, about 180 people,
-                                                     # `-- --metric load` — with the «Показатели» layer)
+                                                     # `-- --metric load` — with the «Показатели» layer,
+                                                     # `-- --keys "models=blender&baked=1"` — the Blender pilot)
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
 npm run assets -- <sources dir>    # rebuild assets/models/*.glb from the CC0 packs (byte-identical; see assets/LICENSES.md)
@@ -167,6 +168,10 @@ node tools/app/people.mjs <dir>    # then rebuild assets/models/rocketbox/ (glb 
 bun tools/app/people-licenses.ts   # then the Rocketbox tables of assets/LICENSES.md from sources.json and cast.ts
 node tools/app/icons.mjs --fetch <dir>    # the window's icons (owner's decision #139): @carbon/icons from npm, check SHA-256
 node tools/app/icons.mjs <dir>     # then src/ui/icons.gen.ts and assets/licenses/carbon-icons.txt (byte-identical)
+bun tools/app/blender-sizes.ts     # the Blender pilot (#175): blender/sizes.json — the sizes the scripts take from the game
+python blender/build.py bed monitor xray room   # then assets/models/blender/ in Blender 4.5.15 (`pip install bpy==4.5.15`,
+                                               # or `blender --background --python blender/build.py -- …`); byte-identical;
+                                               # passports in assets/LICENSES.md, section 8 (blender/README.md)
 npm run bench -- --mode flow --quick           # engine: time per game minute at 50/100/200/300 patients (PC flow)
 npm run bench -- --mode desks --quick          # the same with Anamnez's appointment slots
 npm run bench -- --mode flow --day             # the whole day to 10:00 of day 2: day and night minutes, 08:00 meeting, 09:00 round
@@ -297,7 +302,9 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   The window (part 2): the engine sends `rides` with the slice; `src/render/rides.ts` turns a ride's times into phases,
   `Population.ridesStep` walks the carrier and lays the patient on the gurney in front of them (`Crowd.carry`, `release`),
   `gurneyStop` in `place.ts` picks where to stand by a bed, `src/render/gurney.ts` draws code-made gurneys; a paramedic in
-  blue (window only, `m:` walkers) wheels each ambulance arrival in and leaves. The slice's `gurney` doing — admitted and
+  blue (window only, `m:` walkers) wheels each ambulance arrival in and leaves. Gurneys go one after another (`convoy` in
+  `crowd.ts`: whoever wheels one keeps `FOLLOW` along their path behind a gurney going the same way; `queue` starts a
+  second paramedic further out in the street). The slice's `gurney` doing — admitted and
   still waiting for pickup (`pickupOf`); the path keeps the bed ride in `Journey.bed` and an exam ride in `gurney` of its
   exam step.
 - Referral to a specialist (`docs/specs/2026-10-specialists.md`, part 2; owner's decision #112): `shift/refer.ts` —
@@ -431,6 +438,11 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   `docs/specs/2026-10-clinical-style.md`): surfaces, text, accent (`--accent-text` for text), states, seven font sizes;
   `tools/test/style.test.ts` fails on a colour or a font size outside the tokens and on text below 4.5:1 over a white or
   black floor behind the glass.
+- `blender/` — the Blender pilot (#175, `docs/reports/2026-11-blender-pilot.md`, `blender/README.md`): Python scripts that
+  build the bed, the monitor and the X-ray machine from parts (a part's id is its `.glb` node; AO baked into vertex colours)
+  and bake the light on the X-ray room's floor; the sizes come from the game (`blender/sizes.json`). In the game only with
+  `?models=blender` and `&baked=1` (Electron: `--models blender --baked`): `BLENDER` in `catalog.ts`, `Furnisher.placeAt`
+  (the IV stand only in wards and boxes), `src/render/baked.ts` (the floor multiplier on every room matching the sample, any rotation).
 - `assets/` — CC0 models, Rocketbox people under MIT (`assets/models/rocketbox/`, made by `tools/app/people.mjs`), the
   game's font IBM Plex Sans under SIL OFL 1.1 (`assets/fonts/`, unmodified files with `OFL.txt`; owner's decision #107),
   the Carbon icons' Apache 2.0 text (`assets/licenses/carbon-icons.txt`) and `LICENSES.md` (sources, licenses, SHA-256; MIT

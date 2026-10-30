@@ -613,6 +613,11 @@ export class Population {
     }
     this.held = held;
     this.legs = legs;
+    // кто везёт каталку сейчас — тот и держится за каталкой впереди (crowd.ts, `convoy`)
+    for (const m of this.staff) {
+      const cw = this.crowd.walkers.get(`s:${m.id}`);
+      if (cw) cw.gurney = this.riding.has(m.id);
+    }
   }
 
   /**
@@ -700,7 +705,10 @@ export class Population {
     const look = this.pick('paramedic', sex, false, seed >>> 2);
     const stop = gurneyStop(this.layout, spot, taken);
     this.medicStops.set(key, { at: spot.key, stop });
-    this.crowd.add(mk, look, stop, true, true, NaN, true);
+    // фельдшер всегда с каталкой: и с больным, и уходя к машине (`gurneys`); две машины разом — второй за первым (`queue`)
+    const mw = this.crowd.add(mk, look, stop, true, true, NaN, true);
+    mw.gurney = true;
+    this.crowd.queue(mw);
     this.paints.set(mk, this.paintOf(PARAMEDIC, look, seed >>> 2));
     this.crowd.carry(pw, mk, true);
     this.medics.set(key, mk);

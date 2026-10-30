@@ -1,0 +1,44 @@
+{
+ "key": "room.xray:M",
+ "type": "room.xray",
+ "size": "M",
+ "w": 8,
+ "h": 7,
+ "things": [
+  {
+   "kind": "table",
+   "at": [
+    6.5,
+    3.5
+   ]
+  },
+  {
+   "kind": "table",
+   "at": [
+    1.5,
+    3.5
+   ]
+  },
+  {
+   "kind": "chair",
+   "at": [
+    1.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "cabinet",
+   "at": [
+    1.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "xray",
+   "at": [
+    3.5,
+    4
+   ]
+  }
+ ]
+}

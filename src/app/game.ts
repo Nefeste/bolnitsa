@@ -23,11 +23,12 @@ import type { Walker } from '../render/crowd';
 import { ICONS } from '../render/icons';
 import { fromWire, packPeople, type People, type RawLook } from '../render/bake';
 import type { BakeTask, Baked } from '../render/bake-worker';
-import { CATALOG, EXTRA_MODELS } from '../render/catalog';
+import { BLENDER, CATALOG, EXTRA_MODELS } from '../render/catalog';
 import { Crowd } from '../render/crowd';
 import { furnish, type Furnished } from '../render/furniture';
 import { Thumbs } from '../render/thumbs';
 import { Ghosts } from '../render/ghost';
+import { BakedFloors, type BakedRoom } from '../render/baked';
 import { Gurneys } from '../render/gurney';
 import type { RoomRect } from '../render/highlight';
 import { type Layout, layoutOf } from '../render/layout';
@@ -270,6 +271,13 @@ export class Game {
   ghosts!: Ghosts;
   /** каталки на карте (spec docs/specs/2026-10-orderlies.md) — и для сценария в браузере: сколько видно */
   gurneys!: Gurneys;
+  /**
+   * запечённый свет на полу рентген-кабинета (пилот Blender, docs/reports/2026-11-blender-pilot.md) — только с ?baked=1;
+   * `baked` — на скольких полах он лежит (для снимков и бенча)
+   */
+  bakedFloors: BakedFloors | undefined;
+  baked = 0;
+  private bakedSample: { room: BakedRoom; map: THREE.Texture } | undefined;
   /** миниатюры каталога стройки (spec docs/specs/2026-10-catalog.md) */
   thumbs!: ThumbQueue;
   /** кто вёз каталку в прошлом срезе — «Персонал» заново, когда изменилось */
@@ -454,6 +462,15 @@ export class Game {
     const index = (await (await fetch(`${base}/index.json`)).json()) as Index;
     const tf = performance.now();
     const names = [...new Set([...Object.values(CATALOG).flatMap(e => ('model' in e ? [e.model] : [])), ...EXTRA_MODELS])];
+    // пилот Blender (docs/reports/2026-11-blender-pilot.md): его модели — только с ключом, без него — модели кодом; запечённый
+    // свет образца рентген-кабинета — тоже с ключом
+    const keys = new URLSearchParams(location.search);
+    if (keys.get('models') === 'blender') names.push(...Object.values(BLENDER));
+    if (keys.get('baked') === '1') {
+      const sample = `${base}/blender/room-xray-M`;
+      const room = (await (await fetch(`${sample}.json`)).json()) as BakedRoom;
+      this.bakedSample = { room, map: await new THREE.TextureLoader().loadAsync(`${sample}.png`) };
+    }
     const models = this.models;
     // полоса загрузки: база — 1, модели — по файлу, люди — по виду, мир — 1, смена — 1 (видов людей — из их списка)
     const looks = ((await (await fetch(`${base}/rocketbox/index.json`)).json()) as { looks: string[] }).looks.length;
@@ -680,6 +697,10 @@ export class Game {
       // каталки (spec docs/specs/2026-10-orderlies.md, «Что видно»): у санитаров и у фельдшеров скорой
       this.gurneys = new Gurneys();
       this.stage.scene.add(this.gurneys.group);
+      if (this.bakedSample) {
+        this.bakedFloors = new BakedFloors(this.bakedSample.room, this.bakedSample.map);
+        this.stage.scene.add(this.bakedFloors.group);
+      }
       this.labels = new Labels(this.stage);
       this.chips = new Chips(this.stage);
       this.colLabels = new ColumnLabels(this.stage);
@@ -695,6 +716,7 @@ export class Game {
     this.layout = layout;
     this.furnished = furnished;
     this.places = places;
+    if (this.bakedFloors) this.baked = this.bakedFloors.setLayout(layout);
     this.plan = plan;
     this.onDuty();
     this.builder.refresh();

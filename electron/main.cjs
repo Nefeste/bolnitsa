@@ -239,6 +239,9 @@ app.whenReady().then(async () => {
     return i > 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : null;
   };
   if (v('q')) q.set('q', v('q'));
+  // пилот Blender (docs/reports/2026-11-blender-pilot.md): модели Blender и запечённый свет рентген-кабинета — по ключам запуска
+  if (v('models') === 'blender') q.set('models', 'blender');
+  if (has('baked')) q.set('baked', '1');
   // демо (spec docs/specs/2026-11-demo.md): на экране начала — только «Кампания», после первой планёрки — «Итог»
   if (has('demo')) q.set('demo', '1');
   await win.loadURL(`app://game/index.html${q.size ? `?${q}` : ''}`);

@@ -126,6 +126,10 @@ export interface Walker {
   carry?: string;
   /** уходит через вход для скорой: фельдшер — к машине (spec docs/specs/2026-10-orderlies.md) */
   out?: 'ambulance';
+  /** везёт каталку — пустую или с больным (санитар, медсестра, фельдшер скорой): каталка за каталкой (`convoy`) */
+  gurney?: boolean;
+  /** впереди по тому же проходу каталка: идти не быстрее её, м/с; нет — как обычно */
+  follow?: number;
 }
 
 /** Хэш FNV-1a ключа: перемешивает все знаки. */
@@ -159,6 +163,16 @@ export function loopPhase(key: string): number {
 export const GURNEY_TOP = 0.66;
 /** На сколько середина каталки впереди ступней того, кто её везёт, м. */
 export const GURNEY_AHEAD = 1.3;
+/**
+ * Каталка за каталкой (замечание владельца 30.10.2026: на живой заставке две каталки ехали одна сквозь другую по одному
+ * пути): тот, кто везёт, держится не ближе этого по пути от того, кто везёт впереди, м — перед ним его каталка (длина 2 м,
+ * середина — в `GURNEY_AHEAD`, передний край — в 2,3 м) и зазор 0,8 м.
+ */
+export const FOLLOW = GURNEY_AHEAD + 1.8;
+/** Тот же проход для каталок: тот, кто везёт впереди, не дальше этого от пути заднего, м (каталка шириной 0,65 м). */
+const LANE = 0.8;
+/** На углу путь длиннее прямой: передний край каталки заднего — не ближе этого к тому, кто везёт впереди, м. */
+const CLEAR = 0.7;
 
 const ease = (k: number) => k * k * (3 - 2 * k);
 
@@ -468,11 +482,121 @@ export class Crowd {
   update(dt: number) {
     // обычный шаг на экране: та скорость, с какой дорогу считает движок, в настоящих секундах
     const v = this.rate > 0 ? WALK_SPEED_PC * this.rate : 0;
+    this.convoy();
     // кого везут на каталке — после того, кто везёт: лежит там, где каталка в этом кадре, а не в прошлом
     for (const w of this.walkers.values()) if (w.carry === undefined) this.step(w, dt, v);
     for (const w of this.walkers.values()) if (w.carry !== undefined) this.step(w, dt, v);
     this.separate(dt);
     for (const [k, w] of this.walkers) if (w.state === 'gone') this.walkers.delete(k);
+  }
+
+  /**
+   * Каталки друг за другом: кто везёт каталку и идёт, а впереди на его пути (поперёк — не дальше `LANE`) в ту же сторону идёт
+   * другой с каталкой, — ближе `FOLLOW` по пути стоит, на метр дальше — идёт не быстрее его. Счёт по пути, а не по взгляду: за
+   * углом передний уже повернул, а задний ещё смотрит прямо, и по взгляду не видел бы его. Вышли из одной точки разом — первым
+   * идёт тот, чей ключ меньше. Встречные и поперечные не ждут друг друга: расходятся по сторонам прохода (`separate`).
+   */
+  private convoy() {
+    const carts: Walker[] = [];
+    for (const w of this.walkers.values()) {
+      w.follow = undefined;
+      if (w.gurney && w.state === 'walk' && w.pts) carts.push(w);
+    }
+    if (carts.length < 2) return;
+    const lead = new Map<Walker, { b: Walker; gap: number }>();
+    for (const a of carts) {
+      for (const b of carts) {
+        if (a === b) continue;
+        const gap = this.onPath(a, b, FOLLOW + 1);
+        if (Number.isNaN(gap) || gap < -0.05 || (gap <= 0.05 && a.key < b.key)) continue;
+        if (gap < (lead.get(a)?.gap ?? Number.POSITIVE_INFINITY)) lead.set(a, { b, gap });
+      }
+    }
+    for (const [a, { b, gap }] of lead) {
+      // каждый видит другого впереди (пути разные, а сошлись рядом) — ждёт тот, чей ключ больше: иначе стояли бы оба
+      if (lead.get(b)?.b === a && a.key < b.key) continue;
+      // передний край своей каталки (середина — в GURNEY_AHEAD, длина 2 м): на углу срезает к переднему
+      const near = Math.hypot(a.x + Math.sin(a.heading) * (GURNEY_AHEAD + 1) - b.x, a.z + Math.cos(a.heading) * (GURNEY_AHEAD + 1) - b.z) < CLEAR;
+      a.follow = gap < FOLLOW || near ? 0 : b.v;
+    }
+  }
+
+  /**
+   * Где `b` на пути `a`: сколько метров `a` идти по пути до точки, ближайшей к `b`, если `b` от пути не дальше `LANE` и идёт в
+   * ту же сторону (его отрезок — в пределах 60° от отрезка `a` там или следующего: на углу); позади `a` — меньше нуля; не на
+   * пути до `reach` — NaN.
+   */
+  private onPath(a: Walker, b: Walker, reach: number): number {
+    const pts = a.pts!;
+    const cum = a.cum!;
+    const last = pts.length / 2 - 1;
+    const dir = this.dirOf(b);
+    if (last < 1 || !dir) return Number.NaN;
+    const k0 = Math.min(last - 1, Math.floor(a.seg));
+    const f0 = a.seg - k0;
+    // где `a` на своём пути — без сдвига вправо
+    const px = pts[k0 * 2] + (pts[k0 * 2 + 2] - pts[k0 * 2]) * f0;
+    const pz = pts[k0 * 2 + 1] + (pts[k0 * 2 + 3] - pts[k0 * 2 + 1]) * f0;
+    const walked = cum[k0] + (cum[k0 + 1] - cum[k0]) * f0;
+    for (let k = k0; k < last; k++) {
+      const sx = k === k0 ? px : pts[k * 2];
+      const sz = k === k0 ? pz : pts[k * 2 + 1];
+      const s0 = k === k0 ? 0 : cum[k] - walked;
+      if (s0 > reach) break;
+      const ex = pts[k * 2 + 2];
+      const ez = pts[k * 2 + 3];
+      const len = Math.hypot(ex - sx, ez - sz);
+      if (len < 1e-6) continue;
+      const ux = (ex - sx) / len;
+      const uz = (ez - sz) / len;
+      let t = (b.x - sx) * ux + (b.z - sz) * uz;
+      // позади — только у первого отрезка: дальше точка позади отрезка — это конец предыдущего
+      t = Math.min(len, k === k0 ? t : Math.max(0, t));
+      if (Math.hypot(b.x - sx - ux * t, b.z - sz - uz * t) > LANE) continue;
+      // в ту же сторону: по этому отрезку или (на углу) по следующему
+      let same = dir[0] * ux + dir[1] * uz >= 0.5;
+      if (!same && k + 1 < last) {
+        const nx = pts[k * 2 + 4] - ex;
+        const nz = pts[k * 2 + 5] - ez;
+        const nl = Math.hypot(nx, nz);
+        same = nl > 1e-6 && (dir[0] * nx + dir[1] * nz) / nl >= 0.5;
+      }
+      return same && s0 + t <= reach ? s0 + t : Number.NaN;
+    }
+    return Number.NaN;
+  }
+
+  /** Куда идёт по пути сейчас: единичный вектор его отрезка; пути нет или он точка — `undefined`. */
+  private dirOf(w: Walker): [number, number] | undefined {
+    const pts = w.pts;
+    if (!pts || pts.length < 4) return undefined;
+    const last = pts.length / 2 - 1;
+    for (let k = Math.min(last - 1, Math.floor(w.seg)); k < last; k++) {
+      const dx = pts[k * 2 + 2] - pts[k * 2];
+      const dz = pts[k * 2 + 3] - pts[k * 2 + 1];
+      const d = Math.hypot(dx, dz);
+      if (d > 1e-6) return [dx / d, dz / d];
+    }
+    return undefined;
+  }
+
+  /**
+   * Вошёл с каталкой с улицы (фельдшер скорой): если у его начала пути — ближе `FOLLOW` — уже идёт другой с каталкой, он
+   * начинает дальше по улице, за ним, а не в нём: две машины разом — и каталки не появляются одна в другой.
+   */
+  queue(w: Walker) {
+    for (let i = 0; i < 8 && w.state === 'walk' && w.pts && w.pts.length >= 4; i++) {
+      const pts = w.pts;
+      const len = Math.hypot(pts[2] - pts[0], pts[3] - pts[1]);
+      if (len < 1e-6) return;
+      let near = false;
+      for (const o of this.walkers.values()) if (o !== w && o.gurney && o.state === 'walk' && Math.hypot(o.x - w.x, o.z - w.z) < FOLLOW) near = true;
+      if (!near) return;
+      // назад — против первого отрезка пути (от входа на улицу)
+      w.x -= ((pts[2] - pts[0]) / len) * FOLLOW;
+      w.z -= ((pts[3] - pts[1]) / len) * FOLLOW;
+      this.startWalk(w, w.goals[0] ?? null);
+    }
   }
 
   /** Сколько метров ещё идти по пути. */
@@ -641,6 +765,8 @@ export class Crowd {
           const want = left > 0 ? this.rest(w) / left : Number.POSITIVE_INFINITY;
           speed = Math.max(PACE[0] * base, Math.min(PACE[1] * base, want));
         }
+        // каталка впереди (`convoy`) — не быстрее её
+        if (w.follow !== undefined) speed = Math.min(speed, w.follow);
         if (w.yield > 0) {
           w.yield -= dt * fast;
           speed = 0;
