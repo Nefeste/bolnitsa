@@ -2,6 +2,7 @@
 import { doctorRu } from './doctor.ru';
 import { economyRu } from './economy.ru';
 import { scenarioRu } from './scenario.ru';
+import { demoRu } from './demo.ru';
 import { encyclopediaRu } from './encyclopedia.ru';
 import { pluralRu } from './plural';
 import type { Manage } from '../content/types';
@@ -11,6 +12,7 @@ export const ru = {
   ...economyRu,
   // сценарий кампании (spec docs/specs/2026-10-scenario-1.md, часть 2): письма, «Цели», «Сценарий пройден»
   ...scenarioRu,
+  ...demoRu,
   app: {
     title: 'Больница',
     loading: 'Загрузка…',
@@ -238,6 +240,7 @@ export const ru = {
     asks: 'Нанятый врач не уверен и просит посмотреть: «Посмотреть» — карта пациента, «Пусть решает сам» — решит по своему навыку.',
     /** по роли (spec docs/specs/2026-10-two-ways.md, F4) */
     call: 'Вы — врач: «Позвать» в окне врача слева внизу — больной войдёт к вам в кабинет, и откроется его карта.',
+    leave: 'Стройка закрывает окно врача: «Готово» или B — и «Позвать» будет в окне врача слева внизу.',
     decisions: 'Решения нанятых врачей — во вкладке «Просят посмотреть»: Enter — «Согласен», Shift+Enter — карта; без ответа до срока в силе решение врача.',
     manage: 'Вы — управляющий: врачи решают сами. Стройте, нанимайте, следите за кассой; итог суток и ошибки врачей — на планёрке в 08:00.',
   },

@@ -42,7 +42,7 @@ import type { ErrorList, SeenList } from '../sim/doctor';
 import { H, kindOf, REFERRED } from '../sim/pack';
 import { type Slice, SimClient } from '../sim/client';
 import type { PathView, World } from '../sim/protocol';
-import type { Actions, Hud, RoomCard, Speed, Store, Tab } from '../ui/store';
+import type { Actions, DemoAction, Hud, RoomCard, Speed, Store, Tab } from '../ui/store';
 import { Builder, objectName, whyText } from './build';
 import { Chips } from './chips';
 import { colorOf, css, layerColors, legendOf, NO_DEPT, patientDept, planDepts, stripeColors } from './departments';
@@ -57,6 +57,7 @@ import type { Leg } from '../sim/legs';
 import { DEFAULT_ROLE, firstOffice, type Role, ROLE_SETS, startFor } from './roles';
 import { type NoticeRow, type Tone } from './toasts';
 import { ScenarioDesk, scenarioTitle } from './scenario';
+import { demoResult, snapshotName, wishlistUrl } from './demo';
 import { columnOf, type Metric, METRICS, METRICS_READY, MONEY_METRICS, moneyColumnOf, moneyTop, serviceRoom } from './metrics';
 import { ColumnLabels } from './collabels';
 import { applyText, AutoQuality, type QualityMode, readSettings, type Settings, type TextScale, writeSettings } from './settings';
@@ -134,6 +135,9 @@ export interface ShellBridge {
   /** окно закрывают: сохраниться и позвать `closeNow` */
   onClosing(cb: () => void): void;
   closeNow(): void;
+  /** демо (spec docs/specs/2026-11-demo.md): снимок больницы — в папку игры, отдаёт путь; страница игры в клиенте Steam */
+  snapshot?(name: string, dataUrl: string): Promise<string>;
+  steam?(url: string): Promise<boolean>;
 }
 
 /** Вид окна в сохранении (spec docs/specs/2026-10-saves.md): камера, уровень медицины, автопауза. */
@@ -183,7 +187,7 @@ async function loadGltf(url: string) {
  * грузятся и запекаются в потоках запекания (src/render/bake-worker.ts) — по числу ядер без одного, не больше четырёх;
  * маски тем временем грузит окно.
  */
-async function rocketbox(base: string): Promise<RawLook[]> {
+async function rocketbox(base: string, each: () => void = () => {}): Promise<RawLook[]> {
   const { looks } = (await (await fetch(`${base}/rocketbox/index.json`)).json()) as { looks: string[] };
   const dir = new URL(`${base}/rocketbox`, location.href).href;
   const images = new THREE.TextureLoader();
@@ -197,7 +201,10 @@ async function rocketbox(base: string): Promise<RawLook[]> {
           const w = new Worker('./bake.js');
           w.onmessage = (e: MessageEvent<Baked>) => {
             const m = e.data;
-            if (m.kind === 'look') baked.set(m.look.name, fromWire(m.look));
+            if (m.kind === 'look') {
+              baked.set(m.look.name, fromWire(m.look));
+              each();
+            }
             else if (m.kind === 'error') reject(new Error(`${m.name}: ${m.message}`));
             else {
               w.terminate();
@@ -385,6 +392,15 @@ export class Game {
    * сама — без ввода, сохранений, автопауз, значков и чипов; игрой она не считается (`__ready` не ставит)
    */
   backdrop = false;
+  /**
+   * демо (spec docs/specs/2026-11-demo.md): игра открыта ключом `demo` — после первой планёрки сценария окно «Итог»
+   * (`demoShown` — уже было) со снимком больницы (`demoShot` — PNG адресом `data:`)
+   */
+  demoMode = false;
+  private demoShown = false;
+  private demoShot = '';
+  /** полоса загрузки (spec docs/specs/2026-11-demo.md, «Обёртка»): сделано из всего; кадр полосы — не чаще раза в 100 мс */
+  private progress = { done: 0, total: 1, at: 0 };
   /** последние кадры: интервал, CPU кадра (толпа + отрисовка) — для полосы отладки и бенча */
   readonly frames: { interval: number[]; sim: number[]; draw: number[] } = { interval: [], sim: [], draw: [] };
   onFrame: ((ts: number) => void) | null = null;
@@ -412,6 +428,7 @@ export class Game {
     const db = await loadContent();
     const g = new Game(db, store, host, version);
     g.backdrop = opts.backdrop === true;
+    g.demoMode = !g.backdrop && new URLSearchParams(location.search).get('demo') === '1';
     g.start = start;
     g.role = role;
     // названия сценариев — строкам сохранений в меню игры (spec docs/specs/2026-10-scenario-1.md)
@@ -438,10 +455,21 @@ export class Game {
     const tf = performance.now();
     const names = [...new Set([...Object.values(CATALOG).flatMap(e => ('model' in e ? [e.model] : [])), ...EXTRA_MODELS])];
     const models = this.models;
-    await Promise.all(names.map(async n => models.set(n, modelOf(await loadGltf(`${base}/${n}.glb`), n))));
+    // полоса загрузки: база — 1, модели — по файлу, люди — по виду, мир — 1, смена — 1 (видов людей — из их списка)
+    const looks = ((await (await fetch(`${base}/rocketbox/index.json`)).json()) as { looks: string[] }).looks.length;
+    this.progress.total = 1 + names.length + looks + 2;
+    this.step(1, T.demo.loadContent, true);
+    let loaded = 0;
+    await Promise.all(
+      names.map(async n => {
+        models.set(n, modelOf(await loadGltf(`${base}/${n}.glb`), n));
+        this.step(1, T.demo.loadModels(++loaded, names.length));
+      }),
+    );
     this.load.furniture = Math.round(performance.now() - tf);
     const tp = performance.now();
-    this.people = packPeople(await rocketbox(base));
+    let baked = 0;
+    this.people = packPeople(await rocketbox(base, () => this.step(1, T.demo.loadPeople(++baked, looks))));
     this.load.people = Math.round(performance.now() - tp);
 
     store.set({ status: T.app.loadingWorld });
@@ -461,8 +489,10 @@ export class Game {
       this.staff = staff;
       this.hospital = hospitalOf(db, site);
     }
+    this.step(0, T.demo.loadWorld);
     this.setWorld(true, quality);
     this.load.scene = Math.round(performance.now() - ts);
+    this.step(1, T.demo.loadStart);
 
     this.client = new SimClient('./sim.js');
     this.client.onSlice = s => this.onSlice(s);
@@ -505,8 +535,111 @@ export class Game {
     const asked = METRICS.find(m => m === new URLSearchParams(location.search).get('metric'));
     // живая сцена экрана начала — без слоя: она показывает больницу, а не числа
     const metric = this.backdrop ? null : ([asked, p.metric].find((m): m is Metric => !!m && METRICS_READY.includes(m)) ?? null);
-    store.set({ ready: true, status: '', quality, qualityMode: p.quality, debug: p.debug, speed: this.speed, layers: { ...store.get().layers, metric } });
+    this.step(1, '', true);
+    store.set({ ready: true, status: '', progress: undefined, demoMode: this.demoMode, quality, qualityMode: p.quality, debug: p.debug, speed: this.speed, layers: { ...store.get().layers, metric } });
     requestAnimationFrame(this.loop);
+  }
+
+  /**
+   * Полоса загрузки (spec docs/specs/2026-11-demo.md, «Обёртка»): `n` шагов сделано, `text` — что грузится сейчас; в
+   * хранилище — не чаще раза в 100 мс, кроме `now`. Живая сцена экрана начала полосы не показывает.
+   */
+  private step(n: number, text: string, now = false) {
+    if (this.backdrop) return;
+    const p = this.progress;
+    p.done = Math.min(p.total, p.done + n);
+    const t = performance.now();
+    if (!now && t - p.at < 100 && p.done < p.total) return;
+    p.at = t;
+    this.store.set({ progress: { done: p.done, total: p.total, text } });
+  }
+
+  /**
+   * Планёрку закрыли (money.ts): в демо после первой планёрки сценария — окно «Итог» (spec docs/specs/2026-11-demo.md):
+   * больница стоит, пока его не закроют.
+   */
+  afterMeeting() {
+    if (!this.demoMode || this.demoShown || !this.scenarioId) return;
+    const m = this.money.hud.meeting;
+    if (!m) return;
+    this.demoShown = true;
+    const guide = (this.db.scenarios?.[this.scenarioId]?.guide ?? []).map(g => g.room);
+    const rooms = this.hospital.site?.rooms.map(r => r.type) ?? [];
+    const result = demoResult(m.summary, rooms, guide, performance.now() / 1000);
+    const names = Object.fromEntries([...new Set(rooms)].map(t => [t, named(this.db.rooms[t]?.name, t)]));
+    this.setSpeed(0);
+    this.demoShot = '';
+    this.store.set({ demo: { result, names, wishlist: wishlistUrl() !== null } });
+    // снимок — кадром позже: окно «Итог» открывается сразу, а кадр 1920×1080 рисуется потом (без видеокарты — около секунды)
+    requestAnimationFrame(() => {
+      this.demoShot = this.snapshot();
+      const d = this.store.get().demo;
+      if (d) this.store.set({ demo: { ...d, shot: this.demoShot } });
+    });
+  }
+
+  /**
+   * Снимок больницы (spec docs/specs/2026-11-demo.md, «Обёртка»): вся построенная больница сверху, 1920×1080, без окна игры,
+   * в свете этого часа; камера потом — где была.
+   */
+  snapshot(): string {
+    const rooms = this.hospital.site?.rooms ?? [];
+    const cam = this.stage.cam;
+    const save = { target: cam.target.clone(), half: cam.half, yaw: cam.yaw };
+    let x0 = 0;
+    let z0 = 0;
+    let x1 = this.layout.w;
+    let z1 = this.layout.h;
+    if (rooms.length) {
+      x0 = Math.min(...rooms.map(r => r.x));
+      z0 = Math.min(...rooms.map(r => r.y));
+      x1 = Math.max(...rooms.map(r => r.x + r.w));
+      z1 = Math.max(...rooms.map(r => r.y + r.h));
+    }
+    // кадр по построенному: углы прямоугольника — в оси экрана при повороте камеры (по горизонтали — как есть, в глубину —
+    // с наклоном), половина высоты кадра — чтобы влезли оба, с полем; стены — ещё метр с небольшим сверху
+    const yaw = Math.PI / 4;
+    const hw = (x1 - x0) / 2;
+    const hd = (z1 - z0) / 2;
+    const across = Math.abs(hw * Math.cos(yaw)) + Math.abs(hd * Math.sin(yaw));
+    const deep = (Math.abs(hw * Math.sin(yaw)) + Math.abs(hd * Math.cos(yaw))) * Math.sin(cam.pitch) + 1.5;
+    cam.target.set((x0 + x1) / 2, 0, (z0 + z1) / 2);
+    cam.half = Math.max(4, deep, across / (16 / 9)) * 1.12;
+    cam.setYawNow(yaw);
+    const url = this.stage.shot(1920, 1080, this.crowd, this.pop.paint, k => this.pop.triageOf(k), (this.t % 86400) / 3600);
+    cam.target.copy(save.target);
+    cam.half = save.half;
+    cam.setYawNow(save.yaw);
+    return url;
+  }
+
+  /** Кнопки «Итога» (spec docs/specs/2026-11-demo.md): сохранить снимок, страница Steam, играть дальше. */
+  private demoAction(a: DemoAction) {
+    const d = this.store.get().demo;
+    if (!d) return;
+    if (a.kind === 'close') {
+      this.store.set({ demo: undefined });
+      this.setSpeed(1);
+      this.hud();
+      return;
+    }
+    if (a.kind === 'wishlist') {
+      const url = wishlistUrl();
+      if (url) void window.shell?.steam?.(url);
+      return;
+    }
+    if (!this.demoShot) return;
+    const name = snapshotName(new Date());
+    if (window.shell?.snapshot) {
+      void window.shell.snapshot(name, this.demoShot).then(path => this.store.set({ demo: { ...d, saved: T.demo.savedTo(path) } }));
+      return;
+    }
+    // в браузере — загрузкой
+    const a2 = document.createElement('a');
+    a2.href = this.demoShot;
+    a2.download = name;
+    a2.click();
+    this.store.set({ demo: { ...d, saved: T.demo.downloaded } });
   }
 
   /**
@@ -1824,6 +1957,7 @@ export class Game {
     doctor: a => this.doctor.dispatch(a),
     money: a => this.money.dispatch(a),
     scenario: a => this.scenario.dispatch(a),
+    demo: a => this.demoAction(a),
     // подсказки первых минут (spec docs/specs/2026-10-aaa-polish.md)
     dismissHint: () => {
       const h = this.store.get().hint;

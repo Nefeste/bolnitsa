@@ -18,6 +18,7 @@ import type { ScenarioAction, ScenarioHud } from '../app/scenario';
 import type { Metric } from '../app/metrics';
 import type { ProblemGo, ProblemList } from '../app/problems';
 import type { LegRow } from '../app/paths';
+import type { DemoHud } from './Demo';
 
 /** Скорость игры (spec docs/specs/2026-10-walk.md): ×1, ×3, ×12; 0 — пауза. */
 export type Speed = 0 | 1 | 3 | 12;
@@ -223,6 +224,13 @@ export interface Hud {
   soft: boolean;
   /** экран начала: числа уровней «Управления» из базы — строке под кнопками второго шага */
   startLevels?: Record<Manage, LevelRow>;
+  /**
+   * демо (spec docs/specs/2026-11-demo.md): `demoMode` — игра открыта ключом `demo` (на экране начала — только «Кампания»);
+   * `demo` — окно «Итог» после первой планёрки; `progress` — полоса загрузки: сделано из всего и что грузится сейчас
+   */
+  demoMode: boolean;
+  demo?: DemoHud;
+  progress?: { done: number; total: number; text: string };
 }
 
 /** Уровень «Управления» на экране начала: множители, %; предел минуса, ₽ (нет — без предела); касса начала по началу, ₽. */
@@ -246,6 +254,7 @@ export interface Level {
 export const initial: Hud = {
   ready: false,
   status: '',
+  demoMode: false,
   lang: 'ru',
   t: 8 * 3600,
   day: 0,
@@ -311,6 +320,9 @@ export class Store {
 }
 
 /** Что панели могут попросить у игры. */
+/** Кнопки окна «Итог» демо (spec docs/specs/2026-11-demo.md). */
+export type DemoAction = { kind: 'save' } | { kind: 'wishlist' } | { kind: 'close' };
+
 export interface Actions {
   setSpeed(s: Speed): void;
   untilMorning(): void;
@@ -390,6 +402,8 @@ export interface Actions {
   dismissHint(): void;
   /** сценарий кампании (spec docs/specs/2026-10-scenario-1.md): письмо прочитано, «Без обучения», «Продолжить здесь» */
   scenario(a: ScenarioAction): void;
+  /** «Итог» демо (spec docs/specs/2026-11-demo.md): сохранить снимок, список желаемого Steam, играть дальше */
+  demo(a: DemoAction): void;
   /** «Настройки» (spec docs/specs/2026-10-settings.md): окно из меню игры */
   toggleSettings(): void;
   /** меню игры (spec docs/specs/2026-10-saves.md): раскрыть, сохранить, загрузить ячейку, удалить, новая игра */

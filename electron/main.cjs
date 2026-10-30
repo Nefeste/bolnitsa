@@ -12,7 +12,7 @@
 //   --stay                              — не закрываться после бенча
 //   --swiftshader                       — программный WebGL (контейнер без видеокарты), без сторожа видеопроцесса
 //   --q low|medium|high                 — пресет качества
-const { app, BrowserWindow, ipcMain, protocol, session } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, session, shell } = require('electron');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -143,6 +143,21 @@ app.whenReady().then(async () => {
     console.log(`[bench] shot: ${saved}`);
     return saved ?? 'cannot write file';
   });
+  // демо (spec docs/specs/2026-11-demo.md): снимок больницы — `<папка игры пользователя>/shots`, имя — только
+  // `snapshot-<время>.png`: выйти за папку нельзя; страница игры — клиенту Steam, только адрес `steam://store/<номер>`
+  ipcMain.handle('shell:snapshot', async (_e, name, dataUrl) => {
+    if (typeof name !== 'string' || !/^snapshot-[0-9T-]+\.png$/.test(name)) throw new Error(`bad snapshot name: ${String(name)}`);
+    const dir = path.join(app.getPath('userData'), 'shots');
+    await fs.promises.mkdir(dir, { recursive: true });
+    const file = path.join(dir, name);
+    await fs.promises.writeFile(file, Buffer.from(String(dataUrl).split(',')[1] ?? '', 'base64'));
+    return file;
+  });
+  ipcMain.handle('shell:steam', async (_e, url) => {
+    if (typeof url !== 'string' || !/^steam:\/\/store\/\d+$/.test(url)) return false;
+    await shell.openExternal(url);
+    return true;
+  });
   ipcMain.handle('shell:save', async (_e, json) => {
     const stamp = (() => {
       try {
@@ -224,6 +239,8 @@ app.whenReady().then(async () => {
     return i > 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : null;
   };
   if (v('q')) q.set('q', v('q'));
+  // демо (spec docs/specs/2026-11-demo.md): на экране начала — только «Кампания», после первой планёрки — «Итог»
+  if (has('demo')) q.set('demo', '1');
   await win.loadURL(`app://game/index.html${q.size ? `?${q}` : ''}`);
 });
 

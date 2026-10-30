@@ -171,7 +171,7 @@ function WhyArrived({ d }: { d: DaySummary }) {
  * «Почему?» у числа ушедших (spec docs/specs/2026-10-why.md): причины — больше всего первой — и что с каждой делать; сколько
  * стояли у кабинета; «Кто ушёл» — вкладка «Пациенты», список «Ушли»: с экрана планёрки — закрыв его, часы стоят.
  */
-function WhyLeft({ b, screen, actions }: { b: LeftBy; screen: boolean; actions: Actions }) {
+function WhyLeft({ b, alone, screen, actions }: { b: LeftBy; alone: boolean; screen: boolean; actions: Actions }) {
   const w = T.meeting.why;
   const rows: { k: LeftWhy; text: string; fix?: string }[] = [];
   const add = (k: LeftWhy, text: (n: number) => string, fix?: string) => {
@@ -181,7 +181,8 @@ function WhyLeft({ b, screen, actions }: { b: LeftBy; screen: boolean; actions: 
   add('busy', w.busy, b.asks ? `${w.busyFix} ${w.asks(b.asks)}` : w.busyFix);
   add('none', w.none, w.noneFix);
   add('rest', w.rest, w.restFix);
-  add('you', w.you, w.youFix);
+  // нанятых врачей нет (сценарий 1, пустое здание) — отдать больных некому: нужен ещё кабинет с врачом
+  add('you', w.you, alone ? w.youFixAlone : w.youFix);
   add('other', w.other);
   rows.sort((x, y) => (b.why[y.k] ?? 0) - (b.why[x.k] ?? 0));
   return (
@@ -258,7 +259,7 @@ export function MeetingBody({ m, e, actions, screen = false }: { m: MeetingView;
           ) : null}
         </p>
         {why.arrived && d.arrivedBy ? <WhyArrived d={d} /> : null}
-        {why.left && d.leftBy ? <WhyLeft b={d.leftBy} screen={screen} actions={actions} /> : null}
+        {why.left && d.leftBy ? <WhyLeft b={d.leftBy} alone={m.doctors.length === 0} screen={screen} actions={actions} /> : null}
         {d.ward ? <p>{t.ward(d.ward.admitted, d.ward.discharged, d.ward.transferred, d.ward.died ?? 0, d.ward.lying)}</p> : null}
       </Section>
       {m.doctors.length > 0 || d.seen > 0 ? (

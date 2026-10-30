@@ -2,6 +2,7 @@
 import { doctorEn } from './doctor.en';
 import { economyEn } from './economy.en';
 import { scenarioEn } from './scenario.en';
+import { demoEn } from './demo.en';
 import { encyclopediaEn } from './encyclopedia.en';
 import type { Strings } from './ru';
 
@@ -10,6 +11,7 @@ export const en: Strings = {
   ...economyEn,
   // сценарий кампании (spec docs/specs/2026-10-scenario-1.md, часть 2): письма, «Цели», «Сценарий пройден»
   ...scenarioEn,
+  ...demoEn,
   app: {
     title: 'Hospital',
     loading: 'Loading…',
@@ -221,6 +223,7 @@ export const en: Strings = {
     look: 'Click a person or a room — a card. Tab — patients, L — the queues overlay, Q and E — rotate the camera.',
     asks: 'A hired doctor is unsure and asks you to look: «Look» opens the patient card, «Let them decide» — they decide by their skill.',
     call: 'You are the doctor: «Call» in the doctor window at the bottom left — the patient comes into your office and their card opens.',
+    leave: 'The build panel covers the doctor window: «Done» or B — and «Call» is in the doctor window at the bottom left.',
     decisions: "Hired doctors' decisions are in the «Asking for a look» tab: Enter — «Agree», Shift+Enter — the card; with no answer by the deadline the doctor's decision stands.",
     manage: "You are the manager: doctors decide on their own. Build, hire, watch the cash; the day and the doctors' errors — at the 08:00 meeting.",
   },

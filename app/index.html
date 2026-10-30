@@ -167,6 +167,18 @@
     .scenariodone { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); width: min(460px, 92%); z-index: 8; display: flex; flex-direction: column; gap: 8px; padding: 16px 20px; background: var(--window); }
     .scenariodone h2 { margin: 0; font-size: var(--fs-window); }
     .scenariodone .row { display: flex; gap: 8px; }
+    /* «Итог» демо (docs/specs/2026-11-demo.md): снимок больницы во всю ширину, цифры парами */
+    .demosum { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(620px, 94%); max-height: 92vh; overflow: auto; z-index: 8; display: flex; flex-direction: column; gap: 8px; padding: 16px 20px; background: var(--window); }
+    .demosum h2 { margin: 0; font-size: var(--fs-window); }
+    .demosum p { margin: 0; }
+    .demosum .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .demoshot { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--r-m); border: 1px solid var(--line); }
+    .demonums { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; }
+    .demonums dt { color: var(--muted); }
+    .demonums dd { margin: 0; }
+    /* полоса загрузки (docs/specs/2026-11-demo.md, «Обёртка») */
+    .loadbar { margin-top: 10px; height: 6px; min-width: 260px; border-radius: var(--r-pill); background: var(--wash-2); overflow: hidden; }
+    .loadbar > div { height: 100%; background: var(--accent); transition: width .15s; }
     /* подпись под курсором (src/app/hover.ts): под панелями, как значки помещений */
     .hoverlabel { position: absolute; left: 0; top: 0; pointer-events: none; padding: 4px 9px; border-radius: var(--r-m); background: var(--glass-strong); border: 1px solid var(--line); font-size: calc(var(--fs-small) * var(--ui-k, 1)); line-height: 1.3; white-space: nowrap; max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
     .hoverlabel b { display: block; font-size: calc(var(--fs-body) * var(--ui-k, 1)); }

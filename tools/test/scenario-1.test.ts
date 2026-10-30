@@ -97,6 +97,24 @@ describe('сценарий 1 «Амбулатория»: движок', () => {
     for (const p of Object.values(s.patients).filter(x => x.taught)) expect(p.by ?? p.doc).toBeUndefined();
   }, 120_000);
 
+  // демо (spec docs/specs/2026-11-demo.md, «Ощущение», О3): первый больной — через секунды после открытия, а не через случайный
+  // промежуток потока (у амбулатории с одним кабинетом — около 20 минут игры)
+  test('поток от больницы: первый заданный приходит через две минуты игры после того, как заработал ваш кабинет', () => {
+    const s = newFlowShift(db, { seed: 6, season: 'winter', hospital: hospitalOf(db, emptySite()), staff: [], flow: { perHour: 0, auto: true }, scenario: SC });
+    const t0 = s.t;
+    buildClinic(s);
+    // 08:06 — первый уже пришёл (и ещё не ушёл, не дождавшись: его ждут вы)
+    liveTo(db, s, 8.1);
+    const walk = Object.values(s.patients).filter(p => p.kind === 'walkIn');
+    expect(walk.length).toBe(1);
+    expect(walk[0].taught).toBe(true);
+    expect(walk[0].arriveT - t0).toBe(120);
+    // следующий — по частоте потока, не через две минуты
+    const next = s.events.find(e => e.event.kind === 'flow' && e.event.stream === 'walk');
+    expect(next).toBeDefined();
+    expect(next!.t - walk[0].arriveT).not.toBe(120);
+  }, 120_000);
+
   test('без вашего кабинета заданных некому принять — приходят обычные, заданные ждут его', () => {
     const s = start(4);
     buildClinic(s, false);

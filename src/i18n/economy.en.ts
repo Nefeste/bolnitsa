@@ -59,6 +59,7 @@ export const economyEn: EconomyStrings = {
       restFix: 'Tired to the limit or went to the toilet: a second doctor on the shift shares the load.',
       you: (n: number) => `They waited for you — ${n}.`,
       youFix: 'Leave some patients to hired doctors: «Own patients» in the doctor window.',
+      youFixAlone: 'You cannot see everyone alone: build another doctor’s office with a therapist — they will see the ones you cannot.',
       other: (n: number) => `Other — ${n}.`,
       stood: (n: number) => `Stood at the office door — ${n}: half the patience. A waiting area closer to the office, or benches by the doors.`,
       gone: 'Who left',

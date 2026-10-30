@@ -52,6 +52,9 @@ describe('подсказки первых минут', () => {
     const open = { ...base, paused: false };
     // «Врач»: есть кого позвать — «Позвать»; позвал — дальше «щёлкните»
     expect(hintOf({ ...open, callable: true }, none)).toBe('call');
+    // стройка открыта — её панель закрывает окно врача: сначала «Готово»; закрыли эту подсказку — «Позвать»
+    expect(hintOf({ ...open, callable: true, buildOn: true }, none)).toBe('leave');
+    expect(hintOf({ ...open, callable: true, buildOn: true }, new Set<HintKey>(['leave']))).toBe('call');
     expect(hintOf({ ...open, callable: false }, none)).toBe('look');
     // «Главврач»: где решения — пока ни на одно не ответил
     expect(hintOf({ ...open, role: 'chief' }, none)).toBe('decisions');
@@ -85,6 +88,7 @@ describe('подсказки первых минут', () => {
       { ...base, paused: false },
       { ...base, asks: 1 },
       { ...base, paused: false, callable: true },
+      { ...base, paused: false, callable: true, buildOn: true },
       { ...base, paused: false, role: 'chief' },
       { ...base, paused: false, role: 'manager' },
     ];
