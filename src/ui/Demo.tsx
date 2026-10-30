@@ -28,10 +28,7 @@ export function DemoSummary({ d, actions }: { d: DemoHud | undefined; actions: A
         <dt>{t.built}</dt>
         <dd id="demo-built">{built.length ? built.join(', ') : t.builtNone}</dd>
         <dt>{t.patients}</dt>
-        <dd id="demo-patients">
-          {[t.arrived(r.arrived), t.seen(r.seen), t.left(r.left)].join(' · ')}
-          {r.waitedYou ? <span className="muted"> ({t.leftYou(r.waitedYou)})</span> : null}
-        </dd>
+        <dd id="demo-patients">{[t.arrived(r.arrived), t.seen(r.seen), t.left(r.left)].join(' · ')}</dd>
         <dt>{t.own}</dt>
         <dd id="demo-own">{r.own ? t.ownLine(r.own, r.right) : t.ownNone}</dd>
         {r.cash !== null ? (
@@ -43,6 +40,11 @@ export function DemoSummary({ d, actions }: { d: DemoHud | undefined; actions: A
         <dt>{t.played}</dt>
         <dd id="demo-played">{t.minutes(Math.max(1, Math.round(r.played / 60)))}</dd>
       </dl>
+      {r.hire ? (
+        <p className="muted" id="demo-hire">
+          {t.hire}
+        </p>
+      ) : null}
       {d.saved ? (
         <p className="muted" id="demo-saved">
           {d.saved}

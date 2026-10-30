@@ -16,7 +16,7 @@ export const demoEn: DemoStrings = {
     arrived: (n: number) => `${n} arrived`,
     seen: (n: number) => `${n} seen`,
     left: (n: number) => `${n} left without being seen`,
-    leftYou: (n: number) => `${n} of them waited for you`,
+    hire: 'You cannot see everyone alone: another doctor’s office with a therapist will see the ones you cannot.',
     own: 'Your patients',
     ownLine: (n: number, right: number) => `${n} ${n === 1 ? 'patient' : 'patients'}, ${right} diagnosed right`,
     ownNone: 'you have not seen anyone yourself yet',

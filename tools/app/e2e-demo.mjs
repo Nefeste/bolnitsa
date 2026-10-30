@@ -252,12 +252,12 @@ export async function demoPart({ page, port, out, ok, fail, q, shots }) {
     const img = document.getElementById('demo-shot');
     const text = id => (document.getElementById(id)?.textContent ?? '').replace(/\s+/g, ' ').trim();
     return {
-      built: text('demo-built'), patients: text('demo-patients'), own: text('demo-own'), cash: text('demo-cash'), played: text('demo-played'),
+      built: text('demo-built'), patients: text('demo-patients'), hire: text('demo-hire'), own: text('demo-own'), cash: text('demo-cash'), played: text('demo-played'),
       shot: img ? { w: img.naturalWidth, h: img.naturalHeight } : null, wishlist: !!document.getElementById('demo-wishlist'), speed: window.__game.speed,
     };
   });
-  if (/Регистратура/.test(sum.built) && /Кабинет врача/.test(sum.built) && /пришли \d+/.test(sum.patients) && /из них ждали вас — \d+/.test(sum.patients) && /^1 приём, из них верно — [01]$/.test(sum.own) && sum.cash && /\d+ минут/.test(sum.played) && sum.shot?.w === 1920 && sum.shot?.h === 1080 && !sum.wishlist && sum.speed === 0) {
-    ok(`«Итог»: построено — «${sum.built}»; «${sum.patients}»; «${sum.own}»; касса ${sum.cash}; играете ${sum.played}; снимок ${sum.shot.w}×${sum.shot.h}; кнопки Steam нет; часы стоят (снимок ${await shot('e2e-demo-7-summary.jpg')} КБ)`);
+  if (/Регистратура/.test(sum.built) && /Кабинет врача/.test(sum.built) && /пришли \d+/.test(sum.patients) && /кабинет врача с терапевтом/.test(sum.hire) && /^1 приём, из них верно — [01]$/.test(sum.own) && sum.cash && /\d+ минут/.test(sum.played) && sum.shot?.w === 1920 && sum.shot?.h === 1080 && !sum.wishlist && sum.speed === 0) {
+    ok(`«Итог»: построено — «${sum.built}»; «${sum.patients}»; «${sum.hire}»; «${sum.own}»; касса ${sum.cash}; играете ${sum.played}; снимок ${sum.shot.w}×${sum.shot.h}; кнопки Steam нет; часы стоят (снимок ${await shot('e2e-demo-7-summary.jpg')} КБ)`);
   } else fail(`«Итог»: ${JSON.stringify(sum)}`);
 
   // «Сохранить снимок» — в браузере загрузкой: PNG 1920×1080

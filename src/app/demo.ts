@@ -29,8 +29,11 @@ export interface DemoResult {
   arrived: number;
   seen: number;
   left: number;
-  /** из ушедших — сколько ждали вас (spec docs/specs/2026-10-why.md, `LeftBy`) */
-  waitedYou: number;
+  /**
+   * ушло больше, чем принято, а нанятые врачи не приняли никого — врач здесь вы один: «Итог» советует ещё кабинет врача с
+   * терапевтом, как «почему?» на планёрке (spec docs/specs/2026-11-demo.md, проход по снимкам 2)
+   */
+  hire: boolean;
   /** ваши приёмы за сутки и из них верных */
   own: number;
   right: number;
@@ -53,7 +56,7 @@ export function demoResult(summary: DaySummary, rooms: readonly string[], guide:
     arrived: summary.arrived,
     seen: summary.seen,
     left: summary.left,
-    waitedYou: summary.leftBy?.why.you ?? 0,
+    hire: summary.left > summary.seen && Object.values(summary.colleagues ?? {}).every(c => c.seen === 0),
     own: summary.correct + summary.partly + summary.wrong,
     right: summary.correct,
     cash: summary.economy?.cash ?? null,

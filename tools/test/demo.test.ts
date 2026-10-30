@@ -23,7 +23,7 @@ describe('«Итог» демо', () => {
     expect(demoResult(day(), ['room.ward', 'room.reception'], guide, 0).built.map(b => b.type)).toEqual(['room.reception', 'room.ward']);
   });
 
-  test('больные — из итога суток, ушедшие — и сколько из них ждали вас; ваши приёмы — верные, частично и неверные; касса — утренняя; время — целые секунды', () => {
+  test('больные — из итога суток; совет «ещё кабинет врача», когда врач — вы один; ваши приёмы — верные, частично и неверные; касса — утренняя; время — целые секунды', () => {
     const r = demoResult(day({ economy: { cash: 163_000 } as DaySummary['economy'] }), [], guide, 1234.6);
     expect([r.day, r.arrived, r.seen, r.left]).toEqual([1, 9, 6, 2]);
     expect([r.own, r.right]).toEqual([3, 2]);
@@ -31,9 +31,12 @@ describe('«Итог» демо', () => {
     expect(r.played).toBe(1235);
     expect(demoResult(day(), [], guide, -5).cash).toBeNull();
     expect(demoResult(day(), [], guide, -5).played).toBe(0);
-    // из ушедших — сколько ждали вас; разбора причин нет (сохранение до него) — ноль
-    expect(demoResult(day({ leftBy: { why: { you: 2, busy: 1 } } }), [], guide, 0).waitedYou).toBe(2);
-    expect(demoResult(day(), [], guide, 0).waitedYou).toBe(0);
+    // совет «ещё кабинет врача»: ушло больше, чем принято, и нанятые не приняли никого
+    const hired = (seen: number) => ({ c1: { seen } }) as unknown as DaySummary['colleagues'];
+    expect(demoResult(day({ seen: 1, left: 26 }), [], guide, 0).hire).toBe(true);
+    expect(demoResult(day({ seen: 1, left: 26, colleagues: hired(0) }), [], guide, 0).hire).toBe(true);
+    expect(demoResult(day({ seen: 1, left: 26, colleagues: hired(4) }), [], guide, 0).hire).toBe(false);
+    expect(demoResult(day({ seen: 6, left: 2 }), [], guide, 0).hire).toBe(false);
   });
 
   test('имя снимка — только латиница, цифры и дефис: Electron примет его в папку игры', () => {
