@@ -297,7 +297,9 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   The window (part 2): the engine sends `rides` with the slice; `src/render/rides.ts` turns a ride's times into phases,
   `Population.ridesStep` walks the carrier and lays the patient on the gurney in front of them (`Crowd.carry`, `release`),
   `gurneyStop` in `place.ts` picks where to stand by a bed, `src/render/gurney.ts` draws code-made gurneys; a paramedic in
-  blue (window only, `m:` walkers) wheels each ambulance arrival in and leaves. The slice's `gurney` doing — admitted and
+  blue (window only, `m:` walkers) wheels each ambulance arrival in and leaves. Gurneys go one after another (`convoy` in
+  `crowd.ts`: whoever wheels one keeps `FOLLOW` along their path behind a gurney going the same way; `queue` starts a
+  second paramedic further out in the street). The slice's `gurney` doing — admitted and
   still waiting for pickup (`pickupOf`); the path keeps the bed ride in `Journey.bed` and an exam ride in `gurney` of its
   exam step.
 - Referral to a specialist (`docs/specs/2026-10-specialists.md`, part 2; owner's decision #112): `shift/refer.ts` —
