@@ -4223,11 +4223,13 @@ function pickPc(db: ContentDb, s: ShiftState, m: StaffMember, list: readonly Sta
   }
   let best: string[] | undefined;
   for (const q of by.values()) if (!best || q.length > best.length) best = q;
+  if (!best) return undefined;
   const plan = hospitalCtx(db, s).plan;
   // свой врач на перерыве (spec 2026-10-staff-shifts, часть 2) или на обходе (spec 2026-10-staff-motion, часть 2) — ждать его
-  // дольше на остаток
-  const away = (doc: string | undefined) => Math.max(restLeft(s, doc), roundLeft(s, doc));
-  return best?.find((x, i) => !m.room || toDoctor(plan, s.patients[x], m.room, s.t) < (i + 1) * PER_QUEUED + away(s.patients[x].doc));
+  // дольше на остаток; врач у всех в `best` один
+  const doc = s.patients[best[0]].doc;
+  const away = Math.max(restLeft(s, doc), roundLeft(s, doc));
+  return best.find((x, i) => !m.room || toDoctor(plan, s.patients[x], m.room, s.t) < (i + 1) * PER_QUEUED + away);
 }
 
 /**
