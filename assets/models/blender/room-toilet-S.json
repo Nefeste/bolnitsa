@@ -1,0 +1,23 @@
+{
+ "key": "room.toilet:S",
+ "type": "room.toilet",
+ "size": "S",
+ "w": 6,
+ "h": 7,
+ "things": [
+  {
+   "kind": "sink",
+   "at": [
+    2.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "sink",
+   "at": [
+    4.5,
+    4.5
+   ]
+  }
+ ]
+}

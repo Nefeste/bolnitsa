@@ -1,0 +1,37 @@
+{
+ "key": "room.triage:S",
+ "type": "room.triage",
+ "size": "S",
+ "w": 6,
+ "h": 7,
+ "things": [
+  {
+   "kind": "desk",
+   "at": [
+    2.5,
+    3.5
+   ]
+  },
+  {
+   "kind": "chair",
+   "at": [
+    2.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "couch",
+   "at": [
+    4.5,
+    3
+   ]
+  },
+  {
+   "kind": "sink",
+   "at": [
+    4.5,
+    4.5
+   ]
+  }
+ ]
+}

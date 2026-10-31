@@ -1,0 +1,58 @@
+{
+ "key": "room.office:M",
+ "type": "room.office",
+ "size": "M",
+ "w": 8,
+ "h": 7,
+ "things": [
+  {
+   "kind": "desk",
+   "at": [
+    3.5,
+    3.5
+   ]
+  },
+  {
+   "kind": "chair",
+   "at": [
+    3.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "chair",
+   "at": [
+    3.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "couch",
+   "at": [
+    6.5,
+    3
+   ]
+  },
+  {
+   "kind": "cabinet",
+   "at": [
+    1.5,
+    3.5
+   ]
+  },
+  {
+   "kind": "sink",
+   "at": [
+    6.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "plant",
+   "at": [
+    1.5,
+    4.5
+   ]
+  }
+ ]
+}

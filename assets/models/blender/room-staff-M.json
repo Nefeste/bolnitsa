@@ -1,0 +1,79 @@
+{
+ "key": "room.staff:M",
+ "type": "room.staff",
+ "size": "M",
+ "w": 9,
+ "h": 7,
+ "things": [
+  {
+   "kind": "desk",
+   "at": [
+    1.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "chair",
+   "at": [
+    1.5,
+    3.5
+   ]
+  },
+  {
+   "kind": "desk",
+   "at": [
+    3.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "chair",
+   "at": [
+    3.5,
+    3.5
+   ]
+  },
+  {
+   "kind": "desk",
+   "at": [
+    5.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "chair",
+   "at": [
+    5.5,
+    3.5
+   ]
+  },
+  {
+   "kind": "desk",
+   "at": [
+    7.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "chair",
+   "at": [
+    7.5,
+    3.5
+   ]
+  },
+  {
+   "kind": "cabinet",
+   "at": [
+    1.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "couch",
+   "at": [
+    7.5,
+    4.5
+   ]
+  }
+ ]
+}

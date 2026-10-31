@@ -1,0 +1,58 @@
+{
+ "room.xray:M": {
+  "file": "room-xray-M",
+  "group": 0
+ },
+ "room.reception:S": {
+  "file": "room-reception-S",
+  "group": 1
+ },
+ "room.waiting:S": {
+  "file": "room-waiting-S",
+  "group": 1
+ },
+ "room.waiting:M": {
+  "file": "room-waiting-M",
+  "group": 1
+ },
+ "room.waiting:L": {
+  "file": "room-waiting-L",
+  "group": 1
+ },
+ "room.office:M": {
+  "file": "room-office-M",
+  "group": 1
+ },
+ "room.triage:S": {
+  "file": "room-triage-S",
+  "group": 1
+ },
+ "room.procedure:S": {
+  "file": "room-procedure-S",
+  "group": 1
+ },
+ "room.lab:S": {
+  "file": "room-lab-S",
+  "group": 1
+ },
+ "room.lab:M": {
+  "file": "room-lab-M",
+  "group": 1
+ },
+ "room.ecg:S": {
+  "file": "room-ecg-S",
+  "group": 1
+ },
+ "room.toilet:S": {
+  "file": "room-toilet-S",
+  "group": 1
+ },
+ "room.staff:S": {
+  "file": "room-staff-S",
+  "group": 1
+ },
+ "room.staff:M": {
+  "file": "room-staff-M",
+  "group": 1
+ }
+}

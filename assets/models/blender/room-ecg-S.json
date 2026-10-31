@@ -1,0 +1,30 @@
+{
+ "key": "room.ecg:S",
+ "type": "room.ecg",
+ "size": "S",
+ "w": 6,
+ "h": 7,
+ "things": [
+  {
+   "kind": "couch",
+   "at": [
+    2.5,
+    4
+   ]
+  },
+  {
+   "kind": "cabinet",
+   "at": [
+    4.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "ecg",
+   "at": [
+    1.5,
+    3.5
+   ]
+  }
+ ]
+}

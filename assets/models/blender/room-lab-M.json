@@ -1,0 +1,65 @@
+{
+ "key": "room.lab:M",
+ "type": "room.lab",
+ "size": "M",
+ "w": 8,
+ "h": 7,
+ "things": [
+  {
+   "kind": "table",
+   "at": [
+    3.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "table",
+   "at": [
+    4.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "sink",
+   "at": [
+    1.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "cabinet",
+   "at": [
+    6.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "analyzer",
+   "at": [
+    1.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "analyzer",
+   "at": [
+    2.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "analyzer",
+   "at": [
+    5.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "analyzer",
+   "at": [
+    6.5,
+    2.5
+   ]
+  }
+ ]
+}
