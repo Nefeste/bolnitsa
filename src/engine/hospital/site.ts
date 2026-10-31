@@ -548,6 +548,8 @@ export type SiteError =
   | { kind: 'money'; need: number }
   /** уже уходит сам (spec docs/specs/2026-10-staff-mood.md): поднимать зарплату и переводить поздно */
   | { kind: 'leaving' }
+  /** только днём (`day`, клиническая медсестра, spec docs/specs/2026-10-staff-motion.md, часть 2б): ни нанять в ночную смену, ни перевести */
+  | { kind: 'dayOnly' }
   /** сценарий ПК (spec docs/specs/2026-10-scenario-1.md): такого помещения в списке сценария нет */
   | { kind: 'scenario' };
 

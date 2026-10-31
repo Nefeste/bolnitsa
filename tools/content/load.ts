@@ -1201,10 +1201,10 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     const out: StaffRole = {
       id: r.id, name: r.name, gen: r.gen, hire: r.hire, salary: r.salary,
       ...(r.stands ? { stands: r.stands } : {}), ...(r.needs ? { needs: r.needs } : {}), ...(r.reads ? { reads: true as const } : {}),
-      ...(r.optional ? { optional: true as const } : {}), ...(r.ready ? {} : { ready: false as const }), ...(r.day ? { day: true as const } : {}),
+      ...(r.optional ? { optional: true as const } : {}), ...(r.day ? { day: true as const } : {}),
       ...(r.profile ? { profile: [...r.profile] } : {}), ...(r.dat ? { dat: r.dat } : {}), ...(r.department ? { department: r.department } : {}),
-      // встающий на чужое место работает там же, где та должность
-      rooms: Object.keys(rooms).sort().filter(id => rooms[id].staff.includes(r.stands ?? r.id)), texts: r.texts,
+      // встающий на чужое место работает там же, где та должность; с `in` — только в этих помещениях
+      rooms: Object.keys(rooms).sort().filter(id => rooms[id].staff.includes(r.stands ?? r.id) && (!r.in || r.in.includes(id))), texts: r.texts,
     };
     db.roles[r.id] = out;
   }
@@ -1703,7 +1703,11 @@ function checkHospital(c: {
   for (const r of Object.values(roles)) {
     if (r.salary[0] > r.salary[1]) errors.push(`${r.id}: зарплата при навыке 1 больше, чем при навыке 5`);
     if (r.stands && !roles[r.stands]) errors.push(`${r.id}: встаёт на место ${r.stands} — такой должности нет`);
-    if (r.stands && roles[r.stands]?.hire !== false) errors.push(`${r.id}: встать можно только на место врача — должности, которую не нанимают`);
+    // на место того, кого нанимают (медсестры), — только в своих помещениях (`in`): клиническая медсестра (spec
+    // docs/specs/2026-10-staff-motion.md, часть 2б; решение владельца #183, вариант 2)
+    if (r.stands && roles[r.stands]?.hire !== false && !r.in) errors.push(`${r.id}: на место того, кого нанимают, встают только в своих помещениях — нужен in`);
+    if (r.in && !r.stands) errors.push(`${r.id}: in — только у того, кто встаёт на чужое место (stands)`);
+    for (const id of r.in ?? []) if (!rooms[id]?.staff.includes(r.stands ?? r.id)) errors.push(`${r.id}: в ${id} нет места ${r.stands}`);
     if (r.needs && !rooms[r.needs]) errors.push(`${r.id}: нужна ${r.needs} — такого помещения нет`);
     else if (r.needs && !rooms[r.needs].sizes.every(z => z.places > 0)) errors.push(`${r.id}: нужна ${r.needs}, а мест для врачей в ней нет`);
     if (!Object.values(rooms).some(x => x.staff.includes(r.stands ?? r.id))) errors.push(`${r.id}: ни одно помещение в нём не нуждается`);

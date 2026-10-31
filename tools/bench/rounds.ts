@@ -4,14 +4,14 @@
 // Готовая больница без игрока, поток от больницы — как у симулятора экономики. Каждое утро в 08:30 для каждого нанятого врача
 // в смене: сколько лежащих он ведёт и у скольких из них на обходе решение (выписка, хуже, реакция на лечение —
 // `needsDecision`); потом — обходы движка за утро (`s.rounds.on`): когда ушёл, у скольких коек был, сколько минут игры занял;
-// у клинической медсестры (`--clinical` — по одной в дневную смену в каждое помещение с койками, где она бывает) — так же. И
+// у клинической медсестры (`--clinical` — она на дневном месте медсестры в каждом помещении с койками, где бывает) — так же. И
 // сколько больных ждёт приёма в 08:30, 09:00, 09:30 и 10:00.
 //
 // bun tools/bench/rounds.ts [--days 7] [--hospital city|poly] [--seed 3] [--clinical]
 import { hospitalOf } from '../../src/engine/hospital/site';
 import { siteOfPlan } from '../../src/engine/hospital/site-plan';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
-import { presetStaff, type StaffMember, withNightShift } from '../../src/engine/hospital/staff';
+import { presetStaff, salaryOf, type StaffMember, withNightShift } from '../../src/engine/hospital/staff';
 import { apply, colleaguesOf, inpatientsOf, newFlowShift } from '../../src/engine/shift/engine';
 import { startCash } from '../../src/engine/shift/money';
 import { CLINICAL, needsDecision } from '../../src/engine/shift/rounds';
@@ -43,12 +43,14 @@ function start() {
 
 const s = start();
 const t0 = s.t;
+// клиническая медсестра на дневном месте медсестры в помещениях с койками (решение владельца #183, вариант 2) — с начала
 if (clinical) {
-  for (const r of s.hospital?.rooms ?? []) {
-    if (!db.rooms[r.type]?.staff.includes(CLINICAL)) continue;
-    const out = apply(db, s, { kind: 'site', cmd: { kind: 'hire', room: r.id, role: CLINICAL, shift: 'day' } });
-    if (!out.some(n => n.kind === 'site' && n.ok)) throw new Error(`клиническая медсестра: не нанять в ${r.id}`);
-  }
+  const types = new Map((s.hospital?.rooms ?? []).map(r => [r.id, r.type] as const));
+  s.staff = (s.staff ?? []).map(m =>
+    m.shift === 'day' && m.role === 'role.nurse' && m.room !== undefined && db.roles[CLINICAL].rooms.includes(types.get(m.room) ?? '')
+      ? { ...m, role: CLINICAL, salary: salaryOf(db, CLINICAL, m.skill) }
+      : m,
+  );
 }
 const to = (t: number) => {
   while (s.t < t) apply(db, s, { kind: 'advance', seconds: Math.min(600, t - s.t) });

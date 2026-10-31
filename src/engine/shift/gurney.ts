@@ -10,6 +10,7 @@ import type { ContentDb } from '../../content/types';
 import type { Plan } from '../hospital/build';
 import { onDuty, ORDERLY, type StaffMember } from '../hospital/staff';
 import type { Ride, RideWhy, ShiftPatient, ShiftState } from './types';
+import { CLINICAL } from './rounds';
 import { walkPc } from './walking';
 
 const NURSE = 'role.nurse';
@@ -46,7 +47,8 @@ export function carriersOf(plan: Plan, staff: readonly StaffMember[], from: stri
   const orderlies = staff.filter(m => m.role === ORDERLY && m.room !== undefined);
   if (orderlies.length > 0) return orderlies;
   if (!urgent) return [];
-  const nurses = staff.filter(m => m.role === NURSE && m.room !== undefined);
+  // клиническая медсестра на месте медсестры делает всё, что она (spec 2026-10-staff-motion, часть 2б; решение владельца #183)
+  const nurses = staff.filter(m => (m.role === NURSE || m.role === CLINICAL) && m.room !== undefined);
   const here = nurses.find(m => m.room === from);
   if (here) return [here];
   let best: StaffMember | undefined;
