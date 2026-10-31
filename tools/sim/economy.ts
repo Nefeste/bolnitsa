@@ -26,7 +26,8 @@
 // списка; в отчёте — сколько раз резерв встал на место заболевшего и сколько смен места стояли пустыми.
 // Утренний обход (spec docs/specs/2026-10-staff-motion.md, часть 2): сколько раз врачи и клинические медсёстры обходили, у
 // скольких коек и сколько минут; ушедшие, пока их врач на обходе, — «round» в строке «ушли». `--clinical` — в начале по
-// клинической медсестре в дневную смену в каждое помещение с койками, где она бывает (палата, ПИТ, реанимация, бокс).
+// клинической медсестре в дневную смену в каждое помещение с койками, где она бывает (палата, ПИТ, реанимация, бокс);
+// `--clinical ward` — только в палаты (список типов через запятую).
 // `--hall N` — сидя или стоя по своему залу не дальше N м (content/hospital/inflow.yaml, `hall`); `--hall 0` — по всей больнице.
 // `--bench N` — скамьи у дверей кабинетов не дальше N шагов (`bench`, spec docs/specs/2026-10-door-benches.md); `--bench 0` — без них.
 // Ось «Управление» (spec docs/specs/2026-10-difficulty.md): `--manage calm,normal,hard` — каждая больница на каждом уровне;
@@ -34,7 +35,7 @@
 // прибыль больше, чем на «Обычно»; «Обычно» — как выше; «Трудно» — ушли 10–20 %, касса не ниже предела минуса уровня, за
 // 7 суток не окупается. Касса сценария 1 — его, на любом уровне; его цель к 10-м суткам — критерий только «Обычно».
 //   bun tools/sim/economy.ts [--days 7] [--seeds 1,2,3] [--only clinic,district,city,poly,polyspec,ambulatory] [--hall N] [--bench N] [--raise]
-//                            [--no-orderly night|all] [--reserve registrar,nurse] [--manage calm,normal,hard] [--clinical] [--json]
+//                            [--no-orderly night|all] [--reserve registrar,nurse] [--manage calm,normal,hard] [--clinical [ward,icu]] [--json]
 import type { ContentDb, Id, Manage } from '../../src/content/types';
 import { expensesOf, incomeOf } from '../../src/engine/economy/economy';
 import { DOOR_PRICE, emptySite, hospitalOf, priceOf, roomPrice, type Site, type SiteCommand } from '../../src/engine/hospital/site';
@@ -58,7 +59,12 @@ const SEEDS = arg('seeds', '1,2,3').split(',').map(Number);
 const ONLY = arg('only', '').split(',').filter(Boolean);
 const asJson = process.argv.includes('--json');
 const RAISE = process.argv.includes('--raise');
-const CLINICAL_ON = process.argv.includes('--clinical');
+/** `--clinical` — клиническая медсестра в каждое помещение с койками, где она бывает; `--clinical ward,icu` — только в эти */
+const CLINICAL_AT = process.argv.indexOf('--clinical');
+const CLINICAL_IN: string[] | undefined =
+  CLINICAL_AT < 0 ? undefined
+    : !process.argv[CLINICAL_AT + 1] || process.argv[CLINICAL_AT + 1].startsWith('--') ? []
+      : process.argv[CLINICAL_AT + 1].split(',').map(r => (r.startsWith('room.') ? r : `room.${r}`));
 const NO_ORDERLY = arg('no-orderly', '');
 /** Уровни «Управления» (`--manage`): каждая больница — на каждом. */
 const MANAGES = arg('manage', 'normal').split(',').filter((x): x is Manage => x === 'calm' || x === 'normal' || x === 'hard');
@@ -224,8 +230,10 @@ interface Run {
  */
 function start(name: string, seed: number, manage: Manage): ShiftState {
   const s = startOf(name, seed, manage);
-  if (!CLINICAL_ON) return s;
-  for (const r of s.hospital?.rooms ?? []) if (db.rooms[r.type]?.staff.includes(CLINICAL)) site(s, { kind: 'hire', room: r.id, role: CLINICAL, shift: 'day' });
+  if (!CLINICAL_IN) return s;
+  for (const r of s.hospital?.rooms ?? []) {
+    if (db.rooms[r.type]?.staff.includes(CLINICAL) && (CLINICAL_IN.length === 0 || CLINICAL_IN.includes(r.type))) site(s, { kind: 'hire', room: r.id, role: CLINICAL, shift: 'day' });
+  }
   return s;
 }
 
