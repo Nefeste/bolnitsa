@@ -189,6 +189,9 @@ bun tools/bench/approvals.ts                   # «Главврач утверж
                                                # (`--rules below90,discharge`, `--answer silent`; next to it — the same day by default)
 bun tools/bench/departments.ts                 # departments (spec): how often a registrar routing walk-ins by complaint would pick
                                                # the wrong department (`--first` — by the main complaint, `--vitals`, `--list`)
+bun tools/bench/rounds.ts                      # the morning round (staff motion spec, part 2): each hired doctor's lying patients at
+                                               # 08:30, how many need a decision, the round's game minutes by `walkPc` — all his beds or
+                                               # only those needing a decision (`--days 7`, `--seed`, `--bed 3`, `--hospital poly`)
 bun tools/sim/economy.ts --seeds 1,2,3         # economy simulator: scripted hospitals for 7 days, cash, flow, reputation and the criteria
                                                # (`--days 14` — and who quits on their own: at most two in two weeks; `--only
                                                # ambulatory` — scenario 1 with its cash and build order for 10 days, the goal
