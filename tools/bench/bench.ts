@@ -20,7 +20,7 @@
 //
 // Сутки целиком (spec docs/specs/2026-10-day.md), только --mode flow:
 // bun tools/bench/bench.ts --mode flow --day   — до 10:00 вторых суток: минута днём (09–14, 14–20), ночью (20–08) и утром
-//                                                вторых суток, планёрка в 08:00 и обход в 09:00 — отдельно
+//                                                вторых суток, планёрка в 08:00 и начало обхода (08:30) — отдельно
 // bun tools/bench/bench.ts --mode flow --flat  — ровная форма потока по часам: до 14:00 приходят те же, что до суток целиком,
 //                                                — сравнение с прежним движком в окне 09:00–14:00
 //
@@ -342,7 +342,10 @@ for (const desks of DESKS) {
       const ms = w.map(x => x.ms);
       console.log(`  ${name}: в больнице медиана ${quantile(w.map(x => x.live), 0.5)}; мс на игровую минуту — медиана ${f1(quantile(ms, 0.5))}, p95 ${f1(quantile(ms, 0.95))}, худшая ${f1(Math.max(...ms))}`);
     }
-    for (const [name, at] of [['планёрка (минута до 08:00)', 32], ['обход (минута до 09:00)', 33]] as const) {
+    // обход — в час `rounds` (day.yaml; с 0.55.0 — 08:30 и со временем врача: здесь только минута, когда он начинается)
+    const r = db.day?.rounds ?? 9;
+    const hm = `${String(Math.floor(r)).padStart(2, '0')}:${String(Math.round((r % 1) * 60)).padStart(2, '0')}`;
+    for (const [name, at] of [['планёрка (минута до 08:00)', 32], [`обход (минута до ${hm})`, 24 + r]] as const) {
       const x = main.steps.find(st => st.t === at * H);
       if (x) console.log(`  ${name}: ${f1(x.ms)} мс`);
     }
