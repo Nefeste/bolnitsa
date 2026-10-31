@@ -6,7 +6,7 @@ import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { H } from '../../src/sim/pack';
 import { createSim } from '../../src/sim/host';
-import { Crowd, idleRate, PACE } from '../../src/render/crowd';
+import { Crowd, FOLLOW, GURNEY_AHEAD, idleRate, PACE, type Walker } from '../../src/render/crowd';
 import { GAME_PER_REAL, WALK_SPEED_PC } from '../../src/engine/shift/walking';
 import { furnish } from '../../src/render/furniture';
 import { Paths } from '../../src/render/path';
@@ -305,4 +305,137 @@ describe('темп покоя (spec docs/specs/2026-10-aaa-polish.md, «Жизн
     expect(a.clipTime - t0[0]).toBeCloseTo(0.5 * a.idle, 9);
     expect(b.clipTime - t0[1]).toBeCloseTo(0.5 * b.idle, 9);
   });
+});
+
+// замечание владельца 30.10.2026: на живой заставке две каталки ехали одна сквозь другую по одному пути
+describe('каталка за каталкой', () => {
+  /** Тот, кто везёт, с каталкой: отрезок от его ступней до переднего края каталки (середина — в GURNEY_AHEAD, длина 2 м). */
+  const train = (w: Walker): [number, number, number, number] => [w.x, w.z, w.x + Math.sin(w.heading) * (GURNEY_AHEAD + 1), w.z + Math.cos(w.heading) * (GURNEY_AHEAD + 1)];
+  /** Наименьшее расстояние между отрезками на плоскости (пересеклись — 0). */
+  function gapOf(p: [number, number, number, number], q: [number, number, number, number]): number {
+    const cross = (ax: number, az: number, bx: number, bz: number, cx: number, cz: number) => (bx - ax) * (cz - az) - (bz - az) * (cx - ax);
+    const d1 = cross(q[0], q[1], q[2], q[3], p[0], p[1]);
+    const d2 = cross(q[0], q[1], q[2], q[3], p[2], p[3]);
+    const d3 = cross(p[0], p[1], p[2], p[3], q[0], q[1]);
+    const d4 = cross(p[0], p[1], p[2], p[3], q[2], q[3]);
+    if (d1 * d2 < 0 && d3 * d4 < 0) return 0;
+    const toSeg = (x: number, z: number, s: [number, number, number, number]) => {
+      const dx = s[2] - s[0];
+      const dz = s[3] - s[1];
+      const k = Math.max(0, Math.min(1, ((x - s[0]) * dx + (z - s[1]) * dz) / (dx * dx + dz * dz || 1)));
+      return Math.hypot(x - s[0] - dx * k, z - s[1] - dz * k);
+    };
+    return Math.min(toSeg(p[0], p[1], q), toSeg(p[2], p[3], q), toSeg(q[0], q[1], p), toSeg(q[2], q[3], p));
+  }
+  /** От входа для скорой — к двери самого дальнего помещения: путь с поворотами. */
+  function farGoal(crowd: Crowd, layout: ReturnType<typeof presetLayout>['layout']) {
+    const start = standAt(layout, crowd.ambulance.cell, 'go', 0);
+    const far = layout.plan.rooms.reduce((best, r) => (Math.hypot(r.x - start.x, r.y - start.z) > Math.hypot(best.x - start.x, best.y - start.z) ? r : best));
+    return { start, goal: standAt(layout, doorInside(layout, layout.plan.rooms.indexOf(far)), 'go', 0) };
+  }
+
+  test('две скорые разом: второй фельдшер начинает за первым и едет следом — каталки ни разу не налезают, оба доходят', async () => {
+    const { crowd, layout } = await cityScene();
+    crowd.speed = 1;
+    crowd.rate = GAME_PER_REAL;
+    const { goal } = farGoal(crowd, layout);
+    // как фельдшер скорой в population.ts (`medic`): с улицы у входа для скорой, с каталкой, в очередь за тем, кто у входа
+    const a = crowd.add('m:1', 0, goal, true, true, Number.NaN, true);
+    a.gurney = true;
+    crowd.queue(a);
+    const b = crowd.add('m:2', 0, goal, true, true, Number.NaN, true);
+    b.gurney = true;
+    crowd.queue(b);
+    expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeGreaterThanOrEqual(FOLLOW - 1e-6);
+    let gap = Number.POSITIVE_INFINITY;
+    let both = 0;
+    for (let f = 0; f < 60 * 240 && (a.state === 'walk' || b.state === 'walk'); f++) {
+      crowd.update(1 / 60);
+      if (a.state !== 'walk' || b.state !== 'walk') continue;
+      gap = Math.min(gap, gapOf(train(a), train(b)));
+      both++;
+    }
+    expect(both).toBeGreaterThan(60 * 5);
+    // между каталкой заднего и тем, кто везёт переднего, — зазор и на поворотах (каталка шириной 0,65 м)
+    expect(gap).toBeGreaterThan(0.35);
+    expect(a.at?.key).toBe(goal.key);
+    expect(b.at?.key).toBe(goal.key);
+  }, 120_000);
+
+  test('двое с каталками с одного места разом: первым идёт тот, чей ключ меньше, второй — следом не ближе FOLLOW', async () => {
+    const { crowd, layout } = await cityScene();
+    crowd.speed = 1;
+    crowd.rate = GAME_PER_REAL;
+    const { start, goal } = farGoal(crowd, layout);
+    const a = crowd.add('s:1', 0, start, true);
+    const b = crowd.add('s:2', 0, start, true);
+    for (const w of [a, b]) {
+      crowd.settle(w, start);
+      w.gurney = true;
+      crowd.retarget(w, goal, true);
+    }
+    // первый кадр — встали и пошли, второй — оба в пути из одной точки
+    crowd.update(1 / 60);
+    crowd.update(1 / 60);
+    expect(a.follow).toBeUndefined();
+    expect(b.follow).toBe(0);
+    let gap = Number.POSITIVE_INFINITY;
+    for (let f = 0; f < 60 * 240 && (a.state === 'walk' || b.state === 'walk'); f++) {
+      crowd.update(1 / 60);
+      // разошлись с места старта (там они стояли одна в другой — так их поставил тест): дальше каталки не налезают
+      if (a.state === 'walk' && b.state === 'walk' && f > 60 * 3) gap = Math.min(gap, gapOf(train(a), train(b)));
+    }
+    expect(gap).toBeGreaterThan(0.35);
+    expect(a.at?.key).toBe(goal.key);
+    expect(b.at?.key).toBe(goal.key);
+  }, 120_000);
+
+  test('встречные с каталками не ждут друг друга: оба доходят, как шли бы поодиночке', async () => {
+    const { crowd, layout } = await cityScene();
+    crowd.speed = 1;
+    crowd.rate = GAME_PER_REAL;
+    const { start, goal } = farGoal(crowd, layout);
+    const a = crowd.add('s:1', 0, start, true);
+    const b = crowd.add('s:2', 0, goal, true);
+    crowd.settle(a, start);
+    crowd.settle(b, goal);
+    for (const [w, to] of [
+      [a, goal],
+      [b, start],
+    ] as const) {
+      w.gurney = true;
+      crowd.retarget(w, to, true);
+    }
+    let stood = 0;
+    let f = 0;
+    for (; f < 60 * 240 && (a.state === 'walk' || b.state === 'walk' || a.goals.length || b.goals.length); f++) {
+      crowd.update(1 / 60);
+      if (a.follow !== undefined || b.follow !== undefined) stood++;
+    }
+    expect(stood).toBe(0);
+    expect(a.at?.key).toBe(goal.key);
+    expect(b.at?.key).toBe(start.key);
+  }, 120_000);
+
+  test('без каталки — как раньше: двое из одной точки идут рядом, никто не ждёт', async () => {
+    const { crowd, layout } = await cityScene();
+    crowd.speed = 1;
+    crowd.rate = GAME_PER_REAL;
+    const start = standAt(layout, crowd.ambulance.cell, 'go', 0);
+    const goal = standAt(layout, doorInside(layout, 0), 'go', 0);
+    const a = crowd.add('t:1', 0, start, true);
+    const b = crowd.add('t:2', 0, start, true);
+    for (const w of [a, b]) {
+      crowd.settle(w, start);
+      crowd.retarget(w, goal, true);
+    }
+    for (let f = 0; f < 60 * 3; f++) {
+      crowd.update(1 / 60);
+      expect(a.follow).toBeUndefined();
+      expect(b.follow).toBeUndefined();
+    }
+    expect(a.yield).toBe(0);
+    expect(b.yield).toBe(0);
+    expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeLessThan(1);
+  }, 120_000);
 });
