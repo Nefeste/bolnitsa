@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import * as THREE from 'three';
 import { db } from '../../src/content';
 import { planOf } from '../../src/engine/hospital/build';
+import { addReady, emptySite, planOfSite } from '../../src/engine/hospital/site';
 import { type BakedRoom, bakedRooms, turnPoint, unturnPoint } from '../../src/render/baked';
 import { BLENDER, BLENDER_CODE, BLENDER_KIT, CATALOG, SEAT, WHITE_FURNITURE } from '../../src/render/catalog';
 import { CODE_SHIFT, furnishThing } from '../../src/render/furniture';
@@ -291,16 +292,25 @@ describe('Blender, часть 2: запечённый свет готовых п
     expect(Object.keys(roomsIndex).length).toBe(want.length + 1);
   });
 
+  /**
+   * Образец — готовым помещением в пустом здании, как его ставит игрок: план стройки ПК (`planOfSite`), где у помещения —
+   * наименьший размер типа, а не образец (зал ожидания M там «S»; до 0.58.0 свет M и L из-за этого не ложился).
+   */
+  const ready = (type: string, size: string, rot: 0 | 1 | 2 | 3) => {
+    const r = addReady(db, emptySite(), type, size as 'S', 20, 10, rot);
+    if (!r.ok) throw new Error(`${type} ${size} поворот ${rot}: ${JSON.stringify(r.error)}`);
+    const plan = planOfSite(db, r.site);
+    return { layout: layoutOf(db, plan, []), n: plan.rooms.findIndex(x => x.id === r.room) };
+  };
+
   test('каждый образец ложится на своё готовое помещение при всех четырёх поворотах; картинка — серая, 64 точки на метр', () => {
     for (const [key, e] of Object.entries(roomsIndex)) {
       if (e.group === 0) continue;
       const room = JSON.parse(readFileSync(join(DIR, `${e.file}.json`), 'utf8')) as BakedRoom;
       expect(room.key).toBe(key);
       for (const rot of [0, 1, 2, 3] as const) {
-        const hs = oneRoom(db, room.type, room.size as 'S', rot);
-        const plan = planOf(db, hs);
-        const n = plan.rooms.findIndex(r => r.type === room.type);
-        expect(bakedRooms(layoutOf(db, plan, hs.decor), room), `${key}, поворот ${rot}`).toEqual([n]);
+        const { layout, n } = ready(room.type, room.size, rot);
+        expect(bakedRooms(layout, room), `${key}, поворот ${rot}`).toEqual([n]);
       }
       const png = readFileSync(join(DIR, `${e.file}.png`));
       expect(png.readUInt32BE(16), key).toBe((room.w - 1) * 64);
@@ -311,8 +321,8 @@ describe('Blender, часть 2: запечённый свет готовых п
   });
 
   test('образец ложится только на своё: другой размер того же помещения — нет', () => {
-    const lab = JSON.parse(readFileSync(join(DIR, `${roomsIndex['room.lab:S'].file}.json`), 'utf8')) as BakedRoom;
-    const hs = oneRoom(db, 'room.lab', 'M', 0);
-    expect(bakedRooms(layoutOf(db, planOf(db, hs), hs.decor), lab)).toEqual([]);
+    const lab = (size: string) => JSON.parse(readFileSync(join(DIR, `${roomsIndex[`room.lab:${size}`].file}.json`), 'utf8')) as BakedRoom;
+    expect(bakedRooms(ready('room.lab', 'M', 0).layout, lab('S'))).toEqual([]);
+    expect(bakedRooms(ready('room.lab', 'S', 1).layout, lab('M'))).toEqual([]);
   });
 });

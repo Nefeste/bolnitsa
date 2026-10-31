@@ -42,12 +42,17 @@ const sig = (list: { kind: string; at: [number, number] }[]) =>
     .sort()
     .join(';');
 
-/** Помещения раскладки, на пол которых ложится запечённый свет образца: тот же тип и размер, те же предметы на тех же местах. */
+/**
+ * Помещения раскладки, на пол которых ложится запечённый свет образца: тот же тип, те же стороны (с поворотом), те же
+ * предметы на тех же местах. Размер из плана не сверяется: у помещения стройки ПК в плане — наименьший размер типа
+ * (`planOfSite`), а не образец, по которому его поставили, — зал ожидания M там «S».
+ */
 export function bakedRooms(layout: Layout, room: BakedRoom): number[] {
   const want = sig(room.things);
   const out: number[] = [];
   layout.plan.rooms.forEach((r, n) => {
-    if (r.type !== room.type || r.size !== room.size) return;
+    const [w, h] = r.rot % 2 ? [room.h, room.w] : [room.w, room.h];
+    if (r.type !== room.type || r.w !== w || r.h !== h) return;
     const things = layout.things
       .filter(t => t.room === n)
       .map(t => {

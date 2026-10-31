@@ -188,7 +188,9 @@ python blender/build.py [names]    # then the models in Blender 4.5.15 (`pip ins
 node tools/app/blender-pack.mjs    # then compress them like the CC0 models into assets/models/blender/; byte-identical;
                                    # passports in assets/LICENSES.md, section 8 (blender/README.md)
 node tools/app/blender-sheet.mjs   # after build: the before/after sheet of a group's rooms (polyclinic, 11:00, no patients) —
-                                   # code and CC0 models vs Blender → tools/app/out/sheet/ (`--group 1`)
+                                   # code and CC0 models vs Blender → tools/app/out/sheet/ (`--group 1`); `--light` — each
+                                   # light sample built as a ready room in the empty building, `baked=0` vs the light, and a
+                                   # check that the light lay on every one
 npm run bench -- --mode flow --quick           # engine: time per game minute at 50/100/200/300 patients (PC flow)
 npm run bench -- --mode desks --quick          # the same with Anamnez's appointment slots
 npm run bench -- --mode flow --day             # the whole day to 10:00 of day 2: day and night minutes, 08:00 meeting, 09:00 round
@@ -501,7 +503,10 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   catalog's recolours apply, set by `Furnisher.place` at its real size; instead of a code model (`BLENDER_CODE`) one in its
   place's axes (`placeAt`, `CODE_SHIFT`, `skipOf` — the lab bench shows `microscope*` or `rack*`). A desk next to a staff post
   faces it in every room, ready rooms too (`layoutOf`): the screen and the drawers to whoever sits there, the counter's panel
-  to the visitor.
+  to the visitor. A group's baked light — a sample per size of each room type in `light` of `budgets.json`, with the group's
+  real models in place (`blender/room.py`; `rooms.json` lists them) — is on by default, `?baked=0` (Electron `--baked 0`)
+  turns it off, the pilot's only with `?baked=1`. `bakedRooms` matches type, sides and things — never the plan's `size`: a
+  room built on the PC site carries its type's smallest size there (`planOfSite`).
 - `assets/` — CC0 models, Rocketbox people under MIT (`assets/models/rocketbox/`, made by `tools/app/people.mjs`), the
   game's font IBM Plex Sans under SIL OFL 1.1 (`assets/fonts/`, unmodified files with `OFL.txt`; owner's decision #107),
   the Carbon icons' Apache 2.0 text (`assets/licenses/carbon-icons.txt`) and `LICENSES.md` (sources, licenses, SHA-256; MIT
