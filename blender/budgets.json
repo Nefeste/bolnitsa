@@ -1,0 +1,42 @@
+{
+ "about": "Модели Blender, часть 2 (docs/specs/2026-11-blender-2.md): какую вещь заменяет модель (запись каталога окна, src/render/catalog.ts), её группа и бюджет треугольников на одну вещь. Сборка (blender/build.py) и тест (tools/test/blender.test.ts) сверяют с ним модели; числа — гипотеза агента до замера на видеокарте владельца.",
+ "groups": {
+  "1": "Амбулатория: помещения сценария 1 и демо",
+  "2": "Стационар: палата, бокс, ПИТ, реанимация, приёмное",
+  "3": "Диагностика: рентген, КТ, МРТ, УЗИ",
+  "4": "Операционная и эндоскопия"
+ },
+ "models": {
+  "counter": { "group": 1, "replaces": "code:counter", "tris": 2000 },
+  "desk": { "group": 1, "replaces": "kenney/desk", "tris": 900 },
+  "office_chair": { "group": 1, "replaces": "kenney/chairDesk", "tris": 600 },
+  "waiting_chair": { "group": 1, "replaces": "kenney/chairModernFrameCushion", "tris": 400 },
+  "chair": { "group": 1, "replaces": "kenney/chair", "tris": 400 },
+  "bench": { "group": 1, "replaces": "kenney/benchCushion", "tris": 400 },
+  "lounge_chair": { "group": 1, "replaces": "kenney/loungeChair", "tris": 800 },
+  "toilet": { "group": 1, "replaces": "kenney/toilet", "decor": true, "tris": 900 },
+  "couch": { "group": 1, "replaces": "code:examCouch", "tris": 700 },
+  "bookcase": { "group": 1, "replaces": "kenney/bookcaseClosedDoors", "tris": 500 },
+  "low_cabinet": { "group": 1, "replaces": "kaykit/cabinet_medium", "tris": 600 },
+  "sink": { "group": 1, "replaces": "kenney/bathroomSink", "tris": 400 },
+  "sink_wc": { "group": 1, "replaces": "kenney/bathroomSinkSquare", "tris": 400 },
+  "lab_sink": { "group": 1, "replaces": "kenney/kitchenSink", "tris": 600 },
+  "lab_bench": { "group": 1, "replaces": "code:labBench", "tris": 1500 },
+  "analyzer": { "group": 1, "replaces": "code:analyzer", "tris": 1000 },
+  "procedure_table": { "group": 1, "replaces": "code:procedureTable", "tris": 1200 },
+  "ecg": { "group": 1, "replaces": "code:ecg", "tris": 1500 },
+  "bed": { "group": 2, "replaces": "code:bed", "tris": 1200 },
+  "monitor": { "group": 2, "replaces": "code:monitor", "tris": 800 },
+  "bedside": { "group": 2, "replaces": "kenney/sideTableDrawers", "tris": 400 },
+  "ventilator": { "group": 2, "replaces": "code:ventilator", "tris": 1500 },
+  "xray": { "group": 3, "replaces": "code:xray", "tris": 3400 },
+  "ct": { "group": 3, "replaces": "code:ct", "tris": 4000 },
+  "mri": { "group": 3, "replaces": "code:mri", "tris": 4000 },
+  "us": { "group": 3, "replaces": "code:us", "tris": 2000 },
+  "console": { "group": 3, "replaces": "code:console", "tris": 800 },
+  "or_table": { "group": 4, "replaces": "code:orTable", "tris": 3000 },
+  "anesthesia": { "group": 4, "replaces": "code:anesthesia", "tris": 2500 },
+  "instrument_table": { "group": 4, "replaces": "code:instrumentTable", "tris": 800 },
+  "endoscope": { "group": 4, "replaces": "code:endoscope", "tris": 2000 }
+ }
+}
