@@ -57,6 +57,8 @@ export const economyEn: EconomyStrings = {
       noneFix: 'Hire a doctor for this shift or close reception earlier (reception hours — at the bottom of the meeting).',
       rest: (n: number) => `Their doctor went on a break — ${n}.`,
       restFix: 'Tired to the limit or went to the toilet: a second doctor on the shift shares the load.',
+      round: (n: number) => `Their doctor was on the ward round — ${n}.`,
+      roundFix: 'An office closer to the wards makes the round shorter. A clinical nurse goes round the ward’s beds: the doctor goes only to those who need a decision.',
       you: (n: number) => `They waited for you — ${n}.`,
       youFix: 'Leave some patients to hired doctors: «Own patients» in the doctor window.',
       youFixAlone: 'You cannot see everyone alone: build another doctor’s office with a therapist — they will see the ones you cannot.',

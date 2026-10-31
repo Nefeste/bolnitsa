@@ -181,6 +181,8 @@ function WhyLeft({ b, alone, screen, actions }: { b: LeftBy; alone: boolean; scr
   add('busy', w.busy, b.asks ? `${w.busyFix} ${w.asks(b.asks)}` : w.busyFix);
   add('none', w.none, w.noneFix);
   add('rest', w.rest, w.restFix);
+  // утренний обход (spec docs/specs/2026-10-staff-motion.md, часть 2)
+  add('round', w.round, w.roundFix);
   // нанятых врачей нет (сценарий 1, пустое здание) — отдать больных некому: нужен ещё кабинет с врачом
   add('you', w.you, alone ? w.youFixAlone : w.youFix);
   add('other', w.other);

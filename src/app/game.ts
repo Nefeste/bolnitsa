@@ -282,6 +282,8 @@ export class Game {
   thumbs!: ThumbQueue;
   /** кто вёз каталку в прошлом срезе — «Персонал» заново, когда изменилось */
   private riding = '';
+  /** кто на утреннем обходе (spec docs/specs/2026-10-staff-motion.md, часть 2): «Персонал» заново, когда другие */
+  private rounding = '';
   readonly builder = new Builder(this);
   /** режим врача (spec docs/specs/2026-10-doctor-mode.md): карта пациента, окно врача, фигура */
   readonly doctor = new Doctor(this);
@@ -842,12 +844,15 @@ export class Game {
       const away = m.away ? [m.away.why === 'study' ? T.card.studyShort : T.card.sickShort] : [];
       // везёт каталку (spec docs/specs/2026-10-orderlies.md): до какого часа занят
       const ride = this.pop.rideOf(m.id);
+      // утренний обход (spec docs/specs/2026-10-staff-motion.md, часть 2): до какого часа
+      const round = this.pop.roundNow(m.id);
       return {
         key: `s:${m.id}`,
         text: [
           this.staffWho(m), room, ...(m.room !== undefined ? [T.card.shifts[m.shift ?? 'both']] : []), T.card.skillShort(m.skill), ...away, ...cover, ...feel,
           ...(c ? [T.card.fatigueShort(c.f)] : []), ...(rest ? [rest] : []),
           ...(ride ? [T.card.rideShort(clock(ride.home))] : []),
+          ...(round ? [T.card.roundShort(clock(round.until))] : []),
         ].join(' · '),
         ...(onDuty(db, m, this.t) ? { on: true as const } : {}),
         ...(mood && (mood.quit !== undefined || mood.go !== undefined) ? { bad: true as const } : {}),
@@ -1154,6 +1159,8 @@ export class Game {
     // перевозки на каталке (spec docs/specs/2026-10-orderlies.md): санитар идёт за больным и везёт его; кто везёт — в
     // «Персонале», когда перевозка началась или кончилась
     if (s.rides) this.pop.setRides(s.rides);
+    // утренний обход (spec docs/specs/2026-10-staff-motion.md, часть 2): врач и клиническая медсестра идут по его часам
+    if (s.rounds) this.pop.setRounds(s.rounds);
     // переходы за сутки (слой «Пути пациентов»): поток шлёт их, пока слой включён
     if (s.legs) {
       this.legs = s.legs;
@@ -1161,8 +1168,10 @@ export class Game {
     }
     this.pop.sync(s.buf, s.names);
     const riding = this.pop.ridingNow;
-    if (s.crew || s.moods || riding !== this.riding) this.store.set({ staffList: this.staffRows() });
+    const rounding = this.pop.roundingNow;
+    if (s.crew || s.moods || riding !== this.riding || rounding !== this.rounding) this.store.set({ staffList: this.staffRows() });
     this.riding = riding;
+    this.rounding = rounding;
     for (const n of s.notices) {
       if (n.kind === 'site' && n.cmd === 'office') this.doctor.onOffice(n);
       else if (n.kind === 'site') {
@@ -2052,13 +2061,14 @@ export class Game {
       if (role === DOCTOR && mine) return [{ role, name, salary: money(this.paid(salaryOf(db, hire, 3))), you: true }];
       const all = here.filter(x => post(x) === role);
       const both = all.find(x => x.shift === undefined);
-      return (both ? (['both'] as const) : (['day', 'night'] as const)).map(shift => {
+      // только днём (клиническая медсестра, spec docs/specs/2026-10-staff-motion.md, часть 2б) — без ночного места
+      return (both ? (['both'] as const) : db.roles[role]?.day ? (['day'] as const) : (['day', 'night'] as const)).map(shift => {
         // резерв (spec docs/specs/2026-10-staff-mood.md, часть 5): место — за отсутствующим, замена — рядом с ним
         const m = shift === 'both' ? both : (all.find(x => x.shift === shift && x.covers === undefined) ?? all.find(x => x.shift === shift));
         const sub = m?.away ? all.find(x => x.covers === m.id) : undefined;
         const pay = (x: Id) => money(this.paid(payOf(db, salaryOf(db, x, 3), shift === 'both' ? undefined : shift)));
         return {
-          role, shift, name, salary: pay(hire), ...(db.roles[role]?.optional ? { optional: T.card.optional } : {}),
+          role, shift, name, salary: pay(hire), ...(db.roles[role]?.optional ? { optional: T.card.optionalBy[role] ?? T.card.optional } : {}),
           ...(m
             ? {
                 who: `${named(db.roles[m.role]?.name, m.role)} · ${m.skill}${m.away ? ` · ${m.away.why === 'study' ? T.card.studyShort : T.card.sickShort}` : ''}${sub ? ` · ${T.card.coveredByShort(staffName(sub))}` : ''}`,

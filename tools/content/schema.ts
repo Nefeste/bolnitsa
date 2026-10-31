@@ -703,6 +703,16 @@ export const roleSchema = z.strictObject({
   gen,
   /** врача не нанимают: это игрок */
   hire: z.boolean().default(true),
+  /**
+   * готовое помещение «С персоналом» нанимает и эту должность; `false` — нет, её нанимают отдельно: клиническая медсестра
+   * (spec docs/specs/2026-10-staff-motion.md, часть 2б)
+   */
+  ready: z.boolean().default(true),
+  /**
+   * работает только в дневную смену: в карточке помещения ночного места для неё нет — клиническая медсестра обходит койки в
+   * 08:30 (там же)
+   */
+  day: z.boolean().optional(),
   /** зарплата за смену при навыке 1 и при навыке 5, ₽ */
   salary: z.tuple([z.number().int().min(0), z.number().int().min(0)]),
   /** встаёт на место этой должности — терапевт на место врача, в любом кабинете, кроме вашего */
@@ -859,6 +869,8 @@ export const economySchema = z.strictObject({
     }).refine(f => f.slow <= f.tired && f.toilet[0] <= f.toilet[1], 'fatigue: slow не выше tired, toilet — от и до').optional(),
     /** каталка (spec docs/specs/2026-10-orderlies.md): переложить на каталку и с неё, минут */
     gurney: z.strictObject({ load: z.number().int().min(1).max(30), unload: z.number().int().min(1).max(30) }).optional(),
+    /** утренний обход (spec docs/specs/2026-10-staff-motion.md, часть 2): минут у койки, очков усталости за койку */
+    round: z.strictObject({ bed: z.number().int().min(1).max(30), fatigue: z.number().int().min(0).max(50) }).optional(),
     /**
      * рост, наставник, учёба, болезнь нанятых в смене (spec 2026-10-staff-mood, разделы 3–5): насколько быстрее растут с
      * наставником, %; учёба — суток, цена в сменах, прибавка настроения; болеет — раз в столько смен в среднем
@@ -1025,7 +1037,8 @@ export const daySchema = z.strictObject({
   hours: z.tuple([z.number().int().min(0).max(23), z.number().int().min(1).max(24)]),
   walk: hourly,
   ambulance: hourly,
-  rounds: z.number().int().min(0).max(23),
+  // час или полчаса (spec docs/specs/2026-10-staff-motion.md, часть 2: обход в 08:30)
+  rounds: z.number().min(0).max(23.5).refine(h => Number.isInteger(h * 2), 'rounds — час или полчаса'),
 });
 
 // --- кампания (spec 2026-09-campaign) ---------------------------------------------------------

@@ -276,7 +276,8 @@ function siteCommandOf(db: ContentDb, s: ShiftState, cmd: SiteCommand): Notice[]
   if (cmd.kind === 'ready' && cmd.staff && r.room) {
     hired = 0;
     const shifts: Shift[] = db.rooms[cmd.type].night && nightHospital(db, r.site.rooms) ? ['day', 'night'] : ['day'];
-    for (const shift of shifts) for (const role of db.rooms[cmd.type].staff) if (staffPost(db, s, r.site, r.room, role, undefined, shift)) hired++;
+    // клиническую медсестру (`ready: false`, spec 2026-10-staff-motion, часть 2б) готовое помещение не нанимает: её — отдельно
+    for (const shift of shifts) for (const role of db.rooms[cmd.type].staff) if (db.roles[role]?.ready !== false && staffPost(db, s, r.site, r.room, role, undefined, shift)) hired++;
   }
   commit(db, s, site, r.site);
   works.spent += r.cost;

@@ -2,7 +2,7 @@
 // владельца 16.10.2026; docs/specs/2026-10-shell-3d.md, «Обмен между потоками»): больница считается в отдельном потоке
 // (Web Worker в окне Electron), отрисовка — в основном. Туда — команды и ход часов, обратно — упакованный срез
 // (src/sim/pack.ts), строки новых людей и извещения. Сообщения — structured clone; массив среза передаётся без копии.
-import type { Flow, Notice, Ride, RoomDay, ShiftState, Command } from '../engine/shift/types';
+import type { Flow, Notice, Ride, Round, RoomDay, ShiftState, Command } from '../engine/shift/types';
 import type { Journey } from '../engine/shift/journey';
 import type { CrewView } from '../engine/shift/crew';
 import type { MoodView } from '../engine/shift/mood';
@@ -90,12 +90,13 @@ export type FromSim =
    * в 08:00 — без пересборки сцены); `late` — кто из штата (номера в его списке) уже не в смене, а ещё в больнице: доводит
    * приёмы (spec docs/specs/2026-10-staff-shifts.md), — когда список изменился; `crew` — усталость и перерывы врачей в смене
    * (там же, часть 2), когда изменились; `moods` — настроение нанятых со сменой (spec docs/specs/2026-10-staff-mood.md),
-   * когда изменилось; `rides` — перевозки на каталке (spec docs/specs/2026-10-orderlies.md), когда изменились; `scenario` — ход
+   * когда изменилось; `rides` — перевозки на каталке (spec docs/specs/2026-10-orderlies.md), когда изменились; `rounds` —
+   * утренние обходы врачей и клинических медсестёр (spec docs/specs/2026-10-staff-motion.md, часть 2), когда изменились; `scenario` — ход
    * сценария (spec docs/specs/2026-10-scenario-1.md): письма, цели и отметки, когда изменились
    */
   | ({
       kind: 'slice'; buf: Int32Array; names: NameRow[]; notices: Notice[]; lag: number; world?: World; path?: PathView; broken?: string[]; late?: number[]; crew?: CrewView[];
-      moods?: MoodView[]; rides?: Ride[]; scenario?: ScenarioView; money?: RoomsMoney; legs?: Leg[];
+      moods?: MoodView[]; rides?: Ride[]; rounds?: Round[]; scenario?: ScenarioView; money?: RoomsMoney; legs?: Leg[];
     } & DoctorOut)
   | { kind: 'state'; state: ShiftState }
   /** файл сохранения: сжатые байты (без копии) и его шапка; не вышло — `packFailed` */

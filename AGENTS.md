@@ -190,15 +190,17 @@ bun tools/bench/approvals.ts                   # «Главврач утверж
 bun tools/bench/departments.ts                 # departments (spec): how often a registrar routing walk-ins by complaint would pick
                                                # the wrong department (`--first` — by the main complaint, `--vitals`, `--list`)
 bun tools/bench/rounds.ts                      # the morning round (staff motion spec, part 2): each hired doctor's lying patients at
-                                               # 08:30, how many need a decision, the round's game minutes by `walkPc` — all his beds or
-                                               # only those needing a decision (`--days 7`, `--seed`, `--bed 3`, `--hospital poly`)
+                                               # 08:30, how many need a decision, then the engine's rounds of the morning — when, beds,
+                                               # game minutes (`--days 7`, `--seed`, `--hospital poly`, `--clinical` — a clinical nurse
+                                               # in every room with beds she works in)
 bun tools/sim/economy.ts --seeds 1,2,3         # economy simulator: scripted hospitals for 7 days, cash, flow, reputation and the criteria
                                                # (`--days 14` — and who quits on their own: at most two in two weeks; `--only
                                                # ambulatory` — scenario 1 with its cash and build order for 10 days, the goal
                                                # «Пять суток с кассой в плюсе» by day 10; `--manage calm,normal,hard` — every
                                                # hospital on every management level and the level criteria); under each day — the
                                                # arrived by kind, the meeting's forecast for it and the left by reason
-                                               # (`docs/specs/2026-10-why.md`)
+                                               # (`docs/specs/2026-10-why.md`); the morning rounds — how many, beds, minutes
+                                               # (`--clinical` — a clinical nurse in every room with beds she works in)
 bun tools/sim/halls.ts --flow 14               # the polyclinic under load: waiting halls by the offices vs at the entrance
                                                # (both: `--hall 0` — seats of the whole hospital, `--bench 0` — no door benches)
 bun tools/bench/state.ts --days 14             # the engine snapshot at the end of each game day without the window: its size and the
@@ -299,6 +301,19 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   paid every day; `cover` puts the first free reserve of the same role on the post of whoever is away (their room and shift,
   `StaffMember.covers`) and sends them back when the absent returns (a busy one — once free, at a shift change); it runs
   after the meeting, every site command and each shift change. A covering member cannot change shifts.
+- The morning round (`docs/specs/2026-10-staff-motion.md`, part 2; owner's decisions #166, #181): `shift/rounds.ts`. At
+  `rounds` of `day.yaml` (08:30) `rounds()` in `engine.ts` writes `s.rounds` — who rounds whom (`roundsDue`: a hired
+  doctor on duty his own lying, `closed.by`; an absent one's — whoever covers his post, else a doctor of the same role with
+  the fewest; in a room a clinical nurse watches — only those needing a decision, `needsDecision`) — and starts the
+  clinical nurses' rounds at once. A doctor goes when free (`callIn` → `goRound`): the whole path with times at once
+  (`roundOf`: nearest room first by `walkPc`, beds by number, `round.bed` minutes each, home), `s.desk` until he is back,
+  the waiting get a `rest` step with `round` (`LeftWhy` `round`), `roundLeft` in `pickPc`; each stop ends with the
+  `roundStop` event — the bed is work (`round.fatigue`), and a doctor decides there (`decideAtBed`, the old instant rule).
+  No `round` in `economy.yaml` — the instant round as before. The clinical nurse (`role.clinical_nurse`) is `optional`,
+  `ready: false` (ready rooms and the economy sim's hospitals don't hire her) and `day: true` (the room card has no
+  night post). The window: the sim sends `rounds` with the slice; `wardRoundsStep` in `population.ts` walks each by the
+  engine's times to the bed (`bedSide`, Papers; the spot is picked once per stop) and home; the part 1 ward nurse does not
+  start her own round in a room with an engine round.
 - Orderlies and gurneys (`docs/specs/2026-10-orderlies.md`): `shift/gurney.ts` — a ride is booked at once on whoever
   reaches the patient first (an orderly of the shift; none — for an urgent patient only, the nurse of the room they lie in
   or the nearest nurse: red, ICU or reanimation, to the operation and back — owner's decision #99, `carriersOf`); its

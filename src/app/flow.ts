@@ -285,12 +285,13 @@ export function pathCard(j: Journey, female: boolean, now: number, names: PathNa
         lines.push({ at: clock(from), text: T.flow.approve(dur(d), clock(x.until)), ...(why ? { why } : {}), kind: 'wait', ...mark });
         break;
       }
-      // врач ушёл отдыхать (spec docs/specs/2026-10-staff-shifts.md, часть 2): ждёт его — почему и до какого часа
+      // врач ушёл отдыхать (spec docs/specs/2026-10-staff-shifts.md, часть 2) или на обход (spec 2026-10-staff-motion, часть 2):
+      // ждёт его — почему и до какого часа
       case 'rest': {
         if (d < 60 && !open) break;
         waited += d;
         const until = clock(x.until);
-        lines.push({ at: clock(from), text: T.flow.own(dur(d)), why: x.wc ? T.flow.restWc(until) : x.here ? T.flow.restHere(until) : T.flow.rest(until), kind: 'wait', ...mark });
+        lines.push({ at: clock(from), text: T.flow.own(dur(d)), why: x.round ? T.flow.restRound(until) : x.wc ? T.flow.restWc(until) : x.here ? T.flow.restHere(until) : T.flow.rest(until), kind: 'wait', ...mark });
         break;
       }
     }
@@ -320,7 +321,10 @@ export function pathCard(j: Journey, female: boolean, now: number, names: PathNa
         const all = T.flow.left(female, dur(q ? e.t - (q.sat ?? q.t) : e.t - j.at), dur(e.patience ?? 0));
         // почему — как считает планёрка (spec docs/specs/2026-10-why.md): к часу ухода в смене могло не остаться врача, который
         // принял бы его, а врач, к которому он записан, — уйти на перерыв
-        const more = e.why === 'none' && q?.why === 'busy' ? [T.flow.leftNone(female)] : e.why === 'rest' ? [T.flow.leftRest(female)] : [];
+        const more = e.why === 'none' && q?.why === 'busy' ? [T.flow.leftNone(female)]
+          : e.why === 'rest' ? [T.flow.leftRest(female)]
+          : e.why === 'round' ? [T.flow.leftRound(female)]
+          : [];
         left = q ? `${all} — ${[queueWhy(q), ...more].join('; ')}` : all;
         text = T.flow.leftEnd(female);
         why = T.flow.patience(female, dur(e.patience ?? 0));

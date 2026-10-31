@@ -36,15 +36,17 @@
 // столбики над помещениями из меню «Слои», высота по людям, наведение и щелчок по столбику, «Ожидание», M по кругу,
 // показатель запомнен, tools/app/e2e-metrics.mjs. Часть 26 — направление к специалисту, tools/app/e2e-referral.mjs. Часть 27 —
 // сложность: второй шаг экрана начала — «Управление» и мягкий режим, игра на выбранном уровне, смена в «Настройках», строка
-// сохранения, tools/app/e2e-difficulty.mjs.
+// сохранения, tools/app/e2e-difficulty.mjs. Часть 33 — утренний обход: врач у койки по часам движка, его карточка,
+// «Персонал», путь ждущего; клиническая медсестра — только днём, найм и её обход палаты в 08:30, tools/app/e2e-rounds.mjs.
 // Ошибок в консоли и запросов наружу нет.
 // Снимки — tools/app/out/e2e.png, e2e-build-*.png и e2e-flow-*.png; `--shots high` — снимки частей 2 и 3 в этом качестве
 // (на время снимка).
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|…|32 или 7,10,11] [--shots low|medium|high] [--port 8093]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|…|33 или 7,10,11] [--shots low|medium|high] [--port 8093]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { approvePart } from './e2e-approve.mjs';
+import { roundsPart } from './e2e-rounds.mjs';
 import { rolesPart } from './e2e-roles.mjs';
 import { ownCardPart } from './e2e-owncard.mjs';
 import { benchesPart } from './e2e-benches.mjs';
@@ -194,6 +196,8 @@ try {
   if (run(31)) await pathsPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   // часть 32 — путь демо от экрана начала до «Итога» (spec docs/specs/2026-11-demo.md): tools/app/e2e-demo.mjs
   if (run(32)) await demoPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  // часть 33 — утренний обход (spec docs/specs/2026-10-staff-motion.md, часть 2): tools/app/e2e-rounds.mjs
+  if (run(33)) await roundsPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);

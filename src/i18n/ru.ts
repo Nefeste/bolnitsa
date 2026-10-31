@@ -379,9 +379,12 @@ export const ru = {
       here: (until: string) => `отдыхает в кабинете до ${until}: ординаторской нет`,
       back: (until: string) => `идёт с перерыва — на месте к ${until}`,
     },
+    /** утренний обход (spec docs/specs/2026-10-staff-motion.md, часть 2): сколько коек обошёл, когда вернётся */
+    round: (done: number, of: number, until: string) => `на обходе: ${done} из ${of} ${of % 10 === 1 && of % 100 !== 11 ? 'койки' : 'коек'}, вернётся в ${until}`,
     fatigue: 'Усталость',
     worn: { slow: 'работает медленнее', blur: 'ставит диагноз при меньшей уверенности' } as Record<string, string>,
     restShort: (until: string) => `перерыв до ${until}`,
+    roundShort: (until: string) => `на обходе до ${until}`,
     wcShort: 'в туалете',
     fatigueShort: (n: number) => `усталость ${n}`,
     /** санитар и каталка (spec docs/specs/2026-10-orderlies.md, «Что видно»): что делает тот, кто везёт, и что с тем, кого везут */
@@ -409,6 +412,8 @@ export const ru = {
     medicLeaving: 'передал больного — уходит к машине',
     /** должность, без которой помещение работает (spec docs/specs/2026-10-orderlies.md): санитар */
     optional: 'без него помещение работает, но лежачие ждут',
+    /** у других необязательных должностей — своё «без неё» (клиническая медсестра, spec 2026-10-staff-motion, часть 2б) */
+    optionalBy: { 'role.clinical_nurse': 'без неё помещение работает: на обходе к каждой койке идёт врач' } as Record<string, string>,
     nightCarrier: 'в ночную смену санитара нет — лежачих повезут медсёстры',
     dismiss: 'Уволить',
     /**
@@ -621,6 +626,8 @@ export const ru = {
     rest: (until: string) => `врач на перерыве до ${until}`,
     restWc: (until: string) => `врач в туалете — вернётся к ${until}`,
     restHere: (until: string) => `врач отдыхает в кабинете до ${until}: ординаторской нет`,
+    /** врач на утреннем обходе (spec docs/specs/2026-10-staff-motion.md, часть 2) */
+    restRound: (until: string) => `врач на обходе — вернётся в ${until}`,
     home: (f: boolean): string => (f ? 'отпущена домой' : 'отпущен домой'),
     stay: (f: boolean, where: string) => `${f ? 'положена' : 'положен'} ${where}`,
     stayIn: { admit: 'в палату', icu: 'в палату интенсивной терапии', ricu: 'в реанимацию', box: 'в бокс', surgery: 'в операционную' } as Record<string, string>,
@@ -635,6 +642,7 @@ export const ru = {
     /** почему ушёл — как считает планёрка (spec docs/specs/2026-10-why.md): к часу ухода врача в смене не осталось; врач на перерыве */
     leftNone: (f: boolean) => `к часу ухода в смене не было врача, который принял бы ${f ? 'её' : 'его'}`,
     leftRest: (f: boolean) => `врач, к которому ${f ? 'записана' : 'записан'}, ушёл на перерыв`,
+    leftRound: (f: boolean) => `врач, к которому ${f ? 'записана' : 'записан'}, был на обходе`,
     patience: (f: boolean, d: string) => `терпение кончилось: ${f ? 'готова была' : 'готов был'} ждать ${d}`,
     unseen: 'день кончился — не успели принять',
     lost: 'путь оборвался',

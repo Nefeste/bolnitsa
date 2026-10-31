@@ -3,7 +3,7 @@
 // поток не захлёбывается кадрами, если не успевает.
 // Исправлено, как в копии «Фармзавода» (pharma: src/sim/client.ts @ b9696c0, Nefeste/pharma#53): счёт `roundTripsTaken`
 // — память времён обрезана, и отметка начала прогона бенча длиной массива давала пустую выборку.
-import type { Command, Notice, Ride, ShiftState } from '../engine/shift/types';
+import type { Command, Notice, Ride, Round, ShiftState } from '../engine/shift/types';
 import type { CrewView } from '../engine/shift/crew';
 import type { MoodView } from '../engine/shift/mood';
 import type { ScenarioView } from './campaign';
@@ -31,6 +31,8 @@ export interface Slice extends DoctorOut {
   moods?: MoodView[];
   /** перевозки на каталке (spec 2026-10-orderlies); когда изменились */
   rides?: Ride[];
+  /** утренние обходы (spec 2026-10-staff-motion, часть 2); когда изменились */
+  rounds?: Round[];
   /** ход сценария (spec docs/specs/2026-10-scenario-1.md): письма, цели и отметки; когда изменились */
   scenario?: ScenarioView;
   /** деньги по помещениям (spec docs/specs/2026-10-metrics-layer.md, часть 2); когда изменились */
@@ -90,7 +92,7 @@ export class SimClient {
       ...(msg.doctor ? { doctor: msg.doctor } : {}), ...(msg.card !== undefined ? { card: msg.card } : {}), ...(msg.seen ? { seen: msg.seen } : {}), ...(msg.errors ? { errors: msg.errors } : {}),
       ...(msg.refused ? { refused: msg.refused } : {}),
       ...(msg.path ? { path: msg.path } : {}), ...(msg.broken ? { broken: msg.broken } : {}), ...(msg.late ? { late: msg.late } : {}), ...(msg.crew ? { crew: msg.crew } : {}),
-      ...(msg.moods ? { moods: msg.moods } : {}), ...(msg.rides ? { rides: msg.rides } : {}), ...(msg.scenario ? { scenario: msg.scenario } : {}),
+      ...(msg.moods ? { moods: msg.moods } : {}), ...(msg.rides ? { rides: msg.rides } : {}), ...(msg.rounds ? { rounds: msg.rounds } : {}), ...(msg.scenario ? { scenario: msg.scenario } : {}),
       ...(msg.money ? { money: msg.money } : {}), ...(msg.legs ? { legs: msg.legs } : {}),
     });
   }

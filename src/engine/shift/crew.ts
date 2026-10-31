@@ -90,14 +90,16 @@ export function shiftEnded(db: ContentDb, s: ShiftState) {
 }
 
 /**
- * Принял больного (`case`), записал обследование (`exam`, часть 2б) или перевозку на каталке (`ride`, spec
- * docs/specs/2026-10-orderlies.md): усталость — на столько очков больше. Ушедший со сменой не устаёт.
+ * Принял больного (`case`), записал обследование (`exam`, часть 2б), перевозку на каталке (`ride`, spec
+ * docs/specs/2026-10-orderlies.md) или койку на утреннем обходе (`bed`, spec docs/specs/2026-10-staff-motion.md, часть 2 —
+ * `round.fatigue`): усталость — на столько очков больше. Ушедший со сменой не устаёт.
  */
-export function worked(db: ContentDb, s: ShiftState, m: StaffMember, what: 'case' | 'exam' | 'ride' = 'case') {
+export function worked(db: ContentDb, s: ShiftState, m: StaffMember, what: 'case' | 'exam' | 'ride' | 'bed' = 'case') {
   const f = numbersOf(db, s, m);
   if (!f || !onDuty(db, m, s.t)) return;
   const c = settle(db, s, m, f);
-  c.f = Math.min(MAX, c.f + f[what] * POINT);
+  const points = what === 'bed' ? (db.economy.staff.round?.fatigue ?? 0) : f[what];
+  c.f = Math.min(MAX, c.f + points * POINT);
   topped(db, s, m, c);
 }
 
