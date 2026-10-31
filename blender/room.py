@@ -13,8 +13,12 @@ import zlib
 
 import bpy
 
+from ambulatory import MODELS as GROUP1
 from common import Part, g2b, material
 from models import xray
+
+# модели Blender, которые окно ставит по умолчанию (часть 2): у образцов групп вещи — ими, как в игре
+PART2 = {**GROUP1}
 
 # сколько точек картинки на метр пола; лучей на точку
 PX = 64
@@ -56,8 +60,48 @@ def walls(room):
     return part.build()
 
 
+def placed(parts, t, offset):
+    """
+    Части модели — на место вещи: начало осей модели — в `offset` (м, в осях вещи игры: x, z) от середины места, поворот —
+    `yaw` вещи вокруг вертикали. Пустой объект-родитель держит поворот и место, части — сдвиг.
+    """
+    holder = bpy.data.objects.new(f"at_{t['kind']}_{t['at'][0]}_{t['at'][1]}", None)
+    bpy.context.scene.collection.objects.link(holder)
+    x, z = t['at']
+    holder.location = g2b(x, 0, z)
+    holder.rotation_euler = (0, 0, t['yaw'])
+    for ob in parts:
+        ob.parent = holder
+        ob.location = g2b(offset[0], 0, offset[1])
+    return parts
+
+
+def blender_thing(t):
+    """
+    Вещь образца группы — моделью Blender, как в игре: модель кодом — в осях места со сдвигом (`shift`, furniture.ts
+    `CODE_SHIFT`); модель вместо модели набора — серединой габарита в середину места каталога (`box`: с прижатием к стене),
+    как её ставит `Furnisher.place`; на лабораторном столе — микроскоп или штатив (`item`), как `skipOf`.
+    """
+    parts = PART2[t['blender']]()
+    if 'item' in t:
+        drop = 'microscope' if t['item'] == 1 else 'rack'
+        for ob in [o for o in parts if o.name.startswith(drop)]:
+            bpy.data.objects.remove(ob)
+            parts.remove(ob)
+    if 'code' in t or t['kind'] == 'toilet':
+        return placed(parts, t, (0.0, t.get('shift', 0.0)))
+    # габарит модели — в осях игры (Blender: X = x, Y = −z)
+    xs = [(ob.matrix_world @ v.co).x for ob in parts for v in ob.data.vertices]
+    zs = [-(ob.matrix_world @ v.co).y for ob in parts for v in ob.data.vertices]
+    (bx0, _, bz0), (bx1, _, bz1) = t['box']['min'], t['box']['max']
+    off = ((bx0 + bx1) / 2 - (min(xs) + max(xs)) / 2, (bz0 + bz1) / 2 - (min(zs) + max(zs)) / 2)
+    return placed(parts, t, off)
+
+
 def thing(t):
     """Предмет кабинета: рентген — модель пилота, остальное — коробками своего габарита (для теней этого хватает)."""
+    if t.get('blender'):
+        return blender_thing(t)
     if t.get('code') == 'xray':
         parts = xray()
     else:
@@ -145,7 +189,7 @@ def build_room(key, room, path):
     image = bpy.data.images.new('bake', iw, ih, float_buffer=True)
     floor = floor_mesh(room, image)
     blockers = [walls(room)]
-    for t in room['things']:
+    for t in room['things'] + room.get('decor', []):
         blockers += thing(t)
     lamps(room)
     bpy.context.scene.world.light_settings.distance = AO_DISTANCE

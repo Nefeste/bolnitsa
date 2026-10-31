@@ -625,42 +625,52 @@ function placeThing(f: Furnisher, t: Thing, i: number, seats: (SeatAnchor | unde
  * Декор, которого нет в шаблонах движка: кабинки с унитазами у дальней стены санузла (в шаблоне санузла предметов нет, и
  * пустое помещение выглядит складом) и ковёр в зоне ожидания между рядами стульев.
  */
-function decorate(f: Furnisher, layout: Layout): [number, number][] {
-  const blocked: [number, number][] = [];
-  const { plan } = layout;
-  plan.rooms.forEach((r, n) => {
+/**
+ * Кабинки санузлов раскладки (`decorate`): клетки у дальней от двери стены — до трёх посередине ряда, проход у стен — и
+ * поворот: дверца к двери помещения. Их же ставит в образец запекание света (tools/app/blender-sizes.ts).
+ */
+export function toiletSpots(layout: Layout): { room: number; cell: [number, number]; yaw: number }[] {
+  const out: { room: number; cell: [number, number]; yaw: number }[] = [];
+  layout.plan.rooms.forEach((r, n) => {
+    if (r.type !== 'room.toilet') return;
     const [ox, oy] = layout.out[n];
     // дальняя от двери стена — «назад»
     const backward: [number, number] = [-ox, -oy];
     const yaw = Math.atan2(ox, oy);
-    if (r.type === 'room.toilet') {
-      // ряд клеток у дальней стены
-      const cells: [number, number][] = [];
-      for (let y = r.y + 1; y < r.y + r.h - 1; y++) {
-        for (let x = r.x + 1; x < r.x + r.w - 1; x++) {
-          const nx = x + backward[0];
-          const ny = y + backward[1];
-          if (!(nx > r.x && ny > r.y && nx < r.x + r.w - 1 && ny < r.y + r.h - 1)) cells.push([x, y]);
-        }
-      }
-      // две кабинки посередине ряда, проход у стен
-      const pick = cells.slice(1, cells.length - 1).slice(0, 3);
-      for (const [x, y] of pick) {
-        const cx = x + 0.5;
-        const cz = y + 0.5;
-        const m = frame(cx, cz, yaw);
-        // кабинка Blender (группа 1) — унитаз, стенки и дверца одной моделью в осях клетки
-        const glb = BLENDER_KIT['kenney/toilet'];
-        if (f.has(glb)) f.placeAt(glb, m);
-        else {
-          f.place('kenney/toilet', cx, cz, yaw, TOILET.fit, { back: true });
-          const { side: s, door: d } = TOILET;
-          for (const x of [-s.x, s.x]) f.box(m, s.t, s.h, s.d, x, s.y, s.z, CUBICLE);
-          f.box(m, d.w, d.h, d.t, 0, d.y, d.z, CUBICLE_DOOR);
-        }
-        blocked.push([x, y]);
+    // ряд клеток у дальней стены
+    const cells: [number, number][] = [];
+    for (let y = r.y + 1; y < r.y + r.h - 1; y++) {
+      for (let x = r.x + 1; x < r.x + r.w - 1; x++) {
+        const nx = x + backward[0];
+        const ny = y + backward[1];
+        if (!(nx > r.x && ny > r.y && nx < r.x + r.w - 1 && ny < r.y + r.h - 1)) cells.push([x, y]);
       }
     }
+    for (const cell of cells.slice(1, cells.length - 1).slice(0, 3)) out.push({ room: n, cell, yaw });
+  });
+  return out;
+}
+
+function decorate(f: Furnisher, layout: Layout): [number, number][] {
+  const blocked: [number, number][] = [];
+  const { plan } = layout;
+  for (const { cell: [x, y], yaw } of toiletSpots(layout)) {
+    const cx = x + 0.5;
+    const cz = y + 0.5;
+    const m = frame(cx, cz, yaw);
+    // кабинка Blender (группа 1) — унитаз, стенки и дверца одной моделью в осях клетки
+    const glb = BLENDER_KIT['kenney/toilet'];
+    if (f.has(glb)) f.placeAt(glb, m);
+    else {
+      f.place('kenney/toilet', cx, cz, yaw, TOILET.fit, { back: true });
+      const { side: s, door: d } = TOILET;
+      for (const sx of [-s.x, s.x]) f.box(m, s.t, s.h, s.d, sx, s.y, s.z, CUBICLE);
+      f.box(m, d.w, d.h, d.t, 0, d.y, d.z, CUBICLE_DOOR);
+    }
+    blocked.push([x, y]);
+  }
+  plan.rooms.forEach((r, n) => {
+    const [ox] = layout.out[n];
     if (r.type === 'room.waiting' && r.seats.length >= 4) {
       // ковёр между рядами: середина зоны стульев
       let x0 = Infinity;

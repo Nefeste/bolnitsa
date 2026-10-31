@@ -27,8 +27,11 @@ const sizes = JSON.parse(readFileSync(join(ROOT, 'blender/sizes.json'), 'utf8'))
 const sample = JSON.parse(readFileSync(join(DIR, 'room-xray-M.json'), 'utf8')) as BakedRoom;
 /** Модели части 2 (docs/specs/2026-11-blender-2.md): группа, что заменяют, бюджет треугольников. */
 const budgets = JSON.parse(readFileSync(join(ROOT, 'blender/budgets.json'), 'utf8')) as {
+  light: Record<string, string[]>;
   models: Record<string, { group: number; replaces: string; decor?: true; tris: number }>;
 };
+/** Образцы запечённого света (blender/build.py): ключ «тип:размер» → файл и группа (0 — пилот). */
+const roomsIndex = JSON.parse(readFileSync(join(DIR, 'rooms.json'), 'utf8')) as Record<string, { file: string; group: number }>;
 /** Группы части 2, что уже в игре. */
 const GROUPS = [1];
 const part2 = Object.entries(budgets.models).filter(([, b]) => GROUPS.includes(b.group));
@@ -48,7 +51,8 @@ describe('пилот Blender: размеры и паспорта', () => {
   test('у каждого файла assets/models/blender/ — паспорт в LICENSES.md: скрипт, Blender 4.5.15, SHA-256 этого файла', () => {
     const lic = readFileSync(join(ROOT, 'assets/LICENSES.md'), 'utf8');
     const files = readdirSync(DIR).sort();
-    expect(files).toEqual(['bed.glb', 'monitor.glb', 'room-xray-M.json', 'room-xray-M.png', 'xray.glb', ...part2.map(([n]) => `${n}.glb`)].sort());
+    const samples = Object.values(roomsIndex).flatMap(e => [`${e.file}.json`, `${e.file}.png`]);
+    expect(files).toEqual(['bed.glb', 'monitor.glb', 'xray.glb', 'rooms.json', ...samples, ...part2.map(([n]) => `${n}.glb`)].sort());
     for (const f of files) {
       const row = lic.split('\n').find(l => l.startsWith(`| \`assets/models/blender/${f}\``));
       expect(row, f).toBeDefined();
@@ -276,5 +280,39 @@ describe('Blender, часть 2: модели групп в игре', async () 
     // белый шкаф (TALL_WHITE) светлее деревянного шкафа кабинета
     expect(colorsOf('room.procedure')).toBeGreaterThan(colorsOf('room.office'));
     expect(WHITE_FURNITURE.wood).toBeDefined();
+  });
+});
+
+describe('Blender, часть 2: запечённый свет готовых помещений групп', () => {
+  test('образцы — у каждого размера каждого помещения группы со светом (blender/budgets.json, `light`) и у пилота', () => {
+    const want = Object.entries(budgets.light).flatMap(([g, types]) => types.flatMap(t => db.rooms[t].sizes.map(z => [`${t}:${z.id}`, Number(g)] as const)));
+    for (const [key, group] of want) expect(roomsIndex[key]?.group, key).toBe(group);
+    expect(roomsIndex['room.xray:M']).toEqual({ file: 'room-xray-M', group: 0 });
+    expect(Object.keys(roomsIndex).length).toBe(want.length + 1);
+  });
+
+  test('каждый образец ложится на своё готовое помещение при всех четырёх поворотах; картинка — серая, 64 точки на метр', () => {
+    for (const [key, e] of Object.entries(roomsIndex)) {
+      if (e.group === 0) continue;
+      const room = JSON.parse(readFileSync(join(DIR, `${e.file}.json`), 'utf8')) as BakedRoom;
+      expect(room.key).toBe(key);
+      for (const rot of [0, 1, 2, 3] as const) {
+        const hs = oneRoom(db, room.type, room.size as 'S', rot);
+        const plan = planOf(db, hs);
+        const n = plan.rooms.findIndex(r => r.type === room.type);
+        expect(bakedRooms(layoutOf(db, plan, hs.decor), room), `${key}, поворот ${rot}`).toEqual([n]);
+      }
+      const png = readFileSync(join(DIR, `${e.file}.png`));
+      expect(png.readUInt32BE(16), key).toBe((room.w - 1) * 64);
+      expect(png.readUInt32BE(20), key).toBe((room.h - 1) * 64);
+      expect(png[24]).toBe(8);
+      expect(png[25]).toBe(0);
+    }
+  });
+
+  test('образец ложится только на своё: другой размер того же помещения — нет', () => {
+    const lab = JSON.parse(readFileSync(join(DIR, `${roomsIndex['room.lab:S'].file}.json`), 'utf8')) as BakedRoom;
+    const hs = oneRoom(db, 'room.lab', 'M', 0);
+    expect(bakedRooms(layoutOf(db, planOf(db, hs), hs.decor), lab)).toEqual([]);
   });
 });
