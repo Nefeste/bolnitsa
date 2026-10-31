@@ -12,7 +12,7 @@ import { type Block, DOCTOR, doctorRoom, openBlocks, type Problem, problemsOf, s
 import { demolishRefund, emptySite, furnishOf, hospitalOf, priceOf, readyCost, rulesOf, type Site, type SiteCommand, type SiteResult } from '../engine/hospital/site';
 import { siteOfPlan } from '../engine/hospital/site-plan';
 import { siteOfPreset } from '../engine/hospital/site-preset';
-import { dutyOf, onDuty, ORDERLY, payOf, presetStaff, salaryOf, type Shift, shiftAt, type StaffMember, staffingOf, wageOf, withNightShift } from '../engine/hospital/staff';
+import { dutyOf, fitsPost, onDuty, ORDERLY, payOf, presetStaff, salaryOf, type Shift, shiftAt, type StaffMember, staffingOf, wageOf, withNightShift } from '../engine/hospital/staff';
 import type { CrewView } from '../engine/shift/crew';
 import { marketOf, type MoodView, raisedOf, severanceOf } from '../engine/shift/mood';
 import { mentorOf, stepsLeft } from '../engine/shift/growth';
@@ -2061,22 +2061,24 @@ export class Game {
       if (role === DOCTOR && mine) return [{ role, name, salary: money(this.paid(salaryOf(db, hire, 3))), you: true }];
       const all = here.filter(x => post(x) === role);
       const both = all.find(x => x.shift === undefined);
-      // только днём (клиническая медсестра, spec docs/specs/2026-10-staff-motion.md, часть 2б) — без ночного места
-      return (both ? (['both'] as const) : db.roles[role]?.day ? (['day'] as const) : (['day', 'night'] as const)).map(shift => {
+      return (both ? (['both'] as const) : (['day', 'night'] as const)).map(shift => {
         // резерв (spec docs/specs/2026-10-staff-mood.md, часть 5): место — за отсутствующим, замена — рядом с ним
         const m = shift === 'both' ? both : (all.find(x => x.shift === shift && x.covers === undefined) ?? all.find(x => x.shift === shift));
         const sub = m?.away ? all.find(x => x.covers === m.id) : undefined;
         const pay = (x: Id) => money(this.paid(payOf(db, salaryOf(db, x, 3), shift === 'both' ? undefined : shift)));
+        // на место — кто может встать на него здесь в эту смену: врачу — терапевт и специалисты; медсестре в помещении с
+        // койками днём — и клиническая медсестра (spec docs/specs/2026-10-staff-motion.md, часть 2б; решение владельца #183)
+        const options = role === DOCTOR ? doctors : [role, ...standInsOf(db, role)].filter(x => db.roles[x]?.hire && fitsPost(db, x, r.type, shift === 'night' ? 'night' : 'day'));
         return {
-          role, shift, name, salary: pay(hire), ...(db.roles[role]?.optional ? { optional: T.card.optionalBy[role] ?? T.card.optional } : {}),
+          role, shift, name, salary: pay(hire), ...(db.roles[role]?.optional ? { optional: T.card.optional } : {}),
           ...(m
             ? {
                 who: `${named(db.roles[m.role]?.name, m.role)} · ${m.skill}${m.away ? ` · ${m.away.why === 'study' ? T.card.studyShort : T.card.sickShort}` : ''}${sub ? ` · ${T.card.coveredByShort(staffName(sub))}` : ''}`,
                 staffId: m.id, fire: T.card.dismissHint(money(severanceOf(db, m, this.salaryPct))),
               }
             : {}),
-          ...(role === DOCTOR && doctors.length > 1
-            ? { options: doctors.map(x => ({ role: x, name: named(db.roles[x]?.name, x), salary: pay(x), hint: named(db.roles[x]?.texts.hint) })) }
+          ...(options.length > 1
+            ? { options: options.map(x => ({ role: x, name: named(db.roles[x]?.name, x), salary: pay(x), hint: named(db.roles[x]?.texts.hint) })) }
             : {}),
         };
       });

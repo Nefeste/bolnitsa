@@ -705,7 +705,8 @@ export class Population {
    */
   private roundsStep(taken: ReadonlySet<number>) {
     for (const m of this.staff) {
-      if (m.role !== 'role.nurse') continue;
+      // и клиническая медсестра на месте медсестры (spec 2026-10-staff-motion, часть 2б; решение владельца #183)
+      if ((this.db.roles[m.role]?.stands ?? m.role) !== 'role.nurse') continue;
       const room = this.layout.plan.rooms.findIndex(r => r.id === m.room);
       if (room < 0 || !ROUND_ROOMS.has(this.layout.plan.rooms[room].type)) continue;
       const w = this.crowd.walkers.get(`s:${m.id}`);

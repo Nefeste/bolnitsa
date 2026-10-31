@@ -281,6 +281,18 @@ export function withNightShift(db: ContentDb, rooms: readonly { id: string; type
   return out;
 }
 
+/**
+ * Может ли `role` занять место в помещении типа `type` в смену `shift` (spec docs/specs/2026-10-staff-motion.md, часть 2б):
+ * встающий на чужое место — только там, где работает (`rooms`; клиническая медсестра — в помещениях с койками), «только
+ * днём» (`day`) — не ночью.
+ */
+export function fitsPost(db: ContentDb, role: Id, type: Id, shift: Shift): boolean {
+  const r = db.roles[role];
+  if (!r) return false;
+  if (r.day && shift === 'night') return false;
+  return !r.stands || r.rooms.includes(type);
+}
+
 /** Мест для нанятых врачей в помещениях этого типа, до двери которых можно дойти. */
 export function placesOf(db: ContentDb, plan: Plan, type: Id): number {
   return plan.rooms

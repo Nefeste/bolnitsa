@@ -1,6 +1,7 @@
 // Сценарий в браузере, часть 33 — утренний обход (spec docs/specs/2026-10-staff-motion.md, часть 2, «Проверки»). Готовая
 // больница, поток 14 в час. В первое утро лежащих у нанятых ещё нет, поэтому сначала карточка палаты: клиническая медсестра
-// — только днём, «без неё помещение работает…», найм. Потом «До утра», планёрка — и в 08:30 вторых суток: клиническая
+// встаёт на дневное место медсестры (решение владельца #183) — уволить медсестру, выбрать клиническую, нанять; ночью её в
+// выборе нет. Потом «До утра», планёрка — и в 08:30 вторых суток: клиническая
 // медсестра обходит койки своей палаты — у изголовья, её карточка; ×12, пока нанятый врач не ушёл на обход, ×1, пока он не
 // встанет у койки; пауза — он у изголовья с бумагами (`bedside:` — место у койки), карточка — «на обходе: N из M коек,
 // вернётся в …», «Персонал» — «на обходе до …», ждущий у двери его кабинета — в пути «врач на обходе — вернётся в …».
@@ -62,16 +63,24 @@ export async function roundsPart({ page, port, out, ok, fail, q, shots }) {
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
   await page.evaluate(() => window.__game.actions.doctor({ kind: 'autopause', on: false }));
 
-  // ---------------------------------------------------------------- клиническая медсестра: карточка палаты, найм
+  // ---------------------------------------------------------------- клиническая медсестра: на дневное место медсестры
+  // палаты (решение владельца #183, вариант 2) — уволить медсестру, выбрать клиническую, нанять; ночью её в выборе нет
   const ward = await page.evaluate(() => window.__game.plan.rooms.find(r => r.type === 'room.ward')?.id);
   await page.evaluate(id => window.__game.selectRoomId(id), ward);
-  await page.waitForSelector('#hire-clinical_nurse', { timeout: 10000 });
-  const night = await page.$('#hire-clinical_nurse-night');
-  const posts = await page.$$eval('#card .post', els => els.map(e => (e.textContent ?? '').replace(/\s+/g, ' ').trim()));
-  const post = posts.find(x => x.startsWith('Клиническая медсестра')) ?? '';
-  if (!night && post.includes('без неё помещение работает')) ok(`карточка палаты: «${post}» — только днём`);
-  else fail(`карточка палаты: ночное место ${!!night}, «${post}»`);
-  await page.click('#hire-clinical_nurse');
+  await page.waitForSelector('#dismiss-nurse', { timeout: 10000 });
+  await page.click('#dismiss-nurse');
+  await page.waitForSelector('#hire-nurse-as', { timeout: 10000 });
+  const options = await page.$$eval('#hire-nurse-as option', els => els.map(e => `${e.value}: ${(e.textContent ?? '').trim()}`));
+  if (options.some(x => x.startsWith('role.clinical_nurse')) && options.some(x => x.startsWith('role.nurse'))) ok(`место медсестры днём — на выбор: ${options.join('; ')}`);
+  else fail(`место медсестры днём: ${JSON.stringify(options)}`);
+  await page.click('#dismiss-nurse-night');
+  await page.waitForSelector('#hire-nurse-night', { timeout: 10000 });
+  const nightPick = await page.$('#hire-nurse-night-as');
+  if (!nightPick) ok('ночью на место медсестры выбора нет: клиническая — только днём');
+  else fail(`ночью на место медсестры — выбор: ${JSON.stringify(await page.$$eval('#hire-nurse-night-as option', els => els.map(e => e.value)))}`);
+  await page.click('#hire-nurse-night');
+  await page.selectOption('#hire-nurse-as', 'role.clinical_nurse');
+  await page.click('#hire-nurse');
   await until(id => window.__game.staff.some(m => m.role === 'role.clinical_nurse' && m.room === id), ward, 10000).catch(() => {});
   const nurse = await page.evaluate(id => window.__game.staff.find(m => m.role === 'role.clinical_nurse' && m.room === id)?.id, ward);
   if (nurse) ok(`клиническая медсестра нанята в палату (${nurse})`);

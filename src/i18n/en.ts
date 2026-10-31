@@ -364,7 +364,6 @@ export const en: Strings = {
     medicWaits: (who: string) => `waiting at the door with the patient — no free emergency bay: ${who}`,
     medicLeaving: 'handed the patient over — going back to the ambulance',
     optional: 'the room works without one, but patients who lie wait',
-    optionalBy: { 'role.clinical_nurse': 'the room works without one: on the ward round the doctor goes to every bed' } as Record<string, string>,
     nightCarrier: 'no orderly on the night shift — nurses will wheel patients who lie',
     dismiss: 'Dismiss',
     name: 'Name',

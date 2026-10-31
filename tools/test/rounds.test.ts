@@ -141,15 +141,43 @@ describe('утренний обход', () => {
     seen = observe(3, 4);
   }, LONG);
 
-  test('числа — в economy.yaml и day.yaml: гипотезы агента; клиническая медсестра — необязательная, только днём, готовые её не нанимают', () => {
+  test('числа — в economy.yaml и day.yaml: гипотезы агента; клиническая медсестра встаёт на место медсестры в помещениях с койками, только днём', () => {
     expect(R).toEqual({ bed: 3, fatigue: 1 });
     expect(base.day!.rounds).toBe(8.5);
-    expect(base.roles[CLINICAL]).toMatchObject({ optional: true, ready: false, day: true });
-    for (const room of ['room.ward', 'room.icu', 'room.ricu', 'room.box']) expect(base.rooms[room].staff).toContain(CLINICAL);
-    // готовые больницы её не нанимают: выбор игрока с ценой
+    // решение владельца #183, вариант 2: на место медсестры, а своего места у неё нет
+    expect(base.roles[CLINICAL]).toMatchObject({ stands: 'role.nurse', day: true, rooms: ['room.box', 'room.icu', 'room.ricu', 'room.ward'] });
+    for (const room of Object.values(base.rooms)) expect(room.staff).not.toContain(CLINICAL);
+    // дороже медсестры, дешевле терапевта: «между медсестрой и врачом» (#181)
+    expect(base.roles[CLINICAL].salary[0]).toBeGreaterThan(base.roles['role.nurse'].salary[0]);
+    expect(base.roles[CLINICAL].salary[1]).toBeLessThan(base.roles['role.therapist'].salary[1]);
+    // готовые больницы её не нанимают: на месте медсестры — медсестра
     expect(cityStaff.some(m => m.role === CLINICAL)).toBe(false);
-    // у остальных должностей флагов нет: их записи в сборке прежние
-    expect(Object.values(base.roles).filter(r => r.ready === false || r.day).map(r => r.id)).toEqual([CLINICAL]);
+    // «только днём» — у неё одной
+    expect(Object.values(base.roles).filter(r => r.day).map(r => r.id)).toEqual([CLINICAL]);
+  });
+
+  test('найм: клиническая медсестра — на дневное место медсестры палаты, ПИТ, реанимации или бокса; ночью и в других помещениях — нет', () => {
+    const s = city(3);
+    const rooms = s.hospital!.rooms;
+    const ward = rooms.find(r => r.type === 'room.ward')!.id;
+    const proc = rooms.find(r => r.type === 'room.procedure')!.id;
+    const nurseOf = (room: string, shift: 'day' | 'night') => s.staff!.find(m => m.room === room && m.shift === shift && (m.role === 'role.nurse' || m.role === CLINICAL));
+    // место занято медсестрой — сначала уволить
+    expect(site(db, s, { kind: 'hire', room: ward, role: 'role.nurse', as: CLINICAL, shift: 'day' }, false).ok).toBe(false);
+    site(db, s, { kind: 'dismiss', id: nurseOf(ward, 'day')!.id });
+    site(db, s, { kind: 'hire', room: ward, role: 'role.nurse', as: CLINICAL, shift: 'day' });
+    expect(nurseOf(ward, 'day')!.role).toBe(CLINICAL);
+    // помещение работает: её место — место медсестры
+    expect(hospitalCtx(db, s).working.has(ward)).toBe(true);
+    // ночью — нет
+    site(db, s, { kind: 'dismiss', id: nurseOf(ward, 'night')!.id });
+    expect(site(db, s, { kind: 'hire', room: ward, role: 'role.nurse', as: CLINICAL, shift: 'night' }, false).ok).toBe(false);
+    site(db, s, { kind: 'hire', room: ward, role: 'role.nurse', shift: 'night' });
+    // в процедурной — нет: там коек нет
+    site(db, s, { kind: 'dismiss', id: nurseOf(proc, 'day')!.id });
+    expect(site(db, s, { kind: 'hire', room: proc, role: 'role.nurse', as: CLINICAL, shift: 'day' }, false).ok).toBe(false);
+    // своего места у неё нет
+    expect(site(db, s, { kind: 'hire', room: ward, role: CLINICAL, shift: 'day' }, false).ok).toBe(false);
   });
 
   test('в 08:30 каждый врач с лежащими уходит на обход: путь и часы — по walkPc и round.bed', () => {
@@ -223,7 +251,9 @@ describe('утренний обход', () => {
       const s = city(3);
       const t0 = s.t;
       const ward = s.hospital!.rooms.find(r => r.type === 'room.ward')!.id;
-      site(db, s, { kind: 'hire', room: ward, role: CLINICAL, shift: 'day' });
+      // вместо дневной медсестры палаты — клиническая (решение владельца #183, вариант 2)
+      site(db, s, { kind: 'dismiss', id: s.staff!.find(m => m.room === ward && m.shift === 'day' && m.role === 'role.nurse')!.id });
+      site(db, s, { kind: 'hire', room: ward, role: 'role.nurse', as: CLINICAL, shift: 'day' });
       const nurse = s.staff!.find(m => m.role === CLINICAL)!;
       let checked = 0;
       for (let d = 0; d < 3; d++) {

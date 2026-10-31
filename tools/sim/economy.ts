@@ -25,9 +25,9 @@
 // docs/specs/2026-10-staff-mood.md, часть 5): `--reserve registrar,nurse` — в начале по человеку в резерв на каждую должность
 // списка; в отчёте — сколько раз резерв встал на место заболевшего и сколько смен места стояли пустыми.
 // Утренний обход (spec docs/specs/2026-10-staff-motion.md, часть 2): сколько раз врачи и клинические медсёстры обходили, у
-// скольких коек и сколько минут; ушедшие, пока их врач на обходе, — «round» в строке «ушли». `--clinical` — в начале по
-// клинической медсестре в дневную смену в каждое помещение с койками, где она бывает (палата, ПИТ, реанимация, бокс);
-// `--clinical ward` — только в палаты (список типов через запятую).
+// скольких коек и сколько минут; ушедшие, пока их врач на обходе, — «round» в строке «ушли». `--clinical` — на дневном месте
+// медсестры в каждом помещении с койками, где она бывает (палата, ПИТ, реанимация, бокс), с начала — клиническая медсестра;
+// `--clinical ward` — только в палатах (список типов через запятую).
 // `--hall N` — сидя или стоя по своему залу не дальше N м (content/hospital/inflow.yaml, `hall`); `--hall 0` — по всей больнице.
 // `--bench N` — скамьи у дверей кабинетов не дальше N шагов (`bench`, spec docs/specs/2026-10-door-benches.md); `--bench 0` — без них.
 // Ось «Управление» (spec docs/specs/2026-10-difficulty.md): `--manage calm,normal,hard` — каждая больница на каждом уровне;
@@ -155,9 +155,7 @@ function build(s: ShiftState, plan: Spec[]) {
     const mid = x + Math.floor(w / 2);
     const wy = side === 'top' ? y : y + h - 1;
     site(s, { kind: 'door', room: id, cells: DOUBLE.has(type) ? [[mid - 1, wy], [mid, wy]] : [[mid, wy]] });
-    // как готовое помещение «С персоналом»: должность, которую готовое не нанимает (`ready: false`, клиническая медсестра), —
-    // только по выбору игрока
-    const roles = db.rooms[type].staff.filter(role => db.roles[role]?.ready !== false);
+    const roles = db.rooms[type].staff;
     for (const role of roles) site(s, { kind: 'hire', room: id, role, shift: 'day' });
     if (night && db.rooms[type].night) for (const role of roles) site(s, { kind: 'hire', room: id, role, shift: 'night' });
     if (type === 'room.office') office ??= id;
@@ -225,15 +223,20 @@ interface Run {
 }
 
 /**
- * `--clinical` (spec docs/specs/2026-10-staff-motion.md, часть 2б): по клинической медсестре в дневную смену в каждое помещение
- * с койками, где она бывает, — как нанял бы игрок в карточке помещения.
+ * `--clinical` (spec docs/specs/2026-10-staff-motion.md, часть 2б; решение владельца #183, вариант 2): на дневном месте
+ * медсестры в помещениях с койками, где она бывает, — клиническая медсестра того же навыка, как если бы игрок с начала
+ * нанял её вместо медсестры.
  */
 function start(name: string, seed: number, manage: Manage): ShiftState {
   const s = startOf(name, seed, manage);
   if (!CLINICAL_IN) return s;
-  for (const r of s.hospital?.rooms ?? []) {
-    if (db.rooms[r.type]?.staff.includes(CLINICAL) && (CLINICAL_IN.length === 0 || CLINICAL_IN.includes(r.type))) site(s, { kind: 'hire', room: r.id, role: CLINICAL, shift: 'day' });
-  }
+  const where = db.roles[CLINICAL].rooms.filter(t => CLINICAL_IN.length === 0 || CLINICAL_IN.includes(t));
+  const types = new Map((s.hospital?.rooms ?? []).map(r => [r.id, r.type] as const));
+  s.staff = (s.staff ?? []).map(m =>
+    m.shift === 'day' && m.role === 'role.nurse' && m.room !== undefined && where.includes(types.get(m.room) ?? '')
+      ? { ...m, role: CLINICAL, salary: salaryOf(db, CLINICAL, m.skill) }
+      : m,
+  );
   return s;
 }
 

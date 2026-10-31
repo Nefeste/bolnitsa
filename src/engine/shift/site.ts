@@ -15,7 +15,7 @@ import {
   addBench, addItem, addReady, addRoom, bedOrder, demolish, type Done, FREE_CHECK, furnish, hospitalOf, markDept, type MoodStep, moveItem, removeDecor, removeDoor,
   removedBetween, removeItem, removeRoom, setDoor, setOffice, type Site, type SiteCommand, type SiteError, type SiteRoom, SITE_UNDO, type Works,
 } from '../hospital/site';
-import { covers, nightHospital, salaryOf, type Shift, type StaffMember, wageOf } from '../hospital/staff';
+import { covers, fitsPost, nightHospital, salaryOf, type Shift, type StaffMember, wageOf } from '../hospital/staff';
 import { growthNumbers, studyUntil } from './growth';
 import { payStudy, paySeverance, payWorks, shortOf } from './money';
 import { manageOf } from './manage';
@@ -276,8 +276,7 @@ function siteCommandOf(db: ContentDb, s: ShiftState, cmd: SiteCommand): Notice[]
   if (cmd.kind === 'ready' && cmd.staff && r.room) {
     hired = 0;
     const shifts: Shift[] = db.rooms[cmd.type].night && nightHospital(db, r.site.rooms) ? ['day', 'night'] : ['day'];
-    // клиническую медсестру (`ready: false`, spec 2026-10-staff-motion, часть 2б) готовое помещение не нанимает: её — отдельно
-    for (const shift of shifts) for (const role of db.rooms[cmd.type].staff) if (db.roles[role]?.ready !== false && staffPost(db, s, r.site, r.room, role, undefined, shift)) hired++;
+    for (const shift of shifts) for (const role of db.rooms[cmd.type].staff) if (staffPost(db, s, r.site, r.room, role, undefined, shift)) hired++;
   }
   commit(db, s, site, r.site);
   works.spent += r.cost;
@@ -408,12 +407,14 @@ function hire(db: ContentDb, s: ShiftState, works: Works, site: Site, cmd: Extra
   if (!room || room.leaving) return no('hire', { kind: 'unknown' });
   if (!db.rooms[room.type]?.staff.includes(cmd.role)) return no('hire', { kind: 'notHere' });
   if (cmd.role === DOCTOR && room.id === site.mine) return no('hire', { kind: 'notHere' });
-  // встаёт на это место: врачу — терапевт или специалист, кто встаёт на место врача
+  // встаёт на это место: врачу — терапевт или специалист, кто встаёт на место врача; медсестре в помещении с койками —
+  // клиническая медсестра, только днём (spec docs/specs/2026-10-staff-motion.md, часть 2б; решение владельца #183)
   if (cmd.as !== undefined && (cmd.as !== cmd.role && db.roles[cmd.as]?.stands !== cmd.role)) return no('hire', { kind: 'notHere' });
   const role = cmd.as ?? (cmd.role === DOCTOR ? standInOf(db, DOCTOR) : cmd.role);
   if (!role || !db.roles[role]?.hire) return no('hire', { kind: 'unknown' });
-  const post = (m: StaffMember) => db.roles[m.role]?.stands ?? m.role;
   const shift = cmd.shift ?? 'day';
+  if (!fitsPost(db, role, room.type, shift)) return no('hire', { kind: 'notHere' });
+  const post = (m: StaffMember) => db.roles[m.role]?.stands ?? m.role;
   if ((s.staff ?? []).some(m => m.room === room.id && post(m) === cmd.role && covers(m, shift))) return no('hire', { kind: 'nothing' });
   remember(s, works, site, room.id, { keep: true });
   staffPost(db, s, site, room.id, cmd.role, role, shift);
@@ -431,6 +432,8 @@ function staffPost(db: ContentDb, s: ShiftState, site: Site, roomId: string, pos
   if (post === DOCTOR && roomId === site.mine) return false;
   const role = as ?? (post === DOCTOR ? standInOf(db, DOCTOR) : post);
   if (!role || !db.roles[role]?.hire) return false;
+  const type = site.rooms.find(r => r.id === roomId)?.type;
+  if (type === undefined || !fitsPost(db, role, type, shift)) return false;
   const staff = s.staff ?? [];
   if (staff.some(m => m.room === roomId && (db.roles[m.role]?.stands ?? m.role) === post && covers(m, shift))) return false;
   const free = (m: StaffMember) => m.room === undefined && m.role === role;

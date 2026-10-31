@@ -4,7 +4,7 @@ gen: { ru: "палаты интенсивной терапии" }
 # spec 2026-10-chapter-3, часть 38а: медсестра и анестезиолог-реаниматолог — свой, не тот, что в
 # операционной; у каждой койки — монитор с дефибриллятором. ИВЛ здесь нет: кому она нужна, того
 # переводят (ОРИТ — глава 4)
-staff: [role.nurse, role.anesthetist, role.clinical_nurse]
+staff: [role.nurse, role.anesthetist]
 # отделение по виду помещения (spec docs/specs/2026-10-departments.md)
 department: dept.icu
 # работает и ночью (spec docs/specs/2026-10-staff-shifts.md): готовая больница — и с ночной сменой
@@ -26,7 +26,7 @@ sizes:
       - [cabinet, 1, 4]
       - [sink, 5, 4]
     slots: [[2, 2], [4, 2]]
-    staff: { role.nurse: [3, 3], role.anesthetist: [3, 4], role.clinical_nurse: [4, 3] }
+    staff: { role.nurse: [3, 3], role.anesthetist: [3, 4] }
   # четыре койки
   - id: M
     w: 9
@@ -41,6 +41,6 @@ sizes:
       - [bed, 7, 4]
       - [sink, 4, 2]
     slots: [[2, 2], [2, 4], [6, 2], [6, 4]]
-    staff: { role.nurse: [4, 3], role.anesthetist: [4, 4], role.clinical_nurse: [5, 3] }
+    staff: { role.nurse: [4, 3], role.anesthetist: [4, 4] }
 texts:
   hint: { ru: "Койки для тех, за кем нужно следить каждую минуту: у каждой — монитор с дефибриллятором, при палате — медсестра и анестезиолог-реаниматолог. Койка без монитора не работает. Кому нужна искусственная вентиляция лёгких, того переводят." }

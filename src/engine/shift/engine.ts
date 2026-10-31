@@ -2795,7 +2795,7 @@ export function freeBays(db: ContentDb, s: ShiftState): Bed[] {
 /** Смотровые, чья медсестра сейчас везёт кого-то на каталке. */
 function awayRooms(db: ContentDb, s: ShiftState): Set<string> {
   const out = new Set<string>();
-  for (const m of hospitalCtx(db, s).staff) if (m.role === 'role.nurse' && m.room !== undefined && backAt(s, m, s.t) > s.t) out.add(m.room);
+  for (const m of hospitalCtx(db, s).staff) if ((db.roles[m.role]?.stands ?? m.role) === 'role.nurse' && m.room !== undefined && backAt(s, m, s.t) > s.t) out.add(m.room);
   return out;
 }
 
