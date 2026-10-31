@@ -105,5 +105,11 @@ export function entryOf(kind: ObjectKind, roomType: Id | '', equipment?: Id): En
   return (equipment ? CATALOG[`eq:${equipment}`] : undefined) ?? CATALOG[`${kind}@${roomType}`] ?? CATALOG[kind];
 }
 
+/**
+ * Модели Blender (docs/reports/2026-11-blender-pilot.md; blender/): пилот — кровать, монитор у кровати и рентген вместо моделей
+ * кодом, если игра открыта с `?models=blender`; без ключа — модели кодом, как были, пока владелец не выбрал путь (#175).
+ */
+export const BLENDER: Partial<Record<Code, string>> = { bed: 'blender/bed', monitor: 'blender/monitor', xray: 'blender/xray' };
+
 /** Файлы моделей, на которые ссылается таблица, и модели, которые ставятся без записи (декор, мониторы на столах). */
 export const EXTRA_MODELS = ['kenney/computerScreen', 'kenney/computerKeyboard', 'kenney/toilet', 'kenney/rugRectangle', 'kenney/kitchenCabinet', 'kenney/sideTableDrawers'];

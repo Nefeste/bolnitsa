@@ -8,3 +8,5 @@ release/
 tools/app/out/
 bench-electron-*
 bench-browser-*
+# скрипты Blender (blender/): кэш Python
+__pycache__/

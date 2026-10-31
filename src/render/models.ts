@@ -11,6 +11,11 @@ export interface Part {
   geometry: THREE.BufferGeometry;
   /** имя материала из модели — по нему перекрашиваем (одеяло, обивка) */
   mat: string;
+  /**
+   * имя узла — у моделей Blender это идентификатор части (docs/reports/2026-11-blender-pilot.md): по нему игра решает, ставить
+   * ли часть (стойка капельницы — только в палате)
+   */
+  node: string;
   color: THREE.Color;
   /** текстура-атлас (у наборов KayKit) или null */
   map: THREE.Texture | null;
@@ -40,7 +45,7 @@ export function modelOf(gltf: { scene: THREE.Object3D }, name: string): Model {
     const groups = mesh.geometry.groups.length ? mesh.geometry.groups : [{ start: 0, count: base.index!.count, materialIndex: 0 }];
     for (const gr of groups) {
       const m = mats[gr.materialIndex ?? 0] as THREE.MeshStandardMaterial;
-      parts.push({ geometry: subset(base, gr.start, gr.count), mat: m.name, color: m.color.clone(), map: m.map ?? null });
+      parts.push({ geometry: subset(base, gr.start, gr.count), mat: m.name, node: mesh.name, color: m.color.clone(), map: m.map ?? null });
     }
   });
   const box = new THREE.Box3();

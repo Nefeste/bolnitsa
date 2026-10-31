@@ -8,7 +8,7 @@
 // +z его осей; у длинных — от изголовья к ногам. Без DOM: раскладку и точки опоры проверяют тесты в Bun.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { type Code, entryOf, type Fit, type Recolor, WHITE_FURNITURE } from './catalog';
+import { BLENDER, type Code, entryOf, type Fit, type Recolor, WHITE_FURNITURE } from './catalog';
 import type { Layout, Thing } from './layout';
 import { type Model, seatOf } from './models';
 
@@ -27,6 +27,9 @@ export class Batch {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', g.attributes.position.clone());
     if (g.attributes.normal) geo.setAttribute('normal', g.attributes.normal.clone());
+    // затенение, запечённое в цвет вершин (модели Blender, docs/reports/2026-11-blender-pilot.md): множитель цвета части
+    const shade = g.attributes.color;
+    if (shade) geo.setAttribute('shade', shade.clone());
     if (g.index) geo.setIndex(g.index.clone());
     let out = geo.index ? geo.toNonIndexed() : geo;
     if (!out.attributes.normal) out.computeVertexNormals();
@@ -35,6 +38,11 @@ export class Batch {
     const n = out.attributes.position.count;
     const col = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) c.toArray(col, i * 3);
+    const sh = out.attributes.shade;
+    if (sh) {
+      for (let i = 0; i < n; i++) for (let k = 0; k < 3; k++) col[i * 3 + k] *= sh.getComponent(i, k);
+      out.deleteAttribute('shade');
+    }
     out.setAttribute('color', new THREE.BufferAttribute(col, 3));
     out = stripTo(out, ['position', 'normal', 'color']);
     (glow ? this.glow : this.colored).push(out);
@@ -85,6 +93,11 @@ export class Furnisher {
   readonly batch = new Batch();
   constructor(private models: Map<string, Model>) {}
 
+  /** Загружена ли модель (модели Blender — только с `?models=blender`). */
+  has(name: string): boolean {
+    return this.models.has(name);
+  }
+
   /**
    * Поставить модель: середина места (cx, cz), поворот yaw (перёд на +z при 0), вписать в место `fit` — по ширине,
    * глубине и высоте отдельно; `seat` — высота сиденья: высота модели — такая, чтобы сиденье пришлось на неё; `back` —
@@ -122,6 +135,18 @@ export class Furnisher {
       anchor = { x: v.x, y: v.y, z: v.z, yaw };
     }
     return { top: (opts.y ?? 0) + size.y * sy, matrix: m, seat: anchor };
+  }
+
+  /**
+   * Модель Blender в настоящий размер (docs/reports/2026-11-blender-pilot.md): середина места — начало её осей, низ — пол;
+   * `m` — матрица места предмета (`thingFrame`). Части по имени узла можно пропустить (`skip`): стойка капельницы — только
+   * в палате. Материал «screen» светится, как у моделей CC0.
+   */
+  placeAt(name: string, m: THREE.Matrix4, skip: (node: string) => boolean = () => false) {
+    const model = this.models.get(name);
+    if (!model) throw new Error(`no model ${name}`);
+    for (const p of model.parts) if (!skip(p.node)) this.batch.addColored(p.geometry, p.color, m, p.mat === 'screen');
+    this.batch.items++;
   }
 
   /** Коробка кодом в осях предмета (перёд на +z), м: `y` — низ коробки. */
@@ -165,6 +190,17 @@ const DARK = 0x39434a;
 const SHEET = 0xf7f7f2;
 const BLANKET = 0x7fa9c9;
 const TEAL = 0x2f7f86;
+const MATTRESS = 0xe4eef2;
+const BOARD = 0xd8dee2;
+const PANEL = 0xe6eaeb;
+const PAD = 0x6fa9c9;
+const HEAD = 0xdfe3e3;
+const DEFIB = 0xd9a43a;
+const BAG = 0xe8f4f6;
+/** Палитра больницы — её же берут модели Blender (blender/sizes.json, tools/app/blender-sizes.ts): стиль один. */
+export const PALETTE = { STEEL, STEEL_D, WHITE, MINT, SCREEN, DARK, SHEET, BLANKET, TEAL, MATTRESS, BOARD, PANEL, PAD, HEAD, DEFIB, BAG };
+/** Где у кровати палаты стойка капельницы, в осях кровати: сбоку у изголовья, м. */
+export const IV_AT: readonly [number, number] = [0.62, -0.78];
 
 function wheels(f: Furnisher, m: THREE.Matrix4, hw: number, hl: number, r = 0.05) {
   for (const sx of [-hw, hw]) for (const sz of [-hl, hl]) f.cyl(m, r, r, 0.04, sx, 0, sz, DARK, 8, 0, Math.PI / 2);
@@ -177,9 +213,9 @@ function bed(f: Furnisher, m: THREE.Matrix4, iv: boolean) {
   f.box(m, 0.86, 0.1, 1.86, 0, 0.18, 0, STEEL_D);
   for (const sx of [-0.4, 0.4]) for (const sz of [-0.88, 0.88]) f.box(m, 0.04, 0.22, 0.04, sx, 0.05, sz, STEEL);
   f.box(m, 0.92, 0.14, 1.94, 0, 0.28, 0, STEEL);
-  f.box(m, 0.88, top - 0.42, 1.9, 0, 0.42, 0, 0xe4eef2); // матрас
-  f.box(m, 0.96, 0.95, 0.05, 0, 0.12, -0.98, 0xd8dee2); // изголовье
-  f.box(m, 0.96, 0.75, 0.05, 0, 0.12, 0.98, 0xd8dee2); // изножье
+  f.box(m, 0.88, top - 0.42, 1.9, 0, 0.42, 0, MATTRESS);
+  f.box(m, 0.96, 0.95, 0.05, 0, 0.12, -0.98, BOARD); // изголовье
+  f.box(m, 0.96, 0.75, 0.05, 0, 0.12, 0.98, BOARD); // изножье
   f.box(m, 0.6, 0.09, 0.32, 0, top, -0.72, SHEET); // подушка
   f.box(m, 0.9, 0.06, 1.15, 0, top - 0.02, 0.36, BLANKET); // одеяло
   for (const sx of [-0.47, 0.47]) {
@@ -187,14 +223,14 @@ function bed(f: Furnisher, m: THREE.Matrix4, iv: boolean) {
     f.box(m, 0.025, 0.14, 0.025, sx, top - 0.02, -0.82, STEEL);
     f.box(m, 0.025, 0.14, 0.025, sx, top - 0.02, -0.08, STEEL);
   }
-  if (iv) ivStand(f, m.clone().multiply(new THREE.Matrix4().makeTranslation(0.62, 0, -0.78)));
+  if (iv) ivStand(f, m.clone().multiply(new THREE.Matrix4().makeTranslation(IV_AT[0], 0, IV_AT[1])));
 }
 
 function ivStand(f: Furnisher, m: THREE.Matrix4) {
   f.cyl(m, 0.18, 0.18, 0.03, 0, 0, 0, STEEL_D, 5);
   f.cyl(m, 0.012, 0.012, 1.85, 0, 0.03, 0, STEEL, 6);
   f.box(m, 0.36, 0.015, 0.015, 0, 1.86, 0, STEEL);
-  f.box(m, 0.09, 0.16, 0.04, 0.14, 1.66, 0, 0xe8f4f6);
+  f.box(m, 0.09, 0.16, 0.04, 0.14, 1.66, 0, BAG);
 }
 
 /** Смотровая кушетка: рама, мягкий верх, приподнятое изголовье, бумажная простыня; длина — 1,9 м по z. */
@@ -212,13 +248,13 @@ function examCouch(f: Furnisher, m: THREE.Matrix4) {
 function xray(f: Furnisher, m: THREE.Matrix4) {
   const top = LIE_TOP.xray!;
   f.box(m, 0.5, top - 0.08, 0.6, 0, 0, 0, STEEL_D);
-  f.box(m, 0.82, 0.08, 2.0, 0, top - 0.08, 0, 0xe6eaeb);
-  f.box(m, 0.72, 0.03, 1.7, 0, top - 0.005, 0.1, 0x6fa9c9);
+  f.box(m, 0.82, 0.08, 2.0, 0, top - 0.08, 0, PANEL);
+  f.box(m, 0.72, 0.03, 1.7, 0, top - 0.005, 0.1, PAD);
   f.box(m, 0.22, 2.2, 0.22, -0.7, 0, 0.1, WHITE);
   f.box(m, 0.8, 0.16, 0.18, -0.35, 1.9, 0.1, WHITE);
-  f.box(m, 0.38, 0.3, 0.38, 0, 1.62, 0.1, 0xdfe3e3);
+  f.box(m, 0.38, 0.3, 0.38, 0, 1.62, 0.1, HEAD);
   f.cyl(m, 0.13, 0.17, 0.12, 0, 1.5, 0.1, DARK, 14);
-  f.box(m, 0.62, 1.45, 0.12, 0.0, 0.35, -1.0, 0xe6eaeb);
+  f.box(m, 0.62, 1.45, 0.12, 0.0, 0.35, -1.0, PANEL);
 }
 
 /** КТ: кольцо гентри у изголовья, стол уходит в отверстие. */
@@ -287,7 +323,7 @@ function monitor(f: Furnisher, m: THREE.Matrix4) {
   f.cyl(m, 0.2, 0.2, 0.03, 0, 0, 0, STEEL_D, 5);
   f.cyl(m, 0.02, 0.02, 1.25, 0, 0.03, 0, STEEL, 8);
   f.box(m, 0.36, 0.06, 0.28, 0, 0.9, 0.02, STEEL);
-  f.box(m, 0.32, 0.12, 0.22, 0, 0.96, 0.02, 0xd9a43a); // дефибриллятор
+  f.box(m, 0.32, 0.12, 0.22, 0, 0.96, 0.02, DEFIB); // дефибриллятор
   f.box(m, 0.4, 0.3, 0.08, 0, 1.28, 0.02, DARK);
   f.box(m, 0.36, 0.25, 0.01, 0, 1.305, 0.065, SCREEN, true);
 }
@@ -455,6 +491,14 @@ function placeThing(f: Furnisher, t: Thing, i: number, seats: (SeatAnchor | unde
   // длинный предмет, которому не нашлось второй клетки (одна койка в шаблоне реанимации: вторая клетка разрезала бы
   // помещение), — укорочен до своей клетки, а не налезает на соседние
   if (LIE_TOP[e.code] !== undefined && t.cells.length === 1) m.multiply(new THREE.Matrix4().makeScale(1, 1, 0.5));
+  // модель Blender вместо модели кодом — если её загрузили (`?models=blender`, docs/reports/2026-11-blender-pilot.md): то же
+  // место, та же высота постели; стойка капельницы — у кровати палаты и бокса, как у модели кодом
+  const glb = BLENDER[e.code];
+  if (glb && f.has(glb)) {
+    const iv = t.type === 'room.ward' || t.type === 'room.box';
+    f.placeAt(glb, m, node => !iv && (node === 'iv' || node === 'iv_bag'));
+    return;
+  }
   switch (e.code) {
     case 'bed':
       bed(f, m, t.type === 'room.ward' || t.type === 'room.box');
