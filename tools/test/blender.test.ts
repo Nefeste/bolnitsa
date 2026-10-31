@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import { db } from '../../src/content';
 import { planOf } from '../../src/engine/hospital/build';
 import { addReady, emptySite, planOfSite } from '../../src/engine/hospital/site';
-import { type BakedRoom, bakedRooms, turnPoint, unturnPoint } from '../../src/render/baked';
+import { BakedFloors, type BakedRoom, bakedRooms, turnPoint, unturnPoint } from '../../src/render/baked';
 import { BLENDER, BLENDER_CODE, BLENDER_KIT, CATALOG, SEAT, WHITE_FURNITURE } from '../../src/render/catalog';
 import { CODE_SHIFT, furnishThing } from '../../src/render/furniture';
 import { seatOf } from '../../src/render/models';
@@ -317,6 +317,34 @@ describe('Blender, часть 2: запечённый свет готовых п
       expect(png.readUInt32BE(20), key).toBe((room.h - 1) * 64);
       expect(png[24]).toBe(8);
       expect(png[25]).toBe(0);
+    }
+  });
+
+  test('плоскость света — одна сетка на образец, лицом вверх при любом повороте: рисуется в один проход', () => {
+    const room = JSON.parse(readFileSync(join(DIR, `${roomsIndex['room.waiting:M'].file}.json`), 'utf8')) as BakedRoom;
+    // два зала ожидания M на одном участке — по-разному повёрнуты
+    const a = addReady(db, emptySite(), 'room.waiting', 'M', 8, 8, 0);
+    if (!a.ok) throw new Error(JSON.stringify(a.error));
+    const b = addReady(db, a.site, 'room.waiting', 'M', 28, 8, 1);
+    if (!b.ok) throw new Error(JSON.stringify(b.error));
+    const floors = new BakedFloors(room, new THREE.Texture());
+    expect(floors.setLayout(layoutOf(db, planOfSite(db, b.site), []))).toBe(2);
+    expect(floors.group.children.length).toBe(1);
+    const mesh = floors.group.children[0] as THREE.Mesh;
+    expect((mesh.material as THREE.Material).side).toBe(THREE.FrontSide);
+    const p = mesh.geometry.getAttribute('position');
+    expect(p.count).toBe(12);
+    for (const rot of [0, 1, 2, 3] as const) {
+      const c = addReady(db, emptySite(), 'room.waiting', 'M', 20, 10, rot);
+      if (!c.ok) throw new Error(JSON.stringify(c.error));
+      const f = new BakedFloors(room, new THREE.Texture());
+      expect(f.setLayout(layoutOf(db, planOfSite(db, c.site), []))).toBe(1);
+      const q = (f.group.children[0] as THREE.Mesh).geometry.getAttribute('position');
+      for (let t = 0; t < q.count; t += 3) {
+        const v = [0, 1, 2].map(k => new THREE.Vector3().fromBufferAttribute(q, t + k));
+        const n = new THREE.Vector3().subVectors(v[1], v[0]).cross(new THREE.Vector3().subVectors(v[2], v[0]));
+        expect(n.y, `поворот ${rot}`).toBeGreaterThan(0);
+      }
     }
   });
 

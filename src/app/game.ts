@@ -470,18 +470,22 @@ export class Game {
     const mode: ModelsMode = keys.get('models') === 'code' ? 'code' : keys.get('models') === 'blender' ? 'blender' : 'part2';
     const kits = [...new Set([...Object.values(CATALOG).flatMap(e => ('model' in e ? [e.model] : [])), ...EXTRA_MODELS])];
     const names = modelsOf(mode, kits);
-    // свет образцов групп запечён с их моделями Blender: с моделями кодом (`?models=code`) тени были бы не от тех вещей
+    // свет образцов групп запечён с их моделями Blender: с моделями кодом (`?models=code`) тени были бы не от тех вещей;
+    // грузится вместе с моделями, а не перед ними
     const light = keys.get('baked');
-    if (light !== '0') {
+    const samples = (async () => {
+      if (light === '0') return [];
       const index = (await (await fetch(`${base}/blender/rooms.json`)).json()) as Record<string, { file: string; group: number }>;
       const want = Object.values(index).filter(e => (e.group === 0 ? light === '1' : mode !== 'code'));
-      this.bakedSamples = await Promise.all(
+      return Promise.all(
         want.map(async e => ({
           room: (await (await fetch(`${base}/blender/${e.file}.json`)).json()) as BakedRoom,
           map: await new THREE.TextureLoader().loadAsync(`${base}/blender/${e.file}.png`),
         })),
       );
-    }
+    })();
+    // ошибка загрузки света всплывёт ниже, на `await samples`, — не раньше, «необработанной»
+    samples.catch(() => undefined);
     const models = this.models;
     // полоса загрузки: база — 1, модели — по файлу, люди — по виду, мир — 1, смена — 1 (видов людей — из их списка)
     const looks = ((await (await fetch(`${base}/rocketbox/index.json`)).json()) as { looks: string[] }).looks.length;
@@ -494,6 +498,7 @@ export class Game {
         this.step(1, T.demo.loadModels(++loaded, names.length));
       }),
     );
+    this.bakedSamples = await samples;
     this.load.furniture = Math.round(performance.now() - tf);
     const tp = performance.now();
     let baked = 0;
