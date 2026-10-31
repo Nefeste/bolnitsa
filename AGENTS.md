@@ -317,8 +317,10 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   No `round` in `economy.yaml` — the instant round as before. The clinical nurse (`role.clinical_nurse`; owner's decision
   #183) stands at the nurse post (`stands: role.nurse`) only in rooms with beds (`in` → her derived `rooms`) and only by
   day (`day`): `fitsPost` in `hospital/staff.ts` checks it for the `hire` command and for the room card's choice on the
-  nurse post; she is the room's nurse for staffing, carrying (`carriersOf`) and the window's ward round, and never among
-  the daily candidates (`day` in `applicantsOf`, like the orderly's `optional`). The window: the
+  nurse post (and `reshift` refuses `dayOnly` to move her, or swap her, to the night); she is the room's nurse for
+  staffing, carrying (`carriersOf`), the window's ward round and the reserve (`cover`: with no reserve clinical nurse, a
+  reserve nurse covers her), and never among the daily candidates (`day` in `applicantsOf`, like the orderly's
+  `optional`). The window: the
   sim sends `rounds` with the slice; `wardRoundsStep` in `population.ts` walks each by the engine's times to the bed
   (`bedSide`, Papers; the spot is picked once per stop) and home; the part 1 ward nurse does not start her own round in a
   room with an engine round.

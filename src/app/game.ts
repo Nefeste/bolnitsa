@@ -899,6 +899,8 @@ export class Game {
     const post = (x: StaffMember) => db.roles[x.role]?.stands ?? x.role;
     const to: Shift | undefined = m.shift === 'day' ? 'night' : m.shift === 'night' ? 'day' : undefined;
     const other = to && m.room !== undefined ? this.staff.find(x => x !== m && x.room === m.room && post(x) === post(m) && x.shift === to && x.covers === undefined) : undefined;
+    // «только днём» (клиническая медсестра, решение владельца #183): ни её в ночную смену, ни обменом с ней — движок откажет
+    const dayOnly = (to === 'night' && db.roles[m.role]?.day) || (to === 'day' && other !== undefined && db.roles[other.role]?.day);
     const said = this.staffSaid?.id === m.id ? { ok: this.staffSaid.ok, text: this.staffSaid.text } : undefined;
     // рост и учёба (разделы 3–4): смен до следующего навыка, наставник; учиться — со сменой, ниже навыка 5, на месте
     const g = db.economy.staff.growth;
@@ -915,7 +917,7 @@ export class Game {
       ...(mood ? { mood: { v: mood.v, ...(mood.d ? { d: mood.d } : {}), ...(mood.why ? { why: mood.why.map(w => T.card.moodWhy[w] ?? w) } : {}), ...(mood.quit !== undefined ? { quit: mood.quit } : {}), ...(mood.go !== undefined ? { go: mood.go } : {}) } } : {}),
       // зарплаты — как их платят на уровне «Управления» (spec 2026-10-difficulty): у человека и у рынка — те же проценты
       pay: { now: this.paid(m.salary), market: this.paid(marketOf(db, m)), ...(leaving || !this.hospital.site ? {} : { raise: this.paid(raisedOf(db, m)) }) },
-      ...(to && !leaving && this.hospital.site && m.covers === undefined ? { reshift: { to, ...(other ? { with: this.staffWho(other) } : {}) } } : {}),
+      ...(to && !leaving && !dayOnly && this.hospital.site && m.covers === undefined ? { reshift: { to, ...(other ? { with: this.staffWho(other) } : {}) } } : {}),
       ...(m.room === undefined ? { reserve: true as const, ...(this.hospital.site ? { fire: severanceOf(db, m, this.salaryPct) } : {}) } : {}),
       ...(absent ? { covers: { who: this.staffWho(absent), sex: absent.sex, ...(absent.away ? { away: { ...absent.away } } : {}) } } : {}),
       ...(sub ? { coveredBy: this.staffWho(sub) } : {}),

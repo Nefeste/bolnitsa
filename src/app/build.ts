@@ -78,6 +78,9 @@ export function whyText(db: ContentDb, site: Site | undefined, e: SiteError): st
     // уже уходит сам (spec docs/specs/2026-10-staff-mood.md)
     case 'leaving':
       return T.site.leaving;
+    // только днём (spec docs/specs/2026-10-staff-motion.md, часть 2б): клиническая медсестра
+    case 'dayOnly':
+      return T.site.dayOnly;
     // сценарий (spec docs/specs/2026-10-scenario-1.md): помещения нет в его списке
     case 'scenario':
       return T.site.scenario;

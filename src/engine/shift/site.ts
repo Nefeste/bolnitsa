@@ -167,7 +167,7 @@ function remember(s: ShiftState, works: Works, site: Site, room?: string, more: 
  */
 export function siteCommand(db: ContentDb, s: ShiftState, cmd: SiteCommand): Notice[] {
   const out = siteCommandOf(db, s, cmd);
-  if (out.some(n => n.kind === 'site' && n.ok)) cover(s, () => occupied(db, s).staff);
+  if (out.some(n => n.kind === 'site' && n.ok)) cover(db, s, () => occupied(db, s).staff);
   return out;
 }
 
@@ -388,6 +388,8 @@ function reshift(db: ContentDb, s: ShiftState, works: Works, site: Site, id: str
   const there = m.room === undefined ? [] : s.staff!.filter(x => x !== m && x.room === m.room && post(x) === post(m) && covers(x, to));
   const other = there.find(x => x.shift === to);
   if (there.some(x => x.shift === undefined)) return no('reshift', { kind: 'nothing' });
+  // «только днём» (клиническая медсестра, решение владельца #183) — ни самой в ночную смену, ни обменом с ночной
+  if ((to === 'night' && db.roles[m.role]?.day) || (was === 'night' && other && db.roles[other.role]?.day)) return no('reshift', { kind: 'dayOnly' });
   const busy = occupied(db, s).staff;
   if (busy.has(m.id) || (other && busy.has(other.id))) return no('reshift', { kind: 'busy' });
   remember(s, works, site, undefined, { mood: cheer(db, s, m, 'moved'), keep: true });
@@ -413,6 +415,7 @@ function hire(db: ContentDb, s: ShiftState, works: Works, site: Site, cmd: Extra
   const role = cmd.as ?? (cmd.role === DOCTOR ? standInOf(db, DOCTOR) : cmd.role);
   if (!role || !db.roles[role]?.hire) return no('hire', { kind: 'unknown' });
   const shift = cmd.shift ?? 'day';
+  if (db.roles[role]?.day && shift === 'night') return no('hire', { kind: 'dayOnly' });
   if (!fitsPost(db, role, room.type, shift)) return no('hire', { kind: 'notHere' });
   const post = (m: StaffMember) => db.roles[m.role]?.stands ?? m.role;
   if ((s.staff ?? []).some(m => m.room === room.id && post(m) === cmd.role && covers(m, shift))) return no('hire', { kind: 'nothing' });

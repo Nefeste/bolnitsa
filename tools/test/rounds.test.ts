@@ -171,8 +171,12 @@ describe('утренний обход', () => {
     expect(hospitalCtx(db, s).working.has(ward)).toBe(true);
     // ночью — нет
     site(db, s, { kind: 'dismiss', id: nurseOf(ward, 'night')!.id });
-    expect(site(db, s, { kind: 'hire', room: ward, role: 'role.nurse', as: CLINICAL, shift: 'night' }, false).ok).toBe(false);
+    expect(site(db, s, { kind: 'hire', room: ward, role: 'role.nurse', as: CLINICAL, shift: 'night' }, false)).toMatchObject({ ok: false, error: { kind: 'dayOnly' } });
     site(db, s, { kind: 'hire', room: ward, role: 'role.nurse', shift: 'night' });
+    // и «В другую смену» — ни её в ночную, ни обменом с ночной медсестрой
+    expect(site(db, s, { kind: 'reshift', id: nurseOf(ward, 'day')!.id }, false)).toMatchObject({ ok: false, error: { kind: 'dayOnly' } });
+    expect(site(db, s, { kind: 'reshift', id: nurseOf(ward, 'night')!.id }, false)).toMatchObject({ ok: false, error: { kind: 'dayOnly' } });
+    expect(nurseOf(ward, 'day')!.role).toBe(CLINICAL);
     // в процедурной — нет: там коек нет
     site(db, s, { kind: 'dismiss', id: nurseOf(proc, 'day')!.id });
     expect(site(db, s, { kind: 'hire', room: proc, role: 'role.nurse', as: CLINICAL, shift: 'day' }, false).ok).toBe(false);

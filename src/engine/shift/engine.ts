@@ -930,7 +930,7 @@ function duty(db: ContentDb, s: ShiftState) {
   }
   // резерв (spec 2026-10-staff-mood, часть 5): замещающий, что на планёрке ещё вёл пациента, — в резерв сейчас; ушедшего
   // сам — заменить; зарплата — по эту минуту по прежнему штату
-  cover(s, () => occupied(db, s).staff, () => accrue(db, s));
+  cover(db, s, () => occupied(db, s).staff, () => accrue(db, s));
   // усталость (spec 2026-10-staff-shifts, часть 2): ушедшие со сменой отдохнут дома, пришедшие — отдохнувшие
   dropCrew(db, s);
   const list = colleaguesOf(db, s);
@@ -1345,7 +1345,7 @@ function morning(db: ContentDb, s: ShiftState, notices: Notice[]) {
   const back = backMorning(db, s);
   const sick = sickMorning(db, s, m => wageOf(db, m, manageOf(db, s).salary), (rub, m) => unpaidShift(s, rub, m.room));
   // резерв (spec 2026-10-staff-mood, часть 5; решение владельца #97): на место заболевшего — из резерва; вернувшийся — на своё
-  const cov = cover(s, () => occupied(db, s).staff);
+  const cov = cover(db, s, () => occupied(db, s).staff);
   const news = mood || grew || back || sick || cov ? { ...mood, ...(grew ? { grew } : {}), ...(back ? { back } : {}), ...(sick ? { sick } : {}), ...cov } : undefined;
   // аппараты, сломавшиеся с утра (FR-EQ-3): до следующего утра их нет
   const broken = breakdowns(db, s);

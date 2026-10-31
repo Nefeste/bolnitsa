@@ -2,7 +2,9 @@
 // сменами. Нанятый без места («в резерве») той же должности сам встаёт на место того, кто болеет или учится, на время его
 // отлучки и потом возвращается в резерв. Пока замещает — у него место и смена отсутствующего и отметка `covers`; место —
 // по-прежнему за отсутствующим. Ушёл тот насовсем — замещающий остаётся на его месте. Платят резерву каждый день, как всем
-// нанятым (`wagesOf`): «запас людей» геймдизайна (§7) — решение игрока. Чистая функция состояния смены.
+// нанятым (`wagesOf`): «запас людей» геймдизайна (§7) — решение игрока. Чистая функция состояния смены. Место клинической
+// медсестры (решение владельца #183) — место медсестры: нет в резерве клинической — встаёт медсестра.
+import type { ContentDb } from '../../content/types';
 import type { StaffMember } from '../hospital/staff';
 import type { ShiftState, StaffNews } from './types';
 
@@ -11,11 +13,12 @@ import type { ShiftState, StaffNews } from './types';
  * увольнение, отмена). Замещающий держит место, пока отсутствующий в отлучке на том же месте и в той же смене, а сам он — нет;
  * иначе, когда доведёт начатое (`busy` — кто ведёт пациента), — отсутствующий вернулся, место сменилось или заболел сам —
  * в резерв, без места и смены; отсутствующий ушёл насовсем — место его. Место отсутствующего без замены — первому по штату в
- * резерве той же должности, кто сам не в отлучке; замещающему, что сам в отлучке, замены нет — его место освободится. Без
+ * резерве той же должности, кто сам не в отлучке; нет такого, а отсутствующий встаёт на место того, кого нанимают, — первому
+ * из резерва той должности (медсестра — за клиническую); замещающему, что сам в отлучке, замены нет — его место освободится. Без
  * смен — ничего. `before` — перед тем, как штат станет другим (касса по эту минуту). Новости для планёрки: кто кого заменил
  * и кто вернулся в резерв (вставший снова на чьё-то место — только «заменил»); ничего — `undefined`.
  */
-export function cover(s: ShiftState, busyOf: () => ReadonlySet<string>, before?: () => void): Pick<StaffNews, 'covered' | 'returned'> | undefined {
+export function cover(db: ContentDb, s: ShiftState, busyOf: () => ReadonlySet<string>, before?: () => void): Pick<StaffNews, 'covered' | 'returned'> | undefined {
   const staff = s.staff;
   if (!staff?.some(m => m.covers !== undefined || m.away) || !staff.some(m => m.shift !== undefined)) return undefined;
   const byId = new Map(staff.map(m => [m.id, m]));
@@ -38,7 +41,11 @@ export function cover(s: ShiftState, busyOf: () => ReadonlySet<string>, before?:
   const covered: { id: string; by: string }[] = [];
   for (const a of next) {
     if (!a.away || a.room === undefined || a.shift === undefined || a.covers !== undefined || taken.has(a.id)) continue;
-    const i = next.findIndex(m => m.room === undefined && !m.away && m.role === a.role);
+    const idle = (m: StaffMember) => m.room === undefined && !m.away;
+    let i = next.findIndex(m => idle(m) && m.role === a.role);
+    // на место врача встают только терапевт и специалисты: врача не нанимают — у них замены другой должности нет
+    const post = db.roles[a.role]?.stands;
+    if (i < 0 && post !== undefined && db.roles[post]?.hire) i = next.findIndex(m => idle(m) && m.role === post);
     if (i < 0) continue;
     next[i] = { ...next[i], room: a.room, shift: a.shift, covers: a.id };
     taken.add(a.id);

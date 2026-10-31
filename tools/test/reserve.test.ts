@@ -155,47 +155,60 @@ const free = () => new Set<string>();
 describe('резерв: кто встаёт и кто возвращается', () => {
   test('ведёт пациента — доводит, и только потом в резерв', () => {
     const s = team([person('a', { room: 'r1', shift: 'night' }), person('r', { room: 'r1', shift: 'night', covers: 'a' })]);
-    expect(cover(s, () => new Set(['r']))).toBeUndefined();
+    expect(cover(db, s, () => new Set(['r']))).toBeUndefined();
     expect(s.staff![1].covers).toBe('a');
-    expect(cover(s, free)).toEqual({ returned: ['r'] });
+    expect(cover(db, s, free)).toEqual({ returned: ['r'] });
     expect(s.staff![1]).toEqual(person('r'));
   });
 
   test('заболел сам замещающий — в резерв, на место — следующий из резерва', () => {
     const away = { why: 'sick' as const, until: DAY };
     const s = team([person('a', { room: 'r1', shift: 'day', away }), person('r', { room: 'r1', shift: 'day', covers: 'a', away }), person('q')]);
-    expect(cover(s, free)).toEqual({ covered: [{ id: 'a', by: 'q' }] });
+    expect(cover(db, s, free)).toEqual({ covered: [{ id: 'a', by: 'q' }] });
     expect(s.staff![1]).toEqual(person('r', { away }));
     expect(s.staff![2]).toMatchObject({ room: 'r1', shift: 'day', covers: 'a' });
   });
 
   test('ушёл насовсем — место за замещающим; резерв другой должности не встаёт', () => {
     const s = team([person('r', { room: 'r1', shift: 'day', covers: 'gone' }), person('b', { role: 'role.registrar', room: 'r2', shift: 'day', away: { why: 'study', until: DAY } }), person('q')]);
-    expect(cover(s, free)).toBeUndefined();
+    expect(cover(db, s, free)).toBeUndefined();
     expect(s.staff![0]).toEqual(person('r', { room: 'r1', shift: 'day' }));
     expect(s.staff![2].room).toBeUndefined();
   });
 
   test('вернувшийся сразу встаёт на другое пустое место — в новостях только «заменил»', () => {
     const s = team([person('a', { room: 'r1', shift: 'day' }), person('r', { room: 'r1', shift: 'day', covers: 'a' }), person('b', { room: 'r2', shift: 'night', away: { why: 'sick', until: DAY } })]);
-    expect(cover(s, free)).toEqual({ covered: [{ id: 'b', by: 'r' }] });
+    expect(cover(db, s, free)).toEqual({ covered: [{ id: 'b', by: 'r' }] });
     expect(s.staff![1]).toMatchObject({ room: 'r2', shift: 'night', covers: 'b' });
+  });
+
+  test('медсестра из резерва встаёт на место клинической; на место терапевта — только терапевт (решение владельца #183)', () => {
+    const away = { why: 'study' as const, until: DAY };
+    const s = team([person('c', { role: 'role.clinical_nurse', room: 'w1', shift: 'day', away }), person('q')]);
+    expect(cover(db, s, free)).toEqual({ covered: [{ id: 'c', by: 'q' }] });
+    expect(s.staff![1]).toMatchObject({ role: 'role.nurse', room: 'w1', shift: 'day', covers: 'c' });
+    // клиническая в резерве — первой: та же должность
+    const t = team([person('c', { role: 'role.clinical_nurse', room: 'w1', shift: 'day', away }), person('q'), person('k', { role: 'role.clinical_nurse' })]);
+    expect(cover(db, t, free)).toEqual({ covered: [{ id: 'c', by: 'k' }] });
+    // врача не нанимают: на место терапевта встаёт только терапевт, а его в резерве нет
+    const u = team([person('d', { role: 'role.therapist', room: 'o1', shift: 'day', away }), person('q')]);
+    expect(cover(db, u, free)).toBeUndefined();
   });
 
   test('отсутствующего перевели в другую смену — замещающий встаёт за ним туда', () => {
     const away = { why: 'study' as const, until: DAY };
     const s = team([person('a', { room: 'r1', shift: 'night', away }), person('r', { room: 'r1', shift: 'day', covers: 'a' })]);
-    expect(cover(s, free)).toEqual({ covered: [{ id: 'a', by: 'r' }] });
+    expect(cover(db, s, free)).toEqual({ covered: [{ id: 'a', by: 'r' }] });
     expect(s.staff![1]).toMatchObject({ room: 'r1', shift: 'night', covers: 'a' });
   });
 
   test('без смен и без отлучек — ничего', () => {
     const s = team([person('a', { room: 'r1', away: { why: 'sick', until: DAY } }), person('q')]);
-    expect(cover(s, free)).toBeUndefined();
+    expect(cover(db, s, free)).toBeUndefined();
     expect(s.staff![1].room).toBeUndefined();
     const t = team([person('a', { room: 'r1', shift: 'day' }), person('q')]);
     const was = t.staff;
-    expect(cover(t, () => { throw new Error('не нужно'); })).toBeUndefined();
+    expect(cover(db, t, () => { throw new Error('не нужно'); })).toBeUndefined();
     expect(t.staff).toBe(was);
   });
 });
