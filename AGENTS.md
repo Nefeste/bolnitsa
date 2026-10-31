@@ -178,6 +178,9 @@ bun tools/app/people-licenses.ts   # then the Rocketbox tables of assets/LICENSE
 node tools/app/icons.mjs --fetch <dir>    # the window's icons (owner's decision #139): @carbon/icons from npm, check SHA-256
 node tools/app/icons.mjs <dir>     # then src/ui/icons.gen.ts and assets/licenses/carbon-icons.txt (byte-identical)
 bun tools/app/blender-sizes.ts     # the Blender pilot (#175): blender/sizes.json — the sizes the scripts take from the game
+bun tools/app/blender-catalog.ts   # Blender part 2 (docs/specs/2026-11-blender-2.md): every catalog thing in the city, the
+                                   # polyclinic and scenario 1 — what draws it now, how many, triangles now and by the budgets
+                                   # of blender/budgets.json after each group
 python blender/build.py bed monitor xray room   # then assets/models/blender/ in Blender 4.5.15 (`pip install bpy==4.5.15`,
                                                # or `blender --background --python blender/build.py -- …`); byte-identical;
                                                # passports in assets/LICENSES.md, section 8 (blender/README.md)
