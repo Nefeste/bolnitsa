@@ -17,7 +17,22 @@
   "pad": "#6fa9c9",
   "head": "#dfe3e3",
   "defib": "#d9a43a",
-  "bag": "#e8f4f6"
+  "bag": "#e8f4f6",
+  "front": "#5f8f8a",
+  "wood_top": "#c9a77c",
+  "beige": "#e7e2d8",
+  "light": "#d7dcdc",
+  "light2": "#e3e7e7",
+  "slate": "#9ab0b8",
+  "tray": "#9fc3d6",
+  "lens": "#e8e8e8",
+  "rack": "#e0e4e4",
+  "tube_r": "#c94a4a",
+  "tube_b": "#5a8fd0",
+  "tube_y": "#e2c044",
+  "tube_g": "#7bbf6a",
+  "cubicle": "#9fb7c4",
+  "cubicle_door": "#b5c9d3"
  },
  "items": {
   "bed": {
@@ -82,6 +97,368 @@
     ],
     "tris": 140
    }
+  }
+ },
+ "codes": {
+  "analyzer": {
+   "replaces": "code:analyzer",
+   "group": 1,
+   "cells": [
+    1,
+    1
+   ],
+   "code": {
+    "min": [
+     -0.41,
+     0,
+     -0.49
+    ],
+    "max": [
+     0.41,
+     1.26,
+     0.135
+    ],
+    "tris": 72
+   },
+   "shift": -0.18
+  },
+  "couch": {
+   "replaces": "code:examCouch",
+   "group": 1,
+   "cells": [
+    1,
+    2
+   ],
+   "code": {
+    "min": [
+     -0.33,
+     0,
+     -0.93
+    ],
+    "max": [
+     0.33,
+     0.725,
+     0.93
+    ],
+    "tris": 96
+   },
+   "lieTop": 0.66
+  },
+  "counter": {
+   "replaces": "code:counter",
+   "group": 1,
+   "cells": [
+    1,
+    1
+   ],
+   "code": {
+    "min": [
+     -0.75,
+     0,
+     -0.45
+    ],
+    "max": [
+     0.75,
+     1.1,
+     0.35
+    ],
+    "tris": 152
+   }
+  },
+  "ecg": {
+   "replaces": "code:ecg",
+   "group": 1,
+   "cells": [
+    1,
+    1
+   ],
+   "code": {
+    "min": [
+     -0.25,
+     0,
+     -0.2
+    ],
+    "max": [
+     0.25,
+     1.32,
+     0.2
+    ],
+    "tris": 188
+   }
+  },
+  "lab_bench": {
+   "replaces": "code:labBench",
+   "group": 1,
+   "cells": [
+    1,
+    1
+   ],
+   "code": {
+    "min": [
+     -0.49,
+     0,
+     -0.5
+    ],
+    "max": [
+     0.49,
+     1.235,
+     0.12
+    ],
+    "tris": 170
+   }
+  },
+  "procedure_table": {
+   "replaces": "code:procedureTable",
+   "group": 1,
+   "cells": [
+    1,
+    1
+   ],
+   "code": {
+    "min": [
+     -0.4,
+     0,
+     -0.26
+    ],
+    "max": [
+     0.4,
+     0.78,
+     0.26
+    ],
+    "tris": 84
+   }
+  }
+ },
+ "kits": {
+  "bedside": {
+   "replaces": "kenney/sideTableDrawers",
+   "group": 2,
+   "fits": [
+    {
+     "w": 0.5,
+     "d": 0.42,
+     "h": 0.6
+    }
+   ],
+   "back": true,
+   "recolors": [
+    {
+     "wood": "#e9ecec",
+     "woodDark": "#c9d0d2",
+     "_defaultMat": "#eef0f0"
+    }
+   ]
+  },
+  "bench": {
+   "replaces": "kenney/benchCushion",
+   "group": 1,
+   "fits": [
+    {
+     "w": 0.96,
+     "d": 0.5,
+     "h": 0
+    }
+   ],
+   "seat": 0.38,
+   "recolors": [
+    {
+     "carpet": "#5f8f8a",
+     "carpetDarker": "#4f7b76",
+     "wood": "#9c7a52"
+    }
+   ]
+  },
+  "bookcase": {
+   "replaces": "kenney/bookcaseClosedDoors",
+   "group": 1,
+   "fits": [
+    {
+     "w": 0.9,
+     "d": 0.42,
+     "h": 1.9
+    }
+   ],
+   "back": true,
+   "recolors": [
+    {
+     "wood": "#e9ecec",
+     "woodDark": "#c9d0d2",
+     "_defaultMat": "#eef0f0"
+    }
+   ],
+   "plain": true
+  },
+  "chair": {
+   "replaces": "kenney/chair",
+   "group": 1,
+   "fits": [
+    {
+     "w": 0.5,
+     "d": 0.5,
+     "h": 0
+    }
+   ],
+   "seat": 0.38,
+   "recolors": [
+    {
+     "wood": "#e9ecec",
+     "woodDark": "#c9d0d2",
+     "_defaultMat": "#eef0f0"
+    }
+   ]
+  },
+  "desk": {
+   "replaces": "kenney/desk",
+   "group": 1,
+   "fits": [
+    {
+     "w": 0.96,
+     "d": 0.62,
+     "h": 0.66
+    }
+   ],
+   "computer": true
+  },
+  "lab_sink": {
+   "replaces": "kenney/kitchenSink",
+   "group": 1,
+   "fits": [
+    {
+     "w": 0.95,
+     "d": 0.62,
+     "h": 0.92
+    }
+   ],
+   "back": true,
+   "recolors": [
+    {
+     "wood": "#e9ecec",
+     "woodDark": "#c9d0d2",
+     "_defaultMat": "#eef0f0"
+    }
+   ]
+  },
+  "lounge_chair": {
+   "replaces": "kenney/loungeChair",
+   "group": 1,
+   "fits": [
+    {
+     "w": 0.85,
+     "d": 0.8,
+     "h": 0
+    }
+   ],
+   "seat": 0.38,
+   "recolors": [
+    {
+     "carpet": "#7a8fa6",
+     "carpetDarker": "#67798d",
+     "wood": "#b08a5c"
+    }
+   ]
+  },
+  "low_cabinet": {
+   "replaces": "kaykit/cabinet_medium",
+   "group": 1,
+   "fits": [
+    {
+     "w": 0.95,
+     "d": 0.5,
+     "h": 1.15
+    }
+   ],
+   "back": true
+  },
+  "office_chair": {
+   "replaces": "kenney/chairDesk",
+   "group": 1,
+   "fits": [
+    {
+     "w": 0.62,
+     "d": 0.62,
+     "h": 0
+    }
+   ],
+   "seat": 0.38,
+   "recolors": [
+    {
+     "carpet": "#4d6a73",
+     "carpetDarker": "#3e5860",
+     "carpetWhite": "#4d6a73"
+    }
+   ]
+  },
+  "sink": {
+   "replaces": "kenney/bathroomSink",
+   "group": 1,
+   "fits": [
+    {
+     "w": 0.52,
+     "d": 0.45,
+     "h": 0.95
+    }
+   ],
+   "back": true
+  },
+  "sink_wc": {
+   "replaces": "kenney/bathroomSinkSquare",
+   "group": 1,
+   "fits": [
+    {
+     "w": 0.6,
+     "d": 0.48,
+     "h": 0.95
+    }
+   ],
+   "back": true
+  },
+  "toilet": {
+   "replaces": "kenney/toilet",
+   "group": 1,
+   "fits": [
+    {
+     "w": 0.42,
+     "d": 0.62,
+     "h": 0.8
+    }
+   ],
+   "back": true,
+   "cubicle": {
+    "side": {
+     "x": 0.5,
+     "t": 0.04,
+     "h": 1.75,
+     "d": 0.95,
+     "y": 0.12,
+     "z": -0.02
+    },
+    "door": {
+     "w": 0.92,
+     "h": 1.6,
+     "t": 0.04,
+     "y": 0.12,
+     "z": 0.47
+    }
+   }
+  },
+  "waiting_chair": {
+   "replaces": "kenney/chairModernFrameCushion",
+   "group": 1,
+   "fits": [
+    {
+     "w": 0.56,
+     "d": 0.56,
+     "h": 0
+    }
+   ],
+   "seat": 0.38,
+   "recolors": [
+    {
+     "carpet": "#5f8f8a",
+     "carpetDarker": "#4f7b76",
+     "carpetBlue": "#5f8f8a"
+    }
+   ]
   }
  },
  "rooms": {

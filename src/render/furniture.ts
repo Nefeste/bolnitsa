@@ -8,7 +8,7 @@
 // +z его осей; у длинных — от изголовья к ногам. Без DOM: раскладку и точки опоры проверяют тесты в Bun.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { BLENDER, type Code, entryOf, type Fit, type Recolor, WHITE_FURNITURE } from './catalog';
+import { BLENDER, BLENDER_CODE, BLENDER_KIT, type Code, entryOf, type Fit, type Recolor, WHITE_FURNITURE } from './catalog';
 import type { Layout, Thing } from './layout';
 import { type Model, seatOf } from './models';
 
@@ -87,13 +87,35 @@ export interface LieAnchor {
 /** Высота верха постели у моделей кодом, м. */
 export const LIE_TOP: Partial<Record<Code, number>> = { bed: 0.56, examCouch: 0.66, xray: 0.78, ct: 0.82, mri: 0.82, orTable: 0.9 };
 
+/** Сдвиг места модели кодом вдоль её z, м: анализатор и пульт стоят ближе к стене; их модели Blender — так же. */
+export const CODE_SHIFT: Partial<Record<Code, number>> = { analyzer: -0.18, console: -0.18 };
+
+/** Что стоит на лабораторном столе: 0 — микроскоп, 1 — штатив с пробирками — через клетку. */
+export const benchItem = (t: Thing) => (t.cell[0] + t.cell[1]) % 2;
+
+/**
+ * Каких частей модели Blender у этой вещи нет: стойки капельницы — вне палаты и бокса (пилот); второго предмета лабораторного
+ * стола — микроскоп (`microscope*`) или штатив (`rack*`), как у модели кодом (группа 1).
+ */
+function skipOf(code: Code, t: Thing): (node: string) => boolean {
+  if (code === 'bed') {
+    const iv = t.type === 'room.ward' || t.type === 'room.box';
+    return node => !iv && (node === 'iv' || node === 'iv_bag');
+  }
+  if (code === 'labBench') {
+    const rack = benchItem(t) === 1;
+    return node => (rack ? node.startsWith('microscope') : node.startsWith('rack'));
+  }
+  return () => false;
+}
+
 // ---------------------------------------------------------------- предметы
 
 export class Furnisher {
   readonly batch = new Batch();
   constructor(private models: Map<string, Model>) {}
 
-  /** Загружена ли модель (модели Blender — только с `?models=blender`). */
+  /** Загружена ли модель (модели Blender части 2 — по умолчанию, пилота — только с `?models=blender`). */
   has(name: string): boolean {
     return this.models.has(name);
   }
@@ -104,15 +126,21 @@ export class Furnisher {
    * прижать к задней кромке места; `y` — поставить на высоту. Отдаёт матрицу и верх модели.
    */
   place(name: string, cx: number, cz: number, yaw: number, fit: Fit, opts: { recolor?: Recolor; back?: boolean; y?: number; seat?: number; depth?: number } = {}) {
-    const model = this.models.get(name);
+    // модель Blender части 2 вместо модели набора — если её загрузили (docs/specs/2026-11-blender-2.md): то же место
+    const swap = BLENDER_KIT[name];
+    const blender = swap !== undefined && this.models.has(swap);
+    const model = this.models.get(blender ? swap : name);
     if (!model) throw new Error(`no model ${name}`);
     const size = model.box.getSize(new THREE.Vector3());
     const center = model.box.getCenter(new THREE.Vector3());
-    const sx = fit.w / size.x;
-    const sz = fit.d / size.z;
+    let sx = fit.w / size.x;
+    let sz = fit.d / size.z;
     let sy = fit.h > 0 ? fit.h / size.y : Math.min(sx, sz);
     const seat = opts.seat !== undefined ? seatOf(model) : null;
     if (seat && opts.seat !== undefined) sy = opts.seat / (seat.y - model.box.min.y);
+    // модель Blender — в настоящий размер: она собрана в размер места (blender/sizes.json), сиденье — на SEAT, а на столе
+    // может стоять монитор выше места
+    if (blender) sx = sy = sz = 1;
     const room = opts.depth ?? 1;
     const back = opts.back ? -(room - fit.d) / 2 : 0;
     const m = new THREE.Matrix4()
@@ -134,7 +162,7 @@ export class Furnisher {
       const v = new THREE.Vector3(seat.x, seat.y, seat.z).applyMatrix4(m);
       anchor = { x: v.x, y: v.y, z: v.z, yaw };
     }
-    return { top: (opts.y ?? 0) + size.y * sy, matrix: m, seat: anchor };
+    return { top: (opts.y ?? 0) + size.y * sy, matrix: m, seat: anchor, blender };
   }
 
   /**
@@ -197,8 +225,36 @@ const PAD = 0x6fa9c9;
 const HEAD = 0xdfe3e3;
 const DEFIB = 0xd9a43a;
 const BAG = 0xe8f4f6;
+// регистратура, лаборатория, процедурная, санузел (модели Blender группы 1, docs/specs/2026-11-blender-2.md, — те же цвета)
+const FRONT = 0x5f8f8a;
+const WOOD_TOP = 0xc9a77c;
+const BEIGE = 0xe7e2d8;
+const LIGHT = 0xd7dcdc;
+const LIGHT2 = 0xe3e7e7;
+const SLATE = 0x9ab0b8;
+const TRAY = 0x9fc3d6;
+const LENS = 0xe8e8e8;
+const RACK = 0xe0e4e4;
+const TUBE_R = 0xc94a4a;
+const TUBE_B = 0x5a8fd0;
+const TUBE_Y = 0xe2c044;
+const TUBE_G = 0x7bbf6a;
+const CUBICLE = 0x9fb7c4;
+const CUBICLE_DOOR = 0xb5c9d3;
 /** Палитра больницы — её же берут модели Blender (blender/sizes.json, tools/app/blender-sizes.ts): стиль один. */
-export const PALETTE = { STEEL, STEEL_D, WHITE, MINT, SCREEN, DARK, SHEET, BLANKET, TEAL, MATTRESS, BOARD, PANEL, PAD, HEAD, DEFIB, BAG };
+export const PALETTE = {
+  STEEL, STEEL_D, WHITE, MINT, SCREEN, DARK, SHEET, BLANKET, TEAL, MATTRESS, BOARD, PANEL, PAD, HEAD, DEFIB, BAG,
+  FRONT, WOOD_TOP, BEIGE, LIGHT, LIGHT2, SLATE, TRAY, LENS, RACK, TUBE_R, TUBE_B, TUBE_Y, TUBE_G, CUBICLE, CUBICLE_DOOR,
+};
+/**
+ * Кабинка санузла (`decorate`): унитаз у дальней стены клетки, стенки по бокам, дверца спереди — в осях клетки (перёд на +z,
+ * середина клетки — 0), м. Её же собирает модель Blender `toilet` (docs/specs/2026-11-blender-2.md, группа 1).
+ */
+export const TOILET = {
+  fit: { w: 0.42, d: 0.62, h: 0.8 },
+  side: { x: 0.5, t: 0.04, h: 1.75, d: 0.95, y: 0.12, z: -0.02 },
+  door: { w: 0.92, h: 1.6, t: 0.04, y: 0.12, z: 0.47 },
+} as const;
 /** Где у кровати палаты стойка капельницы, в осях кровати: сбоку у изголовья, м. */
 export const IV_AT: readonly [number, number] = [0.62, -0.78];
 
@@ -339,11 +395,11 @@ function ecgCart(f: Furnisher, m: THREE.Matrix4) {
 
 function analyzer(f: Furnisher, m: THREE.Matrix4) {
   f.box(m, 0.8, 0.85, 0.6, 0, 0, 0, WHITE);
-  f.box(m, 0.82, 0.05, 0.62, 0, 0.85, 0, 0xd7dcdc);
+  f.box(m, 0.82, 0.05, 0.62, 0, 0.85, 0, LIGHT);
   f.box(m, 0.36, 0.24, 0.02, -0.12, 0.55, 0.305, SCREEN, true);
   f.box(m, 0.8, 0.05, 0.02, 0, 0.35, 0.305, TEAL);
-  f.box(m, 0.3, 0.3, 0.4, 0.15, 0.9, -0.05, 0xe3e7e7);
-  f.box(m, 0.2, 0.06, 0.25, 0.15, 1.2, -0.05, 0x9ab0b8);
+  f.box(m, 0.3, 0.3, 0.4, 0.15, 0.9, -0.05, LIGHT2);
+  f.box(m, 0.2, 0.06, 0.25, 0.15, 1.2, -0.05, SLATE);
 }
 
 /** УЗИ: тележка с пультом и экраном. */
@@ -367,23 +423,29 @@ function endoscope(f: Furnisher, m: THREE.Matrix4) {
   f.cyl(m, 0.012, 0.012, 0.7, 0.22, 0.95, 0.15, 0x222222, 6, 0.4);
 }
 
-/** Стойка регистратуры: длина — вдоль x, лицом на +z (к посетителю); монитор — к сидящему. */
+/**
+ * Стойка регистратуры: длина — вдоль x; регистратор — на +z (стол повёрнут к тому, кто за ним, layout.ts): к нему рабочий
+ * стол и монитор, высокая панель с полкой — к посетителю (−z).
+ */
 function counter(f: Furnisher, m: THREE.Matrix4, models: Furnisher) {
   const len = 1.5;
-  f.box(m, len, 1.0, 0.12, 0, 0, 0.32, 0x5f8f8a);
-  f.box(m, len, 0.05, 0.3, 0, 1.0, 0.3, 0xc9a77c);
-  f.box(m, len, 0.66, 0.55, 0, 0, -0.05, 0xe7e2d8);
-  f.box(m, len, 0.04, 0.6, 0, 0.66, -0.05, 0xc9a77c);
-  screenOn(models, m, 0, 0.7, -0.05);
+  f.box(m, len, 1.0, 0.12, 0, 0, -0.32, FRONT);
+  f.box(m, len, 0.05, 0.3, 0, 1.0, -0.3, WOOD_TOP);
+  f.box(m, len, 0.66, 0.55, 0, 0, 0.05, BEIGE);
+  f.box(m, len, 0.04, 0.6, 0, 0.66, 0.05, WOOD_TOP);
+  screenOn(models, m, 0, 0.7, 0.05);
 }
 
-/** Монитор и клавиатура на столе: экран смотрит на −z стола (к сидящему за ним). */
+/**
+ * Монитор и клавиатура на столе: экран смотрит на +z стола — к сидящему за ним (стол повёрнут к нему, layout.ts); экран
+ * модели набора смотрит на свой −z, поэтому она повёрнута; клавиатура — между ним и экраном.
+ */
 function screenOn(f: Furnisher, m: THREE.Matrix4, x: number, y: number, z: number) {
   const at = m.clone().multiply(new THREE.Matrix4().makeTranslation(x, y, z));
   const p = new THREE.Vector3().setFromMatrixPosition(at);
   const yaw = Math.atan2(at.elements[8], at.elements[10]);
   f.place('kenney/computerScreen', p.x, p.z, yaw + Math.PI, { w: 0.5, d: 0.16, h: 0.4 }, { y: p.y });
-  const k = at.clone().multiply(new THREE.Matrix4().makeTranslation(0, 0, -0.18));
+  const k = at.clone().multiply(new THREE.Matrix4().makeTranslation(0, 0, 0.18));
   const kp = new THREE.Vector3().setFromMatrixPosition(k);
   f.place('kenney/computerKeyboard', kp.x, kp.z, yaw + Math.PI, { w: 0.42, d: 0.15, h: 0.03 }, { y: kp.y });
 }
@@ -416,10 +478,10 @@ function labBench(f: Furnisher, m: THREE.Matrix4, cx: number, cz: number, yaw: n
   if (item === 0) {
     f.box(on, 0.16, 0.03, 0.2, 0, 0, 0, DARK);
     f.box(on, 0.04, 0.26, 0.04, 0, 0.03, -0.07, DARK);
-    f.cyl(on, 0.025, 0.025, 0.14, 0, 0.2, 0, 0xe8e8e8, 8, 0.5);
+    f.cyl(on, 0.025, 0.025, 0.14, 0, 0.2, 0, LENS, 8, 0.5);
   } else {
-    f.box(on, 0.24, 0.05, 0.1, 0, 0, 0, 0xe0e4e4);
-    [0xc94a4a, 0x5a8fd0, 0xe2c044, 0x7bbf6a, 0xc94a4a].forEach((c, i) => f.cyl(on, 0.012, 0.012, 0.12, -0.08 + i * 0.04, 0.03, 0, c, 6));
+    f.box(on, 0.24, 0.05, 0.1, 0, 0, 0, RACK);
+    [TUBE_R, TUBE_B, TUBE_Y, TUBE_G, TUBE_R].forEach((c, i) => f.cyl(on, 0.012, 0.012, 0.12, -0.08 + i * 0.04, 0.03, 0, c, 6));
   }
 }
 
@@ -427,7 +489,7 @@ function labBench(f: Furnisher, m: THREE.Matrix4, cx: number, cz: number, yaw: n
 function procedureTable(f: Furnisher, m: THREE.Matrix4) {
   for (const sx of [-0.35, 0.35]) for (const sz of [-0.22, 0.22]) f.box(m, 0.04, 0.68, 0.04, sx, 0, sz, STEEL);
   f.box(m, 0.8, 0.04, 0.52, 0, 0.68, 0, WHITE);
-  f.box(m, 0.3, 0.03, 0.2, -0.18, 0.72, -0.05, 0x9fc3d6);
+  f.box(m, 0.3, 0.03, 0.2, -0.18, 0.72, -0.05, TRAY);
   f.box(m, 0.14, 0.06, 0.4, 0.22, 0.72, 0.02, MINT);
 }
 
@@ -484,19 +546,20 @@ function placeThing(f: Furnisher, t: Thing, i: number, seats: (SeatAnchor | unde
   if ('model' in e) {
     const r = f.place(e.model, cx, cz, t.yaw, e.fit, { recolor: e.recolor, back: e.back, seat: e.seat });
     seats[i] = r.seat;
-    if (e.computer) screenOn(f, m, 0, r.top - 0.01, -0.08);
+    // у стола Blender монитор и клавиатура — свои части
+    if (e.computer && !r.blender) screenOn(f, m, 0, r.top - 0.01, -0.08);
     return;
   }
   if (LIE_TOP[e.code] !== undefined) lies[i] = lieAt(t, e.code, cx, cz);
   // длинный предмет, которому не нашлось второй клетки (одна койка в шаблоне реанимации: вторая клетка разрезала бы
   // помещение), — укорочен до своей клетки, а не налезает на соседние
   if (LIE_TOP[e.code] !== undefined && t.cells.length === 1) m.multiply(new THREE.Matrix4().makeScale(1, 1, 0.5));
-  // модель Blender вместо модели кодом — если её загрузили (`?models=blender`, docs/reports/2026-11-blender-pilot.md): то же
-  // место, та же высота постели; стойка капельницы — у кровати палаты и бокса, как у модели кодом
-  const glb = BLENDER[e.code];
-  if (glb && f.has(glb)) {
-    const iv = t.type === 'room.ward' || t.type === 'room.box';
-    f.placeAt(glb, m, node => !iv && (node === 'iv' || node === 'iv_bag'));
+  // модель Blender вместо модели кодом — если её загрузили (пилот — `?models=blender`, docs/reports/2026-11-blender-pilot.md;
+  // часть 2 — по умолчанию, docs/specs/2026-11-blender-2.md): то же место, та же высота постели и тот же сдвиг места
+  const glb = [BLENDER[e.code], BLENDER_CODE[e.code]].find(g => g !== undefined && f.has(g));
+  if (glb) {
+    const at = CODE_SHIFT[e.code] !== undefined ? m.clone().multiply(new THREE.Matrix4().makeTranslation(0, 0, CODE_SHIFT[e.code]!)) : m;
+    f.placeAt(glb, at, skipOf(e.code, t));
     return;
   }
   switch (e.code) {
@@ -531,7 +594,7 @@ function placeThing(f: Furnisher, t: Thing, i: number, seats: (SeatAnchor | unde
       ecgCart(f, m);
       break;
     case 'analyzer':
-      analyzer(f, m.clone().multiply(new THREE.Matrix4().makeTranslation(0, 0, -0.18)));
+      analyzer(f, m.clone().multiply(new THREE.Matrix4().makeTranslation(0, 0, CODE_SHIFT.analyzer!)));
       break;
     case 'us':
       us(f, m);
@@ -543,13 +606,13 @@ function placeThing(f: Furnisher, t: Thing, i: number, seats: (SeatAnchor | unde
       counter(f, m, f);
       break;
     case 'console':
-      console_(f, m.clone().multiply(new THREE.Matrix4().makeTranslation(0, 0, -0.18)));
+      console_(f, m.clone().multiply(new THREE.Matrix4().makeTranslation(0, 0, CODE_SHIFT.console!)));
       break;
     case 'instrumentTable':
       instrumentTable(f, m);
       break;
     case 'labBench':
-      labBench(f, m, cx, cz, t.yaw, (t.cell[0] + t.cell[1]) % 2);
+      labBench(f, m, cx, cz, t.yaw, benchItem(t));
       break;
     case 'procedureTable':
       procedureTable(f, m);
@@ -585,10 +648,16 @@ function decorate(f: Furnisher, layout: Layout): [number, number][] {
       for (const [x, y] of pick) {
         const cx = x + 0.5;
         const cz = y + 0.5;
-        f.place('kenney/toilet', cx, cz, yaw, { w: 0.42, d: 0.62, h: 0.8 }, { back: true });
         const m = frame(cx, cz, yaw);
-        for (const side of [-0.5, 0.5]) f.box(m, 0.04, 1.75, 0.95, side, 0.12, -0.02, 0x9fb7c4);
-        f.box(m, 0.92, 1.6, 0.04, 0, 0.12, 0.47, 0xb5c9d3);
+        // кабинка Blender (группа 1) — унитаз, стенки и дверца одной моделью в осях клетки
+        const glb = BLENDER_KIT['kenney/toilet'];
+        if (f.has(glb)) f.placeAt(glb, m);
+        else {
+          f.place('kenney/toilet', cx, cz, yaw, TOILET.fit, { back: true });
+          const { side: s, door: d } = TOILET;
+          for (const x of [-s.x, s.x]) f.box(m, s.t, s.h, s.d, x, s.y, s.z, CUBICLE);
+          f.box(m, d.w, d.h, d.t, 0, d.y, d.z, CUBICLE_DOOR);
+        }
         blocked.push([x, y]);
       }
     }

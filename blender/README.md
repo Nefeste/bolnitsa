@@ -1,10 +1,15 @@
-# Модели Blender — пилот
+# Модели Blender
 
 Пилот Blender ([#175](https://github.com/Nefeste/bolnitsa/issues/175), отчёт —
 [`docs/reports/2026-11-blender-pilot.md`](../docs/reports/2026-11-blender-pilot.md)): кровать, монитор с дефибриллятором и
 рентген-аппарат собраны скриптами, а свет на полу рентген-кабинета запечён в Blender. Работает так, как предлагает устав
 ([`docs/11-new-games.md`](https://github.com/Nefeste/gornitsa/blob/main/docs/11-new-games.md), «Графика и звук из
 скриптов»).
+
+Часть 2 ([спецификация](../docs/specs/2026-11-blender-2.md), решение владельца
+[#178](https://github.com/Nefeste/bolnitsa/issues/178)): аппараты и мебель группами, у каждой модели — бюджет треугольников
+(`budgets.json`), каждая группа — сразу по умолчанию. Группа 1 «Амбулатория» — `ambulatory.py`, 18 моделей помещений
+сценария 1.
 
 ## Запуск
 
@@ -14,9 +19,12 @@
 npm run content && bun tools/app/blender-sizes.ts      # blender/sizes.json — размеры из игры
 blender --background --factory-startup --python blender/build.py -- bed monitor xray room   # программа Blender
 python blender/build.py bed monitor xray room          # или Blender как модуль Python: pip install bpy==4.5.15
+node tools/app/blender-pack.mjs                        # сжать в assets/models/blender/, как модели CC0
 ```
 
-Без имён собирается всё. Результат — в `assets/models/blender/`:
+Без имён собирается всё: модели пилота, модели части 2 и свет. `build.py` пишет в `blender/.out/` (не в git), модель сверх
+бюджета не пишет; `blender-pack.mjs` сжимает модели (EXT_meshopt_compression, те же настройки, что у `tools/app/assets.mjs`) и
+кладёт всё в `assets/models/blender/`. Результат:
 
 - `bed.glb`, `monitor.glb`, `xray.glb` — модели;
 - `room-xray-M.png` и `room-xray-M.json` — свет на полу и образец помещения, на которое он ложится.
@@ -39,6 +47,12 @@ python blender/build.py bed monitor xray room          # или Blender как �
   - экспорт в `.glb`.
 
   Оси игры переводятся в оси Blender только здесь.
+- **`budgets.json`** — модели части 2: группа, что заменяет (запись каталога окна), бюджет треугольников на одну вещь. Его
+  читают `build.py`, проба `tools/app/blender-catalog.ts` и тест.
+- **`ambulatory.py`** — группа 1: мебель вместо моделей наборов — в размер места каталога (`kits` в `sizes.json`), материалы
+  названы как у модели набора («wood», «carpet», …), чтобы на них легли перекраски каталога; аппараты вместо моделей кодом — в
+  оси их места (`codes`). Части: `screen` светится, `seat`, `paper`, `door`, `tap`, `tray`; на лабораторном столе —
+  `microscope*` или `rack*`.
 - **`models.py`** — кровать, монитор и рентген из частей. Имя части совпадает с именем узла `.glb`. Игра уже читает две
   части: `screen` (экран светится) и `iv` (стойка капельницы — только в палате и боксе). Остальные имена — для механик,
   которых пока нет.
@@ -48,10 +62,11 @@ python blender/build.py bed monitor xray room          # или Blender как �
 
 ## В игре
 
-По умолчанию модели Blender в игре не включены: пока владелец не выбрал путь (#175), стоят модели кодом. Включаются
-ключами:
+Модели части 2 — по умолчанию; модели пилота и свет — по ключам, пока их не переделала их группа:
 
-- в браузере — `?models=blender` (модели) и `&baked=1` (свет кабинета);
-- у Electron — `--models blender --baked`.
+- `?models=code` (Electron — `--models code`) — модели кодом и CC0, как до части 2: для сравнения и «Авто-бенча»;
+- `?models=blender` (`--models blender`) — ещё и модели пилота; `&baked=1` (`--baked`) — свет рентген-кабинета.
 
-Код, который это делает: `BLENDER` в `src/render/catalog.ts`, `placeAt` в `src/render/furniture.ts`, `src/render/baked.ts`.
+Код: `BLENDER`, `BLENDER_CODE`, `BLENDER_KIT` и `modelsOf` в `src/render/catalog.ts`; `place` и `placeAt` в
+`src/render/furniture.ts`; `src/render/baked.ts`. Лист «было / стало» — `node tools/app/blender-sheet.mjs` после
+`npm run build`.

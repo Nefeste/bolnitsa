@@ -44,10 +44,10 @@ export const SEAT = 0.38;
 
 /** Больничная палитра. */
 export const WHITE_FURNITURE: Recolor = { wood: 0xe9ecec, woodDark: 0xc9d0d2, _defaultMat: 0xeef0f0 };
-const OFFICE_CHAIR: Recolor = { carpet: 0x4d6a73, carpetDarker: 0x3e5860, carpetWhite: 0x4d6a73 };
-const WAITING_CHAIR: Recolor = { carpet: 0x5f8f8a, carpetDarker: 0x4f7b76, carpetBlue: 0x5f8f8a };
-const LOUNGE: Recolor = { carpet: 0x7a8fa6, carpetDarker: 0x67798d, wood: 0xb08a5c };
-const BENCH: Recolor = { carpet: 0x5f8f8a, carpetDarker: 0x4f7b76, wood: 0x9c7a52 };
+export const OFFICE_CHAIR: Recolor = { carpet: 0x4d6a73, carpetDarker: 0x3e5860, carpetWhite: 0x4d6a73 };
+export const WAITING_CHAIR: Recolor = { carpet: 0x5f8f8a, carpetDarker: 0x4f7b76, carpetBlue: 0x5f8f8a };
+export const LOUNGE: Recolor = { carpet: 0x7a8fa6, carpetDarker: 0x67798d, wood: 0xb08a5c };
+export const BENCH: Recolor = { carpet: 0x5f8f8a, carpetDarker: 0x4f7b76, wood: 0x9c7a52 };
 
 const office = (k: ObjectKind, types: Id[], e: Entry): [string, Entry][] => types.map(t => [`${k}@${t}`, e]);
 
@@ -107,9 +107,41 @@ export function entryOf(kind: ObjectKind, roomType: Id | '', equipment?: Id): En
 
 /**
  * Модели Blender (docs/reports/2026-11-blender-pilot.md; blender/): пилот — кровать, монитор у кровати и рентген вместо моделей
- * кодом, если игра открыта с `?models=blender`; без ключа — модели кодом, как были, пока владелец не выбрал путь (#175).
+ * кодом, если игра открыта с `?models=blender`; без ключа — модели кодом, пока их не переделала их группа части 2
+ * (docs/specs/2026-11-blender-2.md: кровать и монитор — группа 2, рентген — 3).
  */
 export const BLENDER: Partial<Record<Code, string>> = { bed: 'blender/bed', monitor: 'blender/monitor', xray: 'blender/xray' };
+
+/**
+ * Модели Blender части 2 вместо моделей кодом (docs/specs/2026-11-blender-2.md, решение владельца #178): группа 1 «Амбулатория» —
+ * по умолчанию; `?models=code` — модели кодом и CC0, как до них. Ставятся в оси места, как модели пилота (`Furnisher.placeAt`).
+ * Состав — тот же, что в blender/budgets.json (тест `blender.test.ts`).
+ */
+export const BLENDER_CODE: Partial<Record<Code, string>> = {
+  counter: 'blender/counter', examCouch: 'blender/couch', labBench: 'blender/lab_bench', analyzer: 'blender/analyzer',
+  procedureTable: 'blender/procedure_table', ecg: 'blender/ecg',
+};
+
+/**
+ * Модели Blender части 2 вместо моделей наборов CC0 — в то же место тем же `Furnisher.place`: вписаны в место каталога,
+ * сиденье на высоте `SEAT`, материалы названы как у модели набора — перекраски каталога ложатся на них по имени.
+ */
+export const BLENDER_KIT: Record<string, string> = {
+  'kenney/desk': 'blender/desk', 'kenney/chairDesk': 'blender/office_chair', 'kenney/chairModernFrameCushion': 'blender/waiting_chair',
+  'kenney/chair': 'blender/chair', 'kenney/benchCushion': 'blender/bench', 'kenney/loungeChair': 'blender/lounge_chair',
+  'kenney/bookcaseClosedDoors': 'blender/bookcase', 'kaykit/cabinet_medium': 'blender/low_cabinet', 'kenney/bathroomSink': 'blender/sink',
+  'kenney/bathroomSinkSquare': 'blender/sink_wc', 'kenney/kitchenSink': 'blender/lab_sink', 'kenney/toilet': 'blender/toilet',
+};
+
+/** Какие модели грузит окно: `code` — модели кодом и CC0, `blender` — ещё и модели пилота, без ключа — модели части 2. */
+export type ModelsMode = 'code' | 'part2' | 'blender';
+export function modelsOf(mode: ModelsMode, kits: readonly string[]): string[] {
+  if (mode === 'code') return [...kits];
+  const part2 = [...Object.values(BLENDER_CODE), ...Object.values(BLENDER_KIT)] as string[];
+  // заменённые модели наборов не нужны: `place` ставит вместо них модель Blender
+  const out = [...kits.filter(n => !BLENDER_KIT[n]), ...part2];
+  return mode === 'blender' ? [...out, ...(Object.values(BLENDER) as string[])] : out;
+}
 
 /** Файлы моделей, на которые ссылается таблица, и модели, которые ставятся без записи (декор, мониторы на столах). */
 export const EXTRA_MODELS = ['kenney/computerScreen', 'kenney/computerKeyboard', 'kenney/toilet', 'kenney/rugRectangle', 'kenney/kitchenCabinet', 'kenney/sideTableDrawers'];
