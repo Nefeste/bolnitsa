@@ -1,9 +1,10 @@
 // Сценарий в браузере, часть 33 — утренний обход (spec docs/specs/2026-10-staff-motion.md, часть 2, «Проверки»). Готовая
-// больница, поток 14 в час — к 08:30 врачей ждут: ×12 до часа, когда нанятый врач ушёл на обход, ×1, пока он не встанет у
-// койки; пауза: он у изголовья с бумагами (`bedside:` — место у койки), карточка — «на обходе: N из M коек, вернётся в …»,
-// «Персонал» — «на обходе до …», ждущий у двери его кабинета — в пути «врач на обходе — вернётся в …». Потом карточка палаты:
-// клиническая медсестра — только днём, «без неё помещение работает…», найм; «До утра», планёрка, и в 08:30 вторых суток она
-// обходит койки своей палаты сама — у изголовья. Снимки — `e2e-rounds-1-doctor.jpg`, `e2e-rounds-2-nurse.jpg`.
+// больница, поток 14 в час. В первое утро лежащих у нанятых ещё нет, поэтому сначала карточка палаты: клиническая медсестра
+// — только днём, «без неё помещение работает…», найм. Потом «До утра», планёрка — и в 08:30 вторых суток: клиническая
+// медсестра обходит койки своей палаты — у изголовья, её карточка; ×12, пока нанятый врач не ушёл на обход, ×1, пока он не
+// встанет у койки; пауза — он у изголовья с бумагами (`bedside:` — место у койки), карточка — «на обходе: N из M коек,
+// вернётся в …», «Персонал» — «на обходе до …», ждущий у двери его кабинета — в пути «врач на обходе — вернётся в …».
+// Снимки — `e2e-rounds-1-doctor.jpg`, `e2e-rounds-2-nurse.jpg`.
 import { join } from 'node:path';
 
 /** @param {{ page: import('playwright-core').Page, port: number, out: string, ok: (m: string) => void, fail: (m: string) => void, q: string, shots: string }} x */
@@ -20,12 +21,22 @@ export async function roundsPart({ page, port, out, ok, fail, q, shots }) {
   };
   const flat = s => (s ?? '').replace(/\s+/g, ' ').trim();
   const hhmm = t => new Date(t * 1000).toISOString().slice(11, 16);
-  /** Кто на обходе из движка сейчас и где: врач или медсестра, у какой остановки, стоит ли у койки. */
-  const rounding = nurse =>
-    page.evaluate(nurse => {
+  /** «Следить» за выбранным и ближе — снимок у койки; потом камеру отпустить. */
+  const closeShot = async (id, name) => {
+    await page.evaluate(() => window.__game.actions.follow());
+    await page.waitForTimeout(1200);
+    await page.evaluate(() => window.__game.stage.cam.zoom(0.55));
+    await page.waitForTimeout(900);
+    const follows = await page.evaluate(id => window.__game.following === `s:${id}`, id);
+    ok(`снимок у койки («Следить»${follows ? '' : ' — камера не держит его'}): ${join(out, name)} (${await shot(name)} КБ)`);
+    await page.evaluate(() => window.__game.actions.follow());
+  };
+  /** Обход из движка, что идёт сейчас (`by` — чей; иначе — первый врача или медсестры): у какой остановки, стоит ли у койки. */
+  const rounding = (nurse, by) =>
+    page.evaluate(([nurse, by]) => {
       const g = window.__game;
       for (const r of g.pop.wardRounds) {
-        if (!!r.nurse !== nurse || g.t < r.from || g.t >= r.until) continue;
+        if (!!r.nurse !== nurse || (by && r.by !== by) || g.t < r.from || g.t >= r.until) continue;
         const i = r.stops.findIndex(st => g.t < st.end);
         const w = g.crowd.walkers.get(`s:${r.by}`);
         const m = g.staff.find(x => x.id === r.by);
@@ -35,11 +46,11 @@ export async function roundsPart({ page, port, out, ok, fail, q, shots }) {
         };
       }
       return null;
-    }, nurse);
+    }, [nurse, by ?? '']);
   /** Ждать (×1), пока тот, кто на обходе, не встанет у койки своей остановки; кончился обход — null. */
-  const atBed = async nurse => {
-    for (let i = 0; i < 400; i++) {
-      const r = await rounding(nurse);
+  const atBed = async (nurse, by) => {
+    for (let i = 0; i < 600; i++) {
+      const r = await rounding(nurse, by);
       if (!r) return null;
       if (r.stop && r.t >= r.stop.at && r.still && r.at.startsWith('bedside:')) return r;
       await page.waitForTimeout(100);
@@ -51,11 +62,73 @@ export async function roundsPart({ page, port, out, ok, fail, q, shots }) {
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
   await page.evaluate(() => window.__game.actions.doctor({ kind: 'autopause', on: false }));
 
+  // ---------------------------------------------------------------- клиническая медсестра: карточка палаты, найм
+  const ward = await page.evaluate(() => window.__game.plan.rooms.find(r => r.type === 'room.ward')?.id);
+  await page.evaluate(id => window.__game.selectRoomId(id), ward);
+  await page.waitForSelector('#hire-clinical_nurse', { timeout: 10000 });
+  const night = await page.$('#hire-clinical_nurse-night');
+  const posts = await page.$$eval('#card .post', els => els.map(e => (e.textContent ?? '').replace(/\s+/g, ' ').trim()));
+  const post = posts.find(x => x.startsWith('Клиническая медсестра')) ?? '';
+  if (!night && post.includes('без неё помещение работает')) ok(`карточка палаты: «${post}» — только днём`);
+  else fail(`карточка палаты: ночное место ${!!night}, «${post}»`);
+  await page.click('#hire-clinical_nurse');
+  await until(id => window.__game.staff.some(m => m.role === 'role.clinical_nurse' && m.room === id), ward, 10000).catch(() => {});
+  const nurse = await page.evaluate(id => window.__game.staff.find(m => m.role === 'role.clinical_nurse' && m.room === id)?.id, ward);
+  if (nurse) ok(`клиническая медсестра нанята в палату (${nurse})`);
+  else {
+    fail('клиническая медсестра: не нанята');
+    return;
+  }
+  await page.keyboard.press('Escape');
+
+  // ---------------------------------------------------------------- «До утра», планёрка
+  const t0 = Date.now();
+  await page.click('#speed-ff');
+  for (;;) {
+    const h = await page.evaluate(() => ({ open: window.__game.store.get().economy?.open ?? false, ff: window.__game.ff, speed: window.__game.speed, card: window.__game.doctor.open }));
+    if (h.open || Date.now() - t0 > 300000) break;
+    if (h.card) await page.keyboard.press('Escape');
+    else if (!h.ff && h.speed === 0) await page.click('#speed-ff');
+    await page.waitForTimeout(200);
+  }
+  if (await page.$('#meeting')) ok(`«До утра» — планёрка вторых суток (${Math.round((Date.now() - t0) / 1000)} с)`);
+  else {
+    fail('«До утра»: планёрки нет');
+    return;
+  }
+  await page.click('#meeting-close');
+
+  // ---------------------------------------------------------------- 08:30: клиническая медсестра обходит свою палату
+  // её обход короткий — к 08:30 на ×12, дальше ×1
+  const day2 = await page.evaluate(() => Math.floor(window.__game.t / 86400) * 86400 + 8 * 3600 + 29 * 60);
+  await page.keyboard.press('Digit3');
+  await until(t => window.__game.t >= t, day2, 60000).catch(() => {});
+  await page.keyboard.press('Digit1');
+  await until(id => window.__game.pop.wardRounds.some(r => r.by === id), nurse, 60000).catch(() => {});
+  const started = await page.evaluate(id => window.__game.pop.wardRounds.find(r => r.by === id) ?? null, nurse);
+  if (!started) {
+    fail('клиническая медсестра: в 08:30 обхода нет');
+    return;
+  }
+  ok(`клиническая медсестра — обход с ${hhmm(started.from)} до ${hhmm(started.until)}, коек ${started.stops.length}`);
+  const her = await atBed(true, nurse);
+  if (her) {
+    await page.evaluate(() => window.__game.setSpeed(0));
+    ok(`клиническая медсестра у койки ${her.i + 1} из ${her.n} (${her.at}), на посту к ${hhmm(her.until)}`);
+    await page.evaluate(id => window.__game.actions.select(`s:${id}`), nurse);
+    await page.waitForSelector('#card', { timeout: 10000 });
+    const text = flat(await page.textContent('#card'));
+    if (/на обходе: \d+ из \d+ ко(ек|йки)/.test(text)) ok(`карточка клинической медсестры: «${text.slice(0, 160)}»`);
+    else fail(`карточка клинической медсестры: «${text}»`);
+    await closeShot(nurse, 'e2e-rounds-2-nurse.jpg');
+    await page.keyboard.press('Escape');
+  } else fail(`клиническая медсестра: не у койки — ${JSON.stringify(await rounding(true, nurse))}`);
+
   // ---------------------------------------------------------------- 08:30: врач уходит на обход, встаёт у койки
   await page.keyboard.press('Digit3');
-  await until(() => window.__game.pop.wardRounds.some(r => !r.nurse && window.__game.t >= r.from && window.__game.t < r.until), null, 120000);
+  await until(() => window.__game.pop.wardRounds.some(r => !r.nurse && window.__game.t >= r.from && window.__game.t < r.until), null, 120000).catch(() => {});
   await page.keyboard.press('Digit1');
-  let doc = await atBed(false);
+  const doc = await atBed(false);
   if (!doc) {
     fail(`обход: врач не встал у койки — ${JSON.stringify(await rounding(false))}`);
     return;
@@ -69,7 +142,7 @@ export async function roundsPart({ page, port, out, ok, fail, q, shots }) {
   const card = flat(await page.textContent('#card'));
   if (new RegExp(`на обходе: \\d+ из ${doc.n} ко(ек|йки), вернётся в ${hhmm(doc.until)}`).test(card)) ok(`карточка врача: «${card.slice(0, 200)}»`);
   else fail(`карточка врача: «${card}»`);
-  ok(`снимок: ${join(out, 'e2e-rounds-1-doctor.jpg')} (${await shot('e2e-rounds-1-doctor.jpg')} КБ)`);
+  await closeShot(doc.by, 'e2e-rounds-1-doctor.jpg');
   await page.keyboard.press('Escape');
   await page.evaluate(() => window.__game.actions.setTab('staff'));
   await page.waitForSelector('#staff-on-duty');
@@ -104,61 +177,4 @@ export async function roundsPart({ page, port, out, ok, fail, q, shots }) {
     ok(`путь ждущего у двери его кабинета: «…${found.slice(Math.max(0, at - 60), at + 40)}…»`);
   } else fail(`путь: у двери ${keys.length}, ни у кого нет «врач на обходе — вернётся в …»`);
   await page.keyboard.press('Escape');
-
-  // ---------------------------------------------------------------- клиническая медсестра: карточка палаты, найм
-  const ward = await page.evaluate(id => {
-    const g = window.__game;
-    const room = g.plan.rooms.find(r => r.id === id);
-    return room && ['room.ward', 'room.icu', 'room.ricu', 'room.box'].includes(room.type) ? id : g.plan.rooms.find(r => r.type === 'room.ward')?.id;
-  }, doc.stop.room);
-  await page.evaluate(id => window.__game.selectRoomId(id), ward);
-  await page.waitForSelector('#hire-clinical_nurse', { timeout: 10000 });
-  const night = await page.$('#hire-clinical_nurse-night');
-  const posts = await page.$$eval('#card .post', els => els.map(e => (e.textContent ?? '').replace(/\s+/g, ' ').trim()));
-  const post = posts.find(x => x.startsWith('Клиническая медсестра')) ?? '';
-  if (!night && post.includes('без неё помещение работает')) ok(`карточка палаты: «${post}» — только днём`);
-  else fail(`карточка палаты: ночное место ${!!night}, «${post}»`);
-  await page.click('#hire-clinical_nurse');
-  await until(id => window.__game.staff.some(m => m.role === 'role.clinical_nurse' && m.room === id), ward, 10000).catch(() => {});
-  const nurse = await page.evaluate(id => window.__game.staff.find(m => m.role === 'role.clinical_nurse' && m.room === id)?.id, ward);
-  if (nurse) ok(`клиническая медсестра нанята в палату (${nurse})`);
-  else {
-    fail('клиническая медсестра: не нанята');
-    return;
-  }
-  await page.keyboard.press('Escape');
-
-  // ---------------------------------------------------------------- «До утра», планёрка, в 08:30 она обходит палату
-  const t0 = Date.now();
-  await page.click('#speed-ff');
-  for (;;) {
-    const h = await page.evaluate(() => ({ open: window.__game.store.get().economy?.open ?? false, ff: window.__game.ff, speed: window.__game.speed, card: window.__game.doctor.open }));
-    if (h.open || Date.now() - t0 > 300000) break;
-    if (h.card) await page.keyboard.press('Escape');
-    else if (!h.ff && h.speed === 0) await page.click('#speed-ff');
-    await page.waitForTimeout(200);
-  }
-  // «почему?» ушедших: их врач был на обходе — если кто-то ушёл так
-  const why = await page.$('#meeting #meet-why-left');
-  if (why) {
-    await why.click();
-    const round = await page.$('#meeting #meet-left-round');
-    if (round) ok(`планёрка, «почему?» ушедших: «${flat(await round.textContent())}»`);
-  }
-  await page.click('#meeting-close');
-  await page.keyboard.press('Digit2');
-  await until(id => window.__game.pop.wardRounds.some(r => r.by === id && window.__game.t >= r.from), nurse, 120000).catch(() => {});
-  await page.keyboard.press('Digit1');
-  const her = await atBed(true);
-  if (her && her.by === nurse) {
-    await page.evaluate(() => window.__game.setSpeed(0));
-    ok(`клиническая медсестра на обходе с ${hhmm(her.from)}: у койки ${her.i + 1} из ${her.n} (${her.at}), на посту к ${hhmm(her.until)}`);
-    await page.evaluate(id => window.__game.actions.select(`s:${id}`), nurse);
-    await page.waitForSelector('#card', { timeout: 10000 });
-    const text = flat(await page.textContent('#card'));
-    if (/на обходе: \d+ из \d+ ко(ек|йки)/.test(text)) ok(`карточка клинической медсестры: «${text.slice(0, 160)}»`);
-    else fail(`карточка клинической медсестры: «${text}»`);
-    ok(`снимок: ${join(out, 'e2e-rounds-2-nurse.jpg')} (${await shot('e2e-rounds-2-nurse.jpg')} КБ)`);
-    await page.keyboard.press('Escape');
-  } else fail(`клиническая медсестра: в 08:30 вторых суток не у койки — ${JSON.stringify(await rounding(true))}`);
 }
