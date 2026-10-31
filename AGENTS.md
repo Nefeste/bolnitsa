@@ -152,8 +152,11 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # growing by real work, the mentor's letters, three ready rooms by the build order, the first
                                    # patient two game minutes after your office works, your own case, «До утра» to the meeting,
                                    # «почему?» of the left with no hired doctors, «Итог» with the hospital's snapshot, «Сохранить
-                                   # снимок», «Играть дальше»; the feel numbers О1–О6 → tools/app/out/e2e-demo.json);
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|32` for one part, `-- --only 7,10,11` —
+                                   # снимок», «Играть дальше»; the feel numbers О1–О6 → tools/app/out/e2e-demo.json); then the
+                                   # morning round: a clinical nurse hired in a ward's card (day only), «До утра», at 08:30 of
+                                   # day 2 she and then a doctor at the bedside by the engine's times, «на обходе» in the card,
+                                   # «Персонал» and the waiting patient's path;
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|33` for one part, `-- --only 7,10,11` —
                                    # several in a row on one page, as in the full run
 node tools/app/soak.mjs --days 3   # after build: a long run in headless Chromium — the ready city at ×12 for three game days,
                                    # the meeting closed each morning; window memory after GC, DOM nodes, people, sim lag and
