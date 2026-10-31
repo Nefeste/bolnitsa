@@ -494,13 +494,17 @@ SOFTWARE.
   регистратуры, пульт рентгена, столик для инструментов, процедурный столик, микроскоп, штатив с пробирками, перегородки
   кабинок санузла.
 
-## 8. Своё — модели пилота Blender
+## 8. Своё — модели Blender
 
 Пилот Blender ([#175](https://github.com/Nefeste/bolnitsa/issues/175), [отчёт](../docs/reports/2026-11-blender-pilot.md)):
 файлы собраны скриптами `blender/` в **Blender 4.5.15 LTS** — пакет `bpy` 4.5.15 с PyPI, тот же Blender как модуль Python
 (почему не программа Blender — в отчёте), — без внешних файлов: геометрия из частей, цвета — палитра игры, затенение и свет
 запечены в Cycles. Права — свои, полные. Размеры — из игры (`blender/sizes.json`, `tools/app/blender-sizes.ts`). Запуск
 дважды даёт те же файлы до байта; тест `tools/test/blender.test.ts` сверяет файлы с этой таблицей.
+
+Часть 2 ([спецификация](../docs/specs/2026-11-blender-2.md), решение владельца
+[#178](https://github.com/Nefeste/bolnitsa/issues/178)): модели групп — те же скрипты и тот же Blender, файлы сжаты, как
+модели CC0 (`tools/app/blender-pack.mjs`, EXT_meshopt_compression); бюджет треугольников каждой — `blender/budgets.json`.
 
 | Файл | Что | Скрипт | Blender | SHA-256 |
 |---|---|---|---|---|
@@ -509,3 +513,21 @@ SOFTWARE.
 | `assets/models/blender/xray.glb` | рентген: 8 частей | `blender/models.py` (`xray`), `blender/build.py` | 4.5.15 | `c769241cf005649b6fd74b45d4766a0e15c6f0b9181b3c5daa5888653a638276` |
 | `assets/models/blender/room-xray-M.png` | свет на полу рентген-кабинета M | `blender/room.py`, `blender/build.py` | 4.5.15 | `cf99cd1cb591592d36bb4b209704d89c8cb54108db0d4392d94650d34a518e75` |
 | `assets/models/blender/room-xray-M.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `8f914b676c2b8105e70646d263600df6a41b19824a044e6afc5e4d452d860419` |
+| `assets/models/blender/counter.glb` | стойка регистратуры: 9 частей | `blender/ambulatory.py` (`counter`), `blender/build.py`, `tools/app/blender-pack.mjs` | 4.5.15 | `67b2023e1d5c3b8b052169b850b828c851c8fd254e36ff7aabbc5fed39e0e8de` |
+| `assets/models/blender/desk.glb` | стол с компьютером: 8 частей | `blender/ambulatory.py` (`desk`), `blender/build.py`, `tools/app/blender-pack.mjs` | 4.5.15 | `b3820a85dc2e4cc76cd0987690be52dec061e07b251602bf7f03dc651b3fadcb` |
+| `assets/models/blender/office_chair.glb` | кресло на колёсах: 6 частей | `blender/ambulatory.py` (`office_chair`), `blender/build.py`, `tools/app/blender-pack.mjs` | 4.5.15 | `182cb40547f213dd6d26d5caf91cffe37e46522f9bfe6e72dfb29d0b8a5abf0a` |
+| `assets/models/blender/waiting_chair.glb` | стул зала ожидания: 3 частей | `blender/ambulatory.py` (`waiting_chair`), `blender/build.py`, `tools/app/blender-pack.mjs` | 4.5.15 | `5d92aa3e271d105c2077664ac7c3611aa3eb7901e62630fd705a2194404dd2c1` |
+| `assets/models/blender/chair.glb` | стул: 3 частей | `blender/ambulatory.py` (`chair`), `blender/build.py`, `tools/app/blender-pack.mjs` | 4.5.15 | `664e79f479d28bab00603f07f52b6bd351e467d4b5a0fa216d7f2b03aa7f60c5` |
+| `assets/models/blender/bench.glb` | скамья у двери кабинета: 3 частей | `blender/ambulatory.py` (`bench`), `blender/build.py`, `tools/app/blender-pack.mjs` | 4.5.15 | `f02d6ebff6438f79195072830a3ac5180f44da42832686a40449aac7cc10e385` |
+| `assets/models/blender/lounge_chair.glb` | кресло ординаторской: 4 частей | `blender/ambulatory.py` (`lounge_chair`), `blender/build.py`, `tools/app/blender-pack.mjs` | 4.5.15 | `34909b393a5ad2928d28a732a529ca3b608fab8a5595bde2c665190405494cbd` |
+| `assets/models/blender/toilet.glb` | кабинка санузла: 6 частей | `blender/ambulatory.py` (`toilet`), `blender/build.py`, `tools/app/blender-pack.mjs` | 4.5.15 | `065c3b2bd4b80f33dfd95a05f7da6fdbfa78214a8a333735fe9f915476804115` |
+| `assets/models/blender/couch.glb` | смотровая кушетка: 4 частей | `blender/ambulatory.py` (`couch`), `blender/build.py`, `tools/app/blender-pack.mjs` | 4.5.15 | `30000016c67932f7c652075e02b865f8a9edabcb244e93d8f4dafe0fc6bd39ed` |
+| `assets/models/blender/bookcase.glb` | шкаф с дверцами: 4 частей | `blender/ambulatory.py` (`bookcase`), `blender/build.py`, `tools/app/blender-pack.mjs` | 4.5.15 | `7a6e197b2ee535e71c68ce3c7ae42975ae16931ff8cd47743579fffed857c00f` |
+| `assets/models/blender/low_cabinet.glb` | низкий шкаф: 4 частей | `blender/ambulatory.py` (`low_cabinet`), `blender/build.py`, `tools/app/blender-pack.mjs` | 4.5.15 | `6dcaf644c1c6bf9a24ab13714b99adb3fab271e3012b3bfeda518831d58aeda9` |
+| `assets/models/blender/sink.glb` | раковина: 4 частей | `blender/ambulatory.py` (`sink`), `blender/build.py`, `tools/app/blender-pack.mjs` | 4.5.15 | `01792e530042fd40a3400f88620057484ec33e86cef88b495e660f3c4448eaf2` |
+| `assets/models/blender/sink_wc.glb` | раковина санузла на тумбе: 5 частей | `blender/ambulatory.py` (`sink_wc`), `blender/build.py`, `tools/app/blender-pack.mjs` | 4.5.15 | `b78183f4a9d66e2aef83a505517ec180fba425f671245f0ec0b6f52538e6af84` |
+| `assets/models/blender/lab_sink.glb` | мойка лаборатории: 6 частей | `blender/ambulatory.py` (`lab_sink`), `blender/build.py`, `tools/app/blender-pack.mjs` | 4.5.15 | `79611cc7aea48005c99cb09a4f77aa0bde0bdc733e689d984ab1ed0b4098d4d1` |
+| `assets/models/blender/lab_bench.glb` | лабораторный стол: микроскоп или штатив: 11 частей | `blender/ambulatory.py` (`lab_bench`), `blender/build.py`, `tools/app/blender-pack.mjs` | 4.5.15 | `1a2d423a0136cb78330238c1ca438a2f4d0b5c026a977378d9e9850c89e9c8b6` |
+| `assets/models/blender/analyzer.glb` | лабораторный анализатор: 8 частей | `blender/ambulatory.py` (`analyzer`), `blender/build.py`, `tools/app/blender-pack.mjs` | 4.5.15 | `8842b1559d43571b8d607db895b666eff752c4b9f02c9c9065974f41e62562b2` |
+| `assets/models/blender/procedure_table.glb` | процедурный столик: 5 частей | `blender/ambulatory.py` (`procedure_table`), `blender/build.py`, `tools/app/blender-pack.mjs` | 4.5.15 | `079c81a8f32bf04b52e5609b68fa41362bf84e4c531479095fe5efaf1cdc8aa3` |
+| `assets/models/blender/ecg.glb` | электрокардиограф на тележке: 9 частей | `blender/ambulatory.py` (`ecg`), `blender/build.py`, `tools/app/blender-pack.mjs` | 4.5.15 | `a5f85cfb181658f0cee0998a4d931c0f92a4aea887b19eaf630ad05bed8cb93e` |

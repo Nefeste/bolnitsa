@@ -84,21 +84,24 @@ class Part:
         self.mat = mat
         self.bm = bmesh.new()
 
-    def box(self, w, h, d, x, y, z, bevel=0.012, segments=1, rx=0.0):
+    def box(self, w, h, d, x, y, z, bevel=0.012, segments=1, rx=0.0, ry=0.0, grid=None):
         """
-        Коробка ширины w (x), высоты h (y), глубины d (z); (x, y, z) — середина низа; rx — наклон вокруг x, рад. Грани — сеткой
-        не крупнее GRID, рёбра коробки скруглены на `bevel` м.
+        Коробка ширины w (x), высоты h (y), глубины d (z); (x, y, z) — середина низа; rx — наклон вокруг x, ry — поворот вокруг
+        вертикали (как в игре, вокруг +y), рад. Грани — сеткой не крупнее `grid` (не задана — GRID; 0 — без сетки: маленькая
+        часть, затенение на ней не растекается), рёбра коробки скруглены на `bevel` м.
         """
+        step = GRID if grid is None else grid
         tmp = bmesh.new()
         bmesh.ops.create_cube(tmp, size=1.0)
         # сетка: рёбра вдоль каждой оси (x — ширина, y — глубина, z — высота в осях Blender) делятся поровну
         for axis, size in ((0, w), (1, d), (2, h)):
-            cuts = max(0, math.ceil(size / GRID - 1e-9) - 1)
+            cuts = max(0, math.ceil(size / step - 1e-9) - 1) if step > 0 else 0
             if cuts:
                 along = lambda e: all(abs(e.verts[0].co[k] - e.verts[1].co[k]) < 1e-6 for k in range(3) if k != axis)
                 edges = [e for e in tmp.edges if along(e)]
                 bmesh.ops.subdivide_edges(tmp, edges=edges, cuts=cuts, use_grid_fill=True)
-        m = Matrix.Translation(g2b(x, y + h / 2, z)) @ Matrix.Rotation(-rx, 4, 'X') @ Matrix.Diagonal((w, d, h, 1))
+        # поворот игры вокруг +y — в Blender поворот вокруг +Z на тот же угол (g2b: x → X, −z → Y)
+        m = Matrix.Translation(g2b(x, y + h / 2, z)) @ Matrix.Rotation(ry, 4, 'Z') @ Matrix.Rotation(-rx, 4, 'X') @ Matrix.Diagonal((w, d, h, 1))
         bmesh.ops.transform(tmp, matrix=m, verts=tmp.verts)
         tmp.normal_update()
         if bevel > 0:

@@ -1,11 +1,14 @@
-# Модели Blender для игры (docs/reports/2026-11-blender-pilot.md; blender/README.md): кровать, монитор, рентген →
-# assets/models/blender/<имя>.glb; запечённый свет рентген-кабинета M → assets/models/blender/room-xray-M.png. Размеры —
-# blender/sizes.json (из игры: bun tools/app/blender-sizes.ts).
+# Модели Blender для игры (docs/reports/2026-11-blender-pilot.md, docs/specs/2026-11-blender-2.md; blender/README.md):
+# пилот — кровать, монитор, рентген и запечённый свет рентген-кабинета M; часть 2 — модели групп (blender/ambulatory.py — группа
+# 1). Пишет в blender/.out/ (не в git); сжимает и кладёт в assets/models/blender/ `node tools/app/blender-pack.mjs`. Размеры —
+# blender/sizes.json (из игры: bun tools/app/blender-sizes.ts), бюджет треугольников части 2 — blender/budgets.json: модель
+# сверх бюджета не пишется.
 #
-#   blender --background --factory-startup --python blender/build.py [-- bed monitor xray room]
-#   python blender/build.py [bed monitor xray room]     # Blender как модуль Python (пакет bpy той же версии)
+#   blender --background --factory-startup --python blender/build.py [-- имена]
+#   python blender/build.py [имена]     # Blender как модуль Python (пакет bpy той же версии)
 #
-# Версия Blender закреплена (VERSION): другая — отказ, другой файл. Запуск дважды даёт те же файлы до байта.
+# Без имён — всё: модели пилота, модели части 2 и свет. Версия Blender закреплена (VERSION): другая — отказ, другой файл.
+# Запуск дважды даёт те же файлы до байта.
 import json
 import os
 import sys
@@ -15,12 +18,17 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import bpy  # noqa: E402
 
-from common import SIZES, bake_ao, export, floor, reset, tris  # noqa: E402
-from models import MODELS  # noqa: E402
+from ambulatory import MODELS as GROUP1  # noqa: E402
+from common import HERE, SIZES, bake_ao, export, floor, reset, tris  # noqa: E402
+from models import MODELS as PILOT  # noqa: E402
 from room import build_room  # noqa: E402
 
 VERSION = '4.5.15'
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'assets', 'models', 'blender')
+OUT = os.path.join(HERE, '.out')
+BUDGETS = json.load(open(os.path.join(HERE, 'budgets.json'), encoding='utf-8'))['models']
+# модели части 2 — в своём бюджете; модели пилота — пока их не переделала их группа (кровать — 4872 при бюджете 1200)
+PART2 = {**GROUP1}
+MODELS = {**PILOT, **PART2}
 
 
 def main(names):
@@ -43,6 +51,9 @@ def main(names):
                   f'{os.path.getsize(path) // 1024} КБ, {time.time() - t0:.1f} с')
             continue
         parts = MODELS[name]()
+        n = tris(parts)
+        if name in PART2 and n > BUDGETS[name]['tris']:
+            raise SystemExit(f'{name}: треугольников {n} — больше бюджета {BUDGETS[name]["tris"]} (blender/budgets.json)')
         ground = floor()
         bake_ao(parts)
         bpy.data.objects.remove(ground)

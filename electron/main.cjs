@@ -239,8 +239,9 @@ app.whenReady().then(async () => {
     return i > 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : null;
   };
   if (v('q')) q.set('q', v('q'));
-  // пилот Blender (docs/reports/2026-11-blender-pilot.md): модели Blender и запечённый свет рентген-кабинета — по ключам запуска
-  if (v('models') === 'blender') q.set('models', 'blender');
+  // модели Blender (docs/specs/2026-11-blender-2.md): `--models code` — модели кодом и CC0, `--models blender` — ещё и модели
+  // пилота; запечённый свет рентген-кабинета — `--baked`
+  if (v('models') === 'blender' || v('models') === 'code') q.set('models', v('models'));
   if (has('baked')) q.set('baked', '1');
   // демо (spec docs/specs/2026-11-demo.md): на экране начала — только «Кампания», после первой планёрки — «Итог»
   if (has('demo')) q.set('demo', '1');

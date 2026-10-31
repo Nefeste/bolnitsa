@@ -23,7 +23,7 @@ import type { Walker } from '../render/crowd';
 import { ICONS } from '../render/icons';
 import { fromWire, packPeople, type People, type RawLook } from '../render/bake';
 import type { BakeTask, Baked } from '../render/bake-worker';
-import { BLENDER, CATALOG, EXTRA_MODELS } from '../render/catalog';
+import { CATALOG, EXTRA_MODELS, type ModelsMode, modelsOf } from '../render/catalog';
 import { Crowd } from '../render/crowd';
 import { furnish, type Furnished } from '../render/furniture';
 import { Thumbs } from '../render/thumbs';
@@ -463,11 +463,12 @@ export class Game {
     const base = './assets/models';
     const index = (await (await fetch(`${base}/index.json`)).json()) as Index;
     const tf = performance.now();
-    const names = [...new Set([...Object.values(CATALOG).flatMap(e => ('model' in e ? [e.model] : [])), ...EXTRA_MODELS])];
-    // пилот Blender (docs/reports/2026-11-blender-pilot.md): его модели — только с ключом, без него — модели кодом; запечённый
-    // свет образца рентген-кабинета — тоже с ключом
+    // модели Blender части 2 (docs/specs/2026-11-blender-2.md) — по умолчанию; `?models=code` — модели кодом и CC0, как до них;
+    // `?models=blender` — ещё и модели пилота (docs/reports/2026-11-blender-pilot.md); запечённый свет — с `?baked=1`
     const keys = new URLSearchParams(location.search);
-    if (keys.get('models') === 'blender') names.push(...Object.values(BLENDER));
+    const mode: ModelsMode = keys.get('models') === 'code' ? 'code' : keys.get('models') === 'blender' ? 'blender' : 'part2';
+    const kits = [...new Set([...Object.values(CATALOG).flatMap(e => ('model' in e ? [e.model] : [])), ...EXTRA_MODELS])];
+    const names = modelsOf(mode, kits);
     if (keys.get('baked') === '1') {
       const sample = `${base}/blender/room-xray-M`;
       const room = (await (await fetch(`${sample}.json`)).json()) as BakedRoom;

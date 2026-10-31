@@ -148,6 +148,16 @@ export function layoutOf(db: ContentDb, plan: Plan, decor: readonly { kind: Obje
     t.yaw = yawOf(t.face[0], t.face[1]);
   });
 
+  // стол рядом с местом персонала — лицом к нему и в готовом помещении (у его предметов поворот из образца): монитор и
+  // ящики — к тому, кто за столом, лицевая панель стойки регистратуры — к посетителю (модели кодом и Blender, furniture.ts)
+  for (const t of things) {
+    if (t.kind !== 'desk' || t.room < 0) continue;
+    const post = Object.values(plan.rooms[t.room].staff).find(([x, y]) => Math.abs(x - t.cell[0]) + Math.abs(y - t.cell[1]) === 1);
+    if (!post) continue;
+    t.face = [post[0] - t.cell[0], post[1] - t.cell[1]];
+    t.yaw = yawOf(t.face[0], t.face[1]);
+  }
+
   // занятые клетки: предметы, места персонала и пациента — длинные на них не встают; клетки у двери изнутри — тоже,
   // но у широкой двери длинному можно занять одну, если рядом остаётся свободная
   const taken = new Set(things.map(t => key(t.cell[0], t.cell[1])));

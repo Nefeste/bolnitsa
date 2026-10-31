@@ -168,7 +168,8 @@ node tools/app/soak.mjs --days 3   # after build: a long run in headless Chromiu
 npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench in headless Chromium → tools/app/out/
                                                      # (`-- --flow 40,4` — a bigger crowd, about 180 people,
                                                      # `-- --metric load` — with the «Показатели» layer,
-                                                     # `-- --keys "models=blender&baked=1"` — the Blender pilot)
+                                                     # `-- --keys models=code` — the code and CC0 models, as before Blender
+                                                     # part 2; `-- --keys "models=blender&baked=1"` — the Blender pilot too)
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
 npm run assets -- <sources dir>    # rebuild assets/models/*.glb from the CC0 packs (byte-identical; see assets/LICENSES.md)
@@ -181,9 +182,13 @@ bun tools/app/blender-sizes.ts     # the Blender pilot (#175): blender/sizes.jso
 bun tools/app/blender-catalog.ts   # Blender part 2 (docs/specs/2026-11-blender-2.md): every catalog thing in the city, the
                                    # polyclinic and scenario 1 — what draws it now, how many, triangles now and by the budgets
                                    # of blender/budgets.json after each group
-python blender/build.py bed monitor xray room   # then assets/models/blender/ in Blender 4.5.15 (`pip install bpy==4.5.15`,
-                                               # or `blender --background --python blender/build.py -- …`); byte-identical;
-                                               # passports in assets/LICENSES.md, section 8 (blender/README.md)
+python blender/build.py [names]    # then the models in Blender 4.5.15 (`pip install bpy==4.5.15`, or `blender --background
+                                   # --python blender/build.py -- …`) → blender/.out/ (not in git); a part 2 model over its budget
+                                   # is not written; no names — all
+node tools/app/blender-pack.mjs    # then compress them like the CC0 models into assets/models/blender/; byte-identical;
+                                   # passports in assets/LICENSES.md, section 8 (blender/README.md)
+node tools/app/blender-sheet.mjs   # after build: the before/after sheet of a group's rooms (polyclinic, 11:00, no patients) —
+                                   # code and CC0 models vs Blender → tools/app/out/sheet/ (`--group 1`)
 npm run bench -- --mode flow --quick           # engine: time per game minute at 50/100/200/300 patients (PC flow)
 npm run bench -- --mode desks --quick          # the same with Anamnez's appointment slots
 npm run bench -- --mode flow --day             # the whole day to 10:00 of day 2: day and night minutes, 08:00 meeting, 09:00 round
@@ -484,11 +489,19 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   `docs/specs/2026-10-clinical-style.md`): surfaces, text, accent (`--accent-text` for text), states, seven font sizes;
   `tools/test/style.test.ts` fails on a colour or a font size outside the tokens and on text below 4.5:1 over a white or
   black floor behind the glass.
-- `blender/` — the Blender pilot (#175, `docs/reports/2026-11-blender-pilot.md`, `blender/README.md`): Python scripts that
-  build the bed, the monitor and the X-ray machine from parts (a part's id is its `.glb` node; AO baked into vertex colours)
-  and bake the light on the X-ray room's floor; the sizes come from the game (`blender/sizes.json`). In the game only with
-  `?models=blender` and `&baked=1` (Electron: `--models blender --baked`): `BLENDER` in `catalog.ts`, `Furnisher.placeAt`
-  (the IV stand only in wards and boxes), `src/render/baked.ts` (the floor multiplier on every room matching the sample, any rotation).
+- `blender/` — models from Blender scripts (`blender/README.md`): Python scripts build each model from parts (a part's id
+  is its `.glb` node; AO baked into vertex colours); the sizes come from the game (`blender/sizes.json`). The pilot (#175,
+  `docs/reports/2026-11-blender-pilot.md`): the bed, the monitor and the X-ray machine, and the light on the X-ray room's
+  floor — only with `?models=blender` and `&baked=1` (Electron: `--models blender --baked`): `BLENDER` in `catalog.ts`,
+  `Furnisher.placeAt` (the IV stand only in wards and boxes), `src/render/baked.ts` (the floor multiplier on every room
+  matching the sample, any rotation). Part 2 (owner's decision #178, `docs/specs/2026-11-blender-2.md`): devices and
+  furniture in groups, each on by default, `?models=code` (`--models code`) for the code and CC0 models; budgets —
+  `blender/budgets.json` (one place: the build, the probe and the test read it). Group 1 «Амбулатория» — `ambulatory.py`:
+  instead of a CC0 model (`BLENDER_KIT`) a model the size of its catalog place, materials named like the CC0 model's so the
+  catalog's recolours apply, set by `Furnisher.place` at its real size; instead of a code model (`BLENDER_CODE`) one in its
+  place's axes (`placeAt`, `CODE_SHIFT`, `skipOf` — the lab bench shows `microscope*` or `rack*`). A desk next to a staff post
+  faces it in every room, ready rooms too (`layoutOf`): the screen and the drawers to whoever sits there, the counter's panel
+  to the visitor.
 - `assets/` — CC0 models, Rocketbox people under MIT (`assets/models/rocketbox/`, made by `tools/app/people.mjs`), the
   game's font IBM Plex Sans under SIL OFL 1.1 (`assets/fonts/`, unmodified files with `OFL.txt`; owner's decision #107),
   the Carbon icons' Apache 2.0 text (`assets/licenses/carbon-icons.txt`) and `LICENSES.md` (sources, licenses, SHA-256; MIT
