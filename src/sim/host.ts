@@ -9,7 +9,7 @@ import { apply, catchUp, crewList, lateOf, newFlowShift, prepareFinish } from '.
 import { crewOf, type CrewView } from '../engine/shift/crew';
 import { moodsOf, type MoodView } from '../engine/shift/mood';
 import { sliceOf } from '../engine/shift/slice';
-import type { Command, Notice, Ride, ShiftState } from '../engine/shift/types';
+import type { Command, Notice, Ride, Round, ShiftState } from '../engine/shift/types';
 import { scenarioKey, scenarioView, type ScenarioView } from './campaign';
 import { patientName } from './caseView';
 import { comingAt, DoctorDesk, officeOf, takeCommand } from './doctor';
@@ -51,6 +51,7 @@ export function createSim(db: ContentDb): SimHost {
   let sentMoods = '';
   /** перевозки на каталке (spec docs/specs/2026-10-orderlies.md) — как окно уже получило */
   let sentRides = '';
+  let sentRounds = '';
   /** деньги по помещениям (spec docs/specs/2026-10-metrics-layer.md, часть 2): какими окно их уже получило */
   let sentMoney = '';
   let sentDays = -1;
@@ -134,6 +135,14 @@ export function createSim(db: ContentDb): SimHost {
       sentRides = rideSig;
       rides = structuredClone(ridesNow);
     }
+    // утренний обход (spec docs/specs/2026-10-staff-motion.md, часть 2): начинается и кончается событиями — тогда и заново
+    let rounds: Round[] | undefined;
+    const roundsNow = s!.flow ? (s!.rounds?.on ?? []) : [];
+    const roundSig = JSON.stringify(roundsNow);
+    if (roundSig !== sentRounds || world) {
+      sentRounds = roundSig;
+      rounds = structuredClone(roundsNow);
+    }
     // сценарий (spec docs/specs/2026-10-scenario-1.md): письма, цели и отметки — когда изменились; не сценарий — ничего
     let scenario: ScenarioView | undefined;
     const key = scenarioKey(s!);
@@ -180,7 +189,7 @@ export function createSim(db: ContentDb): SimHost {
     }
     const lag = owed + (s!.until !== undefined ? s!.until - s!.t : 0);
     const { buf, names } = packSlice(s!, sliceOf(s!, officeOf(db, s!)), lag, handles, rooms, staff, patientName);
-    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...(late ? { late } : {}), ...(crew ? { crew } : {}), ...(moods ? { moods } : {}), ...(rides ? { rides } : {}), ...(scenario ? { scenario } : {}), ...(money ? { money } : {}), ...(legs ? { legs } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
+    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...(late ? { late } : {}), ...(crew ? { crew } : {}), ...(moods ? { moods } : {}), ...(rides ? { rides } : {}), ...(rounds ? { rounds } : {}), ...(scenario ? { scenario } : {}), ...(money ? { money } : {}), ...(legs ? { legs } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
   };
   const fresh = () => {
     owed = 0;
@@ -191,6 +200,7 @@ export function createSim(db: ContentDb): SimHost {
     sentCrew = '';
     sentMoods = '';
     sentRides = '';
+    sentRounds = '';
     sentMoney = '';
     sentDays = -1;
     scenarioAt = [];

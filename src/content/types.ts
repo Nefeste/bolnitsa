@@ -841,6 +841,10 @@ export interface StaffRole {
   gen: Text;
   /** врача не нанимают: это игрок */
   hire: boolean;
+  /** `false` — готовое помещение «С персоналом» её не нанимает, её нанимают отдельно (клиническая медсестра, staff-motion часть 2б) */
+  ready?: false;
+  /** только дневная смена: в карточке помещения ночного места нет (клиническая медсестра, staff-motion часть 2б) */
+  day?: true;
   /** зарплата за смену при навыке 1 и при навыке 5, ₽ */
   salary: [number, number];
   /** встаёт на место этой должности (терапевт — на место врача) */
@@ -970,6 +974,8 @@ export interface Economy {
     fatigue?: { hour: number; case: number; exam: number; ride: number; night: number; slow: number; slower: number; tired: number; blur: number; rest: number; relief: number; toilet: [number, number]; wc: number };
     /** каталка (spec 2026-10-orderlies): переложить на каталку и с неё, минут; нет — лежачих не везут, как в «Анамнезе» */
     gurney?: { load: number; unload: number };
+    /** утренний обход (spec 2026-10-staff-motion, часть 2): минут у койки, очков усталости за койку; нет — обход мгновенный */
+    round?: { bed: number; fatigue: number };
     /** рост, наставник, учёба, болезнь нанятых в смене (spec 2026-10-staff-mood, разделы 3–5); нет — ничего этого нет */
     growth?: { mentor: number; studyDays: number; studyCost: number; studyMood: number; sick: number };
     /** настроение нанятых в смене (spec 2026-10-staff-mood); нет — настроения нет */
@@ -1485,7 +1491,7 @@ export interface Day {
   walk: number[];
   /** сколько машин скорой по часам суток 0–23, % от среднего часа суток (в среднем 100) */
   ambulance: number[];
-  /** в котором часу утра нанятые врачи обходят своих лежащих */
+  /** в котором часу утра нанятые врачи обходят своих лежащих; бывает и полчаса — 8.5 */
   rounds: number;
 }
 

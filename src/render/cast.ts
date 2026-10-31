@@ -45,7 +45,7 @@ export const WORKWEAR = 0.5;
 const R = (name: string, sex: 'm' | 'f', use: Use, more: Pick<LookSpec, 'roles' | 'jobs'> & { age?: 'old' } = {}): LookSpec => ({
   name, sex, age: 'adult', use, ...more,
 });
-const NURSES = ['role.nurse', 'role.or_nurse', 'role.orderly'];
+const NURSES = ['role.nurse', 'role.or_nurse', 'role.orderly', 'role.clinical_nurse'];
 const OR = ['role.surgeon', 'role.anesthetist'];
 const OLD = { age: 'old' } as const;
 export const LOOKS: LookSpec[] = [
@@ -105,6 +105,8 @@ export const ROLE_COLOR: Record<string, number> = {
   'role.radiographer': 0x7a93ad,
   // санитар (spec docs/specs/2026-10-orderlies.md) — в сером, как в геймдизайне (§13)
   'role.orderly': 0x8c8f93,
+  // клиническая медсестра (spec docs/specs/2026-10-staff-motion.md, часть 2б) — в сиреневом: в палате её видно рядом с медсестрой
+  'role.clinical_nurse': 0x8a78b8,
 };
 /** Фельдшер скорой — в синей форме (spec docs/specs/2026-10-orderlies.md, «Что видно»): ввозит привезённого и уходит. */
 export const PARAMEDIC = 0x2f5d9e;

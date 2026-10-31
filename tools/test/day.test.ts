@@ -160,7 +160,7 @@ describe('сутки целиком: кто приходит и когда', () 
 });
 
 describe('сутки целиком: ночь', () => {
-  test('лежащие: сутки в стационаре растут в 08:00, обход нанятых в 09:00, операционная — круглые сутки, и ночью', () => {
+  test('лежащие: сутки в стационаре растут в 08:00, обход нанятых с 08:30, операционная — круглые сутки, и ночью', () => {
     const s = city(45, { perHour: 6, ambulancePerHour: 4 });
     const ors = () => {
       const ctx = hospitalCtx(db, s);
@@ -168,6 +168,7 @@ describe('сутки целиком: ночь', () => {
     };
     const starts = new Map<string, number>();
     let rounded = 0;
+    let walked = 0;
     let lyingAt: Map<string, number> | undefined;
     live(s, 80, 60, () => {
       // операционная не простаивает, пока есть кого оперировать: ни днём, ни ночью
@@ -180,10 +181,17 @@ describe('сутки целиком: ночь', () => {
         for (const p of inpatientsOf(s)) if (lyingAt.has(p.id)) expect(daysIn(p.stay!, s.day)).toBe(lyingAt.get(p.id)! + 1);
         lyingAt = undefined;
       }
-      // после обхода в 09:00 у нанятых врачей не осталось лежащих, кого выписать или перевести
-      if (clockMin === day.rounds * 60) {
+      // обход нанятых с 08:30 — со временем врача (spec docs/specs/2026-10-staff-motion.md, часть 2): к полудню все обходы утра
+      // кончились, и у обойдённых не осталось тех, кого выписать или перевести
+      if (clockMin === 12 * 60) {
         rounded++;
+        expect(s.rounds?.day).toBe(s.day);
+        const on = s.rounds!.on.filter(r => !r.nurse);
+        walked += on.length;
+        for (const r of on) expect(r.until).toBeLessThanOrEqual(s.t);
+        const seen = new Set(on.flatMap(r => r.stops.map(st => st.id)));
         for (const p of inpatientsOf(s)) {
+          if (!seen.has(p.id)) continue;
           const stay = p.stay!;
           const days = daysIn(stay, s.day);
           if (!p.closed?.by || days < 1 || (stay.op && !stay.op.done)) continue;
@@ -192,6 +200,8 @@ describe('сутки целиком: ночь', () => {
       }
     });
     expect(rounded).toBe(3);
+    // в первое утро лежащих у нанятых ещё нет — обходы со вторых суток
+    expect(walked).toBeGreaterThan(0);
     // обход выписывал и переводил
     const ward = s.history.slice(1).map(h => h.ward);
     expect(ward.reduce((a, w) => a + (w?.discharged ?? 0) + (w?.transferred ?? 0), 0)).toBeGreaterThan(0);

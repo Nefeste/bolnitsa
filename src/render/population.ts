@@ -9,7 +9,7 @@ import type { RoomInstance } from '../engine/hospital/build';
 import { onDuty, ORDERLY, type StaffMember } from '../engine/hospital/staff';
 import type { CrewView } from '../engine/shift/crew';
 import type { Doing } from '../engine/shift/slice';
-import type { Rest, Ride, Triage } from '../engine/shift/types';
+import type { Rest, Ride, Round, RoundStop, Triage } from '../engine/shift/types';
 import { DOINGS, H, HEADER, kindOf, type NameRow, NO_TIME, P, REFERRED, SLOW, STATUSES, STRIDE, TRIAGES } from '../sim/pack';
 import type { Look } from './bake';
 import { COAT, OLD_AGE, PARAMEDIC, roleColor, toneOf, WORKWEAR } from './cast';
@@ -50,6 +50,8 @@ export type PersonInfo =
        * пока он идёт: идёт туда, там, идёт назад (там же, часть 2)
        */
       fatigue?: number; worn?: 'slow' | 'blur'; rest?: { kind: Rest['kind']; until: number; phase: 'go' | 'there' | 'back' };
+      /** на утреннем обходе (spec docs/specs/2026-10-staff-motion.md, часть 2): сколько коек обошёл, из скольких, когда вернётся */
+      round?: { done: number; of: number; until: number };
       /**
        * настроение и действия с человеком (spec docs/specs/2026-10-staff-mood.md) — дописывает окно (`staffCard` в
        * src/app/game.ts): имя из словаря игры; настроение, на сколько и почему изменилось, «собирается уйти» до каких суток,
@@ -194,6 +196,11 @@ export class Population {
    * вернётся; когда следующий обход (часы игры) и сколько их было
    */
   private rounds = new Map<string, string>();
+  /** утренние обходы из движка (spec docs/specs/2026-10-staff-motion.md, часть 2) и куда сейчас идёт каждый, кто обходит */
+  private wardRounds: Round[] = [];
+  private onRound = new Map<string, string>();
+  /** помещения, где сейчас идёт обход из движка: медсестра палаты свой обход там не начинает */
+  private roundRooms = new Set<string>();
   private roundAt = new Map<string, number>();
   private roundN = new Map<string, number>();
 
@@ -263,6 +270,21 @@ export class Population {
     this.rides = [...rows];
   }
 
+  /** Утренние обходы (spec docs/specs/2026-10-staff-motion.md, часть 2) — как прислал поток расчёта. */
+  setRounds(rows: readonly Round[]) {
+    this.wardRounds = [...rows];
+  }
+
+  /** Обход, на котором человек штата `id` сейчас, по часам окна; нет — undefined. */
+  roundNow(id: string): Round | undefined {
+    return this.wardRounds.find(r => r.by === id && this.t >= r.from && this.t < r.until);
+  }
+
+  /** Кто сейчас на обходе — строкой: «Персонал» заново, когда она другая. */
+  get roundingNow(): string {
+    return this.wardRounds.filter(r => this.t >= r.from && this.t < r.until).map(r => r.by).join(',');
+  }
+
   /** Перерыв, на который человек ушёл со своего места: идёт туда или уже там; пошёл назад или отдыхает в кабинете — нет. */
   private away(m: StaffMember): Rest | undefined {
     const r = this.crew.get(m.id)?.rest;
@@ -317,8 +339,8 @@ export class Population {
         this.going.delete(m.id);
         continue;
       }
-      // везёт каталку (spec 2026-10-orderlies): отдыхать пойдёт, когда вернётся
-      if (this.riding.has(m.id)) continue;
+      // везёт каталку (spec 2026-10-orderlies) или на обходе (spec 2026-10-staff-motion, часть 2): отдыхать пойдёт, когда вернётся
+      if (this.riding.has(m.id) || this.onRound.has(m.id)) continue;
       const r = this.away(m);
       const now = r ? `${r.kind}:${r.room}:${r.from}` : '';
       if (now === (this.going.get(m.id) ?? '')) continue;
@@ -525,6 +547,7 @@ export class Population {
     for (const key of this.spots.keys()) if (!present.has(key)) this.spots.delete(key);
     this.ridesStep(taken);
     this.medicsStep(taken);
+    this.wardRoundsStep(taken);
     this.roundsStep(taken);
     for (const [key, w] of this.crowd.walkers) {
       if (w.staff || present.has(key)) continue;
@@ -621,6 +644,60 @@ export class Population {
   }
 
   /**
+   * Утренний обход из движка (spec docs/specs/2026-10-staff-motion.md, часть 2): врач или клиническая медсестра идёт по его
+   * часам — к койке очередной остановки к её началу, стоит у изголовья с бумагами, пока не кончились её минуты, — и к концу
+   * обхода назад на своё место. Перевозка — поверх: её ведут часы движка.
+   */
+  private wardRoundsStep(taken: ReadonlySet<number>) {
+    if (this.wardRounds.length === 0 && this.onRound.size === 0) return;
+    const active = new Map<string, Round>();
+    this.roundRooms.clear();
+    for (const r of this.wardRounds) {
+      if (this.t < r.from || this.t >= r.until) continue;
+      active.set(r.by, r);
+      for (const st of r.stops) this.roundRooms.add(st.room);
+    }
+    for (const [by, r] of active) {
+      const w = this.crowd.walkers.get(`s:${by}`);
+      const m = this.staff.find(x => x.id === by);
+      if (!w || w.leaving || !m) continue;
+      // везёт каталку — ведут часы перевозки; после неё — к своей остановке заново
+      if (this.riding.has(by)) {
+        this.onRound.delete(by);
+        continue;
+      }
+      // к остановке, у которой ещё не кончились минуты; кончились все — на своё место. Место у койки выбирается раз на
+      // остановку: вставший у неё сам занимает клетку, и в следующем кадре она была бы «занята»
+      const i = r.stops.findIndex(st => this.t < st.end);
+      const k = `${r.from}:${i}`;
+      if (this.onRound.get(by) === k) continue;
+      const goal = i >= 0 ? this.bedStop(r.stops[i], w, taken) : this.postOf(m, taken);
+      if (goal) this.crowd.retarget(w, goal, true, i >= 0 ? r.stops[i].at : r.until);
+      this.onRound.set(by, k);
+    }
+    // обход кончился (на ×12 мог не дойти) — на своё место
+    for (const by of [...this.onRound.keys()]) {
+      if (active.has(by)) continue;
+      this.onRound.delete(by);
+      const m = this.staff.find(x => x.id === by);
+      const w = this.crowd.walkers.get(`s:${by}`);
+      const home = m && w && !w.leaving ? this.postOf(m, taken) : undefined;
+      if (home && w) this.crowd.retarget(w, home, true, NaN);
+    }
+  }
+
+  /** Где встать на обходе у больного остановки: у изголовья, пока он лежит на своей кровати; нет его там — у двери помещения. */
+  private bedStop(st: RoundStop, w: Walker, taken: ReadonlySet<number>): Spot | undefined {
+    const pk = this.keyOf(st.id);
+    const pw = pk ? this.crowd.walkers.get(pk) : undefined;
+    if (pw && pw.state === 'lie' && pw.at?.bed && pw.carry === undefined) {
+      const side = bedSide(this.layout, pw.at, this.looks[w.look].clips.Papers.duration, taken);
+      if (side) return side;
+    }
+    return this.doorOf(st.room);
+  }
+
+  /**
    * Обход (spec docs/specs/2026-10-staff-motion.md, часть 1, п. 4): медсестра палаты, ПИТ или реанимации раз в `ROUND_EVERY`
    * секунд игры обходит занятые койки своего помещения — от ближней к ближней, у каждой стоит у изголовья с бумагами — и
    * возвращается на пост. Дел в движке у неё на обходе нет, поэтому он только здесь; перерыв и перевозка идут поверх (`rests`,
@@ -633,7 +710,7 @@ export class Population {
       if (room < 0 || !ROUND_ROOMS.has(this.layout.plan.rooms[room].type)) continue;
       const w = this.crowd.walkers.get(`s:${m.id}`);
       const post = this.rounds.get(m.id);
-      if (!w || w.leaving || this.going.get(m.id) || this.riding.has(m.id)) {
+      if (!w || w.leaving || this.going.get(m.id) || this.riding.has(m.id) || this.onRound.has(m.id)) {
         this.rounds.delete(m.id);
         continue;
       }
@@ -644,7 +721,8 @@ export class Population {
       }
       const at = this.roundAt.get(m.id) ?? this.t + roundGap(m.id, 0);
       this.roundAt.set(m.id, at);
-      if (this.t < at || w.goals.length > 0 || w.state === 'walk') continue;
+      // в её помещении обходит врач или клиническая медсестра (часть 2): к койкам — после них
+      if (this.t < at || w.goals.length > 0 || w.state === 'walk' || this.roundRooms.has(m.room ?? '')) continue;
       const n = (this.roundN.get(m.id) ?? 0) + 1;
       this.roundN.set(m.id, n);
       this.roundAt.set(m.id, this.t + roundGap(m.id, n));
@@ -838,11 +916,13 @@ export class Population {
       // везёт каталку (spec docs/specs/2026-10-orderlies.md): кого, откуда и куда; санитар в смене без перевозки — свободен
       const ride = this.phases.get(m.id);
       const free = !ride && !r && m.role === ORDERLY && this.present(m) && !m.away;
+      const round = this.roundNow(m.id);
       return {
         kind: 'staff', role: m.role, ...(m.room ? { room: m.room } : {}), sex: m.sex, id: m.id,
         ...(m.shift && hours ? { shift: m.shift, hours } : {}), ...(this.present(m) ? {} : { home: true as const }),
         ...(c ? { fatigue: c.f } : {}), ...(worn ? { worn } : {}),
         ...(r ? { rest: { kind: r.kind, until: r.until, phase: this.t >= r.back ? 'back' : this.t < r.at ? 'go' : 'there' } } : {}),
+        ...(round ? { round: { done: round.stops.filter(st => st.end <= this.t).length, of: round.stops.length, until: round.until } } : {}),
         ...(ride ? { ride: { phase: ride.ph, ...(this.rows.get(ride.r.id)?.name ? { who: this.rows.get(ride.r.id)!.name } : {}), from: ride.r.from, to: ride.r.to } } : {}),
         ...(free ? { free: true as const } : {}),
       };

@@ -24,6 +24,10 @@
 // night` — готовая больница без ночных санитаров, `--no-orderly all` — без санитаров вовсе. Резерв (spec
 // docs/specs/2026-10-staff-mood.md, часть 5): `--reserve registrar,nurse` — в начале по человеку в резерв на каждую должность
 // списка; в отчёте — сколько раз резерв встал на место заболевшего и сколько смен места стояли пустыми.
+// Утренний обход (spec docs/specs/2026-10-staff-motion.md, часть 2): сколько раз врачи и клинические медсёстры обходили, у
+// скольких коек и сколько минут; ушедшие, пока их врач на обходе, — «round» в строке «ушли». `--clinical` — в начале по
+// клинической медсестре в дневную смену в каждое помещение с койками, где она бывает (палата, ПИТ, реанимация, бокс);
+// `--clinical ward` — только в палаты (список типов через запятую).
 // `--hall N` — сидя или стоя по своему залу не дальше N м (content/hospital/inflow.yaml, `hall`); `--hall 0` — по всей больнице.
 // `--bench N` — скамьи у дверей кабинетов не дальше N шагов (`bench`, spec docs/specs/2026-10-door-benches.md); `--bench 0` — без них.
 // Ось «Управление» (spec docs/specs/2026-10-difficulty.md): `--manage calm,normal,hard` — каждая больница на каждом уровне;
@@ -31,7 +35,7 @@
 // прибыль больше, чем на «Обычно»; «Обычно» — как выше; «Трудно» — ушли 10–20 %, касса не ниже предела минуса уровня, за
 // 7 суток не окупается. Касса сценария 1 — его, на любом уровне; его цель к 10-м суткам — критерий только «Обычно».
 //   bun tools/sim/economy.ts [--days 7] [--seeds 1,2,3] [--only clinic,district,city,poly,polyspec,ambulatory] [--hall N] [--bench N] [--raise]
-//                            [--no-orderly night|all] [--reserve registrar,nurse] [--manage calm,normal,hard] [--json]
+//                            [--no-orderly night|all] [--reserve registrar,nurse] [--manage calm,normal,hard] [--clinical [ward,icu]] [--json]
 import type { ContentDb, Id, Manage } from '../../src/content/types';
 import { expensesOf, incomeOf } from '../../src/engine/economy/economy';
 import { DOOR_PRICE, emptySite, hospitalOf, priceOf, roomPrice, type Site, type SiteCommand } from '../../src/engine/hospital/site';
@@ -39,6 +43,7 @@ import { siteOfPlan } from '../../src/engine/hospital/site-plan';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { nightHospital, presetStaff, salaryOf, type StaffMember, withNightShift } from '../../src/engine/hospital/staff';
 import { apply, capacityOf, newFlowShift } from '../../src/engine/shift/engine';
+import { CLINICAL } from '../../src/engine/shift/rounds';
 import { ambulancePerHour, walkPerHour } from '../../src/engine/shift/inflow';
 import { levelOf } from '../../src/engine/shift/manage';
 import { cashNow, startCash } from '../../src/engine/shift/money';
@@ -54,6 +59,12 @@ const SEEDS = arg('seeds', '1,2,3').split(',').map(Number);
 const ONLY = arg('only', '').split(',').filter(Boolean);
 const asJson = process.argv.includes('--json');
 const RAISE = process.argv.includes('--raise');
+/** `--clinical` — клиническая медсестра в каждое помещение с койками, где она бывает; `--clinical ward,icu` — только в эти */
+const CLINICAL_AT = process.argv.indexOf('--clinical');
+const CLINICAL_IN: string[] | undefined =
+  CLINICAL_AT < 0 ? undefined
+    : !process.argv[CLINICAL_AT + 1] || process.argv[CLINICAL_AT + 1].startsWith('--') ? []
+      : process.argv[CLINICAL_AT + 1].split(',').map(r => (r.startsWith('room.') ? r : `room.${r}`));
 const NO_ORDERLY = arg('no-orderly', '');
 /** Уровни «Управления» (`--manage`): каждая больница — на каждом. */
 const MANAGES = arg('manage', 'normal').split(',').filter((x): x is Manage => x === 'calm' || x === 'normal' || x === 'hard');
@@ -144,8 +155,11 @@ function build(s: ShiftState, plan: Spec[]) {
     const mid = x + Math.floor(w / 2);
     const wy = side === 'top' ? y : y + h - 1;
     site(s, { kind: 'door', room: id, cells: DOUBLE.has(type) ? [[mid - 1, wy], [mid, wy]] : [[mid, wy]] });
-    for (const role of db.rooms[type].staff) site(s, { kind: 'hire', room: id, role, shift: 'day' });
-    if (night && db.rooms[type].night) for (const role of db.rooms[type].staff) site(s, { kind: 'hire', room: id, role, shift: 'night' });
+    // как готовое помещение «С персоналом»: должность, которую готовое не нанимает (`ready: false`, клиническая медсестра), —
+    // только по выбору игрока
+    const roles = db.rooms[type].staff.filter(role => db.roles[role]?.ready !== false);
+    for (const role of roles) site(s, { kind: 'hire', room: id, role, shift: 'day' });
+    if (night && db.rooms[type].night) for (const role of roles) site(s, { kind: 'hire', room: id, role, shift: 'night' });
     if (type === 'room.office') office ??= id;
   }
   if (night && office) site(s, { kind: 'hire', room: office, role: 'role.doctor', shift: 'night' });
@@ -194,6 +208,8 @@ interface Run {
   raised: number;
   /** каталка (spec docs/specs/2026-10-orderlies.md): перевозки — зачем, сколько ждали (минут), везла ли медсестра */
   rides: { why: Ride['why']; wait: number; nurse: boolean }[];
+  /** утренние обходы (spec docs/specs/2026-10-staff-motion.md, часть 2): кто — врач или клиническая медсестра, коек, минут */
+  rounds: { nurse: boolean; beds: number; min: number }[];
   /**
    * лежачие, кого некому было везти (решение владельца #99: не срочного медсестра не везёт): сколько их было, сколько ждут к
    * концу прогона и дольше всех, минут, — до выхода из очереди (повезли, выписали, умер) с точностью до шага прогона
@@ -208,7 +224,20 @@ interface Run {
   proxy?: number;
 }
 
+/**
+ * `--clinical` (spec docs/specs/2026-10-staff-motion.md, часть 2б): по клинической медсестре в дневную смену в каждое помещение
+ * с койками, где она бывает, — как нанял бы игрок в карточке помещения.
+ */
 function start(name: string, seed: number, manage: Manage): ShiftState {
+  const s = startOf(name, seed, manage);
+  if (!CLINICAL_IN) return s;
+  for (const r of s.hospital?.rooms ?? []) {
+    if (db.rooms[r.type]?.staff.includes(CLINICAL) && (CLINICAL_IN.length === 0 || CLINICAL_IN.includes(r.type))) site(s, { kind: 'hire', room: r.id, role: CLINICAL, shift: 'day' });
+  }
+  return s;
+}
+
+function startOf(name: string, seed: number, manage: Manage): ShiftState {
   const flow = { perHour: 0, auto: true as const };
   const level = manage === 'normal' ? {} : { manage };
   if (name === 'city') {
@@ -254,6 +283,7 @@ function run(name: string, seed: number, manage: Manage): Run {
   let bare = 0;
   let raised = 0;
   const rides: Run['rides'] = [];
+  const rounds: Run['rounds'] = [];
   const seen = new Set<string>();
   const waited = new Map<string, { since: number; until?: number }>();
   const end = (daysOf(name) * 24 + 8) * 3600;
@@ -283,6 +313,13 @@ function run(name: string, seed: number, manage: Manage): Run {
       if (seen.has(key)) continue;
       seen.add(key);
       rides.push({ why: r.why, wait: Math.round((r.pick - r.since) / 60), nurse: s.staff?.find(m => m.id === r.by)?.role !== 'role.orderly' });
+    }
+    // утренний обход: новые
+    for (const r of s.rounds?.on ?? []) {
+      const key = `round:${r.by}:${r.from}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rounds.push({ nurse: r.nurse === true, beds: r.stops.length, min: Math.round((r.until - r.from) / 60) });
     }
   }
   // ждали каталку, потому что некому везти: до того, как вышли из очереди (повезли, выписали, умер), или до конца прогона
@@ -325,7 +362,7 @@ function run(name: string, seed: number, manage: Manage): Run {
   const proxy = s.staff?.find(m => m.room === office)?.salary;
   const goals = name === 'ambulatory' && s.campaign ? { ...s.campaign.done } : undefined;
   return {
-    scenario: name, manage, seed, start: first, value, minCash, profit: gain(days), week: gain(days.slice(0, 7)), days, lines, quits, leaves, moods, grew, sick, covered, bare, raised, rides, stuck,
+    scenario: name, manage, seed, start: first, value, minCash, profit: gain(days), week: gain(days.slice(0, 7)), days, lines, quits, leaves, moods, grew, sick, covered, bare, raised, rides, rounds, stuck,
     ...(goals ? { goals, ...(proxy !== undefined ? { proxy } : {}) } : {}),
   };
 }
@@ -402,6 +439,16 @@ if (asJson) {
         );
         // некому везти (#99): не срочного медсестра не везёт — ждёт санитара
         if (r.stuck.n > 0) console.log(`    некому везти: ${r.stuck.n} раз, к концу ждут ${r.stuck.now}, дольше всех ${r.stuck.longest} мин`);
+      }
+      // утренний обход (spec docs/specs/2026-10-staff-motion.md, часть 2): врачи — сколько раз, у скольких коек, минут
+      const docs = r.rounds.filter(x => !x.nurse);
+      if (r.rounds.length > 0) {
+        const mins = docs.map(x => x.min).sort((a, b) => a - b);
+        const left = r.days.reduce((n, d) => n + (d.why?.why.round ?? 0), 0);
+        const nurse = r.rounds.length - docs.length;
+        console.log(
+          `    обход: врачи — ${docs.length} раз, у коек ${docs.reduce((n, x) => n + x.beds, 0)}${mins.length ? `, минут — медиана ${mins[Math.floor(mins.length / 2)]}, 9 из 10 — не дольше ${mins[Math.floor(mins.length * 0.9)]}, дольше всех ${mins[mins.length - 1]}` : ''}; клиническая медсестра — ${nurse} раз; ушли, пока их врач на обходе, — ${left}`,
+        );
       }
       if (RAISE) {
         // зарплаты за сутки: первые и последние семь (или все, если суток меньше)

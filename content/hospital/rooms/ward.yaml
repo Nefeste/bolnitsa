@@ -1,7 +1,7 @@
 id: room.ward
 name: { ru: "Палата" }
 gen: { ru: "палаты" }
-staff: [role.nurse]
+staff: [role.nurse, role.clinical_nurse]
 # отделение по виду помещения (spec docs/specs/2026-10-departments.md); палату и кабинет переводит инструмент «Отделение»
 department: dept.therapy
 paint: true
@@ -22,7 +22,7 @@ sizes:
       - [bed, 5, 2]
       - [chair, 1, 4]
       - [sink, 5, 4]
-    staff: { role.nurse: [3, 3] }
+    staff: { role.nurse: [3, 3], role.clinical_nurse: [4, 3] }
   - id: M
     w: 9
     h: 7
@@ -39,6 +39,6 @@ sizes:
       - [bed, 7, 2]
       - [cabinet, 6, 4]
       - [bed, 7, 4]
-    staff: { role.nurse: [4, 3] }
+    staff: { role.nurse: [4, 3], role.clinical_nurse: [5, 3] }
 texts:
   hint: { ru: "Койки для тех, кого лечат в стационаре. Медсестра ухаживает за лежащими, а врач на обходе смотрит, помогает ли лечение и пора ли выписывать." }

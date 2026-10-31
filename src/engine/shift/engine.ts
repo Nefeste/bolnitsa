@@ -54,6 +54,7 @@ import { cover } from './reserve';
 import { manageOf, scaled, scaledInt } from './manage';
 import { priorOf, referTo } from './refer';
 import { book, carriersOf, gurneyOf, lying, planRide, rideHome, ridesUntil } from './gurney';
+import { CLINICAL, roundLeft, roundMinutes, roundOf, roundsDue } from './rounds';
 
 const MIN = 60;
 const HOUR = 60 * MIN;
@@ -3261,25 +3262,85 @@ function leave(db: ContentDb, s: ShiftState, p: ShiftPatient | undefined, how: '
 }
 
 /**
- * Утренний обход нанятых врачей (поток для ПК, spec 2026-10-day): их лежащих — кто лежит хотя бы сутки и не ждёт операции —
- * по правилу разумного врача «Анамнеза» из его симулятора районной больницы (`tools/sim/district.ts`, `rounds`): можно
- * выписывать — выписывает; хуже — в операционную, если у болезни есть операция и её здесь сделают, иначе переводит; реакция
- * на лечение — переводит. Ваших лежащих (приём закрыли вы) не трогает: они в вашем списке «Обход». Времени врачей обход не
- * стоит — упрощение прототипа до смен этапа Б. Главврач просил спрашивать о выписке (spec 2026-10-two-ways, F3) — врач
- * спрашивает, прежде чем выписать.
+ * Утренний обход нанятых врачей (поток для ПК, spec 2026-10-day; со временем врача — spec docs/specs/2026-10-staff-motion.md,
+ * часть 2, решения владельца #166 и #181). Кого кто обойдёт — `roundsDue`: свои лежащие нанятого врача в смене, лежащие
+ * отсутствующего — замещающего или врача той же должности; где обходит клиническая медсестра — только те, кому нужно
+ * решение. Свободный врач идёт сразу, занятый — когда допримет текущего (`callIn`, `goRound`); клиническая медсестра — сразу,
+ * по койкам своего помещения. Решение — у койки (`roundStop`). Ваших лежащих (приём закрыли вы) обход не трогает: они в
+ * вашем списке «Обход». Без чисел обхода (`round` в economy.yaml) — мгновенный, как до части 2.
  */
 function rounds(db: ContentDb, s: ShiftState, notices: Notice[]) {
-  for (const p of inpatientsOf(s)) {
-    const stay = p.stay!;
-    if (!p.closed?.by || (stay.op && !stay.op.done)) continue;
-    const days = daysIn(stay, s.day);
-    if (days < 1) continue;
-    const state = wardState(stay, days);
-    if (state === 'ready' && asksOf(s).includes('discharge') && db.consults) askDischarge(db, s, p, notices);
-    else if (state === 'ready') leave(db, s, p, 'discharge');
-    else if (state === 'worse' && !stay.op && toTable(db, s, p)) startOperations(db, s);
-    else if (state === 'worse' || state === 'reaction') leave(db, s, p, 'transfer');
+  const minutes = roundMinutes(db);
+  if (minutes === undefined) {
+    for (const p of inpatientsOf(s)) decideAtBed(db, s, p, notices);
+    return;
   }
+  const ctx = hospitalCtx(db, s);
+  const lying = inpatientsOf(s);
+  // клинические медсёстры в смене (часть 2б): в своём работающем помещении
+  const nurses = ctx.staff.filter(m => m.role === CLINICAL && m.room !== undefined && ctx.working.has(m.room));
+  const watched = new Set(nurses.map(m => m.room!));
+  s.rounds = { day: s.day, due: roundsDue(colleaguesOf(db, s), ctx.all, lying, watched, s.day), on: [] };
+  for (const n of nurses) {
+    const beds = lying.filter(p => p.stay!.room === n.room);
+    if (beds.length === 0) continue;
+    const r = roundOf(ctx.plan, n.id, n.room, beds, s.t, minutes, true);
+    s.rounds.on.push(r);
+    for (const st of r.stops) schedule(s, st.end, { kind: 'roundStop', by: n.id, id: st.id, nurse: true });
+  }
+  staffDesks(db, s);
+}
+
+/**
+ * Врач `m` свободен, а его ждёт обход (часть 2а): путь с часами сразу — от кабинета по палатам и назад (`roundOf`); до
+ * возвращения он занят (`desk`) и никого не зовёт, у каждой койки — решение в конце его минут (`roundStop`). Ждущие его
+ * ждут, как врача на перерыве: в пути — «на обходе». Обходить некого (лежащих увезли, выписали) — нет обхода.
+ */
+function goRound(db: ContentDb, s: ShiftState, plan: Plan, m: StaffMember): boolean {
+  const ids = s.rounds!.due[m.id];
+  delete s.rounds!.due[m.id];
+  const minutes = roundMinutes(db);
+  const beds = ids.map(id => s.patients[id]).filter(p => p?.status === 'admitted' && p.stay);
+  if (minutes === undefined || beds.length === 0) return false;
+  const r = roundOf(plan, m.id, m.room, beds, s.t, minutes);
+  s.rounds!.on.push(r);
+  (s.desk ??= {})[m.id] = r.until;
+  schedule(s, r.until, { kind: 'free', by: m.id });
+  for (const st of r.stops) schedule(s, st.end, { kind: 'roundStop', by: m.id, id: st.id });
+  journey.rested(s, m.id, 'round', r.until);
+  return true;
+}
+
+/**
+ * Обход (часть 2): `by` кончил свои минуты у койки больного `id` — койка для него работа (усталость); врач решает о больном,
+ * клиническая медсестра — нет: кому нужно решение, врач знал с часа обхода.
+ */
+function roundStop(db: ContentDb, s: ShiftState, ev: Extract<ShiftEvent, { kind: 'roundStop' }>, notices: Notice[]) {
+  // уволен посреди обхода — остальных его коек сегодня не обходят
+  const m = s.staff?.find(x => x.id === ev.by);
+  if (!m) return;
+  worked(db, s, m, 'bed');
+  const p = s.patients[ev.id];
+  if (!ev.nurse && p?.status === 'admitted' && p.stay) decideAtBed(db, s, p, notices);
+}
+
+/**
+ * Решение обхода у койки лежащего нанятого врача — по правилу разумного врача «Анамнеза» из его симулятора районной больницы
+ * (`tools/sim/district.ts`, `rounds`): кто лежит хотя бы сутки и не ждёт операции — можно выписывать — выписывает; хуже — в
+ * операционную, если у болезни есть операция и её здесь сделают, иначе переводит; реакция на лечение — переводит. Ваших
+ * лежащих (приём закрыли вы) не трогает. Главврач просил спрашивать о выписке (spec 2026-10-two-ways, F3) — врач спрашивает,
+ * прежде чем выписать.
+ */
+function decideAtBed(db: ContentDb, s: ShiftState, p: ShiftPatient, notices: Notice[]) {
+  const stay = p.stay!;
+  if (!p.closed?.by || (stay.op && !stay.op.done)) return;
+  const days = daysIn(stay, s.day);
+  if (days < 1) return;
+  const state = wardState(stay, days);
+  if (state === 'ready' && asksOf(s).includes('discharge') && db.consults) askDischarge(db, s, p, notices);
+  else if (state === 'ready') leave(db, s, p, 'discharge');
+  else if (state === 'worse' && !stay.op && toTable(db, s, p)) startOperations(db, s);
+  else if (state === 'worse' || state === 'reaction') leave(db, s, p, 'transfer');
 }
 
 /**
@@ -3531,6 +3592,8 @@ function handle(db: ContentDb, s: ShiftState, ev: ShiftEvent, notices: Notice[])
       return morning(db, s, notices);
     case 'rounds':
       return rounds(db, s, notices);
+    case 'roundStop':
+      return roundStop(db, s, ev, notices);
     // «Главврач утверждает» (spec 2026-10-two-ways, F3): срок ответа — молчание тоже ответ, решение врача в силе
     case 'approve': {
       const p = s.patients[ev.id];
@@ -3861,7 +3924,7 @@ function results(db: ContentDb, s: ShiftState, p: ShiftPatient, notices: Notice[
 function leaving(db: ContentDb, s: ShiftState, p: ShiftPatient): { why: LeftWhy; stood: boolean; asks: boolean } {
   const { wait, queue } = journey.lastWaits(s, p);
   const why: LeftWhy = !wait || (wait.k !== 'queue' && wait.k !== 'rest') ? 'other'
-    : wait.k === 'rest' ? 'rest'
+    : wait.k === 'rest' ? (wait.round ? 'round' : 'rest')
       : wait.why === 'you' ? 'you'
         : colleaguesOf(db, s).some((m, _, list) => colleagueTakes(db, s, p, m, list)) ? 'busy' : 'none';
   const stood = queue !== undefined && (queue.full === true || queue.far !== undefined) && queue.bench !== true;
@@ -4058,6 +4121,9 @@ function callIn(db: ContentDb, s: ShiftState, list: readonly StaffMember[], late
         releaseWaiting(db, s, all.find(p => p.status === 'inRoom' && p.by === m.id)!, m, list);
         continue;
       }
+      // утренний обход (spec docs/specs/2026-10-staff-motion.md, часть 2а): с часа обхода свободный врач не зовёт следующего,
+      // а идёт к своим лежащим; кто был у него в кабинете, того он уже допринял
+      if (!steal && s.rounds?.due[m.id] && goRound(db, s, ctx.plan, m)) continue;
       const back = backOf(m);
       // в туалет и на пределе усталости — между приёмами, даже если его ждут; своего, вернувшегося с результатами, сперва
       // принимает
@@ -4157,9 +4223,13 @@ function pickPc(db: ContentDb, s: ShiftState, m: StaffMember, list: readonly Sta
   }
   let best: string[] | undefined;
   for (const q of by.values()) if (!best || q.length > best.length) best = q;
+  if (!best) return undefined;
   const plan = hospitalCtx(db, s).plan;
-  // свой врач на перерыве (spec 2026-10-staff-shifts, часть 2) — ждать его дольше на остаток перерыва
-  return best?.find((x, i) => !m.room || toDoctor(plan, s.patients[x], m.room, s.t) < (i + 1) * PER_QUEUED + restLeft(s, s.patients[x].doc));
+  // свой врач на перерыве (spec 2026-10-staff-shifts, часть 2) или на обходе (spec 2026-10-staff-motion, часть 2) — ждать его
+  // дольше на остаток; врач у всех в `best` один
+  const doc = s.patients[best[0]].doc;
+  const away = Math.max(restLeft(s, doc), roundLeft(s, doc));
+  return best.find((x, i) => !m.room || toDoctor(plan, s.patients[x], m.room, s.t) < (i + 1) * PER_QUEUED + away);
 }
 
 /**

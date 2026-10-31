@@ -4,7 +4,7 @@ gen: { ru: "реанимации" }
 # spec 2026-10-chapter-4, часть 47: отделение реанимации и интенсивной терапии — анестезиолог-реаниматолог и
 # медсестра; у каждой койки монитор с дефибриллятором и аппарат ИВЛ. Кому нужна ИВЛ, того кладут сюда; нет
 # реанимации — переводят. Цены и размеры — баланс игры
-staff: [role.nurse, role.anesthetist]
+staff: [role.nurse, role.anesthetist, role.clinical_nurse]
 # отделение по виду помещения (spec docs/specs/2026-10-departments.md)
 department: dept.icu
 # работает и ночью (spec docs/specs/2026-10-staff-shifts.md): готовая больница — и с ночной сменой
@@ -29,7 +29,7 @@ sizes:
       - [sink, 4, 2]
     slots: [[2, 2], [2, 4], [6, 2], [6, 4], [3, 2], [3, 4], [5, 2], [5, 4]]
     slotsOf: { eq.monitor_defib: [0, 1, 2, 3], eq.ventilator: [4, 5, 6, 7] }
-    staff: { role.nurse: [4, 3], role.anesthetist: [4, 4] }
+    staff: { role.nurse: [4, 3], role.anesthetist: [4, 4], role.clinical_nurse: [5, 3] }
   # шесть коек
   - id: L
     w: 13
@@ -47,6 +47,6 @@ sizes:
       - [sink, 6, 3]
     slots: [[2, 2], [2, 4], [5, 2], [5, 4], [10, 2], [10, 4], [3, 2], [3, 4], [7, 2], [7, 4], [9, 2], [9, 4]]
     slotsOf: { eq.monitor_defib: [0, 1, 2, 3, 4, 5], eq.ventilator: [6, 7, 8, 9, 10, 11] }
-    staff: { role.nurse: [4, 3], role.anesthetist: [8, 3] }
+    staff: { role.nurse: [4, 3], role.anesthetist: [8, 3], role.clinical_nurse: [5, 3] }
 texts:
   hint: { ru: "Отделение реанимации и интенсивной терапии: у каждой койки монитор с дефибриллятором и аппарат ИВЛ, при отделении — медсестра и анестезиолог-реаниматолог. Сюда кладут тех, кому нужна ИВЛ; койка без обоих аппаратов не работает." }

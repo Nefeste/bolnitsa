@@ -43,9 +43,9 @@ export type Step =
   | { t: number; k: 'approve'; by: string; until: number }
   /**
    * ждёт своего врача, а тот ушёл на перерыв до `until` (spec 2026-10-staff-shifts, часть 2): `wc` — в туалет, `here` —
-   * отдыхает в кабинете, ординаторской нет
+   * отдыхает в кабинете, ординаторской нет; `round` — на утреннем обходе (spec docs/specs/2026-10-staff-motion.md, часть 2)
    */
-  | { t: number; k: 'rest'; by: string; until: number; wc?: true; here?: true };
+  | { t: number; k: 'rest'; by: string; until: number; wc?: true; here?: true; round?: true };
 
 /** Свои места для лежащих: палаты, ПИТ, реанимация, боксы. */
 export type Place = 'ward' | 'icu' | 'ricu' | 'box';
@@ -266,15 +266,16 @@ export function queued(s: ShiftState, p: ShiftPatient) {
 }
 
 /**
- * Нанятый врач `by` ушёл отдыхать до `until` (`callIn`): у всех, кто ждёт именно его, — вернувшихся к нему с результатами и
- * записанных к нему в очереди, — шаг пути.
+ * Нанятый врач `by` ушёл отдыхать до `until` (`callIn`) или на утренний обход (`round`, spec docs/specs/2026-10-staff-motion.md,
+ * часть 2): у всех, кто ждёт именно его, — вернувшихся к нему с результатами и записанных к нему в очереди, — шаг пути.
  */
-export function rested(s: ShiftState, by: string, kind: 'staff' | 'toilet' | 'here', until: number) {
+export function rested(s: ShiftState, by: string, kind: 'staff' | 'toilet' | 'here' | 'round', until: number) {
   if (!book(s)) return;
+  const flag = kind === 'toilet' ? { wc: true as const } : kind === 'here' ? { here: true as const } : kind === 'round' ? { round: true as const } : {};
   for (const p of Object.values(s.patients)) {
     if (p.status !== 'waiting' || (p.by ?? p.doc) !== by) continue;
     const j = journeyOf(s, p);
-    if (j) push(j, { t: s.t, k: 'rest', by, until, ...(kind === 'toilet' ? { wc: true as const } : kind === 'here' ? { here: true as const } : {}) });
+    if (j) push(j, { t: s.t, k: 'rest', by, until, ...flag });
   }
 }
 
