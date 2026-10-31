@@ -17,6 +17,7 @@ import { type QualityMode, TEXT_SCALES } from '../app/settings';
 import { Meeting, Reports, signed } from './Meeting';
 import { DeptLegend, Layers, PathSection, PathsPanel, PatientsTab, ProblemsPanel } from './flow';
 import { byGuide, GoalsTab, GuideToggle, LetterCard, ScenarioDone, StepMark } from './Scenario';
+import { DemoSummary } from './Demo';
 import { type Actions, type Hud, type Level, type LevelRow, type RoomCard, type Speed, type Store, type Tab, type Tool, useHud } from './store';
 import { Icon, type IconName } from './icons';
 import type { Id, Manage } from '../content/types';
@@ -1193,19 +1194,24 @@ function StartChooser({ hud, actions }: P) {
           ))}
         </>
       ) : null}
-      <h2>{campaign.length > 0 ? T.scenario.sandbox : T.start.title}</h2>
-      <button type="button" id="start-empty" onClick={() => setPick('empty')}>
-        <b>{T.start.empty}</b>
-        <span>{T.start.emptyHint}</span>
-      </button>
-      <button type="button" id="start-poly" onClick={() => setPick('poly')}>
-        <b>{T.start.poly}</b>
-        <span>{T.start.polyHint}</span>
-      </button>
-      <button type="button" id="start-preset" onClick={() => setPick('preset')}>
-        <b>{T.start.preset}</b>
-        <span>{T.start.presetHint}</span>
-      </button>
+      {/* демо (spec docs/specs/2026-11-demo.md): песочницы нет — только «Кампания» */}
+      {hud.demoMode && campaign.length > 0 ? null : (
+        <>
+          <h2>{campaign.length > 0 ? T.scenario.sandbox : T.start.title}</h2>
+          <button type="button" id="start-empty" onClick={() => setPick('empty')}>
+            <b>{T.start.empty}</b>
+            <span>{T.start.emptyHint}</span>
+          </button>
+          <button type="button" id="start-poly" onClick={() => setPick('poly')}>
+            <b>{T.start.poly}</b>
+            <span>{T.start.polyHint}</span>
+          </button>
+          <button type="button" id="start-preset" onClick={() => setPick('preset')}>
+            <b>{T.start.preset}</b>
+            <span>{T.start.presetHint}</span>
+          </button>
+        </>
+      )}
       {/* энциклопедия (spec docs/specs/2026-10-encyclopedia.md) — и до игры: главное меню геймдизайна §9 */}
       <button type="button" id="start-enc" onClick={() => openEncyclopedia()} title="F1">
         <b>{T.encyclopedia.ui.open}</b>
@@ -1269,12 +1275,20 @@ export function App({ store, actions, names }: { store: Store; actions: Actions;
       {hud.economy?.open && !hud.doctor?.card ? <Meeting e={hud.economy} actions={actions} /> : null}
       {/* «Сценарий пройден» (spec docs/specs/2026-10-scenario-1.md) — после планёрки, когда карта закрыта */}
       {!hud.economy?.open && !hud.doctor?.card ? <ScenarioDone s={hud.scenario} actions={actions} /> : null}
+      {/* «Итог» демо (spec docs/specs/2026-11-demo.md) — после первой планёрки */}
+      {!hud.economy?.open && !hud.doctor?.card ? <DemoSummary d={hud.demo} actions={actions} /> : null}
       {hud.debug ? <DebugMenu {...p} /> : null}
       {/* энциклопедия (spec docs/specs/2026-10-encyclopedia.md) — поверх всего, и карты пациента */}
       <Encyclopedia />
       {!hud.ready || hud.status || hud.error ? (
         <div className="status panel" id="status">
-          {hud.error ? `${T.app.error}: ${hud.error}` : hud.status || T.app.loading}
+          {hud.error ? `${T.app.error}: ${hud.error}` : hud.progress?.text || hud.status || T.app.loading}
+          {/* полоса загрузки (spec docs/specs/2026-11-demo.md, «Обёртка»): по настоящей работе — модели, люди, мир */}
+          {!hud.error && hud.progress ? (
+            <div className="loadbar" id="loadbar" role="progressbar" aria-valuemin={0} aria-valuemax={hud.progress.total} aria-valuenow={hud.progress.done}>
+              <div style={{ width: `${Math.round((hud.progress.done / Math.max(1, hud.progress.total)) * 100)}%` }} />
+            </div>
+          ) : null}
         </div>
       ) : null}
     </>

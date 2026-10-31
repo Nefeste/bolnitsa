@@ -147,8 +147,13 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # a click on the row flies to the lab and opens its card, L in a cycle; then the «Пути
                                    # пациентов» layer: the corridor floor painted, the list by metres a day, every pair of
                                    # rooms has a path, a row — only its path on the floor and the camera at its middle, again —
-                                   # all, an hour of play — more moves, off — no paint, L in a cycle);
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|31` for one part, `-- --only 7,10,11` —
+                                   # all, an hour of play — more moves, off — no paint, L in a cycle; then the demo path
+                                   # (`?demo=1`, docs/specs/2026-11-demo.md): only «Кампания» on the start screen, the load bar
+                                   # growing by real work, the mentor's letters, three ready rooms by the build order, the first
+                                   # patient two game minutes after your office works, your own case, «До утра» to the meeting,
+                                   # «почему?» of the left with no hired doctors, «Итог» with the hospital's snapshot, «Сохранить
+                                   # снимок», «Играть дальше»; the feel numbers О1–О6 → tools/app/out/e2e-demo.json);
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|32` for one part, `-- --only 7,10,11` —
                                    # several in a row on one page, as in the full run
 node tools/app/soak.mjs --days 3   # after build: a long run in headless Chromium — the ready city at ×12 for three game days,
                                    # the meeting closed each morning; window memory after GC, DOM nodes, people, sim lag and
@@ -351,7 +356,8 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   `content/campaign/scenarios/` (start, cash, what is built, tutorial patients, goals, letters; a letter to a first-minutes
   hint state is `when: { hint }`), `scenarioOf`/`plotOf` in `campaign/campaign.ts`. `newFlowShift(…, { scenario })` and the
   sim's `start` message begin it; goals and letters are counted at the 08:00 meeting (`morning`); the first walk-ins are its
-  tutorial patients while your office works (`tutorialNext`, `taught`); the `site` command builds only its rooms (error
+  tutorial patients while your office works (`tutorialNext`, `taught`; the first one comes `FIRST_TAUGHT` — two game
+  minutes — after your office starts working, `restream`); the `site` command builds only its rooms (error
   `scenario`); the window's marks — a hint state reached, a hint closed, a letter read, a tip shown, «Без обучения», the
   build order on or off — are the `mark` command, kept in `s.campaign` and so in the save. The window (part 2): the sim sends `ScenarioView` with the
   slice when it changed (`src/sim/campaign.ts`: letters, goals with progress, the end, marks); `src/app/scenario.ts` turns it
@@ -365,6 +371,15 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   the sim and sends them with the card (`CardView.tips`: the steps, «Решение», the review), one at a time when they fit, each
   once; a tip about a disease only for a tutorial patient (otherwise it would give the diagnosis away); «Понятно» is the
   `tip` mark, and the next tip waits for the doctor's next action (`src/ui/doctor/Card.tsx`, `MentorTip`).
+- The demo for Next Fest (`docs/specs/2026-11-demo.md`, #176): the key `?demo=1` (Electron `--demo`, `main.tsx`) — only
+  «Кампания» on the start screen, and after the first meeting closes the «Итог» window (`Game.afterMeeting`): what was built
+  in the build order, the day's patients and how many left waiting for you, your receptions, cash, real time played, the
+  hospital's snapshot — `src/app/demo.ts` (pure: `demoResult`, `snapshotName`, `wishlistUrl` — no button without
+  `STEAM_APP_ID`), `src/ui/Demo.tsx`, `Game.snapshot` (the site's rooms framed 1920×1080 a frame after the click), saved by
+  Electron into `userData/shots` (`shell:snapshot`, names only) or downloaded in a browser. The load bar (`#loadbar`, every
+  run, not only the demo) counts real steps: the database, each furniture model, each of the 59 looks, the world, the start
+  (`Game.step`). With the build open the doctor hint says «Готово» first (`leave` in `hints.ts`), and «Свои больные» shows
+  only with a hired doctor on duty or systems chosen.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`), Web Worker
   (`worker.ts`) and its client in the window (`client.ts`). The window never runs the engine. The doctor mode
   (`docs/specs/2026-10-doctor-mode.md`): `caseView.ts` (a copy of Anamnez's player view of a case) and `doctor.ts` build the

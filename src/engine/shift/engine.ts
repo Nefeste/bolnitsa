@@ -1388,8 +1388,18 @@ function setHours(db: ContentDb, s: ShiftState, open: number, close: number): No
 function restream(db: ContentDb, s: ShiftState, stream: 'walk' | 'amb') {
   const next = s.events.find(e => e.event.kind === 'flow' && e.event.stream === stream);
   if (next) s.events = s.events.filter(e => e !== next);
-  scheduleFlow(db, s, stream, next?.event.kind === 'flow' ? next.event.n : arrivedToday(s, `${s.day}-${stream === 'walk' ? 'w' : 'a'}`), s.t);
+  const n = next?.event.kind === 'flow' ? next.event.n : arrivedToday(s, `${s.day}-${stream === 'walk' ? 'w' : 'a'}`);
+  // первый заданный больной сценария — вскоре после того, как заработал ваш кабинет (`FIRST_TAUGHT`)
+  if (stream === 'walk' && !s.campaign?.taught && tutorialNext(db, s)) schedule(s, s.t + FIRST_TAUGHT, { kind: 'flow', stream, n });
+  else scheduleFlow(db, s, stream, n, s.t);
 }
+
+/**
+ * Первый заданный больной сценария (spec docs/specs/2026-11-demo.md, «Ощущение», О3): заработал ваш кабинет, а заданных ещё
+ * не было — следующий пришедший сам придёт через столько секунд игры, а не через случайный промежуток потока (у амбулатории
+ * с одним кабинетом — около 20 минут игры, минута настоящего времени на ×1). Дальше — по частоте потока.
+ */
+const FIRST_TAUGHT = 120;
 
 /** Номер записанного к специалисту `to` в сутки `day` — без порядкового номера (spec 2026-10-specialists). */
 const bookPrefix = (day: number, to: string) => `${day}-b${to}-`;

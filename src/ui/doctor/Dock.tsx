@@ -105,7 +105,9 @@ export function Dock({ hud, actions }: { hud: Hud; actions: Actions }) {
         </div>
       ) : null}
       <Levels level={d.level} actions={actions} prefix="dock" />
-      <Mine mine={st.mine} open={d.mineOpen} actions={actions} />
+      {/* «Свои больные» — кого нанятые врачи оставят вам: нанятых врачей в смене нет (начало сценария 1, ночь поликлиники) и своих не
+          выбрано — новых ведёте вы, и строки нет (spec docs/specs/2026-11-demo.md, проход по снимкам 2) */}
+      {st.colleagues.length > 0 || st.mine.length > 0 ? <Mine mine={st.mine} open={d.mineOpen} actions={actions} /> : null}
       <div className="dlists">
         {st.current ? (
           <>

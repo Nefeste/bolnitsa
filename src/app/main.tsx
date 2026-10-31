@@ -96,6 +96,7 @@ const actions: Actions = {
   money: later('money'),
   dismissHint: later('dismissHint'),
   scenario: later('scenario'),
+  demo: later('demo'),
   toggleSettings: later('toggleSettings'),
   setQualityMode: later('setQualityMode'),
   toggleMenu: later('toggleMenu'),
@@ -165,6 +166,8 @@ async function choose(problem?: string): Promise<never> {
   const db = await loadContent().catch(() => undefined);
   const scenarios = Object.values(db?.scenarios ?? {}).sort((a, b) => a.order - b.order);
   store.set({
+    // демо (spec docs/specs/2026-11-demo.md): на экране начала — только «Кампания»
+    demoMode: q.get('demo') === '1',
     choose: true, startSaves: saves, startProblem: problem,
     startScenarios: scenarios.map(sc => ({ id: sc.id, title: scenarioTitle(sc), about: named(sc.about) })),
     scenarioNames: Object.fromEntries(scenarios.map(sc => [sc.id, scenarioTitle(sc)])),

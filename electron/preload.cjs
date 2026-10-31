@@ -8,6 +8,9 @@ contextBridge.exposeInMainWorld('shell', {
   args: () => ipcRenderer.invoke('shell:args'),
   save: json => ipcRenderer.invoke('shell:save', json),
   saveShot: (name, dataUrl) => ipcRenderer.invoke('shell:shot', name, dataUrl),
+  // демо (spec docs/specs/2026-11-demo.md): снимок больницы — в папку игры; страница игры в клиенте Steam
+  snapshot: (name, dataUrl) => ipcRenderer.invoke('shell:snapshot', name, dataUrl),
+  steam: url => ipcRenderer.invoke('shell:steam', url),
   metrics: () => ipcRenderer.invoke('shell:metrics'),
   info: () => ipcRenderer.invoke('shell:info'),
   firstFrame: ms => ipcRenderer.send('shell:first-frame', ms),

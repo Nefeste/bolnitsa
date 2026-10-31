@@ -7,10 +7,10 @@
 import type { Block } from '../engine/hospital/requirements';
 import type { Role } from './roles';
 
-export type HintKey = 'build' | 'draw' | 'furnish' | 'door' | 'hire' | 'machine' | 'fix' | 'run' | 'look' | 'asks' | 'call' | 'decisions' | 'manage';
+export type HintKey = 'build' | 'draw' | 'furnish' | 'door' | 'hire' | 'machine' | 'fix' | 'run' | 'look' | 'asks' | 'call' | 'leave' | 'decisions' | 'manage';
 
 /** Порядок подсказок — для проверок: все ключи, какие бывают. */
-export const HINT_KEYS: readonly HintKey[] = ['build', 'draw', 'furnish', 'door', 'hire', 'machine', 'fix', 'run', 'look', 'asks', 'call', 'decisions', 'manage'];
+export const HINT_KEYS: readonly HintKey[] = ['build', 'draw', 'furnish', 'door', 'hire', 'machine', 'fix', 'run', 'look', 'asks', 'call', 'leave', 'decisions', 'manage'];
 
 export interface HintInput {
   /** первое, без чего больницу не открыть (`openBlocks`); нет — открыта */
@@ -66,7 +66,8 @@ export function hintOf(s: HintInput, seen: ReadonlySet<HintKey>): HintKey | unde
   if (s.paused && s.arrived === 0 && !seen.has('run')) return 'run';
   // по роли (spec 2026-10-two-ways, F4): «Врачу» — как позвать первого; «Главврачу» — где решения; «Управляющему» — что делать
   const role = s.role ?? 'doctor';
-  if (role === 'doctor' && s.callable && !seen.has('call')) return 'call';
+  // стройка открыта — её панель закрывает окно врача (spec docs/specs/2026-11-demo.md, проход по снимкам 1): сначала «Готово»
+  if (role === 'doctor' && s.callable && !seen.has('call')) return s.buildOn && !seen.has('leave') ? 'leave' : 'call';
   if (role === 'chief' && !s.answered && !seen.has('decisions')) return 'decisions';
   if (role === 'manager' && !s.met && !seen.has('manage')) return 'manage';
   if (!s.looked) return pick('look');
