@@ -1,4 +1,4 @@
-// из anamnez: src/engine/hospital/staff.ts @ 96503ac, изменено: мест в ординаторской больницы ПК — из плана (spec 2026-10-build); смены дня и ночи — `shift`, кто в смене, зарплата за сутки, ночная смена готовой больницы (spec 2026-10-staff-shifts); настроение нанятого — `Mood`, нет на смене — `away`: учится или болеет (spec 2026-10-staff-mood); санитара (`optional`) в кандидатах дня нет (spec 2026-10-orderlies); санитары готовой больницы ПК — `withOrderlies`
+// из anamnez: src/engine/hospital/staff.ts @ 96503ac, изменено: мест в ординаторской больницы ПК — из плана (spec 2026-10-build); смены дня и ночи — `shift`, кто в смене, зарплата за сутки, ночная смена готовой больницы (spec 2026-10-staff-shifts); настроение нанятого — `Mood`, нет на смене — `away`: учится или болеет (spec 2026-10-staff-mood); санитара (`optional`) и клинической медсестры (`day`) в кандидатах дня нет (spec 2026-10-orderlies, 2026-10-staff-motion); санитары готовой больницы ПК — `withOrderlies`
 // Персонал своей больницы (spec 2026-09-own-hospital, часть 8): кандидаты дня, найм, навык 1–5,
 // черта, зарплата за смену, скорость и точность работы, рост навыка с отработанными сменами.
 // Числа — баланс игры (content/hospital/economy.yaml, `staff`). Имя человека — из словаря игры,
@@ -100,8 +100,9 @@ export function applicantsOf(db: ContentDb, seed: number, day: number, next: num
   let n = next;
   const roles = Object.keys(db.roles).sort();
   for (const role of [...roles.filter(id => !db.roles[id].profile), ...roles.filter(id => db.roles[id].profile)]) {
-    // санитар (spec 2026-10-orderlies, `optional`) — только в больнице ПК, его нанимают на место: кандидаты «Анамнеза» те же
-    if (!db.roles[role].hire || db.roles[role].optional || !allow(role)) continue;
+    // санитар (spec 2026-10-orderlies, `optional`) и клиническая медсестра (`day`, решение владельца #183) — только в больнице
+    // ПК, их нанимают на место: кандидаты «Анамнеза» те же
+    if (!db.roles[role].hire || db.roles[role].optional || db.roles[role].day || !allow(role)) continue;
     const r = root.fork(role);
     const count = r.range(b.candidates[0], b.candidates[1]);
     for (let i = 0; i < count; i++) {
