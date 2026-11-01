@@ -20,8 +20,10 @@ from models import xray
 # модели Blender, которые окно ставит по умолчанию (часть 2): у образцов групп вещи — ими, как в игре
 PART2 = {**GROUP1}
 
-# сколько точек картинки на метр пола; лучей на точку
-PX = 64
+# сколько точек картинки на метр пола: у образцов групп — 32 (тени мягкие, в кадре игры разница с 64 — на уровне шума, а
+# файл вчетверо меньше; docs/specs/2026-11-blender-2.md, решение агента 11), у образца пилота — 64, как он запечён
+PX = 32
+PILOT_PX = 64
 AO_SAMPLES = 256
 SHADOW_SAMPLES = 128
 # затенение по полу ищется в этом радиусе, м: тень у ножек и в углах, а не от всей комнаты
@@ -189,7 +191,8 @@ def png(path, w, h, gray):
 
 def build_room(key, room, path):
     w, h = room['w'] - 1, room['h'] - 1
-    iw, ih = w * PX, h * PX
+    px = PX if room.get('group', 0) else PILOT_PX
+    iw, ih = w * px, h * px
     image = bpy.data.images.new('bake', iw, ih, float_buffer=True)
     floor = floor_mesh(room, image)
     blockers = [walls(room)]
