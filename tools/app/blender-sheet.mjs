@@ -32,6 +32,8 @@ mkdirSync(out, { recursive: true });
 /** Помещения группы и где их снимать: поликлиника (сценарий 1) или город. */
 const ROOMS = {
   1: { hospital: 'poly', types: ['room.reception', 'room.waiting', 'room.office', 'room.triage', 'room.procedure', 'room.lab', 'room.ecg', 'room.toilet', 'room.staff'] },
+  // стационар — в городе: в поликлинике коек нет
+  2: { hospital: 'preset', types: ['room.ward', 'room.box', 'room.icu', 'room.ricu', 'room.emergency'] },
 }[group];
 if (!ROOMS) throw new Error(`нет группы ${group}`);
 /** Образцы света группы: «room.waiting:L» → тип и размер. */

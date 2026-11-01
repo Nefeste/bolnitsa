@@ -503,10 +503,14 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   catalog's recolours apply, set by `Furnisher.place` at its real size; instead of a code model (`BLENDER_CODE`) one in its
   place's axes (`placeAt`, `CODE_SHIFT`, `skipOf` — the lab bench shows `microscope*` or `rack*`). A desk next to a staff post
   faces it in every room, ready rooms too (`layoutOf`): the screen and the drawers to whoever sits there, the counter's panel
-  to the visitor. A group's baked light — a sample per size of each room type in `light` of `budgets.json`, with the group's
-  real models in place, 32 points per metre (`blender/room.py`, `PX`; the pilot's 64; `rooms.json` lists them) — is on by
-  default, `?baked=0` (Electron `--baked 0`) turns it off, the pilot's only with `?baked=1`. `bakedRooms` matches type, sides
-  and things — never the plan's `size`: a room built on the PC site carries its type's smallest size there (`planOfSite`).
+  to the visitor. Group 2 «Стационар» — `stationary.py`: the pilot's bed and monitor brought to budget with the pilot's part
+  names (the bed's `iv` and `iv_bag` only in wards and boxes — `skipOf`), the bedside cabinet instead of Kenney
+  `sideTableDrawers` and the ventilator; `BLENDER` keeps only the pilot's X-ray machine (`?models=blender`). A group's baked
+  light — a sample per size of each room type in `light` of `budgets.json`, with the group's real models in place, 32 points
+  per metre (`blender/room.py`, `PX`; the pilot's 64; `rooms.json` lists them; a bed's IV stand only in wards and boxes, a
+  long thing in one cell half as long — `iv`, `short` in the sample) — is on by default, `?baked=0` (Electron `--baked 0`)
+  turns it off, the pilot's only with `?baked=1`. `bakedRooms` matches type, sides and things — never the plan's `size`: a
+  room built on the PC site carries its type's smallest size there (`planOfSite`).
 - `assets/` — CC0 models, Rocketbox people under MIT (`assets/models/rocketbox/`, made by `tools/app/people.mjs`), the
   game's font IBM Plex Sans under SIL OFL 1.1 (`assets/fonts/`, unmodified files with `OFL.txt`; owner's decision #107),
   the Carbon icons' Apache 2.0 text (`assets/licenses/carbon-icons.txt`) and `LICENSES.md` (sources, licenses, SHA-256; MIT

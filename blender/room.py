@@ -14,11 +14,12 @@ import zlib
 import bpy
 
 from ambulatory import MODELS as GROUP1
+from stationary import MODELS as GROUP2
 from common import Part, g2b, material
 from models import xray
 
 # модели Blender, которые окно ставит по умолчанию (часть 2): у образцов групп вещи — ими, как в игре
-PART2 = {**GROUP1}
+PART2 = {**GROUP1, **GROUP2}
 
 # сколько точек картинки на метр пола: у образцов групп — 32 (тени мягкие, в кадре игры разница с 64 — на уровне шума, а
 # файл вчетверо меньше; docs/specs/2026-11-blender-2.md, решение агента 11), у образца пилота — 64, как он запечён
@@ -72,6 +73,9 @@ def placed(parts, t, offset):
     x, z = t['at']
     holder.location = g2b(x, 0, z)
     holder.rotation_euler = (0, 0, t['yaw'])
+    # длинный предмет в одной клетке — вдвое короче вдоль своей z, как в игре (furniture.ts, `placeThing`); z игры — −Y Blender
+    if t.get('short'):
+        holder.scale = (1, 0.5, 1)
     for ob in parts:
         ob.parent = holder
         ob.location = g2b(offset[0], 0, offset[1])
@@ -85,6 +89,11 @@ def blender_thing(t):
     как её ставит `Furnisher.place`; на лабораторном столе — микроскоп или штатив (`item`), как `skipOf`.
     """
     parts = PART2[t['blender']]()
+    # стойка капельницы — только у кровати палаты и бокса (furniture.ts, `skipOf`)
+    if t.get('iv') is False:
+        for ob in [o for o in parts if o.name in ('iv', 'iv_bag')]:
+            bpy.data.objects.remove(ob)
+            parts.remove(ob)
     if 'item' in t:
         drop = 'microscope' if t['item'] == 1 else 'rack'
         for ob in [o for o in parts if o.name.startswith(drop)]:

@@ -34,7 +34,7 @@ const budgets = JSON.parse(readFileSync(join(ROOT, 'blender/budgets.json'), 'utf
 /** Образцы запечённого света (blender/build.py): ключ «тип:размер» → файл и группа (0 — пилот). */
 const roomsIndex = JSON.parse(readFileSync(join(DIR, 'rooms.json'), 'utf8')) as Record<string, { file: string; group: number }>;
 /** Группы части 2, что уже в игре. */
-const GROUPS = [1];
+const GROUPS = [1, 2];
 const part2 = Object.entries(budgets.models).filter(([, b]) => GROUPS.includes(b.group));
 
 /** Части моделей — как в blender/models.py; имя части — имя узла. */
@@ -99,27 +99,6 @@ describe('пилот Blender: модели', async () => {
         expect(Math.abs(box.max[axis] - want.max[k]), `${code} max.${axis}`).toBeLessThan(0.06);
       }
     }
-  });
-
-  test('в игре: кровать палаты — со стойкой капельницы, кровать вне палаты — без неё; в цвете — затенение', () => {
-    const place = (type: string): THREE.BufferGeometry[] => {
-      const t: Thing = { kind: 'bed', room: 0, type, cell: [0, 0], cells: [[0, 0], [0, 1]], face: [0, 1], yaw: 0 };
-      return furnishThing(t, models).colored;
-    };
-    const tall = (gs: THREE.BufferGeometry[]) => {
-      let y = 0;
-      for (const g of gs) {
-        g.computeBoundingBox();
-        y = Math.max(y, g.boundingBox!.max.y);
-      }
-      return y;
-    };
-    // стойка капельницы — 1,9 м; без неё выше всего изголовье (около метра)
-    expect(tall(place('room.ward'))).toBeGreaterThan(1.8);
-    expect(tall(place('room.icu'))).toBeLessThan(1.2);
-    // цвет вершин — цвет материала, помноженный на затенение: есть и тёмные, и светлые вершины одной части
-    const colors = place('room.ward').flatMap(g => [...(g.attributes.color.array as Float32Array)]);
-    expect(Math.min(...colors)).toBeLessThan(Math.max(...colors) * 0.5);
   });
 });
 
@@ -207,7 +186,7 @@ describe('Blender, часть 2: модели групп в игре', async () 
       }
     }
     // у кого экран — светится (материал «screen», furniture.ts)
-    for (const name of ['desk', 'counter', 'analyzer', 'ecg']) expect(models.get(`blender/${name}`)!.parts.some(p => p.mat === 'screen'), name).toBe(true);
+    for (const name of ['desk', 'counter', 'analyzer', 'ecg', 'monitor', 'ventilator']) expect(models.get(`blender/${name}`)!.parts.some(p => p.mat === 'screen'), name).toBe(true);
   });
 
   test('вместо модели кодом — тот же габарит места (blender/sizes.json, с допуском 6 см) и низ на полу', () => {
@@ -269,6 +248,31 @@ describe('Blender, часть 2: модели групп в игре', async () 
     };
     // микроскоп выше штатива с пробирками
     expect(tall([0, 0])).toBeGreaterThan(tall([1, 0]) + 0.08);
+  });
+
+  test('кровать группы 2 — с частями пилота: в палате и боксе — стойка капельницы, в ПИТ — нет; монитор — части пилота', () => {
+    // имена частей — те же, что у пилота (blender/models.py): по ним игра прячет капельницу (furniture.ts, `skipOf`)
+    expect(new Set(models.get('blender/bed')!.parts.map(p => p.node))).toEqual(new Set(PARTS.bed));
+    expect(new Set(models.get('blender/monitor')!.parts.map(p => p.node))).toEqual(new Set(PARTS.monitor));
+    const place = (type: string): THREE.BufferGeometry[] => {
+      const t: Thing = { kind: 'bed', room: 0, type, cell: [0, 0], cells: [[0, 0], [0, 1]], face: [0, 1], yaw: 0 };
+      return furnishThing(t, models).colored;
+    };
+    const tall = (gs: THREE.BufferGeometry[]) => {
+      let y = 0;
+      for (const g of gs) {
+        g.computeBoundingBox();
+        y = Math.max(y, g.boundingBox!.max.y);
+      }
+      return y;
+    };
+    // стойка капельницы — 1,9 м; без неё выше всего изголовье (около метра)
+    expect(tall(place('room.ward'))).toBeGreaterThan(1.8);
+    expect(tall(place('room.box'))).toBeGreaterThan(1.8);
+    expect(tall(place('room.icu'))).toBeLessThan(1.2);
+    // цвет вершин — цвет материала, помноженный на затенение: есть и тёмные, и светлые вершины одной части
+    const colors = place('room.ward').flatMap(g => [...(g.attributes.color.array as Float32Array)]);
+    expect(Math.min(...colors)).toBeLessThan(Math.max(...colors) * 0.5);
   });
 
   test('перекраска каталога ложится на модель Blender по имени материала: белый шкаф — белый, шкаф кабинета — дерево', () => {
