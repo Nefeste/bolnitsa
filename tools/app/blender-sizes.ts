@@ -15,14 +15,14 @@ import { join } from 'node:path';
 import * as THREE from 'three';
 import { db } from '../../src/content';
 import type { Id, ObjectKind, RoomSizeId } from '../../src/content/types';
-import { planOf } from '../../src/engine/hospital/build';
+import { addReady, emptySite, planOfSite } from '../../src/engine/hospital/site';
 import { BLENDER_CODE, BLENDER_KIT, CATALOG, type Code, entryOf, EXTRA_MODELS } from '../../src/render/catalog';
 import { benchItem, CODE_SHIFT, furnishThing, IV_AT, LIE_TOP, PALETTE, TOILET, toiletSpots } from '../../src/render/furniture';
 import { lampPoints } from '../../src/render/lamps';
 import { isLong, layoutOf, type Thing } from '../../src/render/layout';
 import type { Model } from '../../src/render/models';
 import { WALL_H, WALL_T } from '../../src/render/world';
-import { furnitureModels, oneRoom } from '../test/render-kit';
+import { furnitureModels } from '../test/render-kit';
 
 const OUT = join(import.meta.dir, '../../blender/sizes.json');
 const BUDGETS = JSON.parse(readFileSync(join(import.meta.dir, '../../blender/budgets.json'), 'utf8')) as {
@@ -55,6 +55,11 @@ const CODE_AT: Partial<Record<Code, { kind: ObjectKind; type: Id; equipment?: Id
   mri: { kind: 'mri', type: 'room.mri' },
   us: { kind: 'us', type: 'room.ultrasound' },
   console: { kind: 'table', type: 'room.xray' },
+  // группа 4: операционная и эндоскопия — аппараты с места шаблона; эндоскопическая стойка стоит на месте аппарата УЗИ
+  orTable: { kind: 'or_table', type: 'room.or', equipment: 'eq.or_table' },
+  anesthesia: { kind: 'anesthesia', type: 'room.or', equipment: 'eq.anesthesia' },
+  instrumentTable: { kind: 'table', type: 'room.or' },
+  endoscope: { kind: 'us', type: 'room.endoscopy', equipment: 'eq.videoendoscope' },
 };
 
 
@@ -159,7 +164,6 @@ function boxOf(t: Thing, models: Map<string, Model>): { min: number[]; max: numb
   return { min: [round(b.min.x - 0.5), round(b.min.y), round(b.min.z - cz)], max: [round(b.max.x - 0.5), round(b.max.y), round(b.max.z - cz)] };
 }
 
-/** Готовое помещение без поворота, как его ставит игра (render-kit `oneRoom`: помещение на участке, вокруг коридор). */
 /** Модель Blender вещи — та, что окно ставит по умолчанию (части 2, `BLENDER_CODE` и `BLENDER_KIT`): имя в blender/. */
 const blenderOf = (e: ReturnType<typeof entryOf>): string | undefined => {
   const file = e && ('code' in e ? BLENDER_CODE[e.code] : BLENDER_KIT[e.model]);
@@ -167,16 +171,18 @@ const blenderOf = (e: ReturnType<typeof entryOf>): string | undefined => {
 };
 
 /**
- * Готовое помещение для запекания света. `group` — образец группы части 2 (docs/specs/2026-11-blender-2.md, «Запечённый
- * свет»): у вещей — модель Blender, которую ставит окно (`blender`), сдвиг места модели кодом (`shift`), что стоит на
- * лабораторном столе (`item`), и кабинки санузла (`decor`). Образец пилота (рентген M) — как в пилоте.
+ * Образец группы части 2 для запекания света (docs/specs/2026-11-blender-2.md, «Запечённый свет») — готовое помещение без
+ * поворота, как его ставит игрок (стройка ПК: `addReady`, `planOfSite`; повороты вещей — из образца помещения): на такие и
+ * ложится свет. У вещей — модель Blender, которую ставит окно (`blender`), сдвиг места модели кодом (`shift`), что стоит на
+ * лабораторном столе (`item`), и кабинки санузла (`decor`). До группы 4 образцы строились помещением «Анамнеза» (`oneRoom`): у
+ * части вещей был другой поворот, а в операционной — два наркозных аппарата вместо аппарата и стола (решение агента 16).
  */
-function roomOf(type: Id, size: RoomSizeId, models: Map<string, Model>, group?: number) {
-  const part2 = group !== undefined;
-  const hs = oneRoom(db, type, size, 0);
-  const plan = planOf(db, hs);
-  const layout = layoutOf(db, plan, hs.decor);
-  const n = plan.rooms.findIndex(r => r.type === type);
+function roomOf(type: Id, size: RoomSizeId, models: Map<string, Model>, group: number) {
+  const ready = addReady(db, emptySite(), type, size, 20, 10, 0);
+  if (!ready.ok) throw new Error(`${type} ${size}: ${JSON.stringify(ready.error)}`);
+  const plan = planOfSite(db, ready.site);
+  const layout = layoutOf(db, plan, []);
+  const n = plan.rooms.findIndex(r => r.id === ready.room);
   const r = plan.rooms[n];
   const cells: string[] = [];
   for (let y = 0; y < r.h; y++) {
@@ -191,14 +197,14 @@ function roomOf(type: Id, size: RoomSizeId, models: Map<string, Model>, group?: 
       const cz = t.cells.reduce((a, c) => a + c[1] + 0.5, 0) / t.cells.length - r.y;
       const e = entryOf(t.kind, t.type, t.equipment);
       const code = e && 'code' in e ? e.code : undefined;
-      const blender = part2 ? blenderOf(e) : undefined;
+      const blender = blenderOf(e);
       return {
         kind: t.kind, ...(e && 'code' in e ? { code: e.code } : e ? { model: e.model } : {}), ...(blender ? { blender } : {}),
-        ...(part2 && code && CODE_SHIFT[code] !== undefined ? { shift: CODE_SHIFT[code] } : {}), ...(part2 && code === 'labBench' ? { item: benchItem(t) } : {}),
+        ...(code && CODE_SHIFT[code] !== undefined ? { shift: CODE_SHIFT[code] } : {}), ...(code === 'labBench' ? { item: benchItem(t) } : {}),
         // стойка капельницы — только у кровати палаты и бокса (furniture.ts, `skipOf`); длинный предмет в одной клетке — вдвое
         // короче (`placeThing`: койка в реанимации, где вторая клетка разрезала бы помещение)
-        ...(part2 && code === 'bed' ? { iv: t.type === 'room.ward' || t.type === 'room.box' } : {}),
-        ...(part2 && code && LIE_TOP[code] !== undefined && t.cells.length === 1 ? { short: true } : {}),
+        ...(code === 'bed' ? { iv: t.type === 'room.ward' || t.type === 'room.box' } : {}),
+        ...(code && LIE_TOP[code] !== undefined && t.cells.length === 1 ? { short: true } : {}),
         at: [round(cx), round(cz)], yaw: round(t.yaw), box: boxOf(t, models),
       };
     });
@@ -206,13 +212,11 @@ function roomOf(type: Id, size: RoomSizeId, models: Map<string, Model>, group?: 
     .filter(p => p.room === n)
     .map(p => [round(p.x - r.x), round(p.z - r.y)]);
   // кабинки санузла — декор окна (furniture.ts, `decorate`): в образце их нет, но тень они дают
-  const decor = part2
-    ? toiletSpots(layout)
-        .filter(s => s.room === n)
-        .map(s => ({ kind: 'toilet', blender: blenderOf({ model: 'kenney/toilet', fit: TOILET.fit }), at: [round(s.cell[0] + 0.5 - r.x), round(s.cell[1] + 0.5 - r.y)], yaw: round(s.yaw) }))
-    : [];
+  const decor = toiletSpots(layout)
+    .filter(s => s.room === n)
+    .map(s => ({ kind: 'toilet', blender: blenderOf({ model: 'kenney/toilet', fit: TOILET.fit }), at: [round(s.cell[0] + 0.5 - r.x), round(s.cell[1] + 0.5 - r.y)], yaw: round(s.yaw) }));
   // клетки плана: 1 — пол, 3 — стена, 4 — дверь (engine/hospital/grid.ts, CELL)
-  return { w: r.w, h: r.h, cells, wallH: WALL_H, wallT: WALL_T, things, ...(decor.length ? { decor } : {}), lamps, ...(part2 ? { group } : {}) };
+  return { w: r.w, h: r.h, cells, wallH: WALL_H, wallT: WALL_T, things, ...(decor.length ? { decor } : {}), lamps, group };
 }
 
 /** Модели наборов, без которых не собрать модели кодом (монитор на стойке регистратуры, тумба лабораторного стола). */

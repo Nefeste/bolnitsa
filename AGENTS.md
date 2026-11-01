@@ -188,10 +188,10 @@ python blender/build.py [names]    # then the models in Blender 4.5.15 (`pip ins
 node tools/app/blender-pack.mjs    # then compress them like the CC0 models into assets/models/blender/; byte-identical;
                                    # passports in assets/LICENSES.md, section 8 (blender/README.md)
 node tools/app/blender-sheet.mjs   # after build: the before/after sheet of a group's rooms (11:00, no new patients; group 1 in
-                                   # the polyclinic, group 2 in the city) — code and CC0 models vs Blender → tools/app/out/sheet/
-                                   # (`--group 1|2`); `--light` — each light sample built as a ready room in the empty building
+                                   # the polyclinic, groups 2–4 in the city) — code and CC0 models vs Blender → tools/app/out/sheet/
+                                   # (`--group 1|2|3|4`); `--light` — each light sample built as a ready room in the empty building
                                    # (on «Спокойно»: the cash covers a reanimation L), `baked=0` vs the light, and a check that
-                                   # the light lay on every one
+                                   # the light lay on every one; group 3's light — its rooms in the city (an MRI L costs more)
 npm run bench -- --mode flow --quick           # engine: time per game minute at 50/100/200/300 patients (PC flow)
 npm run bench -- --mode desks --quick          # the same with Anamnez's appointment slots
 npm run bench -- --mode flow --day             # the whole day to 10:00 of day 2: day and night minutes, 08:00 meeting, 09:00 round
@@ -508,14 +508,20 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   names (the bed's `iv` and `iv_bag` only in wards and boxes — `skipOf`), the bedside cabinet instead of Kenney
   `sideTableDrawers` and the ventilator. Group 3 «Диагностика» — `diagnostics.py`: the pilot's X-ray machine as is (within
   budget), the CT (`gantry`), the MRI (`magnet`, `bore`), the ultrasound cart and the console of the imaging rooms (shifted
-  to the wall, `CODE_SHIFT`); a table's `pad` top sits at the code model's `lieTop`, where people lie. A group's baked
-  light — a sample per size of each room type in `light` of `budgets.json`, with the groups' real models in place, 32 points
-  per metre (`blender/room.py`, `PX`; `rooms.json` lists them; a bed's IV stand only in wards and boxes, a long thing in one
-  cell half as long — `iv`, `short` in the sample) — is on by default, `?baked=0` (Electron `--baked 0`) turns it off; the
-  window loads it after the models, alongside the people (`load.light`), so it never lengthens the furniture load.
-  `bakedRooms` matches type, sides and things — never the plan's `size`: a room built on the PC site carries its type's
-  smallest size there (`planOfSite`). The comparison sheet `tools/app/blender-sheet.mjs --group N [--light]` shoots a
-  group's rooms; group 3's light is shot in the city (an MRI L costs more than the empty building's cash).
+  to the wall, `CODE_SHIFT`); a table's `pad` top sits at the code model's `lieTop`, where people lie. Group 4 «Операционная и
+  эндоскопия» — `surgery.py`: the OR table with its lamp (`table`, `pad`, `lamp`), the anaesthesia machine (`bellows`), the
+  instrument table and the endoscopy tower (`scope`) — with it every room's devices and furniture come from Blender. A group's
+  baked light — a sample per size of each room type in `light` of `budgets.json`, built as the player places the ready room
+  (`addReady` in `roomOf`), with the groups' real models in place, 32 points per metre (`blender/room.py`, `PX`; `rooms.json`
+  lists them; a bed's IV stand only in wards and boxes, a long thing in one cell half as long — `iv`, `short` in the sample;
+  `python blender/build.py samples` rewrites the descriptions without baking) — is on by default, `?baked=0` (Electron
+  `--baked 0`) turns it off; the window loads it after the models, alongside the people (`load.light`), so it never lengthens
+  the furniture load. `bakedRooms` matches type, sides, the wall and door cells and every thing's place and facing (`cells`,
+  `yaw` in the sample) — never the plan's `size`: a room built on the PC site carries its type's smallest size there
+  (`planOfSite`). It holds at any rotation because a ready room's items are turned in the template's axes (`placeTemplate`:
+  `turnsOf` on the template, then the room's rotation) and the city's double doors follow `readyDraft` (`siteOfPreset`).
+  The comparison sheet `tools/app/blender-sheet.mjs --group N [--light]` shoots a group's rooms; group 3's light is shot in
+  the city (an MRI L costs more than the empty building's cash).
 - `assets/` — CC0 models, Rocketbox people under MIT (`assets/models/rocketbox/`, made by `tools/app/people.mjs`), the
   game's font IBM Plex Sans under SIL OFL 1.1 (`assets/fonts/`, unmodified files with `OFL.txt`; owner's decision #107),
   the Carbon icons' Apache 2.0 text (`assets/licenses/carbon-icons.txt`) and `LICENSES.md` (sources, licenses, SHA-256; MIT

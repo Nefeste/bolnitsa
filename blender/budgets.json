@@ -3,7 +3,8 @@
  "light": {
   "1": ["room.reception", "room.waiting", "room.office", "room.triage", "room.procedure", "room.lab", "room.ecg", "room.toilet", "room.staff"],
   "2": ["room.ward", "room.box", "room.icu", "room.ricu", "room.emergency"],
-  "3": ["room.xray", "room.ct", "room.mri", "room.ultrasound"]
+  "3": ["room.xray", "room.ct", "room.mri", "room.ultrasound"],
+  "4": ["room.or", "room.endoscopy"]
  },
  "groups": {
   "1": "Амбулатория: помещения сценария 1 и демо",

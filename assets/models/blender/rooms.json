@@ -106,5 +106,13 @@
  "room.ultrasound:S": {
   "file": "room-ultrasound-S",
   "group": 3
+ },
+ "room.or:M": {
+  "file": "room-or-M",
+  "group": 4
+ },
+ "room.endoscopy:M": {
+  "file": "room-endoscopy-M",
+  "group": 4
  }
 }

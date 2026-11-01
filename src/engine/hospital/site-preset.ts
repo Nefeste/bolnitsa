@@ -7,9 +7,9 @@
 // Свободная земля под стройку (`land`, spec docs/specs/2026-10-city-land.md) — тоже: участок шире и внутренность здания
 // больше на её прямоугольники; что там не помещение — коридор.
 import type { Cell, ContentDb, Preset } from '../../content/types';
-import { planOf, presetHospital } from './build';
+import { planOf, presetHospital, sizeOf } from './build';
 import { doctorRoom } from './requirements';
-import { addBench, checkDoor, type Rect, rulesOf, sideOf, type Site, type SiteItem, type SiteRoom, templateItems } from './site';
+import { addBench, checkDoor, type Rect, rulesOf, type Site, type SiteItem, type SiteRoom, templateItems, turnOf } from './site';
 
 /** Клетки коридора → прямоугольники по строкам: подряд идущие клетки строки — один. */
 function runs(w: number, cells: readonly number[]): Rect[] {
@@ -36,13 +36,20 @@ export function siteOfPreset(db: ContentDb, p: Preset): Site {
     next: hospital.next, nextItem: 1, ...(doctorRoom(plan) ? { mine: doctorRoom(plan) } : {}),
   };
   // одинарная дверь, где лежат и куда везут лежачих (spec docs/specs/2026-10-orderlies.md, #90), — двойная: соседняя клетка
-  // стены, если дверь туда встаёт
+  // стены, если дверь туда встаёт. Сначала — та, что у готового помещения (`readyDraft`): в осях образца правее, у угла —
+  // левее; так помещение города — то же, что поставит игрок, при любом его повороте, и запечённый свет образца ложится на
+  // него с теми же проёмами (docs/specs/2026-11-blender-2.md, решение агента 15)
   const rooms = shellRooms.map(room => {
     const rules = rulesOf(db, room.type);
     if (!room.door || room.door.length !== 1 || !(rules?.gurney || rules?.wheels)) return room;
+    const inst = hospital.rooms.find(r => r.id === room.id)!;
+    const z = sizeOf(db, inst.type, inst.size)!;
+    const [x0, y0] = turnOf(z, inst.rot, 0, 0);
+    const [x1, y1] = turnOf(z, inst.rot, 1, 0);
+    const along: Cell = [x1 - x0, y1 - y0];
+    const first = z.door.x + 1 > z.w - 2 ? -1 : 1;
     const [x, y] = room.door[0];
-    const along: Cell = sideOf(room, x, y) % 2 === 0 ? [1, 0] : [0, 1];
-    for (const k of [1, -1]) {
+    for (const k of [first, -first]) {
       const next: Cell = [x + along[0] * k, y + along[1] * k];
       if (checkDoor(db, shell, room.id, [room.door[0], next]).ok) return { ...room, door: [room.door[0], next].sort((a, b) => a[1] - b[1] || a[0] - b[0]) };
     }

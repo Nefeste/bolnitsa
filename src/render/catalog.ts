@@ -107,15 +107,17 @@ export function entryOf(kind: ObjectKind, roomType: Id | '', equipment?: Id): En
 
 /**
  * Модели Blender части 2 вместо моделей кодом (docs/specs/2026-11-blender-2.md, решение владельца #178): группы 1 «Амбулатория»,
- * 2 «Стационар» и 3 «Диагностика» — по умолчанию; `?models=code` — модели кодом и CC0, как до них. Ставятся в оси места, как
- * модели пилота (`Furnisher.placeAt`; docs/reports/2026-11-blender-pilot.md): его кровать и монитор переделала группа 2, рентген
- * взяла группа 3 — отдельного ключа у пилота больше нет. Состав — тот же, что в blender/budgets.json (тест `blender.test.ts`).
+ * 2 «Стационар», 3 «Диагностика» и 4 «Операционная и эндоскопия» — по умолчанию; `?models=code` — модели кодом и CC0, как до
+ * них. Ставятся в оси места, как модели пилота (`Furnisher.placeAt`; docs/reports/2026-11-blender-pilot.md): его кровать и
+ * монитор переделала группа 2, рентген взяла группа 3 — отдельного ключа у пилота больше нет. Состав — тот же, что в
+ * blender/budgets.json (тест `blender.test.ts`).
  */
 export const BLENDER_CODE: Partial<Record<Code, string>> = {
   counter: 'blender/counter', examCouch: 'blender/couch', labBench: 'blender/lab_bench', analyzer: 'blender/analyzer',
   procedureTable: 'blender/procedure_table', ecg: 'blender/ecg',
   bed: 'blender/bed', monitor: 'blender/monitor', ventilator: 'blender/ventilator',
   xray: 'blender/xray', ct: 'blender/ct', mri: 'blender/mri', us: 'blender/us', console: 'blender/console',
+  orTable: 'blender/or_table', anesthesia: 'blender/anesthesia', instrumentTable: 'blender/instrument_table', endoscope: 'blender/endoscope',
 };
 
 /**

@@ -1,20 +1,25 @@
 // Запечённый свет на полу готового помещения (пилот Blender, docs/reports/2026-11-blender-pilot.md; часть 2 —
 // docs/specs/2026-11-blender-2.md; blender/room.py): серая картинка-множитель — затенение (AO) и мягкие тени от светильников,
 // запечённые в Blender для образца помещения. Ложится на пол каждого помещения того же образца — того же типа и размера, с
-// предметами на своих местах (иначе тени были бы не от тех вещей) — при любом повороте. У светильников в игре теней нет
+// предметами на своих местах и так же повёрнутыми, с теми же стенами и проёмами (иначе тени были бы не от тех вещей) — при
+// любом повороте. У светильников в игре теней нет
 // (lamps.ts), а GTAO видит лишь то, что в кадре. Образцы групп — по умолчанию, `?baked=0` — без них (src/app/game.ts).
 // Образец пилота (рентген-кабинет M) переснят группой 3.
 import * as THREE from 'three';
 import type { Layout } from './layout';
 
-/** Образец: тип и размер помещения, его клетки без поворота и где стоят предметы (середина места, в клетках). */
+/**
+ * Образец: тип и размер помещения, его клетки без поворота (`cells` — строки клеток плана: 1 — пол, 3 — стена, 4 — дверь) и
+ * где стоят предметы (середина места, в клетках) и куда смотрят (`yaw`, как у вещи раскладки).
+ */
 export interface BakedRoom {
   key: string;
   type: string;
   size: string;
   w: number;
   h: number;
-  things: { kind: string; at: [number, number] }[];
+  cells: string[];
+  things: { kind: string; at: [number, number]; yaw: number }[];
 }
 
 /** Над полом, м: под полосами у дверей (0,008) и окраской слоёв. */
@@ -36,29 +41,44 @@ export function unturnPoint(w: number, h: number, rot: number, ux: number, uz: n
   return [w - uz, ux];
 }
 
-const sig = (list: { kind: string; at: [number, number] }[]) =>
+/** Куда смотрит вещь, в клетках образца: [x, z] — шаг по осям, как `face` раскладки. */
+type Face = readonly [number, number];
+const faceOfYaw = (yaw: number): Face => [Math.round(Math.sin(yaw)), Math.round(Math.cos(yaw))];
+
+const sig = (list: { kind: string; at: readonly [number, number]; face: Face }[]) =>
   list
-    .map(t => `${t.kind}@${t.at[0].toFixed(2)},${t.at[1].toFixed(2)}`)
+    .map(t => `${t.kind}@${t.at[0].toFixed(2)},${t.at[1].toFixed(2)}>${t.face[0]},${t.face[1]}`)
     .sort()
     .join(';');
 
 /**
  * Помещения раскладки, на пол которых ложится запечённый свет образца: тот же тип, те же стороны (с поворотом), те же
- * предметы на тех же местах. Размер из плана не сверяется: у помещения стройки ПК в плане — наименьший размер типа
- * (`planOfSite`), а не образец, по которому его поставили, — зал ожидания M там «S».
+ * предметы на тех же местах и так же повёрнутые, те же стены и проёмы. Размер из плана не сверяется: у помещения стройки ПК
+ * в плане — наименьший размер типа (`planOfSite`), а не образец, по которому его поставили, — зал ожидания M там «S».
  */
 export function bakedRooms(layout: Layout, room: BakedRoom): number[] {
-  const want = sig(room.things);
+  const want = sig(room.things.map(t => ({ kind: t.kind, at: t.at, face: faceOfYaw(t.yaw) })));
+  const { cells, w: gw } = layout.plan.grid;
   const out: number[] = [];
   layout.plan.rooms.forEach((r, n) => {
     const [w, h] = r.rot % 2 ? [room.h, room.w] : [room.w, room.h];
     if (r.type !== room.type || r.w !== w || r.h !== h) return;
+    // стены и проёмы: клетка образца — в клетку помещения на участке
+    for (let y = 0; y < room.h; y++) {
+      for (let x = 0; x < room.w; x++) {
+        const [ux, uz] = turnPoint(room.w, room.h, r.rot, x + 0.5, y + 0.5);
+        if (String(cells[(r.y + Math.floor(uz)) * gw + r.x + Math.floor(ux)]) !== room.cells[y][x]) return;
+      }
+    }
     const things = layout.things
       .filter(t => t.room === n)
       .map(t => {
         const cx = t.cells.reduce((a, c) => a + c[0] + 0.5, 0) / t.cells.length - r.x;
         const cz = t.cells.reduce((a, c) => a + c[1] + 0.5, 0) / t.cells.length - r.y;
-        return { kind: t.kind, at: unturnPoint(room.w, room.h, r.rot, cx, cz) };
+        const at = unturnPoint(room.w, room.h, r.rot, cx, cz);
+        // куда смотрит — тоже в образец: точка на шаг вперёд, обратно в образец
+        const to = unturnPoint(room.w, room.h, r.rot, cx + t.face[0], cz + t.face[1]);
+        return { kind: t.kind, at, face: [Math.round(to[0] - at[0]), Math.round(to[1] - at[1])] as const };
       });
     if (sig(things) === want) out.push(n);
   });
