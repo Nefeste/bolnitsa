@@ -4,6 +4,7 @@
 import type { DemoResult } from '../app/demo';
 import { money, T } from '../i18n';
 import type { Actions } from './store';
+import { WindowHead } from './WindowHead';
 
 /** Что «Итог» показывает в окне: числа, названия помещений, снимок адресом `blob:`, куда сохранён, есть ли Steam. */
 export interface DemoHud {
@@ -21,7 +22,10 @@ export function DemoSummary({ d, actions }: { d: DemoHud | undefined; actions: A
   const built = r.built.map(b => (b.n > 1 ? `${d.names[b.type] ?? b.type} ×${b.n}` : (d.names[b.type] ?? b.type)));
   return (
     <div className="demosum panel" id="demo-summary" role="dialog" aria-labelledby="demo-title">
-      <h2 id="demo-title">{t.title}</h2>
+      {/* закрывается выбором — «Играть дальше» или «В меню», крестика нет */}
+      <WindowHead icon="result" titleId="demo-title">
+        {t.title}
+      </WindowHead>
       <p className="muted">{t.lead(r.day)}</p>
       {d.shot ? <img id="demo-shot" className="demoshot" src={d.shot} alt={t.snapshot} /> : null}
       <dl className="demonums">

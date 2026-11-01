@@ -8,6 +8,7 @@ import { article, type Article, type Block, type Ref, search, type Section, sect
 import type { ContentDb, Id } from '../content/types';
 import { lang, T } from '../i18n';
 import { Icon } from './icons';
+import { WindowHead } from './WindowHead';
 
 interface View {
   open: boolean;
@@ -131,17 +132,22 @@ export function Encyclopedia() {
   if (!v.open) return null;
   const e = T.encyclopedia;
   return (
-    <div className="enc panel" id="enc" role="dialog" aria-label={e.title}>
-      <div className="enc-head">
-        <b className="enc-name">{e.title}</b>
-        <input className="search" id="enc-search" type="search" value={v.query} placeholder={e.search} onChange={x => set({ query: x.target.value })} />
-        <button type="button" id="enc-back" disabled={v.back.length === 0} onClick={back}>
-          <Icon name="back" /> {e.ui.back}
-        </button>
-        <button type="button" className="close" id="enc-close" title={`Esc · F1 — ${e.ui.close}`} onClick={closeEncyclopedia}>
-          <Icon name="close" />
-        </button>
-      </div>
+    <div className="enc panel" id="enc" role="dialog" aria-labelledby="enc-name">
+      <WindowHead
+        icon="book"
+        titleId="enc-name"
+        tools={
+          <>
+            <input className="search" id="enc-search" type="search" value={v.query} placeholder={e.search} onChange={x => set({ query: x.target.value })} />
+            <button type="button" id="enc-back" disabled={v.back.length === 0} onClick={back}>
+              <Icon name="back" /> {e.ui.back}
+            </button>
+          </>
+        }
+        close={{ id: 'enc-close', hint: `Esc · F1 — ${e.ui.close}`, onClick: closeEncyclopedia }}
+      >
+        {e.title}
+      </WindowHead>
       <div className="enc-note">{e.disclaimer}</div>
       {v.db ? <Body db={v.db} v={v} scroll={scroll} /> : <div className="muted">{T.app.loading}</div>}
     </div>

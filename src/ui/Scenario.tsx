@@ -5,6 +5,7 @@ import type { Id } from '../content/types';
 import type { GoalRow, GuideRow, LetterRow, ScenarioHud } from '../app/scenario';
 import { T } from '../i18n';
 import type { Actions } from './store';
+import { WindowHead } from './WindowHead';
 import { Icon } from './icons';
 
 /** Письмо: значок с инициалами вместо портрета, от кого и кто он, текст; в списке — и когда пришло. */
@@ -169,7 +170,10 @@ export function ScenarioDone({ s, actions }: { s: ScenarioHud | undefined; actio
   const t = T.scenario;
   return (
     <div className="scenariodone panel" id="scenario-done" role="dialog" aria-labelledby="scenario-done-title">
-      <h2 id="scenario-done-title">{t.doneTitle}</h2>
+      {/* закрывается выбором — «Играть дальше» или «В меню», крестика нет */}
+      <WindowHead icon="finish" titleId="scenario-done-title">
+        {t.doneTitle}
+      </WindowHead>
       <b>{s.title}</b>
       <p>{t.doneText}</p>
       <div className="row">

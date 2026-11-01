@@ -6,6 +6,7 @@
 // энциклопедии» — статья признака поверх карты; Esc — окно, карта остаётся. По-английски — разделы по-английски. Снимки —
 // `e2e-enc-*.jpg`.
 import { join } from 'node:path';
+import { headOk, windowHead } from './e2e-lib.mjs';
 
 /** @param {{ page: import('playwright-core').Page, port: number, out: string, ok: (m: string) => void, fail: (m: string) => void, q: string, shots: string }} x */
 export async function encyclopediaPart({ page, port, out, ok, fail, q }) {
@@ -89,6 +90,10 @@ export async function encyclopediaPart({ page, port, out, ok, fail, q }) {
   await page.keyboard.press('F1');
   await page.waitForSelector('#enc #enc-title', { timeout: 10000 });
   const again = await title();
+  // строка заголовка (docs/specs/2026-10-clinical-style.md, часть 2): книга, «Энциклопедия», поиск, «Назад», крестик
+  const wh = await windowHead(page, '#enc');
+  if (headOk(wh, 'book', 'enc-close', true) && wh.title === 'Энциклопедия') ok(`энциклопедия: строка заголовка — значок «${wh.icon}», «${wh.title}», поиск и «Назад», крестик последним`);
+  else fail(`строка заголовка энциклопедии: ${JSON.stringify(wh)}`);
   await page.keyboard.press('F1');
   await until(() => !document.getElementById('enc'));
   if (again === lab.name) ok(`F1 над планом — окно на «${again}», где закрыли; снова F1 — закрыто`);
@@ -118,6 +123,10 @@ export async function encyclopediaPart({ page, port, out, ok, fail, q }) {
     const complaint = await said.getAttribute('data-enc');
     await said.click();
     await page.waitForSelector('#term #term-more', { timeout: 10000 });
+    // «Что это?» — значок справки и название; закрывается своими кнопками, крестика нет
+    const term = await windowHead(page, '#term');
+    if (headOk(term, 'info', 'term-title', false)) ok(`«Что это?»: строка заголовка — значок «${term.icon}», «${term.title}»`);
+    else fail(`строка заголовка «Что это?»: ${JSON.stringify(term)}`);
     await page.click('#term-more');
     await page.waitForSelector('#enc #enc-title', { timeout: 10000 });
     const name = await page.evaluate(f => window.__game.db.findings[f]?.name.ru, complaint);

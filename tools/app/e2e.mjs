@@ -58,7 +58,7 @@ import { landPart } from './e2e-land.mjs';
 import { moodPart } from './e2e-mood.mjs';
 import { growthPart } from './e2e-growth.mjs';
 import { gurneyPart } from './e2e-gurney.mjs';
-import { findChromium } from './e2e-lib.mjs';
+import { findChromium, headOk, windowHead } from './e2e-lib.mjs';
 import { metricsPart } from './e2e-metrics.mjs';
 import { ownerTwoPart } from './e2e-owner2.mjs';
 import { peoplePart } from './e2e-people.mjs';
@@ -361,6 +361,10 @@ async function settingsPart() {
   await open();
   // снимок окна — для отчёта (docs/reports/2026-10-settings/); кнопка «Игра» гаснет за 0,12 с — дождаться
   await page.waitForTimeout(300);
+  // строка заголовка (docs/specs/2026-10-clinical-style.md, часть 2): значок «Настроек» — как у кнопки в меню, крестик
+  const head = await windowHead(page, '#settings');
+  if (headOk(head, 'settings', 'settings-close', true) && head.title === 'Настройки') ok(`«Настройки»: строка заголовка — значок «${head.icon}» ${head.size} точек, «${head.title}» ${head.font}, крестик последним`);
+  else fail(`строка заголовка «Настроек»: ${JSON.stringify(head)}`);
   await page.screenshot({ path: join(out, 'settings.jpg'), type: 'jpeg', quality: 72 });
   const a = await view();
   if (a.mode === 2 && a.buttons.down && a.buttons.persp && a.buttons.low && a.buttons.qauto === false && a.buttons.text0 && a.zoom === '1' && a.saved === null) ok('«Настройки»: по умолчанию стены вниз, перспектива, текст обычный; качество — заданное адресом (?q=low)');
@@ -408,7 +412,8 @@ async function iconsCheck() {
   const look = () => page.evaluate(() => ({
     text: document.getElementById('ui').innerText,
     icons: [...document.querySelectorAll('#ui svg.icon')].map(s => s.dataset.icon),
-    sized: [...document.querySelectorAll('#ui svg.icon')].every(s => Math.round(s.getBoundingClientRect().width) === 16 || s.closest('.gstep')),
+    // по 16 точек; значок строки заголовка окна — 20 (docs/specs/2026-10-clinical-style.md, часть 2), шагов порядка — 12
+    sized: [...document.querySelectorAll('#ui svg.icon')].every(s => Math.round(s.getBoundingClientRect().width) === (s.parentElement?.classList.contains('whead') ? 20 : 16) || s.closest('.gstep')),
   }));
   const game = await look();
   const want = ['pause', 'morning', 'menu', 'build', 'layers'];

@@ -25,6 +25,7 @@ import type { DoctorHud } from './types';
 import { db } from './db';
 import { Round } from './Round';
 import { Icon } from '../icons';
+import { WindowHead } from '../WindowHead';
 
 /** Ключ для id в DOM: точки в номерах базы мешают селекторам. */
 export const dom = (id: string) => id.replace(/\./g, '_');
@@ -59,22 +60,20 @@ function CardWindow({ v, level, meanwhile, next, actions }: P) {
   const read = !v.active && !v.decision;
   return (
     <div className={read ? (v.order ? 'dcard panel read order' : 'dcard panel read') : 'dcard panel'} id="dcard" role="dialog" aria-labelledby="dcard-title">
-      <div className="dhead">
-        <div className="dtitle">
-          <b id="dcard-title">{v.title}</b>
-          {v.job ? <span className="muted"> · {v.job}</span> : null}
-          <span className="mono" id="dcard-clock">
-            {' '}
-            {/* для чтения — без часов: часы идут, вид — по событиям */}
-            · {read ? '' : `${v.clock} · `}
-            {t.spentShort(v.minutesSpent, money(v.money))}
-          </span>
-        </div>
-        {read ? null : <Levels level={level} actions={actions} prefix="card" />}
-        <button type="button" id="dcard-close" className="close" onClick={() => actions.doctor({ kind: 'close' })} title={`Esc — ${read ? c.closeReadHint : c.closeHint}`}>
-          <Icon name="close" /> {c.close}
-        </button>
-      </div>
+      <WindowHead
+        icon="card"
+        tools={read ? null : <Levels level={level} actions={actions} prefix="card" />}
+        close={{ id: 'dcard-close', hint: `Esc — ${read ? c.closeReadHint : c.closeHint}`, onClick: () => actions.doctor({ kind: 'close' }) }}
+      >
+        <b id="dcard-title">{v.title}</b>
+        {v.job ? <span className="muted"> · {v.job}</span> : null}
+        <span className="mono" id="dcard-clock">
+          {' '}
+          {/* для чтения — без часов: часы идут, вид — по событиям */}
+          · {read ? '' : `${v.clock} · `}
+          {t.spentShort(v.minutesSpent, money(v.money))}
+        </span>
+      </WindowHead>
       <div className="dsub">
         {v.complaints.length === 0 ? (
           <span className="muted">{t.checkup(v.portrait.sex === 'f')}</span>
@@ -1039,8 +1038,10 @@ function Review({ v, next, actions, explain }: { v: CardView; next?: { id: strin
 /** «Что это?» — справка из базы поверх карты. */
 function TermPopup({ term, close }: { term: TermInfo; close: () => void }) {
   return (
-    <div className="term panel" id="term" role="dialog">
-      <b>{term.title}</b>
+    <div className="term panel" id="term" role="dialog" aria-labelledby="term-title">
+      <WindowHead icon="info" titleId="term-title">
+        {term.title}
+      </WindowHead>
       {term.text.map((p, i) => (
         <p key={i}>{p}</p>
       ))}

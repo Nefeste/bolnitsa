@@ -7,6 +7,7 @@
 // (О1–О4, О6) — строками и в tools/app/out/e2e-demo.json. Снимки — `e2e-demo-*.jpg`.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { headOk, windowHead } from './e2e-lib.mjs';
 
 /** @param {{ page: import('playwright-core').Page, port: number, out: string, ok: (m: string) => void, fail: (m: string) => void, q: string, shots: string }} x */
 export async function demoPart({ page, port, out, ok, fail, q, shots }) {
@@ -259,6 +260,10 @@ export async function demoPart({ page, port, out, ok, fail, q, shots }) {
   if (/Регистратура/.test(sum.built) && /Кабинет врача/.test(sum.built) && /пришли \d+/.test(sum.patients) && /кабинет врача с терапевтом/.test(sum.hire) && /^1 приём, из них верно — [01]$/.test(sum.own) && sum.cash && /\d+ минут/.test(sum.played) && sum.shot?.w === 1920 && sum.shot?.h === 1080 && !sum.wishlist && sum.speed === 0) {
     ok(`«Итог»: построено — «${sum.built}»; «${sum.patients}»; «${sum.hire}»; «${sum.own}»; касса ${sum.cash}; играете ${sum.played}; снимок ${sum.shot.w}×${sum.shot.h}; кнопки Steam нет; часы стоят (снимок ${await shot('e2e-demo-7-summary.jpg')} КБ)`);
   } else fail(`«Итог»: ${JSON.stringify(sum)}`);
+  // строка заголовка (docs/specs/2026-10-clinical-style.md, часть 2): закрывается выбором — «Играть дальше» или «В меню»
+  const head = await windowHead(page, '#demo-summary');
+  if (headOk(head, 'result', 'demo-title', false) && head.title === 'Итог') ok(`«Итог»: строка заголовка — значок «${head.icon}», «${head.title}», крестика нет — выбор кнопками`);
+  else fail(`строка заголовка «Итога»: ${JSON.stringify(head)}`);
 
   // «Сохранить снимок» — в браузере загрузкой: PNG 1920×1080
   const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }), page.click('#demo-save')]);

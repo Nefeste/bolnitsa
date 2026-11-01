@@ -77,7 +77,10 @@ describe('токены', () => {
       expect(at >= 0 ? sel : `нет правила ${sel}`).toBe(sel);
       return rules.slice(at, rules.indexOf('}', at));
     };
-    for (const sel of ['.dtitle', '.mhead', '.enc-head .enc-name', '.enc-article h2', '.scenariodone h2']) expect(rule(sel)).toContain('var(--fs-window)');
+    // заголовок окна — одно правило строки заголовка (часть 2) и статья энциклопедии
+    for (const sel of ['.whead .wtitle', '.enc-article h2']) expect(rule(sel)).toContain('var(--fs-window)');
+    // значок строки заголовка — 20 точек цветом акцента: на 18-м шрифте 16 точек мелки
+    expect(rule('.whead > svg.icon')).toContain('width: 20px; height: 20px; color: var(--accent-text)');
     expect(rule('.cardhead')).toContain('var(--fs-title)');
     for (const sel of ['.dcol h3', '.dcourse h3', '.msec h3', '#goals h3', '.settings h3.sub', '.enc-group h3, .enc-block h4']) {
       const r = rule(sel);

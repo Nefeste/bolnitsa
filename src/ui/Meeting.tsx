@@ -13,6 +13,7 @@ import { money, T } from '../i18n';
 import { type EconomyHud, type MeetingView, type Raise, slowOf, type Tip } from '../app/money';
 import { Letter } from './Scenario';
 import type { Actions } from './store';
+import { WindowHead } from './WindowHead';
 
 /** «+12 300 ₽», «−4 000 ₽». */
 export const signed = (n: number) => `${n >= 0 ? '+' : '−'}${money(Math.abs(n))}`;
@@ -456,15 +457,23 @@ export function Meeting({ e, actions }: { e: EconomyHud; actions: Actions }) {
   if (!m) return null;
   return (
     <div className="meeting panel" id="meeting" role="dialog" aria-labelledby="meeting-title">
-      <div className="mhead">
-        <b id="meeting-title">{T.meeting.title(m.summary.day)}</b>
-        <label className="small">
-          <input type="checkbox" id="meeting-autopause" checked={e.autopause} onChange={ev => actions.money({ kind: 'autopause', on: ev.target.checked })} /> {T.meeting.autopause}
-        </label>
-        <button type="button" id="meeting-close" className="on" onClick={() => actions.money({ kind: 'close' })} title="Esc">
-          {T.meeting.resume}
-        </button>
-      </div>
+      {/* закрывает планёрку «Продолжить» — часы идут дальше; крестика у неё нет */}
+      <WindowHead
+        icon="meeting"
+        titleId="meeting-title"
+        tools={
+          <>
+            <label className="small">
+              <input type="checkbox" id="meeting-autopause" checked={e.autopause} onChange={ev => actions.money({ kind: 'autopause', on: ev.target.checked })} /> {T.meeting.autopause}
+            </label>
+            <button type="button" id="meeting-close" className="on" onClick={() => actions.money({ kind: 'close' })} title="Esc">
+              {T.meeting.resume}
+            </button>
+          </>
+        }
+      >
+        {T.meeting.title(m.summary.day)}
+      </WindowHead>
       <MeetingBody m={m} e={e} actions={actions} screen />
       <Hours e={e} actions={actions} />
     </div>

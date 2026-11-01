@@ -4,6 +4,7 @@
 // «Загрузить» из меню — снова тот час. «Удалить» — ячейки нет. Испорченный файл — экран начала со словом «Не открыть».
 // Снимки — `e2e-saves-*.jpg`.
 import { join } from 'node:path';
+import { headOk, windowHead } from './e2e-lib.mjs';
 
 /** @param {{ page: import('playwright-core').Page, port: number, out: string, ok: (m: string) => void, fail: (m: string) => void, q: string, shots: string }} x */
 export async function savesPart({ page, port, out, ok, fail, q, shots }) {
@@ -53,6 +54,10 @@ export async function savesPart({ page, port, out, ok, fail, q, shots }) {
   // «Игра» → «Сохранить»
   await page.click('#game-menu-open');
   await page.waitForSelector('#game-menu');
+  // строка заголовка (docs/specs/2026-10-clinical-style.md, часть 2): значок и название — как у кнопки «Игра», крестик
+  const head = await windowHead(page, '#game-menu');
+  if (headOk(head, 'menu', 'game-menu-close', true) && head.title === 'Игра') ok(`меню игры: строка заголовка — значок «${head.icon}» ${head.size} точек, «${head.title}» ${head.font}, крестик последним`);
+  else fail(`строка заголовка меню игры: ${JSON.stringify(head)}`);
   await page.click('#save-new');
   await until(() => window.__game.store.get().menu.rows.some(r => r.meta?.kind === 'manual'));
   const rows = await page.evaluate(() => window.__game.store.get().menu.rows);

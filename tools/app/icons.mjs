@@ -42,6 +42,14 @@ const ICONS = {
   morning: 'skip--forward',
   pause: 'pause',
   todo: 'circle-dash',
+  // строки заголовка окон (docs/specs/2026-10-clinical-style.md, часть 2): карта пациента, планёрка, энциклопедия,
+  // «Сценарий пройден», «Итог» демо, «Что это?»; у меню игры и «Настроек» — значки кнопок, которые их открывают
+  card: 'report',
+  meeting: 'events',
+  book: 'book',
+  finish: 'flag',
+  result: 'analytics',
+  info: 'information',
 };
 
 /**

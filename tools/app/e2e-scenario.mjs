@@ -11,6 +11,7 @@
 // Сложность (spec docs/specs/2026-10-difficulty.md, часть 2): у сценария свой второй шаг — сложность и «Начать», без «Кто вы».
 // Снимки — `e2e-scenario-*.jpg`.
 import { join } from 'node:path';
+import { headOk, windowHead } from './e2e-lib.mjs';
 
 const SC = 'scenario.ambulatory';
 /** Помещения амбулатории — как в site-kit тестов движка: тип, прямоугольник со стенами; двери — посередине нижней стены. */
@@ -346,4 +347,18 @@ export async function scenarioPart({ page, port, out, ok, fail, q, shots }) {
     const v = window.__game.scenario.view;
     return v && ['firstDay', 'labDone'].every(id => v.letters.find(l => l.id === id)?.read);
   }, null, 10000).then(() => ok('закрыли планёрку — её письма прочитаны, карточкой не вернутся'), () => fail('письма планёрки не прочитаны'));
+
+  // «Сценарий пройден» (docs/specs/2026-10-clinical-style.md, часть 2: строка заголовка). Основные цели за сутки не выполнить —
+  // окно открывает вид сценария с отметкой «пройден», как его присылает поток расчёта, когда цели выполнены
+  await page.evaluate(() => {
+    const s = window.__game.scenario;
+    s.onView({ ...s.view, complete: window.__game.store.get().day ?? 1 });
+    window.__game.refresh();
+  });
+  await page.waitForSelector('#scenario-done', { timeout: 10000 });
+  const wh = await windowHead(page, '#scenario-done');
+  if (headOk(wh, 'finish', 'scenario-done-title', false) && wh.title === 'Сценарий пройден') ok(`«Сценарий пройден»: строка заголовка — значок «${wh.icon}», «${wh.title}», крестика нет — выбор кнопками`);
+  else fail(`строка заголовка «Сценарий пройден»: ${JSON.stringify(wh)}`);
+  await page.click('#scenario-stay');
+  await until(() => !document.getElementById('scenario-done'), null, 10000).then(() => ok('«Играть дальше» — окно закрыто, игра идёт'), () => fail('«Играть дальше» не закрыло окно'));
 }
