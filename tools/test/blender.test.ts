@@ -53,14 +53,16 @@ describe('пилот Blender: размеры и паспорта', () => {
     const lic = readFileSync(join(ROOT, 'assets/LICENSES.md'), 'utf8');
     const files = readdirSync(DIR).sort();
     const samples = Object.values(roomsIndex).flatMap(e => [`${e.file}.json`, `${e.file}.png`]);
-    expect(files).toEqual(['bed.glb', 'monitor.glb', 'xray.glb', 'rooms.json', ...samples, ...part2.map(([n]) => `${n}.glb`)].sort());
+    // модели пилота, которых ещё не переделала их группа (`BLENDER`), образцы света и модели групп части 2
+    const pilot = Object.values(BLENDER).map(f => `${f!.replace('blender/', '')}.glb`);
+    expect(files).toEqual([...new Set([...pilot, 'rooms.json', ...samples, ...part2.map(([n]) => `${n}.glb`)])].sort());
     for (const f of files) {
       const row = lic.split('\n').find(l => l.startsWith(`| \`assets/models/blender/${f}\``));
       expect(row, f).toBeDefined();
       const sha = createHash('sha256').update(readFileSync(join(DIR, f))).digest('hex');
       expect(row).toContain(`\`${sha}\``);
       expect(row).toContain('4.5.15');
-      expect(row).toMatch(/`blender\/(build|models|room|ambulatory)\.py`/);
+      expect(row).toMatch(/`blender\/(build|models|room|ambulatory|stationary)\.py`/);
     }
   });
 });

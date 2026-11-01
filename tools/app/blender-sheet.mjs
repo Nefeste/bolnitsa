@@ -90,7 +90,14 @@ async function samples(mode) {
       failed.push(`${sm.key}: не встаёт у северной стены`);
       continue;
     }
-    await page.waitForFunction(k => window.__game.hospital.site.rooms.length === k, n0 + 1, { timeout: 30000 });
+    const built = await page
+      .waitForFunction(k => window.__game.hospital.site.rooms.length === k, n0 + 1, { timeout: 30000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!built) {
+      failed.push(`${sm.key}: движок не построил (касса?)`);
+      continue;
+    }
     // стройка закрыта: помещение открыто, стены — как в настройках; рамки выбранного помещения нет
     await page.evaluate(() => {
       const g = window.__game;
@@ -114,8 +121,9 @@ async function samples(mode) {
 try {
   for (const mode of MODES) {
     const where = light ? 'empty' : ROOMS.hospital;
-    // пустое здание закрыто, часы стоят — без перемотки к 11:00
-    await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&hospital=${where}&flow=0,0${light ? '' : '&start=11'}${mode.key ? `&${mode.key}` : ''}`);
+    // пустое здание закрыто, часы стоят — без перемотки к 11:00; уровень «Спокойно» — касса 2,5 млн ₽: реанимация L стоит
+    // больше миллиона, а на вид уровень не влияет
+    await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&hospital=${where}&flow=0,0${light ? '&manage=calm' : '&start=11'}${mode.key ? `&${mode.key}` : ''}`);
     await page.waitForFunction(() => window.__started === true, null, { timeout: 300000 });
     await page.evaluate(() => window.__game.actions.doctor({ kind: 'fold', folded: true }));
     // только сцена: панели окна, подписи и значки состояния помещений закрывают его

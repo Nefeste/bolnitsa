@@ -1,0 +1,37 @@
+{
+ "key": "room.box:S",
+ "type": "room.box",
+ "size": "S",
+ "w": 6,
+ "h": 7,
+ "things": [
+  {
+   "kind": "bed",
+   "at": [
+    1.5,
+    3
+   ]
+  },
+  {
+   "kind": "cabinet",
+   "at": [
+    2.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "sink",
+   "at": [
+    4.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "chair",
+   "at": [
+    1.5,
+    4.5
+   ]
+  }
+ ]
+}

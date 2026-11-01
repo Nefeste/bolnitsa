@@ -1,0 +1,142 @@
+{
+ "key": "room.ricu:L",
+ "type": "room.ricu",
+ "size": "L",
+ "w": 13,
+ "h": 7,
+ "things": [
+  {
+   "kind": "bed",
+   "at": [
+    1.5,
+    3
+   ]
+  },
+  {
+   "kind": "bed",
+   "at": [
+    1.5,
+    5
+   ]
+  },
+  {
+   "kind": "bed",
+   "at": [
+    6.5,
+    2
+   ]
+  },
+  {
+   "kind": "bed",
+   "at": [
+    6.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "bed",
+   "at": [
+    11.5,
+    3
+   ]
+  },
+  {
+   "kind": "bed",
+   "at": [
+    11.5,
+    5
+   ]
+  },
+  {
+   "kind": "sink",
+   "at": [
+    6.5,
+    3.5
+   ]
+  },
+  {
+   "kind": "monitor",
+   "at": [
+    2.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "monitor",
+   "at": [
+    2.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "monitor",
+   "at": [
+    5.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "monitor",
+   "at": [
+    5.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "monitor",
+   "at": [
+    10.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "monitor",
+   "at": [
+    10.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "anesthesia",
+   "at": [
+    3.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "anesthesia",
+   "at": [
+    3.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "anesthesia",
+   "at": [
+    7.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "anesthesia",
+   "at": [
+    7.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "anesthesia",
+   "at": [
+    9.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "anesthesia",
+   "at": [
+    9.5,
+    4.5
+   ]
+  }
+ ]
+}

@@ -1,0 +1,72 @@
+{
+ "key": "room.ward:M",
+ "type": "room.ward",
+ "size": "M",
+ "w": 9,
+ "h": 7,
+ "things": [
+  {
+   "kind": "bed",
+   "at": [
+    1.5,
+    3
+   ]
+  },
+  {
+   "kind": "cabinet",
+   "at": [
+    2.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "bed",
+   "at": [
+    1.5,
+    5
+   ]
+  },
+  {
+   "kind": "cabinet",
+   "at": [
+    2.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "sink",
+   "at": [
+    4.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "cabinet",
+   "at": [
+    6.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "bed",
+   "at": [
+    7.5,
+    3
+   ]
+  },
+  {
+   "kind": "cabinet",
+   "at": [
+    6.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "bed",
+   "at": [
+    7.5,
+    5
+   ]
+  }
+ ]
+}

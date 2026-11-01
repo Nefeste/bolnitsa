@@ -1,0 +1,51 @@
+{
+ "key": "room.icu:S",
+ "type": "room.icu",
+ "size": "S",
+ "w": 7,
+ "h": 7,
+ "things": [
+  {
+   "kind": "bed",
+   "at": [
+    1.5,
+    3
+   ]
+  },
+  {
+   "kind": "bed",
+   "at": [
+    5.5,
+    3
+   ]
+  },
+  {
+   "kind": "cabinet",
+   "at": [
+    1.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "sink",
+   "at": [
+    5.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "monitor",
+   "at": [
+    2.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "monitor",
+   "at": [
+    4.5,
+    2.5
+   ]
+  }
+ ]
+}
