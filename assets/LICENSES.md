@@ -505,14 +505,13 @@ SOFTWARE.
 Часть 2 ([спецификация](../docs/specs/2026-11-blender-2.md), решение владельца
 [#178](https://github.com/Nefeste/bolnitsa/issues/178)): модели групп — те же скрипты и тот же Blender, файлы сжаты, как
 модели CC0 (`tools/app/blender-pack.mjs`, EXT_meshopt_compression); бюджет треугольников каждой — `blender/budgets.json`.
-Запечённый свет групп (0.58.0): у каждого размера помещений группы (`light` в `blender/budgets.json`) — образец с моделями
+Группа 2 «Стационар» (0.59.0) переделала кровать и монитор пилота — те же файлы, теперь в бюджете и сжатые. Запечённый свет
+групп (0.58.0): у каждого размера помещений группы (`light` в `blender/budgets.json`) — образец с моделями
 группы на местах, свет его пола запечён в Cycles (`blender/room.py`, 32 точки на метр); картинки и образцы копируются как
 есть.
 
 | Файл | Что | Скрипт | Blender | SHA-256 |
 |---|---|---|---|---|
-| `assets/models/blender/bed.glb` | кровать: 13 частей | `blender/models.py` (`bed`), `blender/build.py` | 4.5.15 | `a8c27a232109dc47b45a1f3c1579723d72ae17ad271709fe6de948fb4e958ed8` |
-| `assets/models/blender/monitor.glb` | монитор с дефибриллятором: 7 частей | `blender/models.py` (`monitor`), `blender/build.py` | 4.5.15 | `ed9b09b394b887e46fa2adfe36e978ac59059d47cc70c3cae9986d5a17644d2f` |
 | `assets/models/blender/xray.glb` | рентген: 8 частей | `blender/models.py` (`xray`), `blender/build.py` | 4.5.15 | `c769241cf005649b6fd74b45d4766a0e15c6f0b9181b3c5daa5888653a638276` |
 | `assets/models/blender/room-xray-M.png` | свет на полу рентген-кабинета M | `blender/room.py`, `blender/build.py` | 4.5.15 | `cf99cd1cb591592d36bb4b209704d89c8cb54108db0d4392d94650d34a518e75` |
 | `assets/models/blender/room-xray-M.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `8f914b676c2b8105e70646d263600df6a41b19824a044e6afc5e4d452d860419` |
@@ -560,4 +559,28 @@ SOFTWARE.
 | `assets/models/blender/room-staff-S.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `efbf5aa33bf84aec15790c1960f8fdd0f562100b62549d4fb4e306941fb917ce` |
 | `assets/models/blender/room-staff-M.png` | свет на полу ординаторской M | `blender/room.py`, `blender/build.py` | 4.5.15 | `a94283a003083a175abb2e7ae61c5ef938ec17b3441faa06d4fe53debb2298f4` |
 | `assets/models/blender/room-staff-M.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `70034b69520df6871c34402719f63e67a720b1df6c2ca17d683c3e35b7fd46bb` |
-| `assets/models/blender/rooms.json` | указатель образцов света: «тип:размер» → файл и группа | `blender/build.py` | 4.5.15 | `080ee54aa7ba504f4d8686918ccb800c6db73ff6300b742e8a8d3b44055b97c9` |
+| `assets/models/blender/rooms.json` | указатель образцов света: «тип:размер» → файл и группа | `blender/build.py` | 4.5.15 | `33f7ad93ada4b6dc61dda163d81fed7fb420e30ec1290eba396007451ae6fc87` |
+| `assets/models/blender/bed.glb` | кровать: 13 частей, стойка капельницы — `iv` и `iv_bag` | `blender/stationary.py` (`bed`), `blender/build.py`, `tools/app/blender-pack.mjs` | 4.5.15 | `2915164cb2b58bb15b44f0411d87093dca88dde031458260832b0057bc235f7e` |
+| `assets/models/blender/monitor.glb` | монитор с дефибриллятором: 7 частей | `blender/stationary.py` (`monitor`), `blender/build.py`, `tools/app/blender-pack.mjs` | 4.5.15 | `83d3763c369b6ea000963bd346b6daf9ec4040678b898b2ccba6b5d9ad092da8` |
+| `assets/models/blender/bedside.glb` | тумбочка у кровати: 6 частей | `blender/stationary.py` (`bedside`), `blender/build.py`, `tools/app/blender-pack.mjs` | 4.5.15 | `8a06e9491b18b0bdb0a0e53790aff6e67a44e533e1064943963fa68505c3c21b` |
+| `assets/models/blender/ventilator.glb` | аппарат ИВЛ: 10 частей | `blender/stationary.py` (`ventilator`), `blender/build.py`, `tools/app/blender-pack.mjs` | 4.5.15 | `c439870df7d6f8cb66caa63de598a847269b5c0ca54349cfbdacef1874d0de78` |
+| `assets/models/blender/room-ward-S.png` | свет на полу палаты S | `blender/room.py`, `blender/build.py` | 4.5.15 | `de9d728ec7b53198ba7ae4551729d6004cd22d8279d790f9e87fbcfcc606b360` |
+| `assets/models/blender/room-ward-S.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `70c91fb02ef0b4f2610cdeae250e561483d943c6690275ede9dff7ab41502468` |
+| `assets/models/blender/room-ward-M.png` | свет на полу палаты M | `blender/room.py`, `blender/build.py` | 4.5.15 | `813237562374e563361d81befecef7461097146033a4a6ed50827bdb28248af3` |
+| `assets/models/blender/room-ward-M.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `d719ec17fcaf66042a0c89df7b4e2ad507c3745cd7c50829779873ea487be59b` |
+| `assets/models/blender/room-box-S.png` | свет на полу бокса S | `blender/room.py`, `blender/build.py` | 4.5.15 | `b9cd03f299134f4b434dfcf9d7a203033374249df56d04233207276420d8f118` |
+| `assets/models/blender/room-box-S.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `5027e7290b59d151dca0f9d601b41489908ff8806d48a8ff93c9402b3279a869` |
+| `assets/models/blender/room-icu-S.png` | свет на полу ПИТ S | `blender/room.py`, `blender/build.py` | 4.5.15 | `439ecce56ae825d280028f0fa503473b22c0f4e463bdeeb88fe479ef80630366` |
+| `assets/models/blender/room-icu-S.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `d8c5438a84fdcf1f5eb45beddc5f1e92eadab7f37f9377cba6150630a4ec145f` |
+| `assets/models/blender/room-icu-M.png` | свет на полу ПИТ M | `blender/room.py`, `blender/build.py` | 4.5.15 | `365ca1fbfa471d573692927366cd29ac47adc6b559899008b016dde1d5dbb4f6` |
+| `assets/models/blender/room-icu-M.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `bf443e8bd98c0a424caca9cb6f22ffde8c7e0eb5cada9b1078e50aa768e4e56e` |
+| `assets/models/blender/room-ricu-M.png` | свет на полу реанимации M | `blender/room.py`, `blender/build.py` | 4.5.15 | `d33f6d5d457ffb21f458736d845e9586ab3de7b97495644c793a2b7426e2c35b` |
+| `assets/models/blender/room-ricu-M.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `984d129a26cc5ce12bcd93896a1ba1be9a38c67049c67d01c722a4393b987d9f` |
+| `assets/models/blender/room-ricu-L.png` | свет на полу реанимации L | `blender/room.py`, `blender/build.py` | 4.5.15 | `0e4b05ed44deae39aa540d4bf5c9fced482fa522f281685649623dbac467a533` |
+| `assets/models/blender/room-ricu-L.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `63a05a9115f82c620937030295fe5a7fc70fae5377c0d72e04f0ca994a49b5e2` |
+| `assets/models/blender/room-emergency-S.png` | свет на полу приёмного S | `blender/room.py`, `blender/build.py` | 4.5.15 | `a3c3e06433d698142b31b53889df0dc6ed75472c99c703c27752b79ef39931ed` |
+| `assets/models/blender/room-emergency-S.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `304b72ca6f6c12e13c3403c14a2917802ab151948983dec69b26f8f2202f5b6d` |
+| `assets/models/blender/room-emergency-M.png` | свет на полу приёмного M | `blender/room.py`, `blender/build.py` | 4.5.15 | `2bfa0de156fd2bb8a8d797a024372a30723c44fdde14b36c3aa02890b35c31c6` |
+| `assets/models/blender/room-emergency-M.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `037395d6e37d39ba3dd2b26a26fa530001fe91ae6c9fb39422cbaae7cd868173` |
+| `assets/models/blender/room-emergency-L.png` | свет на полу приёмного L | `blender/room.py`, `blender/build.py` | 4.5.15 | `77f4f93fe8a1071bbfe9e0eb1b659323707eb76850bd95618edc4f5ece5d71ab` |
+| `assets/models/blender/room-emergency-L.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `cbf527567984a216398e8369db208aed7500ad7e79a2a605cd9ece6c5ed84fc5` |

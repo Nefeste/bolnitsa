@@ -1,8 +1,8 @@
 # Модели Blender для игры (docs/reports/2026-11-blender-pilot.md, docs/specs/2026-11-blender-2.md; blender/README.md):
-# пилот — кровать, монитор, рентген и запечённый свет рентген-кабинета M; часть 2 — модели групп (blender/ambulatory.py — группа
-# 1). Пишет в blender/.out/ (не в git); сжимает и кладёт в assets/models/blender/ `node tools/app/blender-pack.mjs`. Размеры —
-# blender/sizes.json (из игры: bun tools/app/blender-sizes.ts), бюджет треугольников части 2 — blender/budgets.json: модель
-# сверх бюджета не пишется.
+# пилот — кровать, монитор, рентген и запечённый свет рентген-кабинета M; часть 2 — модели групп (blender/ambulatory.py —
+# группа 1, blender/stationary.py — группа 2: её кровать и монитор заменили модели пилота). Пишет в blender/.out/ (не в git);
+# сжимает и кладёт в assets/models/blender/ `node tools/app/blender-pack.mjs`. Размеры — blender/sizes.json (из игры: bun
+# tools/app/blender-sizes.ts), бюджет треугольников части 2 — blender/budgets.json: модель сверх бюджета не пишется.
 #
 #   blender --background --factory-startup --python blender/build.py [-- имена]
 #   python blender/build.py [имена]     # Blender как модуль Python (пакет bpy той же версии)
@@ -23,12 +23,14 @@ from ambulatory import MODELS as GROUP1  # noqa: E402
 from common import HERE, SIZES, bake_ao, export, floor, reset, tris  # noqa: E402
 from models import MODELS as PILOT  # noqa: E402
 from room import build_room  # noqa: E402
+from stationary import MODELS as GROUP2  # noqa: E402
 
 VERSION = '4.5.15'
 OUT = os.path.join(HERE, '.out')
 BUDGETS = json.load(open(os.path.join(HERE, 'budgets.json'), encoding='utf-8'))['models']
-# модели части 2 — в своём бюджете; модели пилота — пока их не переделала их группа (кровать — 4872 при бюджете 1200)
-PART2 = {**GROUP1}
+# модели части 2 — в своём бюджете; модели пилота — пока их не переделала их группа: кровать и монитор — уже группа 2 (у пилота
+# кровать — 4872 треугольника при бюджете 1200), рентген — группа 3
+PART2 = {**GROUP1, **GROUP2}
 MODELS = {**PILOT, **PART2}
 
 

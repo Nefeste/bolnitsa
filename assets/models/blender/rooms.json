@@ -54,5 +54,45 @@
  "room.staff:M": {
   "file": "room-staff-M",
   "group": 1
+ },
+ "room.ward:S": {
+  "file": "room-ward-S",
+  "group": 2
+ },
+ "room.ward:M": {
+  "file": "room-ward-M",
+  "group": 2
+ },
+ "room.box:S": {
+  "file": "room-box-S",
+  "group": 2
+ },
+ "room.icu:S": {
+  "file": "room-icu-S",
+  "group": 2
+ },
+ "room.icu:M": {
+  "file": "room-icu-M",
+  "group": 2
+ },
+ "room.ricu:M": {
+  "file": "room-ricu-M",
+  "group": 2
+ },
+ "room.ricu:L": {
+  "file": "room-ricu-L",
+  "group": 2
+ },
+ "room.emergency:S": {
+  "file": "room-emergency-S",
+  "group": 2
+ },
+ "room.emergency:M": {
+  "file": "room-emergency-M",
+  "group": 2
+ },
+ "room.emergency:L": {
+  "file": "room-emergency-L",
+  "group": 2
  }
 }

@@ -1,0 +1,44 @@
+{
+ "key": "room.emergency:M",
+ "type": "room.emergency",
+ "size": "M",
+ "w": 9,
+ "h": 6,
+ "things": [
+  {
+   "kind": "bed",
+   "at": [
+    1.5,
+    3
+   ]
+  },
+  {
+   "kind": "cabinet",
+   "at": [
+    3.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "bed",
+   "at": [
+    5.5,
+    3
+   ]
+  },
+  {
+   "kind": "sink",
+   "at": [
+    7.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "monitor",
+   "at": [
+    4.5,
+    2.5
+   ]
+  }
+ ]
+}

@@ -1,0 +1,51 @@
+{
+ "key": "room.ward:S",
+ "type": "room.ward",
+ "size": "S",
+ "w": 7,
+ "h": 7,
+ "things": [
+  {
+   "kind": "bed",
+   "at": [
+    1.5,
+    3
+   ]
+  },
+  {
+   "kind": "cabinet",
+   "at": [
+    2.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "cabinet",
+   "at": [
+    4.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "bed",
+   "at": [
+    5.5,
+    3
+   ]
+  },
+  {
+   "kind": "chair",
+   "at": [
+    1.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "sink",
+   "at": [
+    5.5,
+    4.5
+   ]
+  }
+ ]
+}

@@ -32,6 +32,8 @@ mkdirSync(out, { recursive: true });
 /** Помещения группы и где их снимать: поликлиника (сценарий 1) или город. */
 const ROOMS = {
   1: { hospital: 'poly', types: ['room.reception', 'room.waiting', 'room.office', 'room.triage', 'room.procedure', 'room.lab', 'room.ecg', 'room.toilet', 'room.staff'] },
+  // стационар — в городе: в поликлинике коек нет
+  2: { hospital: 'preset', types: ['room.ward', 'room.box', 'room.icu', 'room.ricu', 'room.emergency'] },
 }[group];
 if (!ROOMS) throw new Error(`нет группы ${group}`);
 /** Образцы света группы: «room.waiting:L» → тип и размер. */
@@ -88,7 +90,14 @@ async function samples(mode) {
       failed.push(`${sm.key}: не встаёт у северной стены`);
       continue;
     }
-    await page.waitForFunction(k => window.__game.hospital.site.rooms.length === k, n0 + 1, { timeout: 30000 });
+    const built = await page
+      .waitForFunction(k => window.__game.hospital.site.rooms.length === k, n0 + 1, { timeout: 30000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!built) {
+      failed.push(`${sm.key}: движок не построил (касса?)`);
+      continue;
+    }
     // стройка закрыта: помещение открыто, стены — как в настройках; рамки выбранного помещения нет
     await page.evaluate(() => {
       const g = window.__game;
@@ -112,8 +121,9 @@ async function samples(mode) {
 try {
   for (const mode of MODES) {
     const where = light ? 'empty' : ROOMS.hospital;
-    // пустое здание закрыто, часы стоят — без перемотки к 11:00
-    await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&hospital=${where}&flow=0,0${light ? '' : '&start=11'}${mode.key ? `&${mode.key}` : ''}`);
+    // пустое здание закрыто, часы стоят — без перемотки к 11:00; уровень «Спокойно» — касса 2,5 млн ₽: реанимация L стоит
+    // больше миллиона, а на вид уровень не влияет
+    await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&hospital=${where}&flow=0,0${light ? '&manage=calm' : '&start=11'}${mode.key ? `&${mode.key}` : ''}`);
     await page.waitForFunction(() => window.__started === true, null, { timeout: 300000 });
     await page.evaluate(() => window.__game.actions.doctor({ kind: 'fold', folded: true }));
     // только сцена: панели окна, подписи и значки состояния помещений закрывают его

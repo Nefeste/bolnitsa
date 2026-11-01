@@ -106,20 +106,21 @@ export function entryOf(kind: ObjectKind, roomType: Id | '', equipment?: Id): En
 }
 
 /**
- * Модели Blender (docs/reports/2026-11-blender-pilot.md; blender/): пилот — кровать, монитор у кровати и рентген вместо моделей
- * кодом, если игра открыта с `?models=blender`; без ключа — модели кодом, пока их не переделала их группа части 2
- * (docs/specs/2026-11-blender-2.md: кровать и монитор — группа 2, рентген — 3).
+ * Модели Blender пилота (docs/reports/2026-11-blender-pilot.md; blender/), которых ещё не переделала их группа части 2
+ * (docs/specs/2026-11-blender-2.md): рентген — группа 3; только с `?models=blender`. Кровать и монитор пилота заменила
+ * группа 2 — они в `BLENDER_CODE`.
  */
-export const BLENDER: Partial<Record<Code, string>> = { bed: 'blender/bed', monitor: 'blender/monitor', xray: 'blender/xray' };
+export const BLENDER: Partial<Record<Code, string>> = { xray: 'blender/xray' };
 
 /**
- * Модели Blender части 2 вместо моделей кодом (docs/specs/2026-11-blender-2.md, решение владельца #178): группа 1 «Амбулатория» —
- * по умолчанию; `?models=code` — модели кодом и CC0, как до них. Ставятся в оси места, как модели пилота (`Furnisher.placeAt`).
- * Состав — тот же, что в blender/budgets.json (тест `blender.test.ts`).
+ * Модели Blender части 2 вместо моделей кодом (docs/specs/2026-11-blender-2.md, решение владельца #178): группы 1 «Амбулатория»
+ * и 2 «Стационар» — по умолчанию; `?models=code` — модели кодом и CC0, как до них. Ставятся в оси места, как модели пилота
+ * (`Furnisher.placeAt`). Состав — тот же, что в blender/budgets.json (тест `blender.test.ts`).
  */
 export const BLENDER_CODE: Partial<Record<Code, string>> = {
   counter: 'blender/counter', examCouch: 'blender/couch', labBench: 'blender/lab_bench', analyzer: 'blender/analyzer',
   procedureTable: 'blender/procedure_table', ecg: 'blender/ecg',
+  bed: 'blender/bed', monitor: 'blender/monitor', ventilator: 'blender/ventilator',
 };
 
 /**
@@ -131,6 +132,7 @@ export const BLENDER_KIT: Record<string, string> = {
   'kenney/chair': 'blender/chair', 'kenney/benchCushion': 'blender/bench', 'kenney/loungeChair': 'blender/lounge_chair',
   'kenney/bookcaseClosedDoors': 'blender/bookcase', 'kaykit/cabinet_medium': 'blender/low_cabinet', 'kenney/bathroomSink': 'blender/sink',
   'kenney/bathroomSinkSquare': 'blender/sink_wc', 'kenney/kitchenSink': 'blender/lab_sink', 'kenney/toilet': 'blender/toilet',
+  'kenney/sideTableDrawers': 'blender/bedside',
 };
 
 /** Какие модели грузит окно: `code` — модели кодом и CC0, `blender` — ещё и модели пилота, без ключа — модели части 2. */

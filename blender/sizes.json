@@ -122,6 +122,28 @@
    },
    "shift": -0.18
   },
+  "bed": {
+   "replaces": "code:bed",
+   "group": 2,
+   "cells": [
+    1,
+    2
+   ],
+   "code": {
+    "min": [
+     -0.482,
+     -0.05,
+     -1.005
+    ],
+    "max": [
+     0.805,
+     1.88,
+     1.005
+    ],
+    "tris": 400
+   },
+   "lieTop": 0.56
+  },
   "couch": {
    "replaces": "code:examCouch",
    "group": 1,
@@ -207,6 +229,27 @@
     "tris": 170
    }
   },
+  "monitor": {
+   "replaces": "code:monitor",
+   "group": 2,
+   "cells": [
+    1,
+    1
+   ],
+   "code": {
+    "min": [
+     -0.2,
+     0,
+     -0.162
+    ],
+    "max": [
+     0.2,
+     1.58,
+     0.2
+    ],
+    "tris": 100
+   }
+  },
   "procedure_table": {
    "replaces": "code:procedureTable",
    "group": 1,
@@ -226,6 +269,27 @@
      0.26
     ],
     "tris": 84
+   }
+  },
+  "ventilator": {
+   "replaces": "code:ventilator",
+   "group": 2,
+   "cells": [
+    1,
+    1
+   ],
+   "code": {
+    "min": [
+     -0.22,
+     -0.05,
+     -0.23
+    ],
+    "max": [
+     0.21,
+     1.54,
+     0.496
+    ],
+    "tris": 240
    }
   }
  },
@@ -3067,6 +3131,2185 @@
     ]
    ],
    "group": 1
+  },
+  "room.ward:S": {
+   "w": 7,
+   "h": 7,
+   "cells": [
+    "3333333",
+    "3111113",
+    "3111113",
+    "3111113",
+    "3111113",
+    "3111113",
+    "3334333"
+   ],
+   "wallH": 2.7,
+   "wallT": 0.16,
+   "things": [
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": true,
+     "at": [
+      1.5,
+      3
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.805,
+       1.88,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "cabinet",
+     "model": "kenney/sideTableDrawers",
+     "blender": "bedside",
+     "at": [
+      2.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.25,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.25,
+       0.6,
+       -0.08
+      ]
+     }
+    },
+    {
+     "kind": "cabinet",
+     "model": "kenney/sideTableDrawers",
+     "blender": "bedside",
+     "at": [
+      4.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.25,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.25,
+       0.6,
+       -0.08
+      ]
+     }
+    },
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": true,
+     "at": [
+      5.5,
+      3
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.805,
+       1.88,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chair",
+     "blender": "chair",
+     "at": [
+      1.5,
+      4.5
+     ],
+     "yaw": 1.571,
+     "box": {
+      "min": [
+       -0.25,
+       0,
+       -0.25
+      ],
+      "max": [
+       0.25,
+       0.85,
+       0.25
+      ]
+     }
+    },
+    {
+     "kind": "sink",
+     "model": "kenney/bathroomSink",
+     "blender": "sink",
+     "at": [
+      5.5,
+      4.5
+     ],
+     "yaw": -1.571,
+     "box": {
+      "min": [
+       -0.26,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.26,
+       0.95,
+       -0.05
+      ]
+     }
+    }
+   ],
+   "lamps": [
+    [
+     2.25,
+     2.25
+    ],
+    [
+     2.25,
+     4.75
+    ],
+    [
+     4.75,
+     2.25
+    ],
+    [
+     4.75,
+     4.75
+    ]
+   ],
+   "group": 2
+  },
+  "room.ward:M": {
+   "w": 9,
+   "h": 7,
+   "cells": [
+    "333333333",
+    "311111113",
+    "311111113",
+    "311111113",
+    "311111113",
+    "311111113",
+    "333343333"
+   ],
+   "wallH": 2.7,
+   "wallT": 0.16,
+   "things": [
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": true,
+     "at": [
+      1.5,
+      3
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.805,
+       1.88,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "cabinet",
+     "model": "kenney/sideTableDrawers",
+     "blender": "bedside",
+     "at": [
+      2.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.25,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.25,
+       0.6,
+       -0.08
+      ]
+     }
+    },
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": true,
+     "at": [
+      1.5,
+      5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.805,
+       1.88,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "cabinet",
+     "model": "kenney/sideTableDrawers",
+     "blender": "bedside",
+     "at": [
+      2.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.25,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.25,
+       0.6,
+       -0.08
+      ]
+     }
+    },
+    {
+     "kind": "sink",
+     "model": "kenney/bathroomSink",
+     "blender": "sink",
+     "at": [
+      4.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.26,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.26,
+       0.95,
+       -0.05
+      ]
+     }
+    },
+    {
+     "kind": "cabinet",
+     "model": "kenney/sideTableDrawers",
+     "blender": "bedside",
+     "at": [
+      6.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.25,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.25,
+       0.6,
+       -0.08
+      ]
+     }
+    },
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": true,
+     "at": [
+      7.5,
+      3
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.805,
+       1.88,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "cabinet",
+     "model": "kenney/sideTableDrawers",
+     "blender": "bedside",
+     "at": [
+      6.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.25,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.25,
+       0.6,
+       -0.08
+      ]
+     }
+    },
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": true,
+     "at": [
+      7.5,
+      5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.805,
+       1.88,
+       1.005
+      ]
+     }
+    }
+   ],
+   "lamps": [
+    [
+     2.75,
+     2.25
+    ],
+    [
+     2.75,
+     4.75
+    ],
+    [
+     6.25,
+     2.25
+    ],
+    [
+     6.25,
+     4.75
+    ]
+   ],
+   "group": 2
+  },
+  "room.box:S": {
+   "w": 6,
+   "h": 7,
+   "cells": [
+    "333333",
+    "311113",
+    "311113",
+    "311113",
+    "311113",
+    "311113",
+    "333433"
+   ],
+   "wallH": 2.7,
+   "wallT": 0.16,
+   "things": [
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": true,
+     "at": [
+      1.5,
+      3
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.805,
+       1.88,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "cabinet",
+     "model": "kenney/sideTableDrawers",
+     "blender": "bedside",
+     "at": [
+      2.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.25,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.25,
+       0.6,
+       -0.08
+      ]
+     }
+    },
+    {
+     "kind": "sink",
+     "model": "kenney/bathroomSink",
+     "blender": "sink",
+     "at": [
+      4.5,
+      2.5
+     ],
+     "yaw": -1.571,
+     "box": {
+      "min": [
+       -0.26,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.26,
+       0.95,
+       -0.05
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chair",
+     "blender": "chair",
+     "at": [
+      1.5,
+      4.5
+     ],
+     "yaw": 1.571,
+     "box": {
+      "min": [
+       -0.25,
+       0,
+       -0.25
+      ],
+      "max": [
+       0.25,
+       0.85,
+       0.25
+      ]
+     }
+    }
+   ],
+   "lamps": [
+    [
+     3,
+     2.25
+    ],
+    [
+     3,
+     4.75
+    ]
+   ],
+   "group": 2
+  },
+  "room.icu:S": {
+   "w": 7,
+   "h": 7,
+   "cells": [
+    "3333333",
+    "3111113",
+    "3111113",
+    "3111113",
+    "3111113",
+    "3111113",
+    "3334433"
+   ],
+   "wallH": 2.7,
+   "wallT": 0.16,
+   "things": [
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": false,
+     "at": [
+      1.5,
+      3
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.483,
+       1.07,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": false,
+     "at": [
+      5.5,
+      3
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.483,
+       1.07,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "cabinet",
+     "model": "kenney/sideTableDrawers",
+     "blender": "bedside",
+     "at": [
+      1.5,
+      4.5
+     ],
+     "yaw": 1.571,
+     "box": {
+      "min": [
+       -0.25,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.25,
+       0.6,
+       -0.08
+      ]
+     }
+    },
+    {
+     "kind": "sink",
+     "model": "kenney/bathroomSink",
+     "blender": "sink",
+     "at": [
+      5.5,
+      4.5
+     ],
+     "yaw": -1.571,
+     "box": {
+      "min": [
+       -0.26,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.26,
+       0.95,
+       -0.05
+      ]
+     }
+    },
+    {
+     "kind": "monitor",
+     "code": "monitor",
+     "blender": "monitor",
+     "at": [
+      2.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.2,
+       0,
+       -0.162
+      ],
+      "max": [
+       0.2,
+       1.58,
+       0.2
+      ]
+     }
+    },
+    {
+     "kind": "monitor",
+     "code": "monitor",
+     "blender": "monitor",
+     "at": [
+      4.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.2,
+       0,
+       -0.162
+      ],
+      "max": [
+       0.2,
+       1.58,
+       0.2
+      ]
+     }
+    }
+   ],
+   "lamps": [
+    [
+     2.25,
+     2.25
+    ],
+    [
+     2.25,
+     4.75
+    ],
+    [
+     4.75,
+     2.25
+    ],
+    [
+     4.75,
+     4.75
+    ]
+   ],
+   "group": 2
+  },
+  "room.icu:M": {
+   "w": 9,
+   "h": 7,
+   "cells": [
+    "333333333",
+    "311111113",
+    "311111113",
+    "311111113",
+    "311111113",
+    "311111113",
+    "333344333"
+   ],
+   "wallH": 2.7,
+   "wallT": 0.16,
+   "things": [
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": false,
+     "at": [
+      1.5,
+      3
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.483,
+       1.07,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": false,
+     "at": [
+      1.5,
+      5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.483,
+       1.07,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": false,
+     "at": [
+      7.5,
+      3
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.483,
+       1.07,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": false,
+     "at": [
+      7.5,
+      5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.483,
+       1.07,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "sink",
+     "model": "kenney/bathroomSink",
+     "blender": "sink",
+     "at": [
+      4.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.26,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.26,
+       0.95,
+       -0.05
+      ]
+     }
+    },
+    {
+     "kind": "monitor",
+     "code": "monitor",
+     "blender": "monitor",
+     "at": [
+      2.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.2,
+       0,
+       -0.162
+      ],
+      "max": [
+       0.2,
+       1.58,
+       0.2
+      ]
+     }
+    },
+    {
+     "kind": "monitor",
+     "code": "monitor",
+     "blender": "monitor",
+     "at": [
+      2.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.2,
+       0,
+       -0.162
+      ],
+      "max": [
+       0.2,
+       1.58,
+       0.2
+      ]
+     }
+    },
+    {
+     "kind": "monitor",
+     "code": "monitor",
+     "blender": "monitor",
+     "at": [
+      6.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.2,
+       0,
+       -0.162
+      ],
+      "max": [
+       0.2,
+       1.58,
+       0.2
+      ]
+     }
+    },
+    {
+     "kind": "monitor",
+     "code": "monitor",
+     "blender": "monitor",
+     "at": [
+      6.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.2,
+       0,
+       -0.162
+      ],
+      "max": [
+       0.2,
+       1.58,
+       0.2
+      ]
+     }
+    }
+   ],
+   "lamps": [
+    [
+     2.75,
+     2.25
+    ],
+    [
+     2.75,
+     4.75
+    ],
+    [
+     6.25,
+     2.25
+    ],
+    [
+     6.25,
+     4.75
+    ]
+   ],
+   "group": 2
+  },
+  "room.ricu:M": {
+   "w": 9,
+   "h": 7,
+   "cells": [
+    "333333333",
+    "311111113",
+    "311111113",
+    "311111113",
+    "311111113",
+    "311111113",
+    "333344333"
+   ],
+   "wallH": 2.7,
+   "wallT": 0.16,
+   "things": [
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": false,
+     "at": [
+      1.5,
+      3
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.483,
+       1.07,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": false,
+     "at": [
+      1.5,
+      5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.483,
+       1.07,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": false,
+     "at": [
+      7.5,
+      3
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.483,
+       1.07,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": false,
+     "at": [
+      7.5,
+      5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.483,
+       1.07,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "sink",
+     "model": "kenney/bathroomSink",
+     "blender": "sink",
+     "at": [
+      4.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.26,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.26,
+       0.95,
+       -0.05
+      ]
+     }
+    },
+    {
+     "kind": "monitor",
+     "code": "monitor",
+     "blender": "monitor",
+     "at": [
+      2.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.2,
+       0,
+       -0.162
+      ],
+      "max": [
+       0.2,
+       1.58,
+       0.2
+      ]
+     }
+    },
+    {
+     "kind": "monitor",
+     "code": "monitor",
+     "blender": "monitor",
+     "at": [
+      2.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.2,
+       0,
+       -0.162
+      ],
+      "max": [
+       0.2,
+       1.58,
+       0.2
+      ]
+     }
+    },
+    {
+     "kind": "monitor",
+     "code": "monitor",
+     "blender": "monitor",
+     "at": [
+      6.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.2,
+       0,
+       -0.162
+      ],
+      "max": [
+       0.2,
+       1.58,
+       0.2
+      ]
+     }
+    },
+    {
+     "kind": "monitor",
+     "code": "monitor",
+     "blender": "monitor",
+     "at": [
+      6.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.2,
+       0,
+       -0.162
+      ],
+      "max": [
+       0.2,
+       1.58,
+       0.2
+      ]
+     }
+    },
+    {
+     "kind": "anesthesia",
+     "code": "ventilator",
+     "blender": "ventilator",
+     "at": [
+      3.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.22,
+       -0.05,
+       -0.23
+      ],
+      "max": [
+       0.21,
+       1.54,
+       0.496
+      ]
+     }
+    },
+    {
+     "kind": "anesthesia",
+     "code": "ventilator",
+     "blender": "ventilator",
+     "at": [
+      3.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.22,
+       -0.05,
+       -0.23
+      ],
+      "max": [
+       0.21,
+       1.54,
+       0.496
+      ]
+     }
+    },
+    {
+     "kind": "anesthesia",
+     "code": "ventilator",
+     "blender": "ventilator",
+     "at": [
+      5.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.22,
+       -0.05,
+       -0.23
+      ],
+      "max": [
+       0.21,
+       1.54,
+       0.496
+      ]
+     }
+    },
+    {
+     "kind": "anesthesia",
+     "code": "ventilator",
+     "blender": "ventilator",
+     "at": [
+      5.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.22,
+       -0.05,
+       -0.23
+      ],
+      "max": [
+       0.21,
+       1.54,
+       0.496
+      ]
+     }
+    }
+   ],
+   "lamps": [
+    [
+     2.75,
+     2.25
+    ],
+    [
+     2.75,
+     4.75
+    ],
+    [
+     6.25,
+     2.25
+    ],
+    [
+     6.25,
+     4.75
+    ]
+   ],
+   "group": 2
+  },
+  "room.ricu:L": {
+   "w": 13,
+   "h": 7,
+   "cells": [
+    "3333333333333",
+    "3111111111113",
+    "3111111111113",
+    "3111111111113",
+    "3111111111113",
+    "3111111111113",
+    "3333334433333"
+   ],
+   "wallH": 2.7,
+   "wallT": 0.16,
+   "things": [
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": false,
+     "at": [
+      1.5,
+      3
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.483,
+       1.07,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": false,
+     "at": [
+      1.5,
+      5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.483,
+       1.07,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": false,
+     "at": [
+      6.5,
+      2
+     ],
+     "yaw": -3.142,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.483,
+       1.07,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": false,
+     "short": true,
+     "at": [
+      6.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -0.503
+      ],
+      "max": [
+       0.483,
+       1.07,
+       0.503
+      ]
+     }
+    },
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": false,
+     "at": [
+      11.5,
+      3
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.483,
+       1.07,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": false,
+     "at": [
+      11.5,
+      5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.483,
+       1.07,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "sink",
+     "model": "kenney/bathroomSink",
+     "blender": "sink",
+     "at": [
+      6.5,
+      3.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.26,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.26,
+       0.95,
+       -0.05
+      ]
+     }
+    },
+    {
+     "kind": "monitor",
+     "code": "monitor",
+     "blender": "monitor",
+     "at": [
+      2.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.2,
+       0,
+       -0.162
+      ],
+      "max": [
+       0.2,
+       1.58,
+       0.2
+      ]
+     }
+    },
+    {
+     "kind": "monitor",
+     "code": "monitor",
+     "blender": "monitor",
+     "at": [
+      2.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.2,
+       0,
+       -0.162
+      ],
+      "max": [
+       0.2,
+       1.58,
+       0.2
+      ]
+     }
+    },
+    {
+     "kind": "monitor",
+     "code": "monitor",
+     "blender": "monitor",
+     "at": [
+      5.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.2,
+       0,
+       -0.162
+      ],
+      "max": [
+       0.2,
+       1.58,
+       0.2
+      ]
+     }
+    },
+    {
+     "kind": "monitor",
+     "code": "monitor",
+     "blender": "monitor",
+     "at": [
+      5.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.2,
+       0,
+       -0.162
+      ],
+      "max": [
+       0.2,
+       1.58,
+       0.2
+      ]
+     }
+    },
+    {
+     "kind": "monitor",
+     "code": "monitor",
+     "blender": "monitor",
+     "at": [
+      10.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.2,
+       0,
+       -0.162
+      ],
+      "max": [
+       0.2,
+       1.58,
+       0.2
+      ]
+     }
+    },
+    {
+     "kind": "monitor",
+     "code": "monitor",
+     "blender": "monitor",
+     "at": [
+      10.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.2,
+       0,
+       -0.162
+      ],
+      "max": [
+       0.2,
+       1.58,
+       0.2
+      ]
+     }
+    },
+    {
+     "kind": "anesthesia",
+     "code": "ventilator",
+     "blender": "ventilator",
+     "at": [
+      3.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.22,
+       -0.05,
+       -0.23
+      ],
+      "max": [
+       0.21,
+       1.54,
+       0.496
+      ]
+     }
+    },
+    {
+     "kind": "anesthesia",
+     "code": "ventilator",
+     "blender": "ventilator",
+     "at": [
+      3.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.22,
+       -0.05,
+       -0.23
+      ],
+      "max": [
+       0.21,
+       1.54,
+       0.496
+      ]
+     }
+    },
+    {
+     "kind": "anesthesia",
+     "code": "ventilator",
+     "blender": "ventilator",
+     "at": [
+      7.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.22,
+       -0.05,
+       -0.23
+      ],
+      "max": [
+       0.21,
+       1.54,
+       0.496
+      ]
+     }
+    },
+    {
+     "kind": "anesthesia",
+     "code": "ventilator",
+     "blender": "ventilator",
+     "at": [
+      7.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.22,
+       -0.05,
+       -0.23
+      ],
+      "max": [
+       0.21,
+       1.54,
+       0.496
+      ]
+     }
+    },
+    {
+     "kind": "anesthesia",
+     "code": "ventilator",
+     "blender": "ventilator",
+     "at": [
+      9.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.22,
+       -0.05,
+       -0.23
+      ],
+      "max": [
+       0.21,
+       1.54,
+       0.496
+      ]
+     }
+    },
+    {
+     "kind": "anesthesia",
+     "code": "ventilator",
+     "blender": "ventilator",
+     "at": [
+      9.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.22,
+       -0.05,
+       -0.23
+      ],
+      "max": [
+       0.21,
+       1.54,
+       0.496
+      ]
+     }
+    }
+   ],
+   "lamps": [
+    [
+     2.375,
+     2.25
+    ],
+    [
+     2.375,
+     4.75
+    ],
+    [
+     5.125,
+     2.25
+    ],
+    [
+     5.125,
+     4.75
+    ],
+    [
+     7.875,
+     2.25
+    ],
+    [
+     7.875,
+     4.75
+    ],
+    [
+     10.625,
+     2.25
+    ],
+    [
+     10.625,
+     4.75
+    ]
+   ],
+   "group": 2
+  },
+  "room.emergency:S": {
+   "w": 7,
+   "h": 6,
+   "cells": [
+    "3333333",
+    "3111113",
+    "3111113",
+    "3111113",
+    "3111113",
+    "3334433"
+   ],
+   "wallH": 2.7,
+   "wallT": 0.16,
+   "things": [
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": false,
+     "at": [
+      2.5,
+      3
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.483,
+       1.07,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "cabinet",
+     "model": "kenney/sideTableDrawers",
+     "blender": "bedside",
+     "at": [
+      4.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.25,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.25,
+       0.6,
+       -0.08
+      ]
+     }
+    },
+    {
+     "kind": "sink",
+     "model": "kenney/bathroomSink",
+     "blender": "sink",
+     "at": [
+      5.5,
+      2.5
+     ],
+     "yaw": -1.571,
+     "box": {
+      "min": [
+       -0.26,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.26,
+       0.95,
+       -0.05
+      ]
+     }
+    },
+    {
+     "kind": "monitor",
+     "code": "monitor",
+     "blender": "monitor",
+     "at": [
+      3.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.2,
+       0,
+       -0.162
+      ],
+      "max": [
+       0.2,
+       1.58,
+       0.2
+      ]
+     }
+    }
+   ],
+   "lamps": [
+    [
+     2.25,
+     3
+    ],
+    [
+     4.75,
+     3
+    ]
+   ],
+   "group": 2
+  },
+  "room.emergency:M": {
+   "w": 9,
+   "h": 6,
+   "cells": [
+    "333333333",
+    "311111113",
+    "311111113",
+    "311111113",
+    "311111113",
+    "333344333"
+   ],
+   "wallH": 2.7,
+   "wallT": 0.16,
+   "things": [
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": false,
+     "at": [
+      1.5,
+      3
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.483,
+       1.07,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "cabinet",
+     "model": "kenney/sideTableDrawers",
+     "blender": "bedside",
+     "at": [
+      3.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.25,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.25,
+       0.6,
+       -0.08
+      ]
+     }
+    },
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": false,
+     "at": [
+      5.5,
+      3
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.483,
+       1.07,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "sink",
+     "model": "kenney/bathroomSink",
+     "blender": "sink",
+     "at": [
+      7.5,
+      2.5
+     ],
+     "yaw": -1.571,
+     "box": {
+      "min": [
+       -0.26,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.26,
+       0.95,
+       -0.05
+      ]
+     }
+    },
+    {
+     "kind": "monitor",
+     "code": "monitor",
+     "blender": "monitor",
+     "at": [
+      4.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.2,
+       0,
+       -0.162
+      ],
+      "max": [
+       0.2,
+       1.58,
+       0.2
+      ]
+     }
+    }
+   ],
+   "lamps": [
+    [
+     2.75,
+     3
+    ],
+    [
+     6.25,
+     3
+    ]
+   ],
+   "group": 2
+  },
+  "room.emergency:L": {
+   "w": 11,
+   "h": 6,
+   "cells": [
+    "33333333333",
+    "31111111113",
+    "31111111113",
+    "31111111113",
+    "31111111113",
+    "33333443333"
+   ],
+   "wallH": 2.7,
+   "wallT": 0.16,
+   "things": [
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": false,
+     "at": [
+      1.5,
+      3
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.483,
+       1.07,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "cabinet",
+     "model": "kenney/sideTableDrawers",
+     "blender": "bedside",
+     "at": [
+      3.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.25,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.25,
+       0.6,
+       -0.08
+      ]
+     }
+    },
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": false,
+     "at": [
+      5.5,
+      3
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.483,
+       1.07,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "cabinet",
+     "model": "kenney/sideTableDrawers",
+     "blender": "bedside",
+     "at": [
+      7.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.25,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.25,
+       0.6,
+       -0.08
+      ]
+     }
+    },
+    {
+     "kind": "bed",
+     "code": "bed",
+     "blender": "bed",
+     "iv": false,
+     "at": [
+      8.5,
+      3
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.482,
+       -0.05,
+       -1.005
+      ],
+      "max": [
+       0.483,
+       1.07,
+       1.005
+      ]
+     }
+    },
+    {
+     "kind": "sink",
+     "model": "kenney/bathroomSink",
+     "blender": "sink",
+     "at": [
+      9.5,
+      3.5
+     ],
+     "yaw": -1.571,
+     "box": {
+      "min": [
+       -0.26,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.26,
+       0.95,
+       -0.05
+      ]
+     }
+    },
+    {
+     "kind": "monitor",
+     "code": "monitor",
+     "blender": "monitor",
+     "at": [
+      4.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.2,
+       0,
+       -0.162
+      ],
+      "max": [
+       0.2,
+       1.58,
+       0.2
+      ]
+     }
+    }
+   ],
+   "lamps": [
+    [
+     2.5,
+     3
+    ],
+    [
+     5.5,
+     3
+    ],
+    [
+     8.5,
+     3
+    ]
+   ],
+   "group": 2
   }
  }
 }
