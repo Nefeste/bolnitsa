@@ -57,6 +57,27 @@ describe('готовое помещение — образец целиком', 
     }
   });
 
+  test('повороты вещей — по образцу: повёрнутое готовое помещение — то же самое, только развёрнутое', () => {
+    // вещь без стены рядом и угловая смотрят по стенам образца, а не по сторонам света: иначе свет образца, запечённый без
+    // поворота, ложился бы на них не той стороной (docs/specs/2026-11-blender-2.md, решение агента 15)
+    for (const [type, size] of SAMPLES) {
+      const z = sizeOf(type, size);
+      const inTemplate = (rot: Rot) => {
+        const c = checkReady(db, emptySite(), type, size, 20, 10, rot);
+        if (!c.ok) throw new Error(`${type} ${size} ${rot}`);
+        return c.draft.items
+          .map(i => {
+            const [lx, ly] = [i.x - 20, i.y - 10];
+            const [tx, ty] = rot === 0 ? [lx, ly] : rot === 1 ? [ly, z.h - 1 - lx] : rot === 2 ? [z.w - 1 - lx, z.h - 1 - ly] : [z.w - 1 - ly, lx];
+            return `${i.kind}:${i.eq ?? ''}@${tx},${ty}/${(i.rot - rot + 4) % 4}${i.short ? ' short' : ''}`;
+          })
+          .sort();
+      };
+      const base = inTemplate(0);
+      for (const rot of [1, 2, 3] as Rot[]) expect(inTemplate(rot), `${type} ${size} поворот ${rot}`).toEqual(base);
+    }
+  });
+
   test('цена и состав — как у протянутого, обставленного и с дверью того же размера; реанимация L — с шестой, короткой койкой', () => {
     for (const [type, size] of SAMPLES) {
       const c = checkReady(db, emptySite(), type, size, 20, 10, 0);

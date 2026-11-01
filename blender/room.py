@@ -16,10 +16,11 @@ import bpy
 from ambulatory import MODELS as GROUP1
 from diagnostics import MODELS as GROUP3
 from stationary import MODELS as GROUP2
+from surgery import MODELS as GROUP4
 from common import Part, g2b, material
 
 # модели Blender, которые окно ставит по умолчанию (часть 2): у образцов групп вещи — ими, как в игре
-PART2 = {**GROUP1, **GROUP2, **GROUP3}
+PART2 = {**GROUP1, **GROUP2, **GROUP3, **GROUP4}
 
 # сколько точек картинки на метр пола: 32 (тени мягкие, в кадре игры разница с 64 пилота — на уровне шума, а файл вчетверо
 # меньше; docs/specs/2026-11-blender-2.md, решение агента 11)

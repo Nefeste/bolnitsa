@@ -833,11 +833,12 @@ function placeTemplate(db: ContentDb, room: SiteRoom, z: RoomSize, rot: Rot, at:
     return [at[0] + x, at[1] + y];
   };
   const eqs = equipment ?? defaultEquipment(db, room.type, z);
-  const drafts: { kind: ObjectKind; eq?: Id; cell: Cell }[] = [];
-  for (const o of z.objects) drafts.push({ kind: o.kind, cell: to([o.x, o.y]) });
+  // `at` — клетка в осях образца: по ней — повороты
+  const drafts: { kind: ObjectKind; eq?: Id; cell: Cell; at: Cell }[] = [];
+  for (const o of z.objects) drafts.push({ kind: o.kind, cell: to([o.x, o.y]), at: [o.x, o.y] });
   z.slots.forEach((s, i) => {
     const id = eqs[i];
-    if (id && db.equipment[id]) drafts.push({ kind: db.equipment[id].sprite, eq: id, cell: to(s) });
+    if (id && db.equipment[id]) drafts.push({ kind: db.equipment[id].sprite, eq: id, cell: to(s), at: [s[0], s[1]] });
   });
   const inside = (x: number, y: number) => isInterior(room, x, y);
   const people = [...Object.values(z.staff).map(c => to(c)), ...(z.patient ? [to(z.patient)] : [])];
@@ -848,9 +849,15 @@ function placeTemplate(db: ContentDb, room: SiteRoom, z: RoomSize, rot: Rot, at:
   const inner = room.door?.length ? doorInner(room) : Array.from({ length: z.door.width }, (_, k) => to([z.door.x + k, z.h - 2]));
   const innerSet = new Set(inner.map(([x, y]) => key(x, y)));
   const items: ItemDraft[] = [];
-  // повороты — по стенам образца: в помещении больше образца предметы смотрят так же, как в нём
-  const [tw, th] = dimsOf(z, rot);
-  const facing = turnsOf({ x: at[0], y: at[1], w: tw, h: th }, drafts.map(d => ({ kind: d.kind, x: d.cell[0], y: d.cell[1] })), people);
+  // повороты — по стенам образца и в его осях, потом — с поворотом помещения (`FACE[f]` → `FACE[(f + rot) % 4]`): в
+  // помещении больше образца предметы смотрят так же, как в нём, а повёрнутое готовое помещение — то же самое, только
+  // развёрнутое. Иначе вещь без стены рядом и угловая смотрели бы по сторонам света, а не по образцу, и запечённый свет
+  // образца ложился бы на них не той стороной (docs/specs/2026-11-blender-2.md, решение агента 15)
+  const facing = turnsOf(
+    { x: 0, y: 0, w: z.w, h: z.h },
+    drafts.map(d => ({ kind: d.kind, x: d.at[0], y: d.at[1] })),
+    [...Object.values(z.staff), ...(z.patient ? [z.patient] : [])],
+  ).map(f => ((f + rot) % 4) as Rot);
   drafts.forEach((d, i) => {
     const [x, y] = d.cell;
     if (!inside(x, y) || innerSet.has(key(x, y))) return;
