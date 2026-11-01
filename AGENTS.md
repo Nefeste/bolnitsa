@@ -478,6 +478,8 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
 - `src/ui/` — panels (React) and their store; icons — `icons.tsx` (`Icon`: Carbon (IBM) under Apache 2.0, owner's decision
   #139, the text's colour, 16 points) over `icons.gen.ts` (made by `tools/app/icons.mjs`; three own icons in Carbon's style —
   doors and a bench); never put a Unicode symbol or emoji in the window instead of an icon (`tools/test/icons.test.ts`);
+  every window over the map (`role="dialog"`) starts with `WindowHead` (`WindowHead.tsx`: icon 20 points, title, the window's
+  buttons, «Закрыть» last — what Esc does; `docs/specs/2026-10-clinical-style.md`, part 2; `tools/test/window-head.test.ts`);
   `src/ui/doctor/` — the patient card window, the doctor's panel and the
   «Просят посмотреть» tab, driven by `src/app/doctor.ts` (your own card — the timeline «Ход приёма» and one open step of
   four, owner's decision #104, `docs/specs/2026-10-own-card.md`); `src/ui/flow.tsx` — the «Пациенты» tab, the patient's path and

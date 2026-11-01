@@ -18,6 +18,8 @@ export const en: Strings = {
     loadingModels: 'Loading models…',
     loadingWorld: 'Building the hospital…',
     error: 'Error',
+    /** крестик в строке заголовка окна (spec docs/specs/2026-10-clinical-style.md, часть 2) — для чтения с экрана */
+    close: 'Close',
   },
   top: {
     /** всплывающее извещение о больном (spec 2026-10-aaa-polish, «Извещения») */
@@ -192,7 +194,6 @@ export const en: Strings = {
   saves: {
     menu: 'Game',
     menuHint: 'Save, load, new game',
-    title: 'Saves',
     save: 'Save',
     saveHint: 'Save now — into a new slot',
     load: 'Load',

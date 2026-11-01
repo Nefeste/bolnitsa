@@ -20,6 +20,7 @@ import { byGuide, GoalsTab, GuideToggle, LetterCard, ScenarioDone, StepMark } fr
 import { DemoSummary } from './Demo';
 import { type Actions, type Hud, type Level, type LevelRow, type RoomCard, type Speed, type Store, type Tab, type Tool, useHud } from './store';
 import { Icon, type IconName } from './icons';
+import { WindowHead } from './WindowHead';
 import type { Id, Manage } from '../content/types';
 
 /** Названия из базы: помещения, должности, признаки. */
@@ -163,12 +164,9 @@ function SettingsPanel({ hud, actions }: P) {
   ];
   return (
     <div className="settings panel" id="settings" role="dialog" aria-labelledby="settings-title">
-      <div className="row">
-        <b id="settings-title">{t.title}</b>
-        <button type="button" className="close" id="settings-close" onClick={actions.toggleSettings} title="Esc">
-          <Icon name="close" />
-        </button>
-      </div>
+      <WindowHead icon="settings" titleId="settings-title" close={{ id: 'settings-close', hint: 'Esc', onClick: actions.toggleSettings }}>
+        {t.title}
+      </WindowHead>
       <div className="label">{T.view.walls}</div>
       <div className="row">
         {walls.map(([m, s]) => (
@@ -1064,13 +1062,11 @@ function SaveList({ rows, load, remove, prefix }: { rows: SaveRow[]; load: (slot
 function GameMenu({ hud, actions }: P) {
   if (!hud.menu.open) return null;
   return (
-    <div className="gamemenu panel" id="game-menu">
-      <div className="row">
-        <b>{T.saves.title}</b>
-        <button type="button" className="close" onClick={actions.toggleMenu} title="Esc">
-          <Icon name="close" />
-        </button>
-      </div>
+    <div className="gamemenu panel" id="game-menu" role="dialog" aria-labelledby="game-menu-title">
+      {/* название и значок — как у кнопки «Игра», которая его открывает */}
+      <WindowHead icon="menu" titleId="game-menu-title" close={{ id: 'game-menu-close', hint: 'Esc', onClick: actions.toggleMenu }}>
+        {T.saves.menu}
+      </WindowHead>
       <button type="button" id="save-new" className="on" title={T.saves.saveHint} onClick={actions.saveGame}>
         {T.saves.save}
       </button>

@@ -7,6 +7,7 @@
 // карты, «Мой кабинет» — переезд и обратно, «Не принимаю», «Свои больные». Снимки карты — `e2e-doctor-*.jpg` (JPEG: для
 // документов).
 import { join } from 'node:path';
+import { headOk, windowHead } from './e2e-lib.mjs';
 
 /** @param {{ page: import('playwright-core').Page, port: number, out: string, ok: (m: string) => void, fail: (m: string) => void, q: string, shots: string }} x */
 export async function doctorPart({ page, port, out, ok, fail, q, shots }) {
@@ -79,6 +80,10 @@ export async function doctorPart({ page, port, out, ok, fail, q, shots }) {
   const t0 = (await hud()).t;
   if (c0?.id === ask.id && c0.active && (await hud()).speed === 0 && t0 > tl) ok(`вошёл к вам — карта «${title}» и пауза (дорога ${Math.round((t0 - tl) / 60)} мин)`);
   else fail(`карта: ${JSON.stringify({ id: c0?.id, active: c0?.active, speed: (await hud()).speed })}`);
+  // строка заголовка (docs/specs/2026-10-clinical-style.md, часть 2): значок карты, имя, уровень медицины, крестик последним
+  const head = await windowHead(page, '#dcard');
+  if (headOk(head, 'card', 'dcard-close', true) && head.title.startsWith((title ?? '?').replace(/\s+/g, ' '))) ok(`карта пациента: строка заголовка — значок «${head.icon}», «${head.title.slice(0, 60)}», крестик последним`);
+  else fail(`строка заголовка карты: ${JSON.stringify(head)}`);
   await page.keyboard.press('Digit3');
   await page.waitForTimeout(600);
   if ((await hud()).speed === 0 && (await hud()).t === t0) ok('карта открыта — часы стоят, скорость не меняется');

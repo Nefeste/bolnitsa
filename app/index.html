@@ -104,6 +104,12 @@
     svg.icon { display: inline-block; width: 16px; height: 16px; vertical-align: -3px; flex: none; }
     .start #start-back { flex-direction: row; align-items: center; gap: 6px; }
     .gstep svg.icon { width: 12px; height: 12px; vertical-align: 0; }
+    /* строка заголовка окна (docs/specs/2026-10-clinical-style.md, часть 2): значок 20 точек цветом акцента, название 18
+       полужирным, кнопки окна, «Закрыть» последним — в каждом окне поверх карты одна и та же */
+    .whead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 28px; }
+    .whead > svg.icon { width: 20px; height: 20px; color: var(--accent-text); }
+    .whead .wtitle { flex: 1 1 auto; min-width: 0; margin: 0; font-size: var(--fs-window); font-weight: 600; }
+    .whead > .close { padding: 3px 5px; }
     /* верхняя полоса — одной строкой: извещение ужимается многоточием, а не переносится на вторую строку */
     .top { position: absolute; left: 8px; right: 8px; top: 8px; display: flex; flex-wrap: nowrap; align-items: center; gap: 10px; padding: 6px 10px; overflow: hidden; }
     .top .clock { font-size: var(--fs-title); font-weight: 600; min-width: 128px; white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -165,11 +171,9 @@
     #goals h3 { margin: 8px 0 2px; font-size: var(--fs-small); color: var(--accent-text); text-transform: uppercase; letter-spacing: .05em; }
     #goals .check, .gamemenu .check { display: flex; gap: 6px; align-items: center; cursor: pointer; margin: 4px 0; }
     .scenariodone { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); width: min(460px, 92%); z-index: 8; display: flex; flex-direction: column; gap: 8px; padding: 16px 20px; background: var(--window); }
-    .scenariodone h2 { margin: 0; font-size: var(--fs-window); }
     .scenariodone .row { display: flex; gap: 8px; }
     /* «Итог» демо (docs/specs/2026-11-demo.md): снимок больницы во всю ширину, цифры парами */
     .demosum { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(620px, 94%); max-height: 92vh; overflow: auto; z-index: 8; display: flex; flex-direction: column; gap: 8px; padding: 16px 20px; background: var(--window); }
-    .demosum h2 { margin: 0; font-size: var(--fs-window); }
     .demosum p { margin: 0; }
     .demosum .row { display: flex; gap: 8px; flex-wrap: wrap; }
     .demoshot { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--r-m); border: 1px solid var(--line); }
@@ -314,7 +318,6 @@
     /* «Настройки» (docs/specs/2026-10-settings.md): окно на месте меню игры, из которого открываются */
     .settings { position: absolute; left: 174px; top: 56px; width: 380px; z-index: 7; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; background: var(--window); max-height: calc((100vh - 72px) / var(--ui-k, 1)); overflow-y: auto; }
     .settings .row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
-    .settings .row .close { margin-left: auto; }
     .settings .label { margin: 4px 0 0; }
     .settings .check { display: flex; gap: 6px; align-items: center; cursor: pointer; margin-top: 4px; }
     .settings p { margin: 0; }
@@ -417,8 +420,7 @@
     select, input.search { font: inherit; color: var(--text); background: var(--raised); border: 1px solid var(--line); border-radius: var(--r-m); padding: 3px 6px; max-width: 100%; }
     input.search { width: 100%; box-sizing: border-box; margin: 4px 0; }
     .dcard { position: absolute; left: 1.5%; right: 1.5%; top: 52px; bottom: 8px; z-index: 5; display: flex; flex-direction: column; padding: 8px 12px; background: var(--window); }
-    .dhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-    .dtitle { font-size: var(--fs-window); flex: 1 1 auto; min-width: 0; }
+    .dcard .whead { gap: 10px; }
     .dsub { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; margin: 3px 0; }
     button.said { background: none; border: none; padding: 0; font-style: italic; color: var(--speech); font-size: var(--fs-title); text-align: left; }
     .dtarget { color: var(--warn-text); font-weight: 600; }
@@ -531,9 +533,9 @@
     .term .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
     /* энциклопедия (docs/specs/2026-10-encyclopedia.md): поверх карты, карты пациента и экрана начала */
     .enc { position: absolute; left: 50%; top: 52px; bottom: 10px; transform: translateX(-50%); width: min(1180px, 97%); z-index: 8; display: flex; flex-direction: column; gap: 4px; padding: 8px 12px; background: var(--window-solid); }
-    .enc-head { display: flex; align-items: center; gap: 8px; }
-    .enc-head .enc-name { font-size: var(--fs-window); flex: none; }
-    .enc-head input.search { flex: 1; margin: 0; width: auto; }
+    .enc .whead { flex-wrap: nowrap; }
+    .enc .whead .wtitle { flex: none; }
+    .enc .whead input.search { flex: 1; margin: 0; width: auto; }
     .enc-note { color: var(--muted); font-size: var(--fs-small); }
     .enc-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 190px minmax(220px, 1fr) 2.3fr; gap: 10px; }
     .enc-sections, .enc-list, .enc-article { min-height: 0; overflow-y: auto; }
@@ -558,9 +560,8 @@
     .top .stat .bad, .msec .bad, .dround .bad, .dlists .bad { color: var(--bad-text); }
     .top .stat.bad b { color: var(--bad-text); }
     .meeting { position: absolute; left: 50%; top: 52px; bottom: 10px; transform: translateX(-50%); width: min(820px, 96%); z-index: 6; display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; background: var(--window); }
-    .mhead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: var(--fs-window); }
-    .mhead b { flex: 1 1 auto; }
-    .mhead label { font-size: var(--fs-small); color: var(--muted); }
+    .meeting .whead { gap: 12px; }
+    .meeting .whead label { font-size: var(--fs-small); color: var(--muted); }
     .mbody { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; align-content: start; }
     #reports .mbody { display: block; overflow: visible; }
     .msec h3 { margin: 4px 0 2px; font-size: var(--fs-small); color: var(--accent-text); text-transform: uppercase; letter-spacing: .05em; }

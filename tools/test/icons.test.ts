@@ -39,7 +39,7 @@ describe('значки окна', () => {
       expect([name, /^(<path d="[^"<>]+"\/>)+$/.test(i.body)]).toEqual([name, true]);
     }
     expect(Object.entries(ICONS).filter(([, i]) => 'own' in i).map(([n]) => n)).toEqual(['door', 'door2', 'bench']);
-    expect(Object.keys(ICONS).length).toBe(24);
+    expect(Object.keys(ICONS).length).toBe(30);
   });
 
   test('в окне вместо значков нет символов Юникода и эмодзи (кроме комментариев)', () => {

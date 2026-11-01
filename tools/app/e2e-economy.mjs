@@ -7,6 +7,7 @@
 // новое лечение в листе назначений; «Выписать» — строки нет. «Кто ушёл» с экрана планёрки — «Пациенты» → «Ушли», часы стоят.
 // Снимки — `e2e-economy-*.jpg` (JPEG: для документов).
 import { join } from 'node:path';
+import { headOk, windowHead } from './e2e-lib.mjs';
 
 /** @param {{ page: import('playwright-core').Page, port: number, out: string, ok: (m: string) => void, fail: (m: string) => void, q: string, shots: string }} x */
 export async function economyPart({ page, port, out, ok, fail, q, shots }) {
@@ -157,6 +158,10 @@ export async function economyPart({ page, port, out, ok, fail, q, shots }) {
   // рамка кнопки «почему?» загорается переходом (0,12 с); на паузе кадров мало — дать ему кончиться до снимка
   await page.waitForTimeout(500);
   ok(`снимок планёрки: ${join(out, 'e2e-economy-1-meeting.jpg')} (${await shot('e2e-economy-1-meeting.jpg')} КБ)`);
+  // строка заголовка (docs/specs/2026-10-clinical-style.md, часть 2): закрывает «Продолжить», крестика нет
+  const head = await windowHead(page, '#meeting');
+  if (headOk(head, 'meeting', 'meeting-close', false)) ok(`планёрка: строка заголовка — значок «${head.icon}», «${head.title}», последним «Продолжить», крестика нет`);
+  else fail(`строка заголовка планёрки: ${JSON.stringify(head)}`);
   await page.click('#meeting-close');
   await until(() => !window.__game.store.get().economy?.open && window.__game.speed === 1);
   ok('«Продолжить» — планёрка закрыта, часы идут ×1');

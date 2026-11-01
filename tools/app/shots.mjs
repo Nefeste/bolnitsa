@@ -1,6 +1,7 @@
 // Снимки игры для отчётов (docs/reports/2026-10-aaa-audit.md, «до» и «после»): Chromium без окна (Playwright, браузер из
 // PLAYWRIGHT_BROWSERS_PATH, программный WebGL) открывает dist/ и снимает одни и те же места: начало игры, готовая
-// больница днём — общий и крупный план, ночь, стройка, карта пациента, планёрка, карточка со слоем «Очереди и загрузка».
+// больница днём — общий и крупный план, ночь, стройка, карта пациента, планёрка, карточка со слоем «Очереди и загрузка»;
+// место 9 — окна по одному, по их рамке (строка заголовка, docs/specs/2026-10-clinical-style.md, часть 2).
 // JPEG не больше 200 КБ: качество снижается, пока не уложится. Кадров в секунду без видеокарты не меряет — только вид.
 //   node tools/app/shots.mjs [--out docs/reports/2026-10-aaa] [--prefix before] [--q high] [--only 1,3] [--port 8094]
 import { chromium } from 'playwright-core';
@@ -68,6 +69,26 @@ const shot = async name => {
     const kb = Math.round(buf.length / 1024);
     if (kb <= LIMIT) {
       console.log(`✓ ${prefix}-${name}.jpg — ${kb} КБ (качество ${quality}), ${await page.evaluate(() => document.getElementById('clock')?.textContent ?? '')}`);
+      return;
+    }
+  }
+  console.log(`✗ ${prefix}-${name}.jpg больше ${LIMIT} КБ`);
+};
+/** Снимок одного окна — по его рамке с полями 8 точек, в пределах экрана; JPEG не больше LIMIT КБ. */
+const clipShot = async (name, sel) => {
+  await frames(3);
+  const box = await page.$eval(sel, e => {
+    const r = e.getBoundingClientRect();
+    return { x: r.x, y: r.y, w: r.width, h: r.height };
+  });
+  const x = Math.max(0, Math.floor(box.x - 8));
+  const y = Math.max(0, Math.floor(box.y - 8));
+  const clip = { x, y, width: Math.min(1280 - x, Math.ceil(box.w + 16)), height: Math.min(720 - y, Math.ceil(box.h + 16)) };
+  for (const quality of [82, 72, 62, 52]) {
+    const buf = await page.screenshot({ path: join(out, `${prefix}-${name}.jpg`), type: 'jpeg', quality, clip });
+    const kb = Math.round(buf.length / 1024);
+    if (kb <= LIMIT) {
+      console.log(`✓ ${prefix}-${name}.jpg — ${kb} КБ (качество ${quality}), ${clip.width}×${clip.height}`);
       return;
     }
   }
@@ -167,6 +188,56 @@ try {
     await page.waitForFunction(() => !window.__game.stage.cam.flying, null, { timeout: 20000 }).catch(() => {});
     await page.waitForTimeout(500);
     await shot('8-card-layers');
+  }
+  // 9. окна со строкой заголовка (docs/specs/2026-10-clinical-style.md, часть 2) — каждое окно своим снимком по его рамке:
+  // меню игры, «Настройки», энциклопедия, «Сценарий пройден», планёрка и «Итог» демо — в сценарии с ключом демо; карта
+  // пациента и «Что это?» — как в месте 6
+  if (run(9)) {
+    await page.goto(url('scenario=scenario.ambulatory&demo=1'));
+    await ready('__started');
+    await page.click('#game-menu-open');
+    await page.waitForSelector('#game-menu');
+    await page.waitForTimeout(300);
+    await clipShot('9-menu', '#game-menu');
+    await page.click('#settings-open');
+    await page.waitForSelector('#settings');
+    await clipShot('9-settings', '#settings');
+    await page.keyboard.press('Escape');
+    await page.mouse.move(640, 400);
+    await page.keyboard.press('F1');
+    await page.waitForSelector('#enc');
+    await clipShot('9-encyclopedia', '#enc');
+    await page.keyboard.press('Escape');
+    // «Сценарий пройден» открывается, когда выполнены все основные цели, — здесь видом сценария с отметкой «пройден», как
+    // его присылает поток расчёта
+    await page.evaluate(() => {
+      const s = window.__game.scenario;
+      s.onView({ ...s.view, complete: window.__game.store.get().day ?? 1 });
+      window.__game.refresh();
+    });
+    await page.waitForSelector('#scenario-done', { timeout: 10000 });
+    await clipShot('9-scenario-done', '#scenario-done');
+    await page.click('#scenario-stay');
+    await page.click('#speed-ff');
+    await page.waitForSelector('#meeting', { timeout: 600000 });
+    await page.waitForTimeout(400);
+    await clipShot('9-meeting', '#meeting');
+    await page.click('#meeting-close');
+    await page.waitForSelector('#demo-summary', { timeout: 60000 });
+    await page.waitForFunction(() => (document.getElementById('demo-shot')?.naturalWidth ?? 0) > 0, null, { timeout: 30000 }).catch(() => {});
+    await clipShot('9-demo-summary', '#demo-summary');
+    await page.goto(url('hospital=preset&flow=6,1&seed=11&start=9.25'));
+    await ready('__started');
+    await page.waitForFunction(() => (window.__game.store.get().doctor?.state?.asks.length ?? 0) > 0, null, { timeout: 120000 });
+    const id = await page.evaluate(() => window.__game.store.get().doctor.state.asks[0].id);
+    await page.click(`#ask-look-${id}`);
+    await page.keyboard.press('Digit3');
+    await page.waitForSelector('#dcard', { timeout: 120000 });
+    await page.waitForTimeout(400);
+    await clipShot('9-card', '#dcard');
+    await page.click('#dcard .said');
+    await page.waitForSelector('#term', { timeout: 10000 });
+    await clipShot('9-term', '#term');
   }
   if (errors.length) console.log(`ошибки в консоли: ${errors.length}\n  ${errors.slice(0, 5).join('\n  ')}`);
 } catch (e) {
