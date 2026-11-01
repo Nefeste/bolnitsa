@@ -505,6 +505,9 @@ SOFTWARE.
 Часть 2 ([спецификация](../docs/specs/2026-11-blender-2.md), решение владельца
 [#178](https://github.com/Nefeste/bolnitsa/issues/178)): модели групп — те же скрипты и тот же Blender, файлы сжаты, как
 модели CC0 (`tools/app/blender-pack.mjs`, EXT_meshopt_compression); бюджет треугольников каждой — `blender/budgets.json`.
+Запечённый свет групп (0.58.0): у каждого размера помещений группы (`light` в `blender/budgets.json`) — образец с моделями
+группы на местах, свет его пола запечён в Cycles (`blender/room.py`, 32 точки на метр); картинки и образцы копируются как
+есть.
 
 | Файл | Что | Скрипт | Blender | SHA-256 |
 |---|---|---|---|---|
@@ -531,3 +534,30 @@ SOFTWARE.
 | `assets/models/blender/analyzer.glb` | лабораторный анализатор: 8 частей | `blender/ambulatory.py` (`analyzer`), `blender/build.py`, `tools/app/blender-pack.mjs` | 4.5.15 | `8842b1559d43571b8d607db895b666eff752c4b9f02c9c9065974f41e62562b2` |
 | `assets/models/blender/procedure_table.glb` | процедурный столик: 5 частей | `blender/ambulatory.py` (`procedure_table`), `blender/build.py`, `tools/app/blender-pack.mjs` | 4.5.15 | `079c81a8f32bf04b52e5609b68fa41362bf84e4c531479095fe5efaf1cdc8aa3` |
 | `assets/models/blender/ecg.glb` | электрокардиограф на тележке: 9 частей | `blender/ambulatory.py` (`ecg`), `blender/build.py`, `tools/app/blender-pack.mjs` | 4.5.15 | `a5f85cfb181658f0cee0998a4d931c0f92a4aea887b19eaf630ad05bed8cb93e` |
+| `assets/models/blender/room-reception-S.png` | свет на полу регистратуры S | `blender/room.py`, `blender/build.py` | 4.5.15 | `4fb8a133001dc387c46bc20c656616ad2259c9775dbb75765d2e6c1c993daad3` |
+| `assets/models/blender/room-reception-S.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `665e5a70773bcfa5db161685d96d42c362853671045b184270dfc46e936e0397` |
+| `assets/models/blender/room-waiting-S.png` | свет на полу зала ожидания S | `blender/room.py`, `blender/build.py` | 4.5.15 | `f4f5ee310442e168921c080ad99aaddb53a38ab3351d80f00bac0937cf73fa43` |
+| `assets/models/blender/room-waiting-S.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `85492a5e5c63b64bf63ce9071697137a2bc2599cd91343b61a3b2d18612e591e` |
+| `assets/models/blender/room-waiting-M.png` | свет на полу зала ожидания M | `blender/room.py`, `blender/build.py` | 4.5.15 | `c2d5020f3eacd481ae70a6b5567ec48cf5aa2feae783e8b05cde41720d0f6ab6` |
+| `assets/models/blender/room-waiting-M.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `fcc7fa27f0a5005cfd96edf2ace61c416d9905cb644b2c9ffed852ef538417d4` |
+| `assets/models/blender/room-waiting-L.png` | свет на полу зала ожидания L | `blender/room.py`, `blender/build.py` | 4.5.15 | `62aff75e78b947bfbeb556f66c24778632be9e385fe42ac1c18a4ea778518331` |
+| `assets/models/blender/room-waiting-L.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `94e96aa152c1b1875369592a07f81870593fba3d5cab0a8d89214424948d395e` |
+| `assets/models/blender/room-office-M.png` | свет на полу кабинета врача M | `blender/room.py`, `blender/build.py` | 4.5.15 | `c205aac925852e1a62bbbbedb4bee496ced0979dba2521dd6faa913198de9987` |
+| `assets/models/blender/room-office-M.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `7281455196cbb3fcc8d7765cb3fba9c93904397562e5e8a6a61016bbc799b232` |
+| `assets/models/blender/room-triage-S.png` | свет на полу сортировки S | `blender/room.py`, `blender/build.py` | 4.5.15 | `b251877e4aca5f405835d21fa8daaa342099b85f621aa2fd6170a5f9149aaaaf` |
+| `assets/models/blender/room-triage-S.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `60ed3b9b526373e334b10f1ebbe11cbb1ca59eae9a3c519c1c4777563e2fbb24` |
+| `assets/models/blender/room-procedure-S.png` | свет на полу процедурной S | `blender/room.py`, `blender/build.py` | 4.5.15 | `6027a23726174184a80d3c1459c3f6b0e13ad5c12a89581f11ee805e77969e06` |
+| `assets/models/blender/room-procedure-S.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `f39ad11d39fbe2aee5cbcccd6a8bf21e86eca17541239a5703f593c37ca1de56` |
+| `assets/models/blender/room-lab-S.png` | свет на полу лаборатории S | `blender/room.py`, `blender/build.py` | 4.5.15 | `5776e0e037b7f05d947cb56722c6894f615f7cf70699385fa19645a0a9713597` |
+| `assets/models/blender/room-lab-S.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `2876294ea29e365d222baad0628dc34815328fad368fd47bc2bf0bf81b8e3606` |
+| `assets/models/blender/room-lab-M.png` | свет на полу лаборатории M | `blender/room.py`, `blender/build.py` | 4.5.15 | `f033fd17eec0031dfac5dd5bcff3ebfce8f1164b666d01dac2fe3d94e29f21ba` |
+| `assets/models/blender/room-lab-M.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `05b2a902978a6f8acdaf7abd3034d9471566c13960f8d94d3ecbb91bb6965d69` |
+| `assets/models/blender/room-ecg-S.png` | свет на полу кабинета ЭКГ S | `blender/room.py`, `blender/build.py` | 4.5.15 | `511f422348847c206541316d6a7609337907d751f9230f9ab0c335e3ea96cd92` |
+| `assets/models/blender/room-ecg-S.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `eb839fb58d690a49d5076fc71eb073394189924de7c6033154745f139bcecca8` |
+| `assets/models/blender/room-toilet-S.png` | свет на полу санузла S | `blender/room.py`, `blender/build.py` | 4.5.15 | `290490a6f32deae4af6a7c0c49dffa5f6dd54cfeabab7c6d9e4de1842283a03b` |
+| `assets/models/blender/room-toilet-S.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `fb9a07d5d3586be1daee1a0992b2000ea48c5ec8cb8059795dd589d405d9c998` |
+| `assets/models/blender/room-staff-S.png` | свет на полу ординаторской S | `blender/room.py`, `blender/build.py` | 4.5.15 | `91fad1536d2442372985e783493fb53a7387ab9173549c6ce792665447beb460` |
+| `assets/models/blender/room-staff-S.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `efbf5aa33bf84aec15790c1960f8fdd0f562100b62549d4fb4e306941fb917ce` |
+| `assets/models/blender/room-staff-M.png` | свет на полу ординаторской M | `blender/room.py`, `blender/build.py` | 4.5.15 | `a94283a003083a175abb2e7ae61c5ef938ec17b3441faa06d4fe53debb2298f4` |
+| `assets/models/blender/room-staff-M.json` | образец: тип, размер, предметы на местах | `blender/build.py` | 4.5.15 | `70034b69520df6871c34402719f63e67a720b1df6c2ca17d683c3e35b7fd46bb` |
+| `assets/models/blender/rooms.json` | указатель образцов света: «тип:размер» → файл и группа | `blender/build.py` | 4.5.15 | `080ee54aa7ba504f4d8686918ccb800c6db73ff6300b742e8a8d3b44055b97c9` |

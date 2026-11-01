@@ -11,7 +11,8 @@ import { join } from 'node:path';
 import * as THREE from 'three';
 import { db } from '../../src/content';
 import { planOf } from '../../src/engine/hospital/build';
-import { type BakedRoom, bakedRooms, turnPoint, unturnPoint } from '../../src/render/baked';
+import { addReady, emptySite, planOfSite } from '../../src/engine/hospital/site';
+import { BakedFloors, type BakedRoom, bakedRooms, turnPoint, unturnPoint } from '../../src/render/baked';
 import { BLENDER, BLENDER_CODE, BLENDER_KIT, CATALOG, SEAT, WHITE_FURNITURE } from '../../src/render/catalog';
 import { CODE_SHIFT, furnishThing } from '../../src/render/furniture';
 import { seatOf } from '../../src/render/models';
@@ -27,8 +28,11 @@ const sizes = JSON.parse(readFileSync(join(ROOT, 'blender/sizes.json'), 'utf8'))
 const sample = JSON.parse(readFileSync(join(DIR, 'room-xray-M.json'), 'utf8')) as BakedRoom;
 /** Модели части 2 (docs/specs/2026-11-blender-2.md): группа, что заменяют, бюджет треугольников. */
 const budgets = JSON.parse(readFileSync(join(ROOT, 'blender/budgets.json'), 'utf8')) as {
+  light: Record<string, string[]>;
   models: Record<string, { group: number; replaces: string; decor?: true; tris: number }>;
 };
+/** Образцы запечённого света (blender/build.py): ключ «тип:размер» → файл и группа (0 — пилот). */
+const roomsIndex = JSON.parse(readFileSync(join(DIR, 'rooms.json'), 'utf8')) as Record<string, { file: string; group: number }>;
 /** Группы части 2, что уже в игре. */
 const GROUPS = [1];
 const part2 = Object.entries(budgets.models).filter(([, b]) => GROUPS.includes(b.group));
@@ -48,7 +52,8 @@ describe('пилот Blender: размеры и паспорта', () => {
   test('у каждого файла assets/models/blender/ — паспорт в LICENSES.md: скрипт, Blender 4.5.15, SHA-256 этого файла', () => {
     const lic = readFileSync(join(ROOT, 'assets/LICENSES.md'), 'utf8');
     const files = readdirSync(DIR).sort();
-    expect(files).toEqual(['bed.glb', 'monitor.glb', 'room-xray-M.json', 'room-xray-M.png', 'xray.glb', ...part2.map(([n]) => `${n}.glb`)].sort());
+    const samples = Object.values(roomsIndex).flatMap(e => [`${e.file}.json`, `${e.file}.png`]);
+    expect(files).toEqual(['bed.glb', 'monitor.glb', 'xray.glb', 'rooms.json', ...samples, ...part2.map(([n]) => `${n}.glb`)].sort());
     for (const f of files) {
       const row = lic.split('\n').find(l => l.startsWith(`| \`assets/models/blender/${f}\``));
       expect(row, f).toBeDefined();
@@ -276,5 +281,77 @@ describe('Blender, часть 2: модели групп в игре', async () 
     // белый шкаф (TALL_WHITE) светлее деревянного шкафа кабинета
     expect(colorsOf('room.procedure')).toBeGreaterThan(colorsOf('room.office'));
     expect(WHITE_FURNITURE.wood).toBeDefined();
+  });
+});
+
+describe('Blender, часть 2: запечённый свет готовых помещений групп', () => {
+  test('образцы — у каждого размера каждого помещения группы со светом (blender/budgets.json, `light`) и у пилота', () => {
+    const want = Object.entries(budgets.light).flatMap(([g, types]) => types.flatMap(t => db.rooms[t].sizes.map(z => [`${t}:${z.id}`, Number(g)] as const)));
+    for (const [key, group] of want) expect(roomsIndex[key]?.group, key).toBe(group);
+    expect(roomsIndex['room.xray:M']).toEqual({ file: 'room-xray-M', group: 0 });
+    expect(Object.keys(roomsIndex).length).toBe(want.length + 1);
+  });
+
+  /**
+   * Образец — готовым помещением в пустом здании, как его ставит игрок: план стройки ПК (`planOfSite`), где у помещения —
+   * наименьший размер типа, а не образец (зал ожидания M там «S»; до 0.58.0 свет M и L из-за этого не ложился).
+   */
+  const ready = (type: string, size: string, rot: 0 | 1 | 2 | 3) => {
+    const r = addReady(db, emptySite(), type, size as 'S', 20, 10, rot);
+    if (!r.ok) throw new Error(`${type} ${size} поворот ${rot}: ${JSON.stringify(r.error)}`);
+    const plan = planOfSite(db, r.site);
+    return { layout: layoutOf(db, plan, []), n: plan.rooms.findIndex(x => x.id === r.room) };
+  };
+
+  test('каждый образец ложится на своё готовое помещение при всех четырёх поворотах; картинка — серая, 32 точки на метр', () => {
+    for (const [key, e] of Object.entries(roomsIndex)) {
+      if (e.group === 0) continue;
+      const room = JSON.parse(readFileSync(join(DIR, `${e.file}.json`), 'utf8')) as BakedRoom;
+      expect(room.key).toBe(key);
+      for (const rot of [0, 1, 2, 3] as const) {
+        const { layout, n } = ready(room.type, room.size, rot);
+        expect(bakedRooms(layout, room), `${key}, поворот ${rot}`).toEqual([n]);
+      }
+      const png = readFileSync(join(DIR, `${e.file}.png`));
+      // у образцов групп — 32 точки на метр (blender/room.py, `PX`), у пилота — 64
+      expect(png.readUInt32BE(16), key).toBe((room.w - 1) * 32);
+      expect(png.readUInt32BE(20), key).toBe((room.h - 1) * 32);
+      expect(png[24]).toBe(8);
+      expect(png[25]).toBe(0);
+    }
+  });
+
+  test('плоскость света — одна сетка на образец, лицом вверх при любом повороте: рисуется в один проход', () => {
+    const room = JSON.parse(readFileSync(join(DIR, `${roomsIndex['room.waiting:M'].file}.json`), 'utf8')) as BakedRoom;
+    // два зала ожидания M на одном участке — по-разному повёрнуты
+    const a = addReady(db, emptySite(), 'room.waiting', 'M', 8, 8, 0);
+    if (!a.ok) throw new Error(JSON.stringify(a.error));
+    const b = addReady(db, a.site, 'room.waiting', 'M', 28, 8, 1);
+    if (!b.ok) throw new Error(JSON.stringify(b.error));
+    const floors = new BakedFloors(room, new THREE.Texture());
+    expect(floors.setLayout(layoutOf(db, planOfSite(db, b.site), []))).toBe(2);
+    expect(floors.group.children.length).toBe(1);
+    const mesh = floors.group.children[0] as THREE.Mesh;
+    expect((mesh.material as THREE.Material).side).toBe(THREE.FrontSide);
+    const p = mesh.geometry.getAttribute('position');
+    expect(p.count).toBe(12);
+    for (const rot of [0, 1, 2, 3] as const) {
+      const c = addReady(db, emptySite(), 'room.waiting', 'M', 20, 10, rot);
+      if (!c.ok) throw new Error(JSON.stringify(c.error));
+      const f = new BakedFloors(room, new THREE.Texture());
+      expect(f.setLayout(layoutOf(db, planOfSite(db, c.site), []))).toBe(1);
+      const q = (f.group.children[0] as THREE.Mesh).geometry.getAttribute('position');
+      for (let t = 0; t < q.count; t += 3) {
+        const v = [0, 1, 2].map(k => new THREE.Vector3().fromBufferAttribute(q, t + k));
+        const n = new THREE.Vector3().subVectors(v[1], v[0]).cross(new THREE.Vector3().subVectors(v[2], v[0]));
+        expect(n.y, `поворот ${rot}`).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  test('образец ложится только на своё: другой размер того же помещения — нет', () => {
+    const lab = (size: string) => JSON.parse(readFileSync(join(DIR, `${roomsIndex[`room.lab:${size}`].file}.json`), 'utf8')) as BakedRoom;
+    expect(bakedRooms(ready('room.lab', 'M', 0).layout, lab('S'))).toEqual([]);
+    expect(bakedRooms(ready('room.lab', 'S', 1).layout, lab('M'))).toEqual([]);
   });
 });

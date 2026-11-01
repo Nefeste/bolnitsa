@@ -242,7 +242,9 @@ app.whenReady().then(async () => {
   // модели Blender (docs/specs/2026-11-blender-2.md): `--models code` — модели кодом и CC0, `--models blender` — ещё и модели
   // пилота; запечённый свет рентген-кабинета — `--baked`
   if (v('models') === 'blender' || v('models') === 'code') q.set('models', v('models'));
-  if (has('baked')) q.set('baked', '1');
+  // свет групп — по умолчанию; `--baked 0` — без него, `--baked` — ещё и свет пилота
+  if (v('baked') === '0') q.set('baked', '0');
+  else if (has('baked')) q.set('baked', '1');
   // демо (spec docs/specs/2026-11-demo.md): на экране начала — только «Кампания», после первой планёрки — «Итог»
   if (has('demo')) q.set('demo', '1');
   await win.loadURL(`app://game/index.html${q.size ? `?${q}` : ''}`);

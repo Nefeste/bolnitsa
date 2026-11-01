@@ -1,8 +1,9 @@
-// Запечённый свет на полу готового помещения (пилот Blender, docs/reports/2026-11-blender-pilot.md; blender/room.py): серая
-// картинка-множитель — затенение (AO) и мягкие тени от светильников, запечённые в Blender для образца помещения. Ложится на
-// пол каждого помещения того же образца — того же типа и размера, с предметами на своих местах (иначе тени были бы не от
-// тех вещей) — при любом повороте. Только под ключом ?baked=1: у светильников в игре теней нет (lamps.ts), а GTAO видит лишь
-// то, что в кадре; без ключа пол как был.
+// Запечённый свет на полу готового помещения (пилот Blender, docs/reports/2026-11-blender-pilot.md; часть 2 —
+// docs/specs/2026-11-blender-2.md; blender/room.py): серая картинка-множитель — затенение (AO) и мягкие тени от светильников,
+// запечённые в Blender для образца помещения. Ложится на пол каждого помещения того же образца — того же типа и размера, с
+// предметами на своих местах (иначе тени были бы не от тех вещей) — при любом повороте. У светильников в игре теней нет
+// (lamps.ts), а GTAO видит лишь то, что в кадре. Образцы групп — по умолчанию (`?baked=0` — без них), пилота — с `?baked=1`
+// (src/app/game.ts).
 import * as THREE from 'three';
 import type { Layout } from './layout';
 
@@ -41,12 +42,17 @@ const sig = (list: { kind: string; at: [number, number] }[]) =>
     .sort()
     .join(';');
 
-/** Помещения раскладки, на пол которых ложится запечённый свет образца: тот же тип и размер, те же предметы на тех же местах. */
+/**
+ * Помещения раскладки, на пол которых ложится запечённый свет образца: тот же тип, те же стороны (с поворотом), те же
+ * предметы на тех же местах. Размер из плана не сверяется: у помещения стройки ПК в плане — наименьший размер типа
+ * (`planOfSite`), а не образец, по которому его поставили, — зал ожидания M там «S».
+ */
 export function bakedRooms(layout: Layout, room: BakedRoom): number[] {
   const want = sig(room.things);
   const out: number[] = [];
   layout.plan.rooms.forEach((r, n) => {
-    if (r.type !== room.type || r.size !== room.size) return;
+    const [w, h] = r.rot % 2 ? [room.h, room.w] : [room.w, room.h];
+    if (r.type !== room.type || r.w !== w || r.h !== h) return;
     const things = layout.things
       .filter(t => t.room === n)
       .map(t => {
@@ -76,39 +82,43 @@ export class BakedFloors {
     this.group.renderOrder = 1;
   }
 
-  /** Раскладка — заново (стройка): плоскость на пол каждого подходящего помещения; отдаёт, сколько их. */
+  /**
+   * Раскладка — заново (стройка): полы всех подходящих помещений — одной сеткой, одним вызовом отрисовки на образец; отдаёт,
+   * сколько помещений. Одна сторона: поворот образца (`turnPoint`) — настоящий поворот, обход вершин он не меняет, и каждый
+   * пол смотрит вверх; прозрачный двусторонний материал three.js рисовал бы в два прохода.
+   */
   setLayout(layout: Layout): number {
     for (const m of [...this.group.children]) {
       this.group.remove(m);
       (m as THREE.Mesh).geometry.dispose();
     }
     const { w, h } = this.room;
-    for (const n of bakedRooms(layout, this.room)) {
+    // пол образца — от середины стены до середины стены (blender/room.py, `floor_mesh`)
+    const corners: [number, number][] = [
+      [0.5, 0.5],
+      [w - 0.5, 0.5],
+      [w - 0.5, h - 0.5],
+      [0.5, h - 0.5],
+    ];
+    const rooms = bakedRooms(layout, this.room);
+    if (!rooms.length) return 0;
+    const pos: number[] = [];
+    const uv: number[] = [];
+    for (const n of rooms) {
       const r = layout.plan.rooms[n];
-      // пол образца — от середины стены до середины стены (blender/room.py, `floor_mesh`)
-      const corners: [number, number][] = [
-        [0.5, 0.5],
-        [w - 0.5, 0.5],
-        [w - 0.5, h - 0.5],
-        [0.5, h - 0.5],
-      ];
-      const pos: number[] = [];
-      const uv: number[] = [];
       for (const k of [0, 3, 2, 0, 2, 1]) {
         const [tx, tz] = corners[k];
         const [ux, uz] = turnPoint(w, h, r.rot, tx, tz);
         pos.push(r.x + ux, Y, r.y + uz);
         uv.push((tx - 0.5) / (w - 1), (tz - 0.5) / (h - 1));
       }
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-      g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-      const mesh = new THREE.Mesh(g, this.material);
-      mesh.name = `baked ${this.room.key} ${r.id}`;
-      // лицом вверх при любом повороте: обход меняется вместе с поворотом — пусть рисуется с обеих сторон
-      this.material!.side = THREE.DoubleSide;
-      this.group.add(mesh);
     }
-    return this.group.children.length;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    const mesh = new THREE.Mesh(g, this.material);
+    mesh.name = `baked ${this.room.key}`;
+    this.group.add(mesh);
+    return rooms.length;
   }
 }

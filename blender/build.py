@@ -7,7 +7,8 @@
 #   blender --background --factory-startup --python blender/build.py [-- имена]
 #   python blender/build.py [имена]     # Blender как модуль Python (пакет bpy той же версии)
 #
-# Без имён — всё: модели пилота, модели части 2 и свет. Версия Blender закреплена (VERSION): другая — отказ, другой файл.
+# Без имён — всё: модели пилота, модели части 2 и свет; «room» — свет всех образцов (пилота и групп с ним, blender/budgets.json,
+# `light`), «room.reception:S» — одного; список образцов для игры — rooms.json. Версия Blender закреплена (VERSION): другая — отказ, другой файл.
 # Запуск дважды даёт те же файлы до байта.
 import json
 import os
@@ -31,6 +32,19 @@ PART2 = {**GROUP1}
 MODELS = {**PILOT, **PART2}
 
 
+def sample_file(key):
+    """Файл образца света: «room.reception:S» → room-reception-S (у пилота — room-xray-M, как было)."""
+    kind, size = key.split(':')
+    return f"room-{kind.replace('room.', '')}-{size}"
+
+
+def write_index():
+    """Список образцов света для игры (src/app/game.ts): ключ → файл и группа (0 — пилот, только с ?baked=1)."""
+    index = {key: {'file': sample_file(key), 'group': room.get('group', 0)} for key, room in SIZES['rooms'].items()}
+    with open(os.path.join(OUT, 'rooms.json'), 'w', encoding='utf-8') as f:
+        f.write(json.dumps(index, ensure_ascii=False, indent=1) + '\n')
+
+
 def main(names):
     if bpy.app.version_string.split(' ')[0] != VERSION:
         raise SystemExit(f'нужен Blender {VERSION}, а это {bpy.app.version_string}')
@@ -38,16 +52,20 @@ def main(names):
     for name in names:
         t0 = time.time()
         reset()
-        if name == 'room':
-            path = os.path.abspath(os.path.join(OUT, 'room-xray-M.png'))
-            room = SIZES['rooms']['room.xray:M']
-            w, h, mean, low = build_room('room.xray:M', room, path)
+        if name in SIZES['rooms']:
+            key = name
+            room = SIZES['rooms'][key]
+            file = sample_file(key)
+            path = os.path.abspath(os.path.join(OUT, f'{file}.png'))
+            w, h, mean, low = build_room(key, room, path)
             # образец для игры (src/render/baked.ts): картинка ложится только на пол помещения с теми же предметами на тех же местах
-            sample = {'key': 'room.xray:M', 'type': 'room.xray', 'size': 'M', 'w': room['w'], 'h': room['h'],
+            kind, size = key.split(':')
+            sample = {'key': key, 'type': kind, 'size': size, 'w': room['w'], 'h': room['h'],
                       'things': [{'kind': t['kind'], 'at': t['at']} for t in room['things']]}
-            with open(os.path.join(OUT, 'room-xray-M.json'), 'w', encoding='utf-8') as f:
+            with open(os.path.join(OUT, f'{file}.json'), 'w', encoding='utf-8') as f:
                 f.write(json.dumps(sample, ensure_ascii=False, indent=1) + '\n')
-            print(f'room: рентген-кабинет M, пол {w}×{h} точек, множитель в среднем {mean:.2f}, самый тёмный {low:.2f}, '
+            write_index()
+            print(f'{key}: пол {w}×{h} точек, множитель в среднем {mean:.2f}, самый тёмный {low:.2f}, '
                   f'{os.path.getsize(path) // 1024} КБ, {time.time() - t0:.1f} с')
             continue
         parts = MODELS[name]()
@@ -65,4 +83,6 @@ def main(names):
 
 if __name__ == '__main__':
     args = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else [a for a in sys.argv[1:] if not a.endswith('.py')]
-    main(args or [*MODELS, 'room'])
+    # «room» — все образцы света (пилота и групп); «room.reception:S» — один
+    rooms = [*SIZES['rooms']]
+    main([r for a in (args or [*MODELS, 'room']) for r in (rooms if a == 'room' else [a])])

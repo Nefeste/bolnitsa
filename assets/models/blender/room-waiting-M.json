@@ -1,0 +1,93 @@
+{
+ "key": "room.waiting:M",
+ "type": "room.waiting",
+ "size": "M",
+ "w": 9,
+ "h": 7,
+ "things": [
+  {
+   "kind": "chair",
+   "at": [
+    2.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "chair",
+   "at": [
+    3.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "chair",
+   "at": [
+    4.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "chair",
+   "at": [
+    5.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "chair",
+   "at": [
+    6.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "plant",
+   "at": [
+    1.5,
+    3.5
+   ]
+  },
+  {
+   "kind": "plant",
+   "at": [
+    7.5,
+    3.5
+   ]
+  },
+  {
+   "kind": "chair",
+   "at": [
+    2.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "chair",
+   "at": [
+    3.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "chair",
+   "at": [
+    4.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "chair",
+   "at": [
+    5.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "chair",
+   "at": [
+    6.5,
+    4.5
+   ]
+  }
+ ]
+}

@@ -601,6 +601,2472 @@
      4.75
     ]
    ]
+  },
+  "room.reception:S": {
+   "w": 6,
+   "h": 7,
+   "cells": [
+    "333333",
+    "311113",
+    "311113",
+    "311113",
+    "311113",
+    "311113",
+    "333433"
+   ],
+   "wallH": 2.7,
+   "wallT": 0.16,
+   "things": [
+    {
+     "kind": "desk",
+     "code": "counter",
+     "blender": "counter",
+     "at": [
+      2.5,
+      3.5
+     ],
+     "yaw": 3.142,
+     "box": {
+      "min": [
+       -0.75,
+       0,
+       -0.45
+      ],
+      "max": [
+       0.75,
+       1.1,
+       0.35
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairDesk",
+     "blender": "office_chair",
+     "at": [
+      2.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.31,
+       0,
+       -0.31
+      ],
+      "max": [
+       0.31,
+       0.85,
+       0.31
+      ]
+     }
+    },
+    {
+     "kind": "cabinet",
+     "model": "kenney/bookcaseClosedDoors",
+     "blender": "bookcase",
+     "at": [
+      4.5,
+      2.5
+     ],
+     "yaw": -1.571,
+     "box": {
+      "min": [
+       -0.45,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.45,
+       1.9,
+       -0.08
+      ]
+     }
+    },
+    {
+     "kind": "plant",
+     "model": "kenney/pottedPlant",
+     "at": [
+      4.5,
+      4.5
+     ],
+     "yaw": -1.571,
+     "box": {
+      "min": [
+       -0.25,
+       0,
+       -0.25
+      ],
+      "max": [
+       0.25,
+       1.05,
+       0.25
+      ]
+     }
+    }
+   ],
+   "lamps": [
+    [
+     3,
+     2.25
+    ],
+    [
+     3,
+     4.75
+    ]
+   ],
+   "group": 1
+  },
+  "room.waiting:S": {
+   "w": 6,
+   "h": 7,
+   "cells": [
+    "333333",
+    "311113",
+    "311113",
+    "311113",
+    "311113",
+    "311113",
+    "334433"
+   ],
+   "wallH": 2.7,
+   "wallT": 0.16,
+   "things": [
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      1.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      2.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      3.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "plant",
+     "model": "kenney/pottedPlant",
+     "at": [
+      4.5,
+      3.5
+     ],
+     "yaw": -1.571,
+     "box": {
+      "min": [
+       -0.25,
+       0,
+       -0.25
+      ],
+      "max": [
+       0.25,
+       1.05,
+       0.25
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      1.5,
+      4.5
+     ],
+     "yaw": 3.142,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      2.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      3.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    }
+   ],
+   "lamps": [
+    [
+     3,
+     2.25
+    ],
+    [
+     3,
+     4.75
+    ]
+   ],
+   "group": 1
+  },
+  "room.waiting:M": {
+   "w": 9,
+   "h": 7,
+   "cells": [
+    "333333333",
+    "311111113",
+    "311111113",
+    "311111113",
+    "311111113",
+    "311111113",
+    "333444333"
+   ],
+   "wallH": 2.7,
+   "wallT": 0.16,
+   "things": [
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      2.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      3.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      4.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      5.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      6.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "plant",
+     "model": "kenney/pottedPlant",
+     "at": [
+      1.5,
+      3.5
+     ],
+     "yaw": 1.571,
+     "box": {
+      "min": [
+       -0.25,
+       0,
+       -0.25
+      ],
+      "max": [
+       0.25,
+       1.05,
+       0.25
+      ]
+     }
+    },
+    {
+     "kind": "plant",
+     "model": "kenney/pottedPlant",
+     "at": [
+      7.5,
+      3.5
+     ],
+     "yaw": -1.571,
+     "box": {
+      "min": [
+       -0.25,
+       0,
+       -0.25
+      ],
+      "max": [
+       0.25,
+       1.05,
+       0.25
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      2.5,
+      4.5
+     ],
+     "yaw": 3.142,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      3.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      4.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      5.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      6.5,
+      4.5
+     ],
+     "yaw": 3.142,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    }
+   ],
+   "lamps": [
+    [
+     2.75,
+     2.25
+    ],
+    [
+     2.75,
+     4.75
+    ],
+    [
+     6.25,
+     2.25
+    ],
+    [
+     6.25,
+     4.75
+    ]
+   ],
+   "group": 1
+  },
+  "room.waiting:L": {
+   "w": 13,
+   "h": 7,
+   "cells": [
+    "3333333333333",
+    "3111111111113",
+    "3111111111113",
+    "3111111111113",
+    "3111111111113",
+    "3111111111113",
+    "3333344443333"
+   ],
+   "wallH": 2.7,
+   "wallT": 0.16,
+   "things": [
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      2.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      3.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      4.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      5.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      6.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      7.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      8.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      9.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      10.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "plant",
+     "model": "kenney/pottedPlant",
+     "at": [
+      1.5,
+      3.5
+     ],
+     "yaw": 1.571,
+     "box": {
+      "min": [
+       -0.25,
+       0,
+       -0.25
+      ],
+      "max": [
+       0.25,
+       1.05,
+       0.25
+      ]
+     }
+    },
+    {
+     "kind": "plant",
+     "model": "kenney/pottedPlant",
+     "at": [
+      11.5,
+      3.5
+     ],
+     "yaw": -1.571,
+     "box": {
+      "min": [
+       -0.25,
+       0,
+       -0.25
+      ],
+      "max": [
+       0.25,
+       1.05,
+       0.25
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      2.5,
+      4.5
+     ],
+     "yaw": 3.142,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      3.5,
+      4.5
+     ],
+     "yaw": 3.142,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      4.5,
+      4.5
+     ],
+     "yaw": 3.142,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      5.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      6.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      7.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      8.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      9.5,
+      4.5
+     ],
+     "yaw": 3.142,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairModernFrameCushion",
+     "blender": "waiting_chair",
+     "at": [
+      10.5,
+      4.5
+     ],
+     "yaw": 3.142,
+     "box": {
+      "min": [
+       -0.28,
+       0,
+       -0.28
+      ],
+      "max": [
+       0.28,
+       0.85,
+       0.28
+      ]
+     }
+    }
+   ],
+   "lamps": [
+    [
+     2.375,
+     2.25
+    ],
+    [
+     2.375,
+     4.75
+    ],
+    [
+     5.125,
+     2.25
+    ],
+    [
+     5.125,
+     4.75
+    ],
+    [
+     7.875,
+     2.25
+    ],
+    [
+     7.875,
+     4.75
+    ],
+    [
+     10.625,
+     2.25
+    ],
+    [
+     10.625,
+     4.75
+    ]
+   ],
+   "group": 1
+  },
+  "room.office:M": {
+   "w": 8,
+   "h": 7,
+   "cells": [
+    "33333333",
+    "31111113",
+    "31111113",
+    "31111113",
+    "31111113",
+    "31111113",
+    "33343333"
+   ],
+   "wallH": 2.7,
+   "wallT": 0.16,
+   "things": [
+    {
+     "kind": "desk",
+     "model": "kenney/desk",
+     "blender": "desk",
+     "at": [
+      3.5,
+      3.5
+     ],
+     "yaw": 3.142,
+     "box": {
+      "min": [
+       -0.48,
+       0,
+       -0.31
+      ],
+      "max": [
+       0.48,
+       0.66,
+       0.31
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairDesk",
+     "blender": "office_chair",
+     "at": [
+      3.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.31,
+       0,
+       -0.31
+      ],
+      "max": [
+       0.31,
+       0.85,
+       0.31
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairDesk",
+     "blender": "office_chair",
+     "at": [
+      3.5,
+      4.5
+     ],
+     "yaw": 3.142,
+     "box": {
+      "min": [
+       -0.31,
+       0,
+       -0.31
+      ],
+      "max": [
+       0.31,
+       0.85,
+       0.31
+      ]
+     }
+    },
+    {
+     "kind": "couch",
+     "code": "examCouch",
+     "blender": "couch",
+     "at": [
+      6.5,
+      3
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.33,
+       0,
+       -0.93
+      ],
+      "max": [
+       0.33,
+       0.725,
+       0.93
+      ]
+     }
+    },
+    {
+     "kind": "cabinet",
+     "model": "kenney/bookcaseClosedDoors",
+     "blender": "bookcase",
+     "at": [
+      1.5,
+      3.5
+     ],
+     "yaw": 1.571,
+     "box": {
+      "min": [
+       -0.45,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.45,
+       1.9,
+       -0.08
+      ]
+     }
+    },
+    {
+     "kind": "sink",
+     "model": "kenney/bathroomSink",
+     "blender": "sink",
+     "at": [
+      6.5,
+      4.5
+     ],
+     "yaw": -1.571,
+     "box": {
+      "min": [
+       -0.26,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.26,
+       0.95,
+       -0.05
+      ]
+     }
+    },
+    {
+     "kind": "plant",
+     "model": "kenney/pottedPlant",
+     "at": [
+      1.5,
+      4.5
+     ],
+     "yaw": 1.571,
+     "box": {
+      "min": [
+       -0.25,
+       0,
+       -0.25
+      ],
+      "max": [
+       0.25,
+       1.05,
+       0.25
+      ]
+     }
+    }
+   ],
+   "lamps": [
+    [
+     2.5,
+     2.25
+    ],
+    [
+     2.5,
+     4.75
+    ],
+    [
+     5.5,
+     2.25
+    ],
+    [
+     5.5,
+     4.75
+    ]
+   ],
+   "group": 1
+  },
+  "room.triage:S": {
+   "w": 6,
+   "h": 7,
+   "cells": [
+    "333333",
+    "311113",
+    "311113",
+    "311113",
+    "311113",
+    "311113",
+    "333433"
+   ],
+   "wallH": 2.7,
+   "wallT": 0.16,
+   "things": [
+    {
+     "kind": "desk",
+     "model": "kenney/desk",
+     "blender": "desk",
+     "at": [
+      2.5,
+      3.5
+     ],
+     "yaw": 3.142,
+     "box": {
+      "min": [
+       -0.48,
+       0,
+       -0.31
+      ],
+      "max": [
+       0.48,
+       0.66,
+       0.31
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairDesk",
+     "blender": "office_chair",
+     "at": [
+      2.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.31,
+       0,
+       -0.31
+      ],
+      "max": [
+       0.31,
+       0.85,
+       0.31
+      ]
+     }
+    },
+    {
+     "kind": "couch",
+     "code": "examCouch",
+     "blender": "couch",
+     "at": [
+      4.5,
+      3
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.33,
+       0,
+       -0.93
+      ],
+      "max": [
+       0.33,
+       0.725,
+       0.93
+      ]
+     }
+    },
+    {
+     "kind": "sink",
+     "model": "kenney/bathroomSink",
+     "blender": "sink",
+     "at": [
+      4.5,
+      4.5
+     ],
+     "yaw": -1.571,
+     "box": {
+      "min": [
+       -0.26,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.26,
+       0.95,
+       -0.05
+      ]
+     }
+    }
+   ],
+   "lamps": [
+    [
+     3,
+     2.25
+    ],
+    [
+     3,
+     4.75
+    ]
+   ],
+   "group": 1
+  },
+  "room.procedure:S": {
+   "w": 6,
+   "h": 7,
+   "cells": [
+    "333333",
+    "311113",
+    "311113",
+    "311113",
+    "311113",
+    "311113",
+    "334333"
+   ],
+   "wallH": 2.7,
+   "wallT": 0.16,
+   "things": [
+    {
+     "kind": "table",
+     "code": "procedureTable",
+     "blender": "procedure_table",
+     "at": [
+      2.5,
+      3.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.4,
+       0,
+       -0.26
+      ],
+      "max": [
+       0.4,
+       0.78,
+       0.26
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chair",
+     "blender": "chair",
+     "at": [
+      2.5,
+      4.5
+     ],
+     "yaw": 3.142,
+     "box": {
+      "min": [
+       -0.25,
+       0,
+       -0.25
+      ],
+      "max": [
+       0.25,
+       0.85,
+       0.25
+      ]
+     }
+    },
+    {
+     "kind": "cabinet",
+     "model": "kenney/bookcaseClosedDoors",
+     "blender": "bookcase",
+     "at": [
+      4.5,
+      3.5
+     ],
+     "yaw": -1.571,
+     "box": {
+      "min": [
+       -0.45,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.45,
+       1.9,
+       -0.08
+      ]
+     }
+    },
+    {
+     "kind": "sink",
+     "model": "kenney/bathroomSink",
+     "blender": "sink",
+     "at": [
+      4.5,
+      4.5
+     ],
+     "yaw": -1.571,
+     "box": {
+      "min": [
+       -0.26,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.26,
+       0.95,
+       -0.05
+      ]
+     }
+    }
+   ],
+   "lamps": [
+    [
+     3,
+     2.25
+    ],
+    [
+     3,
+     4.75
+    ]
+   ],
+   "group": 1
+  },
+  "room.lab:S": {
+   "w": 6,
+   "h": 7,
+   "cells": [
+    "333333",
+    "311113",
+    "311113",
+    "311113",
+    "311113",
+    "311113",
+    "333433"
+   ],
+   "wallH": 2.7,
+   "wallT": 0.16,
+   "things": [
+    {
+     "kind": "table",
+     "code": "labBench",
+     "blender": "lab_bench",
+     "item": 0,
+     "at": [
+      2.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.49,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.49,
+       1.235,
+       0.12
+      ]
+     }
+    },
+    {
+     "kind": "table",
+     "code": "labBench",
+     "blender": "lab_bench",
+     "item": 1,
+     "at": [
+      3.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.49,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.49,
+       1.235,
+       0.12
+      ]
+     }
+    },
+    {
+     "kind": "sink",
+     "model": "kenney/kitchenSink",
+     "blender": "lab_sink",
+     "at": [
+      4.5,
+      4.5
+     ],
+     "yaw": -1.571,
+     "box": {
+      "min": [
+       -0.475,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.475,
+       0.92,
+       0.12
+      ]
+     }
+    },
+    {
+     "kind": "analyzer",
+     "code": "analyzer",
+     "blender": "analyzer",
+     "shift": -0.18,
+     "at": [
+      1.5,
+      2.5
+     ],
+     "yaw": 1.571,
+     "box": {
+      "min": [
+       -0.41,
+       0,
+       -0.49
+      ],
+      "max": [
+       0.41,
+       1.26,
+       0.135
+      ]
+     }
+    },
+    {
+     "kind": "analyzer",
+     "code": "analyzer",
+     "blender": "analyzer",
+     "shift": -0.18,
+     "at": [
+      4.5,
+      2.5
+     ],
+     "yaw": -1.571,
+     "box": {
+      "min": [
+       -0.41,
+       0,
+       -0.49
+      ],
+      "max": [
+       0.41,
+       1.26,
+       0.135
+      ]
+     }
+    }
+   ],
+   "lamps": [
+    [
+     3,
+     2.25
+    ],
+    [
+     3,
+     4.75
+    ]
+   ],
+   "group": 1
+  },
+  "room.lab:M": {
+   "w": 8,
+   "h": 7,
+   "cells": [
+    "33333333",
+    "31111113",
+    "31111113",
+    "31111113",
+    "31111113",
+    "31111113",
+    "33343333"
+   ],
+   "wallH": 2.7,
+   "wallT": 0.16,
+   "things": [
+    {
+     "kind": "table",
+     "code": "labBench",
+     "blender": "lab_bench",
+     "item": 1,
+     "at": [
+      3.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.49,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.49,
+       1.235,
+       0.12
+      ]
+     }
+    },
+    {
+     "kind": "table",
+     "code": "labBench",
+     "blender": "lab_bench",
+     "item": 0,
+     "at": [
+      4.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.49,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.49,
+       1.235,
+       0.12
+      ]
+     }
+    },
+    {
+     "kind": "sink",
+     "model": "kenney/kitchenSink",
+     "blender": "lab_sink",
+     "at": [
+      1.5,
+      4.5
+     ],
+     "yaw": 1.571,
+     "box": {
+      "min": [
+       -0.475,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.475,
+       0.92,
+       0.12
+      ]
+     }
+    },
+    {
+     "kind": "cabinet",
+     "model": "kenney/bookcaseClosedDoors",
+     "blender": "bookcase",
+     "at": [
+      6.5,
+      4.5
+     ],
+     "yaw": -1.571,
+     "box": {
+      "min": [
+       -0.45,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.45,
+       1.9,
+       -0.08
+      ]
+     }
+    },
+    {
+     "kind": "analyzer",
+     "code": "analyzer",
+     "blender": "analyzer",
+     "shift": -0.18,
+     "at": [
+      1.5,
+      2.5
+     ],
+     "yaw": 1.571,
+     "box": {
+      "min": [
+       -0.41,
+       0,
+       -0.49
+      ],
+      "max": [
+       0.41,
+       1.26,
+       0.135
+      ]
+     }
+    },
+    {
+     "kind": "analyzer",
+     "code": "analyzer",
+     "blender": "analyzer",
+     "shift": -0.18,
+     "at": [
+      2.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.41,
+       0,
+       -0.49
+      ],
+      "max": [
+       0.41,
+       1.26,
+       0.135
+      ]
+     }
+    },
+    {
+     "kind": "analyzer",
+     "code": "analyzer",
+     "blender": "analyzer",
+     "shift": -0.18,
+     "at": [
+      5.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.41,
+       0,
+       -0.49
+      ],
+      "max": [
+       0.41,
+       1.26,
+       0.135
+      ]
+     }
+    },
+    {
+     "kind": "analyzer",
+     "code": "analyzer",
+     "blender": "analyzer",
+     "shift": -0.18,
+     "at": [
+      6.5,
+      2.5
+     ],
+     "yaw": -1.571,
+     "box": {
+      "min": [
+       -0.41,
+       0,
+       -0.49
+      ],
+      "max": [
+       0.41,
+       1.26,
+       0.135
+      ]
+     }
+    }
+   ],
+   "lamps": [
+    [
+     2.5,
+     2.25
+    ],
+    [
+     2.5,
+     4.75
+    ],
+    [
+     5.5,
+     2.25
+    ],
+    [
+     5.5,
+     4.75
+    ]
+   ],
+   "group": 1
+  },
+  "room.ecg:S": {
+   "w": 6,
+   "h": 7,
+   "cells": [
+    "333333",
+    "311113",
+    "311113",
+    "311113",
+    "311113",
+    "311113",
+    "333433"
+   ],
+   "wallH": 2.7,
+   "wallT": 0.16,
+   "things": [
+    {
+     "kind": "couch",
+     "code": "examCouch",
+     "blender": "couch",
+     "at": [
+      2.5,
+      4
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.33,
+       0,
+       -0.93
+      ],
+      "max": [
+       0.33,
+       0.725,
+       0.93
+      ]
+     }
+    },
+    {
+     "kind": "cabinet",
+     "model": "kenney/bookcaseClosedDoors",
+     "blender": "bookcase",
+     "at": [
+      4.5,
+      2.5
+     ],
+     "yaw": -1.571,
+     "box": {
+      "min": [
+       -0.45,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.45,
+       1.9,
+       -0.08
+      ]
+     }
+    },
+    {
+     "kind": "ecg",
+     "code": "ecg",
+     "blender": "ecg",
+     "at": [
+      1.5,
+      3.5
+     ],
+     "yaw": 1.571,
+     "box": {
+      "min": [
+       -0.25,
+       0,
+       -0.2
+      ],
+      "max": [
+       0.25,
+       1.32,
+       0.2
+      ]
+     }
+    }
+   ],
+   "lamps": [
+    [
+     3,
+     2.25
+    ],
+    [
+     3,
+     4.75
+    ]
+   ],
+   "group": 1
+  },
+  "room.toilet:S": {
+   "w": 6,
+   "h": 7,
+   "cells": [
+    "333333",
+    "311113",
+    "311113",
+    "311113",
+    "311113",
+    "311113",
+    "333433"
+   ],
+   "wallH": 2.7,
+   "wallT": 0.16,
+   "things": [
+    {
+     "kind": "sink",
+     "model": "kenney/bathroomSinkSquare",
+     "blender": "sink_wc",
+     "at": [
+      2.5,
+      4.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.3,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.3,
+       0.95,
+       -0.02
+      ]
+     }
+    },
+    {
+     "kind": "sink",
+     "model": "kenney/bathroomSinkSquare",
+     "blender": "sink_wc",
+     "at": [
+      4.5,
+      4.5
+     ],
+     "yaw": -1.571,
+     "box": {
+      "min": [
+       -0.3,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.3,
+       0.95,
+       -0.02
+      ]
+     }
+    }
+   ],
+   "decor": [
+    {
+     "kind": "toilet",
+     "blender": "toilet",
+     "at": [
+      2.5,
+      1.5
+     ],
+     "yaw": 0
+    },
+    {
+     "kind": "toilet",
+     "blender": "toilet",
+     "at": [
+      3.5,
+      1.5
+     ],
+     "yaw": 0
+    }
+   ],
+   "lamps": [
+    [
+     3,
+     2.25
+    ],
+    [
+     3,
+     4.75
+    ]
+   ],
+   "group": 1
+  },
+  "room.staff:S": {
+   "w": 6,
+   "h": 7,
+   "cells": [
+    "333333",
+    "311113",
+    "311113",
+    "311113",
+    "311113",
+    "311113",
+    "334333"
+   ],
+   "wallH": 2.7,
+   "wallT": 0.16,
+   "things": [
+    {
+     "kind": "desk",
+     "model": "kenney/desk",
+     "blender": "desk",
+     "at": [
+      1.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.48,
+       0,
+       -0.31
+      ],
+      "max": [
+       0.48,
+       0.66,
+       0.31
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairDesk",
+     "blender": "office_chair",
+     "at": [
+      1.5,
+      3.5
+     ],
+     "yaw": 3.142,
+     "box": {
+      "min": [
+       -0.31,
+       0,
+       -0.31
+      ],
+      "max": [
+       0.31,
+       0.85,
+       0.31
+      ]
+     }
+    },
+    {
+     "kind": "desk",
+     "model": "kenney/desk",
+     "blender": "desk",
+     "at": [
+      4.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.48,
+       0,
+       -0.31
+      ],
+      "max": [
+       0.48,
+       0.66,
+       0.31
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairDesk",
+     "blender": "office_chair",
+     "at": [
+      4.5,
+      3.5
+     ],
+     "yaw": 3.142,
+     "box": {
+      "min": [
+       -0.31,
+       0,
+       -0.31
+      ],
+      "max": [
+       0.31,
+       0.85,
+       0.31
+      ]
+     }
+    },
+    {
+     "kind": "cabinet",
+     "model": "kaykit/cabinet_medium",
+     "blender": "low_cabinet",
+     "at": [
+      1.5,
+      4.5
+     ],
+     "yaw": 1.571,
+     "box": {
+      "min": [
+       -0.475,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.475,
+       1.15,
+       0
+      ]
+     }
+    },
+    {
+     "kind": "plant",
+     "model": "kenney/pottedPlant",
+     "at": [
+      4.5,
+      4.5
+     ],
+     "yaw": -1.571,
+     "box": {
+      "min": [
+       -0.25,
+       0,
+       -0.25
+      ],
+      "max": [
+       0.25,
+       1.05,
+       0.25
+      ]
+     }
+    }
+   ],
+   "lamps": [
+    [
+     3,
+     2.25
+    ],
+    [
+     3,
+     4.75
+    ]
+   ],
+   "group": 1
+  },
+  "room.staff:M": {
+   "w": 9,
+   "h": 7,
+   "cells": [
+    "333333333",
+    "311111113",
+    "311111113",
+    "311111113",
+    "311111113",
+    "311111113",
+    "333343333"
+   ],
+   "wallH": 2.7,
+   "wallT": 0.16,
+   "things": [
+    {
+     "kind": "desk",
+     "model": "kenney/desk",
+     "blender": "desk",
+     "at": [
+      1.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.48,
+       0,
+       -0.31
+      ],
+      "max": [
+       0.48,
+       0.66,
+       0.31
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairDesk",
+     "blender": "office_chair",
+     "at": [
+      1.5,
+      3.5
+     ],
+     "yaw": 3.142,
+     "box": {
+      "min": [
+       -0.31,
+       0,
+       -0.31
+      ],
+      "max": [
+       0.31,
+       0.85,
+       0.31
+      ]
+     }
+    },
+    {
+     "kind": "desk",
+     "model": "kenney/desk",
+     "blender": "desk",
+     "at": [
+      3.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.48,
+       0,
+       -0.31
+      ],
+      "max": [
+       0.48,
+       0.66,
+       0.31
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairDesk",
+     "blender": "office_chair",
+     "at": [
+      3.5,
+      3.5
+     ],
+     "yaw": 3.142,
+     "box": {
+      "min": [
+       -0.31,
+       0,
+       -0.31
+      ],
+      "max": [
+       0.31,
+       0.85,
+       0.31
+      ]
+     }
+    },
+    {
+     "kind": "desk",
+     "model": "kenney/desk",
+     "blender": "desk",
+     "at": [
+      5.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.48,
+       0,
+       -0.31
+      ],
+      "max": [
+       0.48,
+       0.66,
+       0.31
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairDesk",
+     "blender": "office_chair",
+     "at": [
+      5.5,
+      3.5
+     ],
+     "yaw": 3.142,
+     "box": {
+      "min": [
+       -0.31,
+       0,
+       -0.31
+      ],
+      "max": [
+       0.31,
+       0.85,
+       0.31
+      ]
+     }
+    },
+    {
+     "kind": "desk",
+     "model": "kenney/desk",
+     "blender": "desk",
+     "at": [
+      7.5,
+      2.5
+     ],
+     "yaw": 0,
+     "box": {
+      "min": [
+       -0.48,
+       0,
+       -0.31
+      ],
+      "max": [
+       0.48,
+       0.66,
+       0.31
+      ]
+     }
+    },
+    {
+     "kind": "chair",
+     "model": "kenney/chairDesk",
+     "blender": "office_chair",
+     "at": [
+      7.5,
+      3.5
+     ],
+     "yaw": 3.142,
+     "box": {
+      "min": [
+       -0.31,
+       0,
+       -0.31
+      ],
+      "max": [
+       0.31,
+       0.85,
+       0.31
+      ]
+     }
+    },
+    {
+     "kind": "cabinet",
+     "model": "kaykit/cabinet_medium",
+     "blender": "low_cabinet",
+     "at": [
+      1.5,
+      4.5
+     ],
+     "yaw": 1.571,
+     "box": {
+      "min": [
+       -0.475,
+       0,
+       -0.5
+      ],
+      "max": [
+       0.475,
+       1.15,
+       0
+      ]
+     }
+    },
+    {
+     "kind": "couch",
+     "model": "kenney/loungeChair",
+     "blender": "lounge_chair",
+     "at": [
+      7.5,
+      4.5
+     ],
+     "yaw": -1.571,
+     "box": {
+      "min": [
+       -0.425,
+       0,
+       -0.4
+      ],
+      "max": [
+       0.425,
+       0.85,
+       0.4
+      ]
+     }
+    }
+   ],
+   "lamps": [
+    [
+     2.75,
+     2.25
+    ],
+    [
+     2.75,
+     4.75
+    ],
+    [
+     6.25,
+     2.25
+    ],
+    [
+     6.25,
+     4.75
+    ]
+   ],
+   "group": 1
   }
  }
 }

@@ -16,8 +16,8 @@ import * as THREE from 'three';
 import { db } from '../../src/content';
 import type { Id, ObjectKind, RoomSizeId } from '../../src/content/types';
 import { planOf } from '../../src/engine/hospital/build';
-import { CATALOG, type Code, entryOf, EXTRA_MODELS } from '../../src/render/catalog';
-import { CODE_SHIFT, furnishThing, IV_AT, LIE_TOP, PALETTE, TOILET } from '../../src/render/furniture';
+import { BLENDER_CODE, BLENDER_KIT, CATALOG, type Code, entryOf, EXTRA_MODELS } from '../../src/render/catalog';
+import { benchItem, CODE_SHIFT, furnishThing, IV_AT, LIE_TOP, PALETTE, TOILET, toiletSpots } from '../../src/render/furniture';
 import { lampPoints } from '../../src/render/lamps';
 import { isLong, layoutOf, type Thing } from '../../src/render/layout';
 import type { Model } from '../../src/render/models';
@@ -26,6 +26,7 @@ import { furnitureModels, oneRoom } from '../test/render-kit';
 
 const OUT = join(import.meta.dir, '../../blender/sizes.json');
 const BUDGETS = JSON.parse(readFileSync(join(import.meta.dir, '../../blender/budgets.json'), 'utf8')) as {
+  light: Record<string, Id[]>;
   models: Record<string, { group: number; replaces: string; decor?: true; tris: number }>;
 };
 
@@ -129,7 +130,7 @@ function partTwo(models: Map<string, Model>): { codes: Record<string, unknown>; 
 }
 
 /** Габарит предмета раскладки в его осях: у моделей кодом — по их сетке, у моделей наборов — место из catalog.ts. */
-function boxOf(t: Thing): { min: number[]; max: number[] } {
+function boxOf(t: Thing, models: Map<string, Model>): { min: number[]; max: number[] } {
   const e = entryOf(t.kind, t.type, t.equipment);
   if (e && 'model' in e) {
     const h = e.fit.h || (e.seat ? 0.85 : 0.75);
@@ -139,7 +140,8 @@ function boxOf(t: Thing): { min: number[]; max: number[] } {
   }
   const one: Thing = { ...t, cell: [0, 0], cells: t.cells.map((_, i) => [0, i] as [number, number]), yaw: 0 };
   const b = new THREE.Box3();
-  for (const g of [...furnishThing(one, new Map()).colored, ...furnishThing(one, new Map()).glow]) {
+  const batch = furnishThing(one, models);
+  for (const g of [...batch.colored, ...batch.textured, ...batch.glow]) {
     g.computeBoundingBox();
     b.union(g.boundingBox!);
   }
@@ -148,7 +150,19 @@ function boxOf(t: Thing): { min: number[]; max: number[] } {
 }
 
 /** Готовое помещение без поворота, как его ставит игра (render-kit `oneRoom`: помещение на участке, вокруг коридор). */
-function roomOf(type: Id, size: RoomSizeId) {
+/** Модель Blender вещи — та, что окно ставит по умолчанию (части 2, `BLENDER_CODE` и `BLENDER_KIT`): имя в blender/. */
+const blenderOf = (e: ReturnType<typeof entryOf>): string | undefined => {
+  const file = e && ('code' in e ? BLENDER_CODE[e.code] : BLENDER_KIT[e.model]);
+  return file?.replace('blender/', '');
+};
+
+/**
+ * Готовое помещение для запекания света. `group` — образец группы части 2 (docs/specs/2026-11-blender-2.md, «Запечённый
+ * свет»): у вещей — модель Blender, которую ставит окно (`blender`), сдвиг места модели кодом (`shift`), что стоит на
+ * лабораторном столе (`item`), и кабинки санузла (`decor`). Образец пилота (рентген M) — как в пилоте.
+ */
+function roomOf(type: Id, size: RoomSizeId, models: Map<string, Model>, group?: number) {
+  const part2 = group !== undefined;
   const hs = oneRoom(db, type, size, 0);
   const plan = planOf(db, hs);
   const layout = layoutOf(db, plan, hs.decor);
@@ -166,13 +180,25 @@ function roomOf(type: Id, size: RoomSizeId) {
       const cx = t.cells.reduce((a, c) => a + c[0] + 0.5, 0) / t.cells.length - r.x;
       const cz = t.cells.reduce((a, c) => a + c[1] + 0.5, 0) / t.cells.length - r.y;
       const e = entryOf(t.kind, t.type, t.equipment);
-      return { kind: t.kind, ...(e && 'code' in e ? { code: e.code } : e ? { model: e.model } : {}), at: [round(cx), round(cz)], yaw: round(t.yaw), box: boxOf(t) };
+      const code = e && 'code' in e ? e.code : undefined;
+      const blender = part2 ? blenderOf(e) : undefined;
+      return {
+        kind: t.kind, ...(e && 'code' in e ? { code: e.code } : e ? { model: e.model } : {}), ...(blender ? { blender } : {}),
+        ...(part2 && code && CODE_SHIFT[code] !== undefined ? { shift: CODE_SHIFT[code] } : {}), ...(part2 && code === 'labBench' ? { item: benchItem(t) } : {}),
+        at: [round(cx), round(cz)], yaw: round(t.yaw), box: boxOf(t, models),
+      };
     });
   const lamps = lampPoints(layout)
     .filter(p => p.room === n)
     .map(p => [round(p.x - r.x), round(p.z - r.y)]);
+  // кабинки санузла — декор окна (furniture.ts, `decorate`): в образце их нет, но тень они дают
+  const decor = part2
+    ? toiletSpots(layout)
+        .filter(s => s.room === n)
+        .map(s => ({ kind: 'toilet', blender: blenderOf({ model: 'kenney/toilet', fit: TOILET.fit }), at: [round(s.cell[0] + 0.5 - r.x), round(s.cell[1] + 0.5 - r.y)], yaw: round(s.yaw) }))
+    : [];
   // клетки плана: 1 — пол, 3 — стена, 4 — дверь (engine/hospital/grid.ts, CELL)
-  return { w: r.w, h: r.h, cells, wallH: WALL_H, wallT: WALL_T, things, lamps };
+  return { w: r.w, h: r.h, cells, wallH: WALL_H, wallT: WALL_T, things, ...(decor.length ? { decor } : {}), lamps, ...(part2 ? { group } : {}) };
 }
 
 /** Модели наборов, без которых не собрать модели кодом (монитор на стойке регистратуры, тумба лабораторного стола). */
@@ -181,7 +207,11 @@ export const sizesModels = () => furnitureModels([...EXTRA_MODELS]);
 /** Текст blender/sizes.json — из игры сейчас (тест `blender.test.ts` сверяет с ним файл в git); `models` — `sizesModels()`. */
 export function sizesJson(models: Map<string, Model>): string {
   const palette = Object.fromEntries(Object.entries(PALETTE).map(([k, v]) => [k.toLowerCase(), hex(v)]));
-  const rooms = { 'room.xray:M': roomOf('room.xray', 'M') };
+  // образец пилота и образцы групп части 2 со светом (blender/budgets.json, `light`) — каждого размера
+  const rooms: Record<string, unknown> = { 'room.xray:M': roomOf('room.xray', 'M', models) };
+  for (const [group, types] of Object.entries(BUDGETS.light)) {
+    for (const type of types) for (const z of db.rooms[type].sizes) rooms[`${type}:${z.id}`] = roomOf(type, z.id, models, Number(group));
+  }
   return `${JSON.stringify({ about: 'tools/app/blender-sizes.ts — из игры; не править руками', cell: 1, palette, items: itemsOf(), ...partTwo(models), rooms }, null, 1)}\n`;
 }
 

@@ -1,0 +1,58 @@
+{
+ "key": "room.waiting:S",
+ "type": "room.waiting",
+ "size": "S",
+ "w": 6,
+ "h": 7,
+ "things": [
+  {
+   "kind": "chair",
+   "at": [
+    1.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "chair",
+   "at": [
+    2.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "chair",
+   "at": [
+    3.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "plant",
+   "at": [
+    4.5,
+    3.5
+   ]
+  },
+  {
+   "kind": "chair",
+   "at": [
+    1.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "chair",
+   "at": [
+    2.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "chair",
+   "at": [
+    3.5,
+    4.5
+   ]
+  }
+ ]
+}

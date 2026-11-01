@@ -1,0 +1,37 @@
+{
+ "key": "room.reception:S",
+ "type": "room.reception",
+ "size": "S",
+ "w": 6,
+ "h": 7,
+ "things": [
+  {
+   "kind": "desk",
+   "at": [
+    2.5,
+    3.5
+   ]
+  },
+  {
+   "kind": "chair",
+   "at": [
+    2.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "cabinet",
+   "at": [
+    4.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "plant",
+   "at": [
+    4.5,
+    4.5
+   ]
+  }
+ ]
+}

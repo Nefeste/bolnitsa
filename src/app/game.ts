@@ -272,12 +272,13 @@ export class Game {
   /** каталки на карте (spec docs/specs/2026-10-orderlies.md) — и для сценария в браузере: сколько видно */
   gurneys!: Gurneys;
   /**
-   * запечённый свет на полу рентген-кабинета (пилот Blender, docs/reports/2026-11-blender-pilot.md) — только с ?baked=1;
-   * `baked` — на скольких полах он лежит (для снимков и бенча)
+   * запечённый свет на полу готовых помещений (docs/specs/2026-11-blender-2.md, «Запечённый свет»): образцы групп — вместе с
+   * их моделями Blender, `?baked=0` — без света; образец пилота (рентген-кабинет M) — только с `?baked=1`. `baked` — на
+   * скольких полах он лежит (для снимков и бенча)
    */
-  bakedFloors: BakedFloors | undefined;
+  bakedFloors: BakedFloors[] = [];
   baked = 0;
-  private bakedSample: { room: BakedRoom; map: THREE.Texture } | undefined;
+  private bakedSamples: { room: BakedRoom; map: THREE.Texture }[] = [];
   /** миниатюры каталога стройки (spec docs/specs/2026-10-catalog.md) */
   thumbs!: ThumbQueue;
   /** кто вёз каталку в прошлом срезе — «Персонал» заново, когда изменилось */
@@ -469,11 +470,22 @@ export class Game {
     const mode: ModelsMode = keys.get('models') === 'code' ? 'code' : keys.get('models') === 'blender' ? 'blender' : 'part2';
     const kits = [...new Set([...Object.values(CATALOG).flatMap(e => ('model' in e ? [e.model] : [])), ...EXTRA_MODELS])];
     const names = modelsOf(mode, kits);
-    if (keys.get('baked') === '1') {
-      const sample = `${base}/blender/room-xray-M`;
-      const room = (await (await fetch(`${sample}.json`)).json()) as BakedRoom;
-      this.bakedSample = { room, map: await new THREE.TextureLoader().loadAsync(`${sample}.png`) };
-    }
+    // свет образцов групп запечён с их моделями Blender: с моделями кодом (`?models=code`) тени были бы не от тех вещей;
+    // грузится вместе с моделями, а не перед ними
+    const light = keys.get('baked');
+    const samples = (async () => {
+      if (light === '0') return [];
+      const index = (await (await fetch(`${base}/blender/rooms.json`)).json()) as Record<string, { file: string; group: number }>;
+      const want = Object.values(index).filter(e => (e.group === 0 ? light === '1' : mode !== 'code'));
+      return Promise.all(
+        want.map(async e => ({
+          room: (await (await fetch(`${base}/blender/${e.file}.json`)).json()) as BakedRoom,
+          map: await new THREE.TextureLoader().loadAsync(`${base}/blender/${e.file}.png`),
+        })),
+      );
+    })();
+    // ошибка загрузки света всплывёт ниже, на `await samples`, — не раньше, «необработанной»
+    samples.catch(() => undefined);
     const models = this.models;
     // полоса загрузки: база — 1, модели — по файлу, люди — по виду, мир — 1, смена — 1 (видов людей — из их списка)
     const looks = ((await (await fetch(`${base}/rocketbox/index.json`)).json()) as { looks: string[] }).looks.length;
@@ -486,6 +498,7 @@ export class Game {
         this.step(1, T.demo.loadModels(++loaded, names.length));
       }),
     );
+    this.bakedSamples = await samples;
     this.load.furniture = Math.round(performance.now() - tf);
     const tp = performance.now();
     let baked = 0;
@@ -700,9 +713,10 @@ export class Game {
       // каталки (spec docs/specs/2026-10-orderlies.md, «Что видно»): у санитаров и у фельдшеров скорой
       this.gurneys = new Gurneys();
       this.stage.scene.add(this.gurneys.group);
-      if (this.bakedSample) {
-        this.bakedFloors = new BakedFloors(this.bakedSample.room, this.bakedSample.map);
-        this.stage.scene.add(this.bakedFloors.group);
+      for (const s of this.bakedSamples) {
+        const floors = new BakedFloors(s.room, s.map);
+        this.bakedFloors.push(floors);
+        this.stage.scene.add(floors.group);
       }
       this.labels = new Labels(this.stage);
       this.chips = new Chips(this.stage);
@@ -719,7 +733,7 @@ export class Game {
     this.layout = layout;
     this.furnished = furnished;
     this.places = places;
-    if (this.bakedFloors) this.baked = this.bakedFloors.setLayout(layout);
+    this.baked = this.bakedFloors.reduce((n, f) => n + f.setLayout(layout), 0);
     this.plan = plan;
     this.onDuty();
     this.builder.refresh();
