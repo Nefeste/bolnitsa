@@ -1,6 +1,7 @@
 # Модели Blender для игры (docs/reports/2026-11-blender-pilot.md, docs/specs/2026-11-blender-2.md; blender/README.md):
 # пилот — кровать, монитор, рентген и запечённый свет рентген-кабинета M; часть 2 — модели групп (blender/ambulatory.py —
-# группа 1, blender/stationary.py — группа 2: её кровать и монитор заменили модели пилота). Пишет в blender/.out/ (не в git);
+# группа 1, blender/stationary.py — группа 2: её кровать и монитор заменили модели пилота, blender/diagnostics.py — группа 3:
+# рентген пилота, КТ, МРТ, УЗИ и пульт; свет рентген-кабинета M теперь — образец группы 3). Пишет в blender/.out/ (не в git);
 # сжимает и кладёт в assets/models/blender/ `node tools/app/blender-pack.mjs`. Размеры — blender/sizes.json (из игры: bun
 # tools/app/blender-sizes.ts), бюджет треугольников части 2 — blender/budgets.json: модель сверх бюджета не пишется.
 #
@@ -21,6 +22,7 @@ import bpy  # noqa: E402
 
 from ambulatory import MODELS as GROUP1  # noqa: E402
 from common import HERE, SIZES, bake_ao, export, floor, reset, tris  # noqa: E402
+from diagnostics import MODELS as GROUP3  # noqa: E402
 from models import MODELS as PILOT  # noqa: E402
 from room import build_room  # noqa: E402
 from stationary import MODELS as GROUP2  # noqa: E402
@@ -28,21 +30,21 @@ from stationary import MODELS as GROUP2  # noqa: E402
 VERSION = '4.5.15'
 OUT = os.path.join(HERE, '.out')
 BUDGETS = json.load(open(os.path.join(HERE, 'budgets.json'), encoding='utf-8'))['models']
-# модели части 2 — в своём бюджете; модели пилота — пока их не переделала их группа: кровать и монитор — уже группа 2 (у пилота
-# кровать — 4872 треугольника при бюджете 1200), рентген — группа 3
-PART2 = {**GROUP1, **GROUP2}
+# модели части 2 — в своём бюджете; модели пилота переделали их группы: кровать и монитор — группа 2 (у пилота кровать —
+# 4872 треугольника при бюджете 1200), рентген — группа 3 (модель пилота как есть, в бюджете)
+PART2 = {**GROUP1, **GROUP2, **GROUP3}
 MODELS = {**PILOT, **PART2}
 
 
 def sample_file(key):
-    """Файл образца света: «room.reception:S» → room-reception-S (у пилота — room-xray-M, как было)."""
+    """Файл образца света: «room.reception:S» → room-reception-S (рентген-кабинет M — room-xray-M, как у пилота)."""
     kind, size = key.split(':')
     return f"room-{kind.replace('room.', '')}-{size}"
 
 
 def write_index():
-    """Список образцов света для игры (src/app/game.ts): ключ → файл и группа (0 — пилот, только с ?baked=1)."""
-    index = {key: {'file': sample_file(key), 'group': room.get('group', 0)} for key, room in SIZES['rooms'].items()}
+    """Список образцов света для игры (src/app/game.ts): ключ → файл и группа части 2 (лист света берёт образцы группы)."""
+    index = {key: {'file': sample_file(key), 'group': room['group']} for key, room in SIZES['rooms'].items()}
     with open(os.path.join(OUT, 'rooms.json'), 'w', encoding='utf-8') as f:
         f.write(json.dumps(index, ensure_ascii=False, indent=1) + '\n')
 

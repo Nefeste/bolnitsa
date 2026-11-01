@@ -1,0 +1,44 @@
+{
+ "key": "room.ct:M",
+ "type": "room.ct",
+ "size": "M",
+ "w": 9,
+ "h": 7,
+ "things": [
+  {
+   "kind": "table",
+   "at": [
+    7.5,
+    3.5
+   ]
+  },
+  {
+   "kind": "table",
+   "at": [
+    1.5,
+    3.5
+   ]
+  },
+  {
+   "kind": "chair",
+   "at": [
+    1.5,
+    4.5
+   ]
+  },
+  {
+   "kind": "cabinet",
+   "at": [
+    1.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "ct",
+   "at": [
+    4.5,
+    4
+   ]
+  }
+ ]
+}

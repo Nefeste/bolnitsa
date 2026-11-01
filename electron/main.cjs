@@ -239,12 +239,10 @@ app.whenReady().then(async () => {
     return i > 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : null;
   };
   if (v('q')) q.set('q', v('q'));
-  // модели Blender (docs/specs/2026-11-blender-2.md): `--models code` — модели кодом и CC0, `--models blender` — ещё и модели
-  // пилота; запечённый свет рентген-кабинета — `--baked`
-  if (v('models') === 'blender' || v('models') === 'code') q.set('models', v('models'));
-  // свет групп — по умолчанию; `--baked 0` — без него, `--baked` — ещё и свет пилота
+  // модели Blender (docs/specs/2026-11-blender-2.md) — по умолчанию; `--models code` — модели кодом и CC0
+  if (v('models') === 'code') q.set('models', 'code');
+  // свет групп — по умолчанию; `--baked 0` — без него
   if (v('baked') === '0') q.set('baked', '0');
-  else if (has('baked')) q.set('baked', '1');
   // демо (spec docs/specs/2026-11-demo.md): на экране начала — только «Кампания», после первой планёрки — «Итог»
   if (has('demo')) q.set('demo', '1');
   await win.loadURL(`app://game/index.html${q.size ? `?${q}` : ''}`);

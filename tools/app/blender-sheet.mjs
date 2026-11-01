@@ -6,6 +6,7 @@
 // `--light` — свет группы: слева без запечённого света (`baked=0`), справа с ним. Снимает образцы, а не поликлинику: каждый
 // образец группы (assets/models/blender/rooms.json) готовым помещением без людей в пустом здании, как его ставит игрок, —
 // в поликлинике залы ожидания и ординаторская растянуты, образца для них нет. Со светом проверяет, что он лёг на помещение.
+// Группа 3 — в городе (`light` у группы): МРТ L дороже кассы пустого здания, а все её образцы в городе есть — как они есть.
 //
 //   npm run build && node tools/app/blender-sheet.mjs [--group 1] [--light] [--out docs/reports/2026-11-blender-1] [--q high] [--port 8097]
 import { chromium } from 'playwright-core';
@@ -34,6 +35,9 @@ const ROOMS = {
   1: { hospital: 'poly', types: ['room.reception', 'room.waiting', 'room.office', 'room.triage', 'room.procedure', 'room.lab', 'room.ecg', 'room.toilet', 'room.staff'] },
   // стационар — в городе: в поликлинике коек нет
   2: { hospital: 'preset', types: ['room.ward', 'room.box', 'room.icu', 'room.ricu', 'room.emergency'] },
+  // диагностика — тоже в городе: в поликлинике её нет; свет — тоже в городе: МРТ L (4,6 млн ₽) дороже кассы пустого здания
+  // на «Спокойно» (2,5 млн и 0,5 млн в долг), а все четыре образца в городе стоят как есть
+  3: { hospital: 'preset', light: 'preset', types: ['room.xray', 'room.ct', 'room.mri', 'room.ultrasound'] },
 }[group];
 if (!ROOMS) throw new Error(`нет группы ${group}`);
 /** Образцы света группы: «room.waiting:L» → тип и размер. */
@@ -64,6 +68,24 @@ const frames = (n = 4) =>
 
 const shots = [];
 const failed = [];
+/** Лёг ли запечённый свет на помещение плана: вершина плоскости света внутри его клеток. */
+const litRoom = async n =>
+  page.evaluate(k => {
+    const g = window.__game;
+    const r = g.plan.rooms[k];
+    return g.bakedFloors.some(f =>
+      f.group.children.some(m => {
+        const p = m.geometry.getAttribute('position');
+        for (let i = 0; i < p.count; i++) {
+          const x = p.getX(i);
+          const z = p.getZ(i);
+          if (x > r.x && x < r.x + r.w && z > r.y && z < r.y + r.h) return true;
+        }
+        return false;
+      }),
+    );
+  }, n);
+
 /** Камера на помещение: середина, полуширина кадра по большей стороне. */
 const aim = async r =>
   page.evaluate(([x, z, h]) => {
@@ -120,29 +142,33 @@ async function samples(mode) {
 
 try {
   for (const mode of MODES) {
-    const where = light ? 'empty' : ROOMS.hospital;
+    const empty = light && !ROOMS.light;
+    const where = empty ? 'empty' : light ? ROOMS.light : ROOMS.hospital;
     // пустое здание закрыто, часы стоят — без перемотки к 11:00; уровень «Спокойно» — касса 2,5 млн ₽: реанимация L стоит
     // больше миллиона, а на вид уровень не влияет
-    await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&hospital=${where}&flow=0,0${light ? '&manage=calm' : '&start=11'}${mode.key ? `&${mode.key}` : ''}`);
+    await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&hospital=${where}&flow=0,0${empty ? '&manage=calm' : '&start=11'}${mode.key ? `&${mode.key}` : ''}`);
     await page.waitForFunction(() => window.__started === true, null, { timeout: 300000 });
     await page.evaluate(() => window.__game.actions.doctor({ kind: 'fold', folded: true }));
     // только сцена: панели окна, подписи и значки состояния помещений закрывают его
     await page.evaluate(() => {
       for (const el of document.body.children) if (el.id !== 'view') el.style.visibility = 'hidden';
     });
-    if (light) {
+    if (empty) {
       await samples(mode);
       continue;
     }
     for (const type of ROOMS.types) {
       const room = await page.evaluate(t => {
-        const r = window.__game.plan.rooms.find(x => x.type === t);
-        return r ? { x: r.x + r.w / 2, z: r.y + r.h / 2, half: Math.max(r.w, r.h) * 0.3 + 0.4 } : null;
+        const n = window.__game.plan.rooms.findIndex(x => x.type === t);
+        const r = window.__game.plan.rooms[n];
+        return r ? { n, x: r.x + r.w / 2, z: r.y + r.h / 2, half: Math.max(r.w, r.h) * 0.3 + 0.4 } : null;
       }, type);
       if (!room) {
         console.log(`✗ ${type}: нет в больнице`);
         continue;
       }
+      // свет в городе: лёг ли на помещение (со светом) и нет ли его без света
+      if (light && (await litRoom(room.n)) !== (mode.name === 'light')) failed.push(`${type}: ${mode.name === 'light' ? 'свет не лёг' : 'свет лёг с baked=0'}`);
       await page.evaluate(([x, z, h]) => {
         const c = window.__game.stage.cam;
         c.target.set(x, 0, z);
@@ -155,7 +181,7 @@ try {
     }
   }
   // лист: слева «было» (модели кодом и CC0; без света), справа «стало» (Blender; со светом)
-  const names = light ? SAMPLES.map(sm => sm.name) : ROOMS.types.map(t => t.replace('room.', ''));
+  const names = light && !ROOMS.light ? SAMPLES.map(sm => sm.name) : ROOMS.types.map(t => t.replace('room.', ''));
   const rows = names.filter(t => shots.filter(s => s.type === t || s.type === `room.${t}`).length === 2);
   const img = n => `data:image/jpeg;base64,${readFileSync(join(out, n)).toString('base64')}`;
   const html = `<html><body style="margin:0;background:#1d2327;color:#e8eef0;font:14px sans-serif">
@@ -171,7 +197,7 @@ try {
   await sheet.screenshot({ path: join(out, light ? 'sheet-light.jpg' : 'sheet.jpg'), type: 'jpeg', quality: 72, fullPage: true });
   console.log(`✓ лист: ${join(out, light ? 'sheet-light.jpg' : 'sheet.jpg')} — ${rows.length} помещений`);
   console.log(errors.length ? `✗ ошибки в консоли: ${errors.slice(0, 5).join(' | ')}` : '✓ ошибок в консоли нет');
-  if (light) console.log(failed.length ? `✗ ${failed.join('; ')}` : `✓ свет лёг на каждый из ${SAMPLES.length} образцов, поставленных готовым помещением`);
+  if (light) console.log(failed.length ? `✗ ${failed.join('; ')}` : ROOMS.light ? `✓ свет лёг на каждое из ${ROOMS.types.length} помещений группы в городе` : `✓ свет лёг на каждый из ${SAMPLES.length} образцов, поставленных готовым помещением`);
   if (errors.length || failed.length) process.exitCode = 1;
 } finally {
   await browser.close();

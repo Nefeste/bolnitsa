@@ -1,8 +1,4 @@
 {
- "room.xray:M": {
-  "file": "room-xray-M",
-  "group": 0
- },
  "room.reception:S": {
   "file": "room-reception-S",
   "group": 1
@@ -94,5 +90,21 @@
  "room.emergency:L": {
   "file": "room-emergency-L",
   "group": 2
+ },
+ "room.xray:M": {
+  "file": "room-xray-M",
+  "group": 3
+ },
+ "room.ct:M": {
+  "file": "room-ct-M",
+  "group": 3
+ },
+ "room.mri:L": {
+  "file": "room-mri-L",
+  "group": 3
+ },
+ "room.ultrasound:S": {
+  "file": "room-ultrasound-S",
+  "group": 3
  }
 }

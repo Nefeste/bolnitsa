@@ -1,0 +1,30 @@
+{
+ "key": "room.ultrasound:S",
+ "type": "room.ultrasound",
+ "size": "S",
+ "w": 6,
+ "h": 7,
+ "things": [
+  {
+   "kind": "couch",
+   "at": [
+    2.5,
+    4
+   ]
+  },
+  {
+   "kind": "cabinet",
+   "at": [
+    4.5,
+    2.5
+   ]
+  },
+  {
+   "kind": "us",
+   "at": [
+    1.5,
+    3.5
+   ]
+  }
+ ]
+}

@@ -49,6 +49,12 @@ const CODE_AT: Partial<Record<Code, { kind: ObjectKind; type: Id; equipment?: Id
   bed: { kind: 'bed', type: 'room.ward' },
   monitor: { kind: 'monitor', type: 'room.icu', equipment: 'eq.monitor_defib' },
   ventilator: { kind: 'anesthesia', type: 'room.ricu', equipment: 'eq.ventilator' },
+  // группа 3: аппараты диагностики и пульт кабинета
+  xray: { kind: 'xray', type: 'room.xray', equipment: 'eq.xray_digital' },
+  ct: { kind: 'ct', type: 'room.ct' },
+  mri: { kind: 'mri', type: 'room.mri' },
+  us: { kind: 'us', type: 'room.ultrasound' },
+  console: { kind: 'table', type: 'room.xray' },
 };
 
 
@@ -215,8 +221,9 @@ export const sizesModels = () => furnitureModels([...EXTRA_MODELS]);
 /** Текст blender/sizes.json — из игры сейчас (тест `blender.test.ts` сверяет с ним файл в git); `models` — `sizesModels()`. */
 export function sizesJson(models: Map<string, Model>): string {
   const palette = Object.fromEntries(Object.entries(PALETTE).map(([k, v]) => [k.toLowerCase(), hex(v)]));
-  // образец пилота и образцы групп части 2 со светом (blender/budgets.json, `light`) — каждого размера
-  const rooms: Record<string, unknown> = { 'room.xray:M': roomOf('room.xray', 'M', models) };
+  // образцы групп части 2 со светом (blender/budgets.json, `light`) — каждого размера; рентген-кабинет M пилота стал образцом
+  // группы 3
+  const rooms: Record<string, unknown> = {};
   for (const [group, types] of Object.entries(BUDGETS.light)) {
     for (const type of types) for (const z of db.rooms[type].sizes) rooms[`${type}:${z.id}`] = roomOf(type, z.id, models, Number(group));
   }
