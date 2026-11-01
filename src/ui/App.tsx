@@ -185,6 +185,10 @@ function SettingsPanel({ hud, actions }: P) {
         </Btn>
       </div>
       <p className="muted small">{t.keys}</p>
+      {/* подписи помещений на среднем плане (spec docs/specs/2026-10-aaa-polish.md) */}
+      <label className="check" title={T.view.namesHint}>
+        <input type="checkbox" id="names" checked={hud.names} onChange={actions.toggleNames} /> {T.view.names}
+      </label>
       <div className="label">{T.view.quality}</div>
       <div className="row">
         {q.map(([m, s]) => (

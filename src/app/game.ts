@@ -64,6 +64,7 @@ import { ColumnLabels } from './collabels';
 import { applyText, AutoQuality, type QualityMode, readSettings, type Settings, type TextScale, writeSettings } from './settings';
 import { HoverLabel } from './hover';
 import { Labels } from './labels';
+import { fadeOf, RoomTags, TAG_GAP } from './tags';
 import { ThumbQueue, thumbKey } from './thumbs';
 import { Money } from './money';
 import { staffName } from './people';
@@ -325,6 +326,8 @@ export class Game {
   /** первый `world` из потока — та же больница, что окно отправило: сцену не пересобирать */
   private fresh = true;
   private labels!: Labels;
+  /** подписи помещений на среднем плане — одним холстом (spec docs/specs/2026-10-aaa-polish.md) */
+  tags!: RoomTags;
   /** подпись под курсором (spec docs/specs/2026-10-aaa-polish.md, «Выделение и наведение») */
   private hoverLabel!: HoverLabel;
   /** под курсором: человек или помещение (номер в плане; -1 — нет) — для подсветки и подписи */
@@ -575,7 +578,7 @@ export class Game {
     // живая сцена экрана начала — без слоя: она показывает больницу, а не числа
     const metric = this.backdrop ? null : ([asked, p.metric].find((m): m is Metric => !!m && METRICS_READY.includes(m)) ?? null);
     this.step(1, '', true);
-    store.set({ ready: true, status: '', progress: undefined, demoMode: this.demoMode, quality, qualityMode: p.quality, debug: p.debug, speed: this.speed, layers: { ...store.get().layers, metric } });
+    store.set({ ready: true, status: '', progress: undefined, demoMode: this.demoMode, quality, qualityMode: p.quality, debug: p.debug, names: p.names, speed: this.speed, layers: { ...store.get().layers, metric } });
     requestAnimationFrame(this.loop);
   }
 
@@ -725,6 +728,7 @@ export class Game {
         this.stage.scene.add(floors.group);
       }
       this.labels = new Labels(this.stage);
+      this.tags = new RoomTags(this.stage);
       this.chips = new Chips(this.stage);
       this.colLabels = new ColumnLabels(this.stage);
       this.hoverLabel = new HoverLabel();
@@ -985,6 +989,8 @@ export class Game {
         };
       }),
     );
+    // подписи на среднем плане (spec docs/specs/2026-10-aaa-polish.md, «Подписи помещений на среднем плане»): только название
+    this.tags.set(plan.rooms.map(r => ({ id: r.id, x: r.x, z: r.y, w: r.w, h: r.h, text: named(db.rooms[r.type]?.name, r.type) })));
     this.store.set({
       staffList: this.staffRows(),
       reserveHire: this.reserveRoles(),
@@ -1382,7 +1388,13 @@ export class Game {
     this.labels.visible = this.builder.on || this.store.get().layers.depts;
     this.labels.frame();
     this.chips.visible = !this.labels.visible && !this.backdrop;
+    // подписи помещений на среднем плане — вне стройки, без слоёв со своими подписями над помещениями («Отделения» — таблички,
+    // «Показатели» — числа над столбиками), не на живой сцене экрана начала; значок состояния — над подписью, другие она обходит
+    const tags = this.prefs.names && !this.labels.visible && !this.store.get().layers.metric && !this.backdrop;
+    // точка в точку — на границе зазора: на точку выше, чтобы своя подпись не считалась налезшей
+    this.chips.lift = tags && fadeOf(this.stage.cam.half) > 0 ? this.tags.height / 2 + TAG_GAP + 1 : 0;
     this.chips.frame();
+    this.tags.frame(tags, this.chips.boxes, this.prefs.text);
     this.colLabels.frame();
     // карта вашего больного — когда его фигура вошла (замечание владельца 25.10.2026)
     this.doctor.frame();
@@ -1839,6 +1851,11 @@ export class Game {
       const debug = !this.store.get().debug;
       this.store.set({ debug });
       this.remember({ debug });
+    },
+    toggleNames: () => {
+      const names = !this.store.get().names;
+      this.store.set({ names });
+      this.remember({ names });
     },
     bench: uncapped => {
       if (uncapped && window.shell) window.shell.relaunch(['--bench', '--uncapped']);

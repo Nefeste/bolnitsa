@@ -182,6 +182,8 @@ export interface Hud {
   /** «Нанять в резерв» (spec docs/specs/2026-10-staff-mood.md, часть 5): должности тех, кто на местах, и зарплата за сутки */
   reserveHire: { role: Id; text: string }[];
   debug: boolean;
+  /** подписи помещений на среднем плане (spec docs/specs/2026-10-aaa-polish.md): настройка игрока */
+  names: boolean;
   build: BuildHud;
   roomTypes: RoomTypeRow[];
   readyTypes: ReadyTypeRow[];
@@ -286,6 +288,7 @@ export const initial: Hud = {
   staffList: [],
   reserveHire: [],
   debug: false,
+  names: true,
   build: { on: false, withStaff: true, moving: false, spent: 0, undo: 0 },
   roomTypes: [],
   readyTypes: [],
@@ -336,6 +339,7 @@ export interface Actions {
   select(key: string | undefined): void;
   setTab(t: Tab | null): void;
   toggleDebug(): void;
+  toggleNames(): void;
   bench(uncapped: boolean): void;
   setLang(l: Lang): void;
   /** стройка (spec docs/specs/2026-10-build.md) */

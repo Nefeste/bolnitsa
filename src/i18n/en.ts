@@ -252,6 +252,9 @@ export const en: Strings = {
     ortho: 'ortho',
     persp: 'perspective',
     debug: 'Debug',
+    /** подписи помещений на среднем плане (spec docs/specs/2026-10-aaa-polish.md) */
+    names: 'Room names',
+    namesHint: 'Room names on the map at a middle zoom: none closer in or further out',
   },
   settings: {
     title: 'Settings',

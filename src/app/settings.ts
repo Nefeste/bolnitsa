@@ -22,10 +22,12 @@ export interface Settings {
   metric: Metric | null;
   /** размер текста панелей и подписей на карте */
   text: TextScale;
+  /** подписи помещений на среднем плане (spec docs/specs/2026-10-aaa-polish.md, «Подписи помещений на среднем плане») */
+  names: boolean;
 }
 
 /** По умолчанию — вид владельца: стены вниз (решение #70), перспектива; качество — «авто». */
-export const DEFAULT_SETTINGS: Settings = { walls: 'down', projection: 'persp', quality: 'auto', debug: false, metric: null, text: 1 };
+export const DEFAULT_SETTINGS: Settings = { walls: 'down', projection: 'persp', quality: 'auto', debug: false, metric: null, text: 1, names: true };
 
 const KEY = 'bolnitsa.settings';
 const WALLS: readonly WallMode[] = ['full', 'cut', 'down'];
@@ -49,6 +51,8 @@ export function parseSettings(raw: string | null | undefined): Settings {
     debug: x.debug === true,
     metric: METRICS.find(m => m === x.metric) ?? null,
     text: pick(TEXT_SCALES, x.text, DEFAULT_SETTINGS.text),
+    // по умолчанию — есть: выключает их только «нет» игрока
+    names: x.names !== false,
   };
 }
 

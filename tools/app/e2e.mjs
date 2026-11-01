@@ -47,6 +47,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { approvePart } from './e2e-approve.mjs';
 import { roundsPart } from './e2e-rounds.mjs';
+import { tagsPart } from './e2e-tags.mjs';
 import { rolesPart } from './e2e-roles.mjs';
 import { ownCardPart } from './e2e-owncard.mjs';
 import { benchesPart } from './e2e-benches.mjs';
@@ -198,6 +199,8 @@ try {
   if (run(32)) await demoPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   // часть 33 — утренний обход (spec docs/specs/2026-10-staff-motion.md, часть 2): tools/app/e2e-rounds.mjs
   if (run(33)) await roundsPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  // часть 34 — подписи помещений на среднем плане (spec docs/specs/2026-10-aaa-polish.md): tools/app/e2e-tags.mjs
+  if (run(34)) await tagsPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);
