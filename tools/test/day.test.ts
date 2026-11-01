@@ -205,9 +205,11 @@ describe('сутки целиком: ночь', () => {
     // обход выписывал и переводил
     const ward = s.history.slice(1).map(h => h.ward);
     expect(ward.reduce((a, w) => a + (w?.discharged ?? 0) + (w?.transferred ?? 0), 0)).toBeGreaterThan(0);
-    // операции шли и ночью, с 20:00 до 08:00
+    // операции шли и ночью, с 20:00 до 08:00. Сколько — дело зерна: с 0.64.1 привезённых скорой зовут по срочности (spec
+    // docs/specs/2026-11-scenario-2.md, «Замер»), порядок приёма другой, и у зерна 45 их три вместо четырёх; на шести зёрнах
+    // этой больницы — 37 против 38
     const night = [...starts.values()].filter(t => clock(t) >= 20 || clock(t) < 8);
-    expect(starts.size).toBeGreaterThan(3);
+    expect(starts.size).toBeGreaterThanOrEqual(3);
     expect(night.length).toBeGreaterThan(0);
   }, 300_000);
 

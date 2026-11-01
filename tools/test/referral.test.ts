@@ -33,17 +33,31 @@ const member = (role: Id): StaffMember => staff.find(m => m.role === role)!;
 const profiled = (id: Id) => Object.values(db.roles).some(r => r.profile?.includes(id));
 const END = 20 * 3600;
 
-/** День до 20:00, на просьбы — сразу «пусть решает сам»: первый, кого терапевт направил сам, и о ком просили. */
+/**
+ * Двое суток до 20:00, на просьбы — сразу «пусть решает сам»: первый, кого терапевт направил сам, и о ком просили. Направляет
+ * он редко: у города один терапевт, и с 0.64.1 привезённых скорой зовут по срочности наравне с прочими (spec
+ * docs/specs/2026-11-scenario-2.md, «Замер»), — днём он больше в смотровой.
+ */
+const SENT_END = 44 * 3600;
 function firstSent(base: ContentDb, seed: number): { s: ShiftState; p?: ShiftPatient; asked: Set<string> } {
   const s = city(seed, base);
   const asked = new Set<string>();
-  while (s.t < END) {
+  while (s.t < SENT_END) {
     for (const n of apply(base, s, { kind: 'advance', seconds: 60 })) if (n.kind === 'consult') asked.add(n.id);
     for (const c of [...(s.consults ?? [])]) apply(base, s, { kind: 'consult', id: c.id, answer: 'self' });
     const p = Object.values(s.patients).find(x => x.ref !== undefined);
     if (p) return { s, p, asked };
   }
   return { s, asked };
+}
+
+/** Зёрна по порядку — первое, где терапевт направил сам: на нём и проверки (одно и то же для обоих тестов). */
+const SEEDS = [5, 10, 11, 1, 2, 3, 4, 6, 7, 8, 9, 12];
+let sentSeed: number | undefined;
+function seedSent(): number {
+  sentSeed ??= SEEDS.find(seed => firstSent(db, seed).p !== undefined);
+  if (sentSeed === undefined) throw new Error('ни на одном зерне терапевт не направил сам');
+  return sentSeed;
 }
 
 describe('поправка профиля и к кому направить — чистые функции', () => {
@@ -81,7 +95,7 @@ describe('поправка профиля и к кому направить — 
 
 describe('нанятый терапевт направляет сам', () => {
   test('не уверен, вторая гипотеза — из профиля работающего: направил к нему, а не просил; специалист ведёт и закрывает', () => {
-    const { s, p, asked } = firstSent(db, 5);
+    const { s, p, asked } = firstSent(db, seedSent());
     expect(p).toBeDefined();
     const to = s.staff!.find(m => m.id === p!.ref)!;
     expect(db.roles[to.role].profile).toBeDefined();
@@ -98,13 +112,14 @@ describe('нанятый терапевт направляет сам', () => {
     expect(s.summary.colleagues![from.id].sent).toBe(1);
     // специалист позвал его и закрыл случай
     const id = p!.id;
-    while (!p!.closed && s.t < 23 * 3600) apply(db, s, { kind: 'advance', seconds: 60 });
+    while (!p!.closed && s.t < SENT_END + 3 * 3600) apply(db, s, { kind: 'advance', seconds: 60 });
     expect(p!.closed?.by ?? s.gone?.find(r => r.id === id)?.by).toBe(to.id);
   }, 120_000);
 
   test('без числа `consults.refer` — не направляют: тот же больной — просьба посмотреть', () => {
-    const { p: sent } = firstSent(db, 5);
-    const { p, asked } = firstSent(noRefer(), 5);
+    const seed = seedSent();
+    const { p: sent } = firstSent(db, seed);
+    const { p, asked } = firstSent(noRefer(), seed);
     expect(p).toBeUndefined();
     expect(asked.has(sent!.id)).toBe(true);
   }, 120_000);
