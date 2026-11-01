@@ -187,10 +187,11 @@ python blender/build.py [names]    # then the models in Blender 4.5.15 (`pip ins
                                    # is not written; no names — all
 node tools/app/blender-pack.mjs    # then compress them like the CC0 models into assets/models/blender/; byte-identical;
                                    # passports in assets/LICENSES.md, section 8 (blender/README.md)
-node tools/app/blender-sheet.mjs   # after build: the before/after sheet of a group's rooms (polyclinic, 11:00, no patients) —
-                                   # code and CC0 models vs Blender → tools/app/out/sheet/ (`--group 1`); `--light` — each
-                                   # light sample built as a ready room in the empty building, `baked=0` vs the light, and a
-                                   # check that the light lay on every one
+node tools/app/blender-sheet.mjs   # after build: the before/after sheet of a group's rooms (11:00, no new patients; group 1 in
+                                   # the polyclinic, group 2 in the city) — code and CC0 models vs Blender → tools/app/out/sheet/
+                                   # (`--group 1|2`); `--light` — each light sample built as a ready room in the empty building
+                                   # (on «Спокойно»: the cash covers a reanimation L), `baked=0` vs the light, and a check that
+                                   # the light lay on every one
 npm run bench -- --mode flow --quick           # engine: time per game minute at 50/100/200/300 patients (PC flow)
 npm run bench -- --mode desks --quick          # the same with Anamnez's appointment slots
 npm run bench -- --mode flow --day             # the whole day to 10:00 of day 2: day and night minutes, 08:00 meeting, 09:00 round
