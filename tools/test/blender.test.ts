@@ -1,50 +1,52 @@
-// Пилот Blender (docs/reports/2026-11-blender-pilot.md; blender/README.md): кровать, монитор у кровати и рентген — модели
-// Blender, и запечённый свет рентген-кабинета M. Размеры для скриптов — из игры: blender/sizes.json тот же, что считает
-// tools/app/blender-sizes.ts сейчас. У каждого файла assets/models/blender/ — паспорт в assets/LICENSES.md (скрипт, версия
-// Blender, SHA-256), и файл тот. Модели собраны из частей: узел .glb называется как часть (капельница кровати — `iv`,
-// `iv_bag`: вне палаты её нет), у каждой части — затенение в цвете вершин, габарит — как у модели кодом. Запечённый свет
-// ложится на пол рентген-кабинета M при любом повороте помещения и только там, где предметы на своих местах.
+// Модели Blender (пилот — docs/reports/2026-11-blender-pilot.md, часть 2 — docs/specs/2026-11-blender-2.md; blender/README.md):
+// модели групп части 2 вместо моделей кодом и наборов CC0 и запечённый свет их готовых помещений. Размеры для скриптов — из
+// игры: blender/sizes.json тот же, что считает tools/app/blender-sizes.ts сейчас. У каждого файла assets/models/blender/ —
+// паспорт в assets/LICENSES.md (скрипт, версия Blender, SHA-256), и файл тот. Модели собраны из частей: узел .glb называется
+// как часть (капельница кровати — `iv`, `iv_bag`: вне палаты её нет), у каждой части — затенение в цвете вершин, габарит —
+// как у модели кодом. Запечённый свет ложится на пол своего готового помещения при любом повороте и только там, где
+// предметы на своих местах.
 import { describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as THREE from 'three';
 import { db } from '../../src/content';
-import { planOf } from '../../src/engine/hospital/build';
 import { addReady, emptySite, planOfSite } from '../../src/engine/hospital/site';
 import { BakedFloors, type BakedRoom, bakedRooms, turnPoint, unturnPoint } from '../../src/render/baked';
-import { BLENDER, BLENDER_CODE, BLENDER_KIT, CATALOG, SEAT, WHITE_FURNITURE } from '../../src/render/catalog';
+import { BLENDER_CODE, BLENDER_KIT, CATALOG, SEAT, WHITE_FURNITURE } from '../../src/render/catalog';
 import { CODE_SHIFT, furnishThing } from '../../src/render/furniture';
 import { seatOf } from '../../src/render/models';
 import { layoutOf, type Thing } from '../../src/render/layout';
 import { sizesJson, sizesModels } from '../app/blender-sizes';
-import { furnitureModels, oneRoom, presetLayout } from './render-kit';
+import { furnitureModels, presetLayout } from './render-kit';
 
 const ROOT = join(import.meta.dir, '../..');
 const DIR = join(ROOT, 'assets/models/blender');
+/** Места заменяемых моделей кодом — из игры: габарит, высота постели (`lieTop`). */
 const sizes = JSON.parse(readFileSync(join(ROOT, 'blender/sizes.json'), 'utf8')) as {
-  items: Record<string, { cells: [number, number]; code: { min: number[]; max: number[]; tris: number } }>;
+  codes: Record<string, { code: { min: number[]; max: number[] }; lieTop?: number }>;
 };
+/** Образец света рентген-кабинета M — с пилота, теперь группы 3. */
 const sample = JSON.parse(readFileSync(join(DIR, 'room-xray-M.json'), 'utf8')) as BakedRoom;
 /** Модели части 2 (docs/specs/2026-11-blender-2.md): группа, что заменяют, бюджет треугольников. */
 const budgets = JSON.parse(readFileSync(join(ROOT, 'blender/budgets.json'), 'utf8')) as {
   light: Record<string, string[]>;
   models: Record<string, { group: number; replaces: string; decor?: true; tris: number }>;
 };
-/** Образцы запечённого света (blender/build.py): ключ «тип:размер» → файл и группа (0 — пилот). */
+/** Образцы запечённого света (blender/build.py): ключ «тип:размер» → файл и группа. */
 const roomsIndex = JSON.parse(readFileSync(join(DIR, 'rooms.json'), 'utf8')) as Record<string, { file: string; group: number }>;
 /** Группы части 2, что уже в игре. */
-const GROUPS = [1, 2];
+const GROUPS = [1, 2, 3];
 const part2 = Object.entries(budgets.models).filter(([, b]) => GROUPS.includes(b.group));
 
-/** Части моделей — как в blender/models.py; имя части — имя узла. */
+/** Части моделей пилота (blender/models.py) — у моделей групп, что их заменили, те же; имя части — имя узла. */
 const PARTS: Record<string, string[]> = {
   bed: ['wheels', 'casters', 'frame', 'deck', 'mattress', 'headboard', 'footboard', 'pillow', 'blanket', 'rail_left', 'rail_right', 'iv', 'iv_bag'],
   monitor: ['base', 'wheels', 'stand', 'shelf', 'defib', 'body', 'screen'],
   xray: ['table', 'pad', 'column', 'arm', 'tube', 'collimator', 'detector', 'plate'],
 };
 
-describe('пилот Blender: размеры и паспорта', () => {
+describe('Blender: размеры и паспорта', () => {
   test('blender/sizes.json — из игры: тот же, что считает tools/app/blender-sizes.ts сейчас', async () => {
     expect(readFileSync(join(ROOT, 'blender/sizes.json'), 'utf8')).toBe(sizesJson(await sizesModels()));
   });
@@ -53,97 +55,16 @@ describe('пилот Blender: размеры и паспорта', () => {
     const lic = readFileSync(join(ROOT, 'assets/LICENSES.md'), 'utf8');
     const files = readdirSync(DIR).sort();
     const samples = Object.values(roomsIndex).flatMap(e => [`${e.file}.json`, `${e.file}.png`]);
-    // модели пилота, которых ещё не переделала их группа (`BLENDER`), образцы света и модели групп части 2
-    const pilot = Object.values(BLENDER).map(f => `${f!.replace('blender/', '')}.glb`);
-    expect(files).toEqual([...new Set([...pilot, 'rooms.json', ...samples, ...part2.map(([n]) => `${n}.glb`)])].sort());
+    // образцы света и модели групп части 2: модели пилота заменили группы 2 и 3
+    expect(files).toEqual(['rooms.json', ...samples, ...part2.map(([n]) => `${n}.glb`)].sort());
     for (const f of files) {
       const row = lic.split('\n').find(l => l.startsWith(`| \`assets/models/blender/${f}\``));
       expect(row, f).toBeDefined();
       const sha = createHash('sha256').update(readFileSync(join(DIR, f))).digest('hex');
       expect(row).toContain(`\`${sha}\``);
       expect(row).toContain('4.5.15');
-      expect(row).toMatch(/`blender\/(build|models|room|ambulatory|stationary)\.py`/);
+      expect(row).toMatch(/`blender\/(build|models|room|ambulatory|stationary|diagnostics)\.py`/);
     }
-  });
-});
-
-describe('пилот Blender: модели', async () => {
-  const models = await furnitureModels(Object.values(BLENDER) as string[]);
-
-  test('модели собраны из частей: узел .glb — часть из blender/models.py, у каждой части — затенение в цвете вершин', () => {
-    for (const [code, file] of Object.entries(BLENDER)) {
-      const m = models.get(file!)!;
-      expect(new Set(m.parts.map(p => p.node)), code).toEqual(new Set(PARTS[code]));
-      for (const p of m.parts) {
-        const shade = p.geometry.attributes.color;
-        expect(shade, `${code}/${p.node}`).toBeDefined();
-        // затенение — множитель от AO_FLOOR (0,35, blender/common.py) до 1
-        let lo = 1;
-        for (let i = 0; i < shade.count; i++) lo = Math.min(lo, shade.getX(i));
-        expect(lo).toBeGreaterThanOrEqual(0.34);
-      }
-    }
-  });
-
-  test('габарит модели — как у модели кодом (blender/sizes.json) с допуском 6 см; стоит на полу', () => {
-    for (const [code, file] of Object.entries(BLENDER)) {
-      const m = models.get(file!)!;
-      const want = sizes.items[code].code;
-      // без стойки капельницы: у модели кодом вне палаты её нет, а sizes.json — кровать палаты (с ней)
-      const box = new THREE.Box3();
-      for (const p of m.parts) {
-        p.geometry.computeBoundingBox();
-        box.union(p.geometry.boundingBox!);
-      }
-      expect(box.min.y, code).toBeCloseTo(0, 2);
-      for (const [k, axis] of (['x', 'y', 'z'] as const).entries()) {
-        expect(Math.abs(box.min[axis] - want.min[k]), `${code} min.${axis}`).toBeLessThan(0.06);
-        expect(Math.abs(box.max[axis] - want.max[k]), `${code} max.${axis}`).toBeLessThan(0.06);
-      }
-    }
-  });
-});
-
-describe('пилот Blender: запечённый свет рентген-кабинета', () => {
-  test('точка образца — в помещение и обратно при любом повороте', () => {
-    for (let rot = 0; rot < 4; rot++) {
-      for (const [x, z] of [
-        [0.5, 0.5],
-        [3.25, 1.75],
-        [7.5, 6.5],
-      ]) {
-        const [ux, uz] = turnPoint(sample.w, sample.h, rot, x, z);
-        const [bx, bz] = unturnPoint(sample.w, sample.h, rot, ux, uz);
-        expect(bx).toBeCloseTo(x, 9);
-        expect(bz).toBeCloseTo(z, 9);
-      }
-    }
-  });
-
-  test('образец ложится на рентген-кабинет M при каждом из четырёх поворотов и не ложится на кабинет КТ', () => {
-    for (const rot of [0, 1, 2, 3] as const) {
-      const hs = oneRoom(db, 'room.xray', 'M', rot);
-      const plan = planOf(db, hs);
-      const layout = layoutOf(db, plan, hs.decor);
-      const n = plan.rooms.findIndex(r => r.type === 'room.xray');
-      expect(bakedRooms(layout, sample), `поворот ${rot}`).toEqual([n]);
-    }
-    const hs = oneRoom(db, 'room.ct', 'M', 0);
-    const plan = planOf(db, hs);
-    expect(bakedRooms(layoutOf(db, plan, hs.decor), sample)).toEqual([]);
-  });
-
-  test('в городской больнице — на её рентген-кабинет; картинка — серая, по 64 точки на метр пола', () => {
-    const { layout } = presetLayout(db, 'preset.city');
-    const xr = layout.plan.rooms.flatMap((r, n) => (r.type === 'room.xray' && r.size === 'M' ? [n] : []));
-    expect(xr.length).toBeGreaterThan(0);
-    expect(bakedRooms(layout, sample)).toEqual(xr);
-    const png = readFileSync(join(DIR, 'room-xray-M.png'));
-    // IHDR: ширина, высота, 8 бит, серый
-    expect(png.readUInt32BE(16)).toBe((sample.w - 1) * 64);
-    expect(png.readUInt32BE(20)).toBe((sample.h - 1) * 64);
-    expect(png[24]).toBe(8);
-    expect(png[25]).toBe(0);
   });
 });
 
@@ -188,13 +109,13 @@ describe('Blender, часть 2: модели групп в игре', async () 
       }
     }
     // у кого экран — светится (материал «screen», furniture.ts)
-    for (const name of ['desk', 'counter', 'analyzer', 'ecg', 'monitor', 'ventilator']) expect(models.get(`blender/${name}`)!.parts.some(p => p.mat === 'screen'), name).toBe(true);
+    for (const name of ['desk', 'counter', 'analyzer', 'ecg', 'monitor', 'ventilator', 'ct', 'us', 'console']) expect(models.get(`blender/${name}`)!.parts.some(p => p.mat === 'screen'), name).toBe(true);
   });
 
   test('вместо модели кодом — тот же габарит места (blender/sizes.json, с допуском 6 см) и низ на полу', () => {
     for (const [name, b] of part2.filter(([, x]) => x.replaces.startsWith('code:'))) {
       const code = b.replaces.slice(5) as keyof typeof CODE_SHIFT;
-      const want = (sizes as unknown as { codes: Record<string, { code: { min: number[]; max: number[] } }> }).codes[name].code;
+      const want = sizes.codes[name].code;
       const box = boxOf(name);
       // модель Blender стоит в осях места со сдвигом, как модель кодом (анализатор — ближе к стене)
       const dz = CODE_SHIFT[code] ?? 0;
@@ -277,6 +198,20 @@ describe('Blender, часть 2: модели групп в игре', async () 
     expect(Math.min(...colors)).toBeLessThan(Math.max(...colors) * 0.5);
   });
 
+  test('группа 3: рентген — модель пилота с его частями; у КТ и МРТ — части для механик; верх стола — высота постели игры', () => {
+    const nodes = (name: string) => new Set(models.get(`blender/${name}`)!.parts.map(p => p.node));
+    expect(nodes('xray')).toEqual(new Set(PARTS.xray));
+    // гентри и магнит с тоннелем — чтобы окно могло их подсветить или подвинуть стол (спецификация, «Части — для механик»)
+    for (const part of ['gantry', 'table', 'pad', 'screen']) expect(nodes('ct').has(part), `ct/${part}`).toBe(true);
+    for (const part of ['magnet', 'bore', 'table', 'pad']) expect(nodes('mri').has(part), `mri/${part}`).toBe(true);
+    // человек ложится на высоту постели модели кодом (`lieTop`, furniture.ts): верх ложа — там же, с допуском 3 см
+    for (const name of ['xray', 'ct', 'mri']) {
+      const pad = models.get(`blender/${name}`)!.parts.find(p => p.node === 'pad')!;
+      pad.geometry.computeBoundingBox();
+      expect(Math.abs(pad.geometry.boundingBox!.max.y - sizes.codes[name].lieTop!), name).toBeLessThan(0.03);
+    }
+  });
+
   test('перекраска каталога ложится на модель Blender по имени материала: белый шкаф — белый, шкаф кабинета — дерево', () => {
     const all = new Map([...kenney, ...models]);
     const colorsOf = (type: string) => {
@@ -291,11 +226,27 @@ describe('Blender, часть 2: модели групп в игре', async () 
 });
 
 describe('Blender, часть 2: запечённый свет готовых помещений групп', () => {
-  test('образцы — у каждого размера каждого помещения группы со светом (blender/budgets.json, `light`) и у пилота', () => {
+  test('образцы — у каждого размера каждого помещения группы со светом (blender/budgets.json, `light`), и только у них', () => {
     const want = Object.entries(budgets.light).flatMap(([g, types]) => types.flatMap(t => db.rooms[t].sizes.map(z => [`${t}:${z.id}`, Number(g)] as const)));
     for (const [key, group] of want) expect(roomsIndex[key]?.group, key).toBe(group);
-    expect(roomsIndex['room.xray:M']).toEqual({ file: 'room-xray-M', group: 0 });
-    expect(Object.keys(roomsIndex).length).toBe(want.length + 1);
+    // рентген-кабинет M пилота стал образцом группы 3, файл — тот же
+    expect(roomsIndex['room.xray:M']).toEqual({ file: 'room-xray-M', group: 3 });
+    expect(Object.keys(roomsIndex).length).toBe(want.length);
+  });
+
+  test('точка образца — в помещение и обратно при любом повороте', () => {
+    for (let rot = 0; rot < 4; rot++) {
+      for (const [x, z] of [
+        [0.5, 0.5],
+        [3.25, 1.75],
+        [7.5, 6.5],
+      ]) {
+        const [ux, uz] = turnPoint(sample.w, sample.h, rot, x, z);
+        const [bx, bz] = unturnPoint(sample.w, sample.h, rot, ux, uz);
+        expect(bx).toBeCloseTo(x, 9);
+        expect(bz).toBeCloseTo(z, 9);
+      }
+    }
   });
 
   /**
@@ -311,7 +262,6 @@ describe('Blender, часть 2: запечённый свет готовых п
 
   test('каждый образец ложится на своё готовое помещение при всех четырёх поворотах; картинка — серая, 32 точки на метр', () => {
     for (const [key, e] of Object.entries(roomsIndex)) {
-      if (e.group === 0) continue;
       const room = JSON.parse(readFileSync(join(DIR, `${e.file}.json`), 'utf8')) as BakedRoom;
       expect(room.key).toBe(key);
       for (const rot of [0, 1, 2, 3] as const) {
@@ -319,7 +269,7 @@ describe('Blender, часть 2: запечённый свет готовых п
         expect(bakedRooms(layout, room), `${key}, поворот ${rot}`).toEqual([n]);
       }
       const png = readFileSync(join(DIR, `${e.file}.png`));
-      // у образцов групп — 32 точки на метр (blender/room.py, `PX`), у пилота — 64
+      // 32 точки на метр (blender/room.py, `PX`)
       expect(png.readUInt32BE(16), key).toBe((room.w - 1) * 32);
       expect(png.readUInt32BE(20), key).toBe((room.h - 1) * 32);
       expect(png[24]).toBe(8);
@@ -355,9 +305,24 @@ describe('Blender, часть 2: запечённый свет готовых п
     }
   });
 
-  test('образец ложится только на своё: другой размер того же помещения — нет', () => {
+  test('образец ложится только на своё: другой размер того же помещения — нет, другое помещение того же размера — нет', () => {
     const lab = (size: string) => JSON.parse(readFileSync(join(DIR, `${roomsIndex[`room.lab:${size}`].file}.json`), 'utf8')) as BakedRoom;
     expect(bakedRooms(ready('room.lab', 'M', 0).layout, lab('S'))).toEqual([]);
     expect(bakedRooms(ready('room.lab', 'S', 1).layout, lab('M'))).toEqual([]);
+    // кабинет КТ M того же размера, что рентген-кабинет M, но вещи другие
+    expect(bakedRooms(ready('room.ct', 'M', 0).layout, sample)).toEqual([]);
+  });
+
+  test('в городской больнице свет групп ложится на её кабинеты диагностики', () => {
+    const { layout } = presetLayout(db, 'preset.city');
+    for (const type of budgets.light['3']) {
+      const rooms = layout.plan.rooms.flatMap((r, n) => (r.type === type ? [n] : []));
+      expect(rooms.length, type).toBeGreaterThan(0);
+      const got = Object.values(roomsIndex)
+        .map(e => JSON.parse(readFileSync(join(DIR, `${e.file}.json`), 'utf8')) as BakedRoom)
+        .filter(r => r.type === type)
+        .flatMap(r => bakedRooms(layout, r));
+      expect(got.sort((a, b) => a - b), type).toEqual(rooms);
+    }
   });
 });

@@ -106,21 +106,16 @@ export function entryOf(kind: ObjectKind, roomType: Id | '', equipment?: Id): En
 }
 
 /**
- * Модели Blender пилота (docs/reports/2026-11-blender-pilot.md; blender/), которых ещё не переделала их группа части 2
- * (docs/specs/2026-11-blender-2.md): рентген — группа 3; только с `?models=blender`. Кровать и монитор пилота заменила
- * группа 2 — они в `BLENDER_CODE`.
- */
-export const BLENDER: Partial<Record<Code, string>> = { xray: 'blender/xray' };
-
-/**
- * Модели Blender части 2 вместо моделей кодом (docs/specs/2026-11-blender-2.md, решение владельца #178): группы 1 «Амбулатория»
- * и 2 «Стационар» — по умолчанию; `?models=code` — модели кодом и CC0, как до них. Ставятся в оси места, как модели пилота
- * (`Furnisher.placeAt`). Состав — тот же, что в blender/budgets.json (тест `blender.test.ts`).
+ * Модели Blender части 2 вместо моделей кодом (docs/specs/2026-11-blender-2.md, решение владельца #178): группы 1 «Амбулатория»,
+ * 2 «Стационар» и 3 «Диагностика» — по умолчанию; `?models=code` — модели кодом и CC0, как до них. Ставятся в оси места, как
+ * модели пилота (`Furnisher.placeAt`; docs/reports/2026-11-blender-pilot.md): его кровать и монитор переделала группа 2, рентген
+ * взяла группа 3 — отдельного ключа у пилота больше нет. Состав — тот же, что в blender/budgets.json (тест `blender.test.ts`).
  */
 export const BLENDER_CODE: Partial<Record<Code, string>> = {
   counter: 'blender/counter', examCouch: 'blender/couch', labBench: 'blender/lab_bench', analyzer: 'blender/analyzer',
   procedureTable: 'blender/procedure_table', ecg: 'blender/ecg',
   bed: 'blender/bed', monitor: 'blender/monitor', ventilator: 'blender/ventilator',
+  xray: 'blender/xray', ct: 'blender/ct', mri: 'blender/mri', us: 'blender/us', console: 'blender/console',
 };
 
 /**
@@ -135,14 +130,13 @@ export const BLENDER_KIT: Record<string, string> = {
   'kenney/sideTableDrawers': 'blender/bedside',
 };
 
-/** Какие модели грузит окно: `code` — модели кодом и CC0, `blender` — ещё и модели пилота, без ключа — модели части 2. */
-export type ModelsMode = 'code' | 'part2' | 'blender';
+/** Какие модели грузит окно: `code` — модели кодом и CC0, без ключа — модели части 2. */
+export type ModelsMode = 'code' | 'part2';
 export function modelsOf(mode: ModelsMode, kits: readonly string[]): string[] {
   if (mode === 'code') return [...kits];
   const part2 = [...Object.values(BLENDER_CODE), ...Object.values(BLENDER_KIT)] as string[];
   // заменённые модели наборов не нужны: `place` ставит вместо них модель Blender
-  const out = [...kits.filter(n => !BLENDER_KIT[n]), ...part2];
-  return mode === 'blender' ? [...out, ...(Object.values(BLENDER) as string[])] : out;
+  return [...kits.filter(n => !BLENDER_KIT[n]), ...part2];
 }
 
 /** Файлы моделей, на которые ссылается таблица, и модели, которые ставятся без записи (декор, мониторы на столах). */

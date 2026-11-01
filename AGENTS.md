@@ -169,7 +169,7 @@ npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench i
                                                      # (`-- --flow 40,4` — a bigger crowd, about 180 people,
                                                      # `-- --metric load` — with the «Показатели» layer,
                                                      # `-- --keys models=code` — the code and CC0 models, as before Blender
-                                                     # part 2; `-- --keys "models=blender&baked=1"` — the Blender pilot too)
+                                                     # part 2; `-- --keys baked=0` — without the baked light)
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
 npm run assets -- <sources dir>    # rebuild assets/models/*.glb from the CC0 packs (byte-identical; see assets/LICENSES.md)
@@ -494,10 +494,10 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   black floor behind the glass.
 - `blender/` — models from Blender scripts (`blender/README.md`): Python scripts build each model from parts (a part's id
   is its `.glb` node; AO baked into vertex colours); the sizes come from the game (`blender/sizes.json`). The pilot (#175,
-  `docs/reports/2026-11-blender-pilot.md`): the bed, the monitor and the X-ray machine, and the light on the X-ray room's
-  floor — only with `?models=blender` and `&baked=1` (Electron: `--models blender --baked`): `BLENDER` in `catalog.ts`,
-  `Furnisher.placeAt` (the IV stand only in wards and boxes), `src/render/baked.ts` (the floor multiplier on every room
-  matching the sample, any rotation). Part 2 (owner's decision #178, `docs/specs/2026-11-blender-2.md`): devices and
+  `docs/reports/2026-11-blender-pilot.md`) made the bed, the monitor, the X-ray machine and the X-ray room's light; groups 2
+  and 3 took all of them, so the pilot has no keys of its own any more (`?models=blender`, `&baked=1` are gone). Models go in
+  by `Furnisher.placeAt` (the IV stand only in wards and boxes), light by `src/render/baked.ts` (the floor multiplier on
+  every room matching the sample, any rotation). Part 2 (owner's decision #178, `docs/specs/2026-11-blender-2.md`): devices and
   furniture in groups, each on by default, `?models=code` (`--models code`) for the code and CC0 models; budgets —
   `blender/budgets.json` (one place: the build, the probe and the test read it). Group 1 «Амбулатория» — `ambulatory.py`:
   instead of a CC0 model (`BLENDER_KIT`) a model the size of its catalog place, materials named like the CC0 model's so the
@@ -506,12 +506,16 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   faces it in every room, ready rooms too (`layoutOf`): the screen and the drawers to whoever sits there, the counter's panel
   to the visitor. Group 2 «Стационар» — `stationary.py`: the pilot's bed and monitor brought to budget with the pilot's part
   names (the bed's `iv` and `iv_bag` only in wards and boxes — `skipOf`), the bedside cabinet instead of Kenney
-  `sideTableDrawers` and the ventilator; `BLENDER` keeps only the pilot's X-ray machine (`?models=blender`). A group's baked
-  light — a sample per size of each room type in `light` of `budgets.json`, with the group's real models in place, 32 points
-  per metre (`blender/room.py`, `PX`; the pilot's 64; `rooms.json` lists them; a bed's IV stand only in wards and boxes, a
-  long thing in one cell half as long — `iv`, `short` in the sample) — is on by default, `?baked=0` (Electron `--baked 0`)
-  turns it off, the pilot's only with `?baked=1`. `bakedRooms` matches type, sides and things — never the plan's `size`: a
-  room built on the PC site carries its type's smallest size there (`planOfSite`).
+  `sideTableDrawers` and the ventilator. Group 3 «Диагностика» — `diagnostics.py`: the pilot's X-ray machine as is (within
+  budget), the CT (`gantry`), the MRI (`magnet`, `bore`), the ultrasound cart and the console of the imaging rooms (shifted
+  to the wall, `CODE_SHIFT`); a table's `pad` top sits at the code model's `lieTop`, where people lie. A group's baked
+  light — a sample per size of each room type in `light` of `budgets.json`, with the groups' real models in place, 32 points
+  per metre (`blender/room.py`, `PX`; `rooms.json` lists them; a bed's IV stand only in wards and boxes, a long thing in one
+  cell half as long — `iv`, `short` in the sample) — is on by default, `?baked=0` (Electron `--baked 0`) turns it off; the
+  window loads it after the models, alongside the people (`load.light`), so it never lengthens the furniture load.
+  `bakedRooms` matches type, sides and things — never the plan's `size`: a room built on the PC site carries its type's
+  smallest size there (`planOfSite`). The comparison sheet `tools/app/blender-sheet.mjs --group N [--light]` shoots a
+  group's rooms; group 3's light is shot in the city (an MRI L costs more than the empty building's cash).
 - `assets/` — CC0 models, Rocketbox people under MIT (`assets/models/rocketbox/`, made by `tools/app/people.mjs`), the
   game's font IBM Plex Sans under SIL OFL 1.1 (`assets/fonts/`, unmodified files with `OFL.txt`; owner's decision #107),
   the Carbon icons' Apache 2.0 text (`assets/licenses/carbon-icons.txt`) and `LICENSES.md` (sources, licenses, SHA-256; MIT

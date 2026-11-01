@@ -4,12 +4,12 @@
 // Итог — JSON того же вида, что у бенча в Electron (`electron . --bench`), и PNG.
 //   node tools/app/bench.mjs [--secs 15] [--warm 3] [--capped] [--qualities low,high] [--shots 0]
 //                            [--out tools/app/out/имя] [--size 1280x720] [--metric load] [--flow 40,4]
-//                            [--keys models=blender&baked=1]
+//                            [--keys models=code]
 // --flow 40,4 — поток числами (сами в час, машин скорой в час) вместо сцены бенча: толпа больше (spec
 // docs/specs/2026-10-people.md, «Проверки»: бенч при 200 людях).
 // --metric load — со слоем «Показатели» (spec docs/specs/2026-10-metrics-layer.md): столбики над помещениями.
-// --keys — ещё ключи страницы как есть: `models=blender&baked=1` — модели и свет пилота Blender
-// (docs/reports/2026-11-blender-pilot.md).
+// --keys — ещё ключи страницы как есть: `models=code` — модели кодом и CC0 вместо моделей Blender, `baked=0` — без
+// запечённого света (docs/specs/2026-11-blender-2.md).
 // --capped — с вертикальной синхронизацией; без него — без неё (видно запас). Программный WebGL (SwiftShader): числа
 // говорят о процессоре контейнера, не о видеокарте игрока.
 import { chromium } from 'playwright-core';

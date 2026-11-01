@@ -8,7 +8,7 @@
 // +z его осей; у длинных — от изголовья к ногам. Без DOM: раскладку и точки опоры проверяют тесты в Bun.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { BLENDER, BLENDER_CODE, BLENDER_KIT, type Code, entryOf, type Fit, type Recolor, WHITE_FURNITURE } from './catalog';
+import { BLENDER_CODE, BLENDER_KIT, type Code, entryOf, type Fit, type Recolor, WHITE_FURNITURE } from './catalog';
 import type { Layout, Thing } from './layout';
 import { type Model, seatOf } from './models';
 
@@ -115,7 +115,7 @@ export class Furnisher {
   readonly batch = new Batch();
   constructor(private models: Map<string, Model>) {}
 
-  /** Загружена ли модель (модели Blender части 2 — по умолчанию, пилота — только с `?models=blender`). */
+  /** Загружена ли модель (модели Blender части 2 — по умолчанию, с `?models=code` их нет). */
   has(name: string): boolean {
     return this.models.has(name);
   }
@@ -554,10 +554,10 @@ function placeThing(f: Furnisher, t: Thing, i: number, seats: (SeatAnchor | unde
   // длинный предмет, которому не нашлось второй клетки (одна койка в шаблоне реанимации: вторая клетка разрезала бы
   // помещение), — укорочен до своей клетки, а не налезает на соседние
   if (LIE_TOP[e.code] !== undefined && t.cells.length === 1) m.multiply(new THREE.Matrix4().makeScale(1, 1, 0.5));
-  // модель Blender вместо модели кодом — если её загрузили (пилот — `?models=blender`, docs/reports/2026-11-blender-pilot.md;
-  // часть 2 — по умолчанию, docs/specs/2026-11-blender-2.md): то же место, та же высота постели и тот же сдвиг места
-  const glb = [BLENDER[e.code], BLENDER_CODE[e.code]].find(g => g !== undefined && f.has(g));
-  if (glb) {
+  // модель Blender вместо модели кодом — если её загрузили (часть 2 — по умолчанию, docs/specs/2026-11-blender-2.md): то же
+  // место, та же высота постели и тот же сдвиг места
+  const glb = BLENDER_CODE[e.code];
+  if (glb !== undefined && f.has(glb)) {
     const at = CODE_SHIFT[e.code] !== undefined ? m.clone().multiply(new THREE.Matrix4().makeTranslation(0, 0, CODE_SHIFT[e.code]!)) : m;
     f.placeAt(glb, at, skipOf(e.code, t));
     return;

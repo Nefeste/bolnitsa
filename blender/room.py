@@ -1,11 +1,11 @@
-# Запечённый свет готового помещения (docs/reports/2026-11-blender-pilot.md): рентген-кабинет M, как его строит игра
-# (blender/sizes.json, «rooms» — из tools/app/blender-sizes.ts): пол, стены с дверью по клеткам плана, светильники там же,
-# где их панели в игре (lamps.ts), рентген — модель пилота (models.xray), остальные предметы — коробками своего размера
-# (стол — крышка на ножках, стул — сиденье со спинкой). На пол запекаются затенение (AO) и мягкие тени от светильников
-# (SHADOW) — в одну серую картинку-множитель: assets/models/blender/room-xray-M.png. Тень — доля света, которую закрыли
-# вещи и стены: запекание с ними делится на запекание без них, — поэтому в картинке нет затухания света от панелей (его рисует
-# игра, lamps.ts), и открытый пол — ровно 1. Игра кладёт картинку на пол каждого такого кабинета под ключом ?baked=1
-# (src/render/baked.ts): у светильников в игре теней нет, а GTAO видит только то, что в кадре.
+# Запечённый свет готового помещения (пилот — docs/reports/2026-11-blender-pilot.md, часть 2 — docs/specs/2026-11-blender-2.md):
+# образец группы, как его строит игра (blender/sizes.json, «rooms» — из tools/app/blender-sizes.ts): пол, стены с дверью по
+# клеткам плана, светильники там же, где их панели в игре (lamps.ts), вещи — моделями Blender групп, как их ставит окно,
+# остальные — коробками своего размера (стол — крышка на ножках, стул — сиденье со спинкой). На пол запекаются затенение (AO) и
+# мягкие тени от светильников (SHADOW) — в одну серую картинку-множитель: assets/models/blender/room-<тип>-<размер>.png. Тень —
+# доля света, которую закрыли вещи и стены: запекание с ними делится на запекание без них, — поэтому в картинке нет затухания
+# света от панелей (его рисует игра, lamps.ts), и открытый пол — ровно 1. Игра кладёт картинку на пол каждого помещения того
+# же образца (src/render/baked.ts): у светильников в игре теней нет, а GTAO видит только то, что в кадре.
 import math
 import os
 import struct
@@ -14,17 +14,16 @@ import zlib
 import bpy
 
 from ambulatory import MODELS as GROUP1
+from diagnostics import MODELS as GROUP3
 from stationary import MODELS as GROUP2
 from common import Part, g2b, material
-from models import xray
 
 # модели Blender, которые окно ставит по умолчанию (часть 2): у образцов групп вещи — ими, как в игре
-PART2 = {**GROUP1, **GROUP2}
+PART2 = {**GROUP1, **GROUP2, **GROUP3}
 
-# сколько точек картинки на метр пола: у образцов групп — 32 (тени мягкие, в кадре игры разница с 64 — на уровне шума, а
-# файл вчетверо меньше; docs/specs/2026-11-blender-2.md, решение агента 11), у образца пилота — 64, как он запечён
+# сколько точек картинки на метр пола: 32 (тени мягкие, в кадре игры разница с 64 пилота — на уровне шума, а файл вчетверо
+# меньше; docs/specs/2026-11-blender-2.md, решение агента 11)
 PX = 32
-PILOT_PX = 64
 AO_SAMPLES = 256
 SHADOW_SAMPLES = 128
 # затенение по полу ищется в этом радиусе, м: тень у ножек и в углах, а не от всей комнаты
@@ -110,34 +109,31 @@ def blender_thing(t):
 
 
 def thing(t):
-    """Предмет кабинета: рентген — модель пилота, остальное — коробками своего габарита (для теней этого хватает)."""
+    """Предмет помещения: модель Blender группы, как в игре, или коробками своего габарита (для теней этого хватает)."""
     if t.get('blender'):
         return blender_thing(t)
-    if t.get('code') == 'xray':
-        parts = xray()
+    (x0, y0, z0), (x1, y1, z1) = t['box']['min'], t['box']['max']
+    w, h, d = x1 - x0, y1 - y0, z1 - z0
+    cx, cz = (x0 + x1) / 2, (z0 + z1) / 2
+    p = Part(t['kind'], material('furniture', '#cfd5d6'))
+    if t['kind'] in ('table', 'desk'):
+        p.box(w, 0.04, d, cx, 0.72, cz, bevel=0)
+        for sx in (x0 + 0.04, x1 - 0.04):
+            for sz in (z0 + 0.04, z1 - 0.04):
+                p.box(0.04, 0.72, 0.04, sx, 0, sz, bevel=0)
+        # монитор на столе
+        p.box(0.5, 0.32, 0.05, cx, 0.78, z0 + 0.12, bevel=0)
+    elif t['kind'] == 'plant':
+        # горшок — по виду модели набора (около 0,3 м): листья редкие и тени почти не дают; коробкой во всё место
+        # под горшком на полу выходил чёрный квадрат
+        p.cyl(0.13, 0.16, 0.32, cx, 0, cz, seg=12)
+    elif t['kind'] == 'chair':
+        p.box(w * 0.8, 0.06, d * 0.8, cx, 0.42, cz, bevel=0)
+        p.box(w * 0.8, 0.45, 0.05, cx, 0.48, z0 + 0.05, bevel=0)
+        p.box(0.06, 0.42, 0.06, cx, 0, cz, bevel=0)
     else:
-        (x0, y0, z0), (x1, y1, z1) = t['box']['min'], t['box']['max']
-        w, h, d = x1 - x0, y1 - y0, z1 - z0
-        cx, cz = (x0 + x1) / 2, (z0 + z1) / 2
-        p = Part(t['kind'], material('furniture', '#cfd5d6'))
-        if t['kind'] in ('table', 'desk'):
-            p.box(w, 0.04, d, cx, 0.72, cz, bevel=0)
-            for sx in (x0 + 0.04, x1 - 0.04):
-                for sz in (z0 + 0.04, z1 - 0.04):
-                    p.box(0.04, 0.72, 0.04, sx, 0, sz, bevel=0)
-            # монитор на столе
-            p.box(0.5, 0.32, 0.05, cx, 0.78, z0 + 0.12, bevel=0)
-        elif t['kind'] == 'plant':
-            # горшок — по виду модели набора (около 0,3 м): листья редкие и тени почти не дают; коробкой во всё место
-            # под горшком на полу выходил чёрный квадрат
-            p.cyl(0.13, 0.16, 0.32, cx, 0, cz, seg=12)
-        elif t['kind'] == 'chair':
-            p.box(w * 0.8, 0.06, d * 0.8, cx, 0.42, cz, bevel=0)
-            p.box(w * 0.8, 0.45, 0.05, cx, 0.48, z0 + 0.05, bevel=0)
-            p.box(0.06, 0.42, 0.06, cx, 0, cz, bevel=0)
-        else:
-            p.box(w, h, d, cx, 0, cz, bevel=0)
-        parts = [p.build()]
+        p.box(w, h, d, cx, 0, cz, bevel=0)
+    parts = [p.build()]
     x, z = t['at']
     for ob in parts:
         ob.location = g2b(x, 0, z)
@@ -200,8 +196,7 @@ def png(path, w, h, gray):
 
 def build_room(key, room, path):
     w, h = room['w'] - 1, room['h'] - 1
-    px = PX if room.get('group', 0) else PILOT_PX
-    iw, ih = w * px, h * px
+    iw, ih = w * PX, h * PX
     image = bpy.data.images.new('bake', iw, ih, float_buffer=True)
     floor = floor_mesh(room, image)
     blockers = [walls(room)]

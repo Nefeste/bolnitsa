@@ -168,9 +168,14 @@ declare global {
   }
 }
 
+/**
+ * Время загрузки по частям, мс (полоса загрузки, «Авто-бенч»). `light` — запечённый свет образцов (docs/specs/2026-11-blender-2.md):
+ * грузится после мебели, вместе с людьми, — ни в `furniture`, ни в `people` он не входит.
+ */
 export interface LoadTimes {
   content: number;
   furniture: number;
+  light: number;
   people: number;
   scene: number;
   total: number;
@@ -273,8 +278,7 @@ export class Game {
   gurneys!: Gurneys;
   /**
    * запечённый свет на полу готовых помещений (docs/specs/2026-11-blender-2.md, «Запечённый свет»): образцы групп — вместе с
-   * их моделями Blender, `?baked=0` — без света; образец пилота (рентген-кабинет M) — только с `?baked=1`. `baked` — на
-   * скольких полах он лежит (для снимков и бенча)
+   * их моделями Blender, `?baked=0` — без света. `baked` — на скольких полах он лежит (для снимков и бенча)
    */
   bakedFloors: BakedFloors[] = [];
   baked = 0;
@@ -385,7 +389,7 @@ export class Game {
   readonly disk: Disk = diskOf();
   private loaded: SaveFile | undefined;
   private saving: Promise<unknown> = Promise.resolve();
-  readonly load: LoadTimes = { content: 0, furniture: 0, people: 0, scene: 0, total: 0 };
+  readonly load: LoadTimes = { content: 0, furniture: 0, light: 0, people: 0, scene: 0, total: 0 };
   firstFrameMs = 0;
   private last = 0;
   private hudAt = 0;
@@ -464,28 +468,11 @@ export class Game {
     const base = './assets/models';
     const index = (await (await fetch(`${base}/index.json`)).json()) as Index;
     const tf = performance.now();
-    // модели Blender части 2 (docs/specs/2026-11-blender-2.md) — по умолчанию; `?models=code` — модели кодом и CC0, как до них;
-    // `?models=blender` — ещё и модели пилота (docs/reports/2026-11-blender-pilot.md); запечённый свет — с `?baked=1`
+    // модели Blender части 2 (docs/specs/2026-11-blender-2.md) — по умолчанию; `?models=code` — модели кодом и CC0, как до них
     const keys = new URLSearchParams(location.search);
-    const mode: ModelsMode = keys.get('models') === 'code' ? 'code' : keys.get('models') === 'blender' ? 'blender' : 'part2';
+    const mode: ModelsMode = keys.get('models') === 'code' ? 'code' : 'part2';
     const kits = [...new Set([...Object.values(CATALOG).flatMap(e => ('model' in e ? [e.model] : [])), ...EXTRA_MODELS])];
     const names = modelsOf(mode, kits);
-    // свет образцов групп запечён с их моделями Blender: с моделями кодом (`?models=code`) тени были бы не от тех вещей;
-    // грузится вместе с моделями, а не перед ними
-    const light = keys.get('baked');
-    const samples = (async () => {
-      if (light === '0') return [];
-      const index = (await (await fetch(`${base}/blender/rooms.json`)).json()) as Record<string, { file: string; group: number }>;
-      const want = Object.values(index).filter(e => (e.group === 0 ? light === '1' : mode !== 'code'));
-      return Promise.all(
-        want.map(async e => ({
-          room: (await (await fetch(`${base}/blender/${e.file}.json`)).json()) as BakedRoom,
-          map: await new THREE.TextureLoader().loadAsync(`${base}/blender/${e.file}.png`),
-        })),
-      );
-    })();
-    // ошибка загрузки света всплывёт ниже, на `await samples`, — не раньше, «необработанной»
-    samples.catch(() => undefined);
     const models = this.models;
     // полоса загрузки: база — 1, модели — по файлу, люди — по виду, мир — 1, смена — 1 (видов людей — из их списка)
     const looks = ((await (await fetch(`${base}/rocketbox/index.json`)).json()) as { looks: string[] }).looks.length;
@@ -498,12 +485,31 @@ export class Game {
         this.step(1, T.demo.loadModels(++loaded, names.length));
       }),
     );
-    this.bakedSamples = await samples;
     this.load.furniture = Math.round(performance.now() - tf);
+    // свет образцов групп запечён с их моделями Blender: с моделями кодом (`?models=code`) тени были бы не от тех вещей. Он
+    // грузится после моделей, вместе с людьми: картинки разбираются в этом же потоке, и вместе с моделями 27 образцов
+    // удлиняли их загрузку на 100 мс, а люди — это секунды, и поток тогда больше ждёт рабочих (docs/reports/2026-11-blender-3.md,
+    // «Замер»). Нужен он только сцене, после людей
+    const tl = performance.now();
+    const samples = (async () => {
+      if (keys.get('baked') === '0' || mode === 'code') return [];
+      const index = (await (await fetch(`${base}/blender/rooms.json`)).json()) as Record<string, { file: string; group: number }>;
+      const out = await Promise.all(
+        Object.values(index).map(async e => ({
+          room: (await (await fetch(`${base}/blender/${e.file}.json`)).json()) as BakedRoom,
+          map: await new THREE.TextureLoader().loadAsync(`${base}/blender/${e.file}.png`),
+        })),
+      );
+      this.load.light = Math.round(performance.now() - tl);
+      return out;
+    })();
+    // ошибка загрузки света всплывёт ниже, на `await samples`, — не раньше, «необработанной»
+    samples.catch(() => undefined);
     const tp = performance.now();
     let baked = 0;
     this.people = packPeople(await rocketbox(base, () => this.step(1, T.demo.loadPeople(++baked, looks))));
     this.load.people = Math.round(performance.now() - tp);
+    this.bakedSamples = await samples;
 
     store.set({ status: T.app.loadingWorld });
     const ts = performance.now();
