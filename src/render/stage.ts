@@ -3,6 +3,7 @@
 // пресеты качества, мягкое затенение, выбор человека и помещения мышью, снимки. Часть 3 (spec
 // docs/specs/2026-10-flow-ui.md): значки над людьми — отдельным проходом поверх кадра (`over`), слой очередей — цвет пола.
 import * as THREE from 'three';
+import { Appear } from './appear';
 import type { People } from './bake';
 import type { Crowd, Walker } from './crowd';
 import { buildDoors, type Doors } from './doors';
@@ -61,6 +62,8 @@ export class Stage {
   readonly highlight = new Highlight();
   /** поверх готового кадра: значки над людьми (часть 3) */
   readonly over = new THREE.Scene();
+  /** появление мебели после стройки (appear.ts): новые вещи растут из пола */
+  readonly appear = new Appear();
   readonly icons: Icons;
   /** значок над человеком: номер в `ICONS` (icons.ts) или -1 — задаёт игра */
   iconOf: (w: Walker) => number = () => -1;
@@ -107,7 +110,9 @@ export class Stage {
     this.doors = buildDoors(layout);
     this.scene.add(this.doors.mesh);
     this.scene.add(this.lamps.mesh);
-    this.furniture = batchMeshes(furnished.batch);
+    // первая раскладка — ничего не растёт
+    this.appear.set(furnished.batch.owners, true);
+    this.furniture = batchMeshes(furnished.batch, this.appear);
     for (const m of this.furniture) this.scene.add(m);
     this.view = new PeopleView(people, init.capacity);
     this.scene.add(this.view.group);
@@ -155,6 +160,7 @@ export class Stage {
         if (!m.isMesh) return;
         m.geometry.dispose();
         for (const mat of Array.isArray(m.material) ? m.material : [m.material]) mat.dispose();
+        m.customDepthMaterial?.dispose();
       });
     };
     for (const m of this.floors) drop(m);
@@ -175,7 +181,9 @@ export class Stage {
     this.doors = buildDoors(layout);
     this.scene.add(this.doors.mesh);
     this.scene.add(this.lamps.mesh);
-    this.furniture = batchMeshes(furnished.batch);
+    // новые вещи — те, которых не было в прошлой раскладке, — растут из пола
+    this.appear.set(furnished.batch.owners, false);
+    this.furniture = batchMeshes(furnished.batch, this.appear);
     for (const m of this.furniture) this.scene.add(m);
     this.tint.setLayout(layout);
     this.deptTint.setLayout(layout);
@@ -219,6 +227,7 @@ export class Stage {
     const cam = this.cam;
     cam.update(dt);
     this.columns.frame(dt);
+    this.appear.tick();
     const u = this.walls.uniforms;
     u.uFocus.value.set(cam.target.x, cam.target.z);
     u.uRadius.value = Math.max(6, cam.half * 0.55);

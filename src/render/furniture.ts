@@ -8,6 +8,7 @@
 // +z его осей; у длинных — от изголовья к ногам. Без DOM: раскладку и точки опоры проверяют тесты в Bun.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import type { Appear } from './appear';
 import { BLENDER_CODE, BLENDER_KIT, type Code, entryOf, type Fit, type Recolor, WHITE_FURNITURE } from './catalog';
 import type { Layout, Thing } from './layout';
 import { type Model, seatOf } from './models';
@@ -22,6 +23,23 @@ export class Batch {
   map: THREE.Texture | null = null;
   tris = 0;
   items = 0;
+  /**
+   * Появление мебели (appear.ts): чья геометрия кладётся сейчас — номер вещи, -1 — ничья (не растёт: призрак стройки);
+   * вещи — ключ, по которому окно узнаёт новые после стройки, и середина на полу.
+   */
+  owner = -1;
+  owners: { key: string; x: number; z: number }[] = [];
+
+  /** Дальше — геометрия этой вещи. */
+  own(key: string, x: number, z: number) {
+    this.owner = this.owners.length;
+    this.owners.push({ key, x, z });
+  }
+
+  /** Номер вещи у каждой вершины — шейдер появления по нему находит её середину и время. */
+  private ownerOf(g: THREE.BufferGeometry) {
+    g.setAttribute('owner', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count).fill(this.owner), 1));
+  }
 
   addColored(g: THREE.BufferGeometry, color: THREE.Color | number, m: THREE.Matrix4, glow = false) {
     const geo = new THREE.BufferGeometry();
@@ -44,7 +62,8 @@ export class Batch {
       out.deleteAttribute('shade');
     }
     out.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    out = stripTo(out, ['position', 'normal', 'color']);
+    this.ownerOf(out);
+    out = stripTo(out, ['position', 'normal', 'color', 'owner']);
     (glow ? this.glow : this.colored).push(out);
     this.tris += n / 3;
   }
@@ -53,7 +72,8 @@ export class Batch {
     this.map = map;
     let out = (g.index ? g.toNonIndexed() : g.clone()) as THREE.BufferGeometry;
     out.applyMatrix4(m);
-    out = stripTo(out, ['position', 'normal', 'uv']);
+    this.ownerOf(out);
+    out = stripTo(out, ['position', 'normal', 'uv', 'owner']);
     this.textured.push(out);
     this.tris += out.attributes.position.count / 3;
   }
@@ -523,11 +543,23 @@ function lieAt(t: Thing, code: Code, cx: number, cz: number): LieAnchor {
   return { x: cx + Math.sin(t.yaw) * shift, y: LIE_TOP[code]!, z: cz + Math.cos(t.yaw) * shift, yaw: t.yaw, ...(code === 'bed' ? { bed: true as const } : {}) };
 }
 
+/**
+ * Ключ вещи — для появления (appear.ts): та же вещь на том же месте после пересборки сцены — тот же ключ; переставленная,
+ * повёрнутая или новая — новый. Без номера предмета и «уберут»: они меняются, а вещь та же.
+ */
+export function thingKey(t: Thing): string {
+  return `${t.kind}|${t.type}|${t.equipment ?? ''}|${t.cells.map(([x, y]) => `${x},${y}`).join(';')}|${Math.round(t.yaw * 100)}`;
+}
+
 export function furnish(layout: Layout, models: Map<string, Model>): Furnished {
   const f = new Furnisher(models);
   const seats: (SeatAnchor | undefined)[] = [];
   const lies: (LieAnchor | undefined)[] = [];
-  layout.things.forEach((t, i) => placeThing(f, t, i, seats, lies));
+  layout.things.forEach((t, i) => {
+    const { cx, cz } = thingFrame(t);
+    f.batch.own(thingKey(t), cx, cz);
+    placeThing(f, t, i, seats, lies);
+  });
   const decor = decorate(f, layout);
   return { batch: f.batch, seats, lies, decor };
 }
@@ -657,6 +689,7 @@ function decorate(f: Furnisher, layout: Layout): [number, number][] {
   for (const { cell: [x, y], yaw } of toiletSpots(layout)) {
     const cx = x + 0.5;
     const cz = y + 0.5;
+    f.batch.own(`toilet|${x},${y}|${Math.round(yaw * 100)}`, cx, cz);
     const m = frame(cx, cz, yaw);
     // кабинка Blender (группа 1) — унитаз, стенки и дверца одной моделью в осях клетки
     const glb = BLENDER_KIT['kenney/toilet'];
@@ -686,6 +719,7 @@ function decorate(f: Furnisher, layout: Layout): [number, number][] {
       const along = ox === 0;
       const w = along ? x1 - x0 : y1 - y0;
       const d = along ? y1 - y0 : x1 - x0;
+      f.batch.own(`rug|${x0},${y0},${x1},${y1}`, (x0 + x1) / 2, (y0 + y1) / 2);
       f.place('kenney/rugRectangle', (x0 + x1) / 2, (y0 + y1) / 2, along ? 0 : Math.PI / 2, { w: w - 0.2, d: Math.max(0.8, d - 2.2), h: 0.012 }, {
         recolor: { carpet: 0x7aa6a0, carpetDarker: 0x5f8f8a, _defaultMat: 0x7aa6a0 },
       });
@@ -694,23 +728,27 @@ function decorate(f: Furnisher, layout: Layout): [number, number][] {
   return blocked;
 }
 
-/** Слитые сетки мебели: цветная, с атласом KayKit, светящиеся экраны. */
-export function batchMeshes(b: Batch): THREE.Mesh[] {
+/**
+ * Слитые сетки мебели: цветная, с атласом KayKit, светящиеся экраны. `appear` — новые вещи растут из пола (appear.ts): материал
+ * и глубина тени — с его шейдером; без него (миниатюры каталога) — как есть.
+ */
+export function batchMeshes(b: Batch, appear?: Appear): THREE.Mesh[] {
   const out: THREE.Mesh[] = [];
+  const mat = <M extends THREE.Material>(m: M, key: string) => (appear ? appear.patch(m, key) : m);
   if (b.colored.length) {
-    const m = new THREE.Mesh(mergeGeometries(b.colored)!, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, metalness: 0.04 }));
+    const m = new THREE.Mesh(mergeGeometries(b.colored)!, mat(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, metalness: 0.04 }), 'furniture'));
     m.name = 'furniture';
     out.push(m);
   }
   if (b.textured.length && b.map) {
-    const m = new THREE.Mesh(mergeGeometries(b.textured)!, new THREE.MeshStandardMaterial({ map: b.map, roughness: 0.6 }));
+    const m = new THREE.Mesh(mergeGeometries(b.textured)!, mat(new THREE.MeshStandardMaterial({ map: b.map, roughness: 0.6 }), 'atlas'));
     m.name = 'furniture-atlas';
     out.push(m);
   }
   if (b.glow.length) {
     const m = new THREE.Mesh(
       mergeGeometries(b.glow)!,
-      new THREE.MeshStandardMaterial({ vertexColors: true, emissive: 0x3fa6b8, emissiveIntensity: 0.6, roughness: 0.3 }),
+      mat(new THREE.MeshStandardMaterial({ vertexColors: true, emissive: 0x3fa6b8, emissiveIntensity: 0.6, roughness: 0.3 }), 'screens'),
     );
     m.name = 'screens';
     out.push(m);
@@ -718,6 +756,8 @@ export function batchMeshes(b: Batch): THREE.Mesh[] {
   for (const m of out) {
     m.castShadow = true;
     m.receiveShadow = true;
+    // тень растёт вместе с вещью
+    if (appear) m.customDepthMaterial = appear.patch(new THREE.MeshDepthMaterial(), 'depth');
   }
   return out;
 }

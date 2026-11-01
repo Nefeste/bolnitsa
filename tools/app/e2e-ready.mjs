@@ -92,6 +92,17 @@ export async function readyPart({ page, port, out, ok, fail, q, shots }) {
     if (r && r.items > 0 && r.door.length > 0 && JSON.stringify(r.staff) === JSON.stringify(roles)) ok(`${type}${size ? ` ${size}` : ''}: щелчок — ${r.w} × ${r.h}, дверь в ${r.door.length} кл., ${r.items} предм., люди: ${r.staff.length}`);
     else fail(`${type}: ${JSON.stringify(r)}`);
   }
+  // появление мебели (spec docs/specs/2026-10-aaa-polish.md, «Появление мебели»): вещи последнего помещения выросли из пола,
+  // рост кончился меньше чем за секунду; стены, двери и люди — не мебель
+  const grew = await page.evaluate(() => {
+    const g = window.__game;
+    const n = g.plan.rooms.length - 1;
+    return { last: g.stage.appear.last, things: g.layout.things.filter(t => t.room === n).length };
+  });
+  await until(() => window.__game.stage.appear.growing() === 0, null, 5000).catch(() => {});
+  const still = await page.evaluate(() => window.__game.stage.appear.growing());
+  if (grew.last > 0 && grew.last === grew.things && still === 0) ok(`мебель кабинета выросла из пола: ${grew.last} вещей — ровно его, рост кончился`);
+  else fail(`появление мебели: ${JSON.stringify({ grew, still })}`);
   if (/Регистратура S, 6 × 7 — [\d\s  ]+₽ · регистратор — [\d\s  ]+₽ в сутки/.test(first)) ok(`строка призрака: «${first}»`);
   else fail(`строка призрака: «${first}»`);
   const result = await page.textContent('#result').catch(() => '');

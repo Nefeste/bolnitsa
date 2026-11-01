@@ -89,7 +89,7 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # the doctor mode: a consult, a whole case, «Take the case», «My office»; then money:
                                    # building from cash, «Until morning» to the 08:00 meeting, «почему?» of the arrived and
                                    # the left, «Кто ушёл», the «Обход» list; then ready rooms: four clicks open the empty
-                                   # building, R, one undo; then the start screen on the live scene (the ready city behind
+                                   # building (the last one's furniture grows from the floor), R, one undo; then the start screen on the live scene (the ready city behind
                                    # the glass panel, the camera on its circle, the choice reopens the page with its keys),
                                    # its three cards and the polyclinic; then specialists: hire a gastroenterologist in the
                                    # polyclinic, «по записи к …»; then the owner's play of 18.10:
@@ -479,7 +479,11 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   ward, ICU or reanimation nurse walks round the occupied beds of her room every 1–1.5 game hours (`roundsStep` in
   `population.ts`, `bedSide`, `Crowd.route`) — a rest or a ride takes over. These clips are segments of long Rocketbox clips
   (`span` in the converter's `CLIPS`, two segments blended into one) at 10 frames a second.
-  Icons above heads — `icons.ts` (drawn after the frame); the queues overlay floor tint — `overlay.ts`.
+  Icons above heads — `icons.ts` (drawn after the frame); the queues overlay floor tint — `overlay.ts`. New furniture grows from
+  the floor after a build (`appear.ts`, `docs/specs/2026-10-aaa-polish.md`, «Появление мебели»): every furniture vertex carries
+  its thing's number (`owner`, `Batch.own`), a small texture holds each thing's middle and birth time, the vertex shader of the
+  materials and of their shadow depth scales it; new things are those whose `thingKey` the last layout did not have; the first
+  layout and «reduce motion» never grow.
 - `src/ui/` — panels (React) and their store; icons — `icons.tsx` (`Icon`: Carbon (IBM) under Apache 2.0, owner's decision
   #139, the text's colour, 16 points) over `icons.gen.ts` (made by `tools/app/icons.mjs`; three own icons in Carbon's style —
   doors and a bench); never put a Unicode symbol or emoji in the window instead of an icon (`tools/test/icons.test.ts`);
