@@ -504,9 +504,9 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   place's axes (`placeAt`, `CODE_SHIFT`, `skipOf` — the lab bench shows `microscope*` or `rack*`). A desk next to a staff post
   faces it in every room, ready rooms too (`layoutOf`): the screen and the drawers to whoever sits there, the counter's panel
   to the visitor. A group's baked light — a sample per size of each room type in `light` of `budgets.json`, with the group's
-  real models in place (`blender/room.py`; `rooms.json` lists them) — is on by default, `?baked=0` (Electron `--baked 0`)
-  turns it off, the pilot's only with `?baked=1`. `bakedRooms` matches type, sides and things — never the plan's `size`: a
-  room built on the PC site carries its type's smallest size there (`planOfSite`).
+  real models in place, 32 points per metre (`blender/room.py`, `PX`; the pilot's 64; `rooms.json` lists them) — is on by
+  default, `?baked=0` (Electron `--baked 0`) turns it off, the pilot's only with `?baked=1`. `bakedRooms` matches type, sides
+  and things — never the plan's `size`: a room built on the PC site carries its type's smallest size there (`planOfSite`).
 - `assets/` — CC0 models, Rocketbox people under MIT (`assets/models/rocketbox/`, made by `tools/app/people.mjs`), the
   game's font IBM Plex Sans under SIL OFL 1.1 (`assets/fonts/`, unmodified files with `OFL.txt`; owner's decision #107),
   the Carbon icons' Apache 2.0 text (`assets/licenses/carbon-icons.txt`) and `LICENSES.md` (sources, licenses, SHA-256; MIT

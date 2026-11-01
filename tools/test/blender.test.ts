@@ -303,7 +303,7 @@ describe('Blender, часть 2: запечённый свет готовых п
     return { layout: layoutOf(db, plan, []), n: plan.rooms.findIndex(x => x.id === r.room) };
   };
 
-  test('каждый образец ложится на своё готовое помещение при всех четырёх поворотах; картинка — серая, 64 точки на метр', () => {
+  test('каждый образец ложится на своё готовое помещение при всех четырёх поворотах; картинка — серая, 32 точки на метр', () => {
     for (const [key, e] of Object.entries(roomsIndex)) {
       if (e.group === 0) continue;
       const room = JSON.parse(readFileSync(join(DIR, `${e.file}.json`), 'utf8')) as BakedRoom;
@@ -313,8 +313,9 @@ describe('Blender, часть 2: запечённый свет готовых п
         expect(bakedRooms(layout, room), `${key}, поворот ${rot}`).toEqual([n]);
       }
       const png = readFileSync(join(DIR, `${e.file}.png`));
-      expect(png.readUInt32BE(16), key).toBe((room.w - 1) * 64);
-      expect(png.readUInt32BE(20), key).toBe((room.h - 1) * 64);
+      // у образцов групп — 32 точки на метр (blender/room.py, `PX`), у пилота — 64
+      expect(png.readUInt32BE(16), key).toBe((room.w - 1) * 32);
+      expect(png.readUInt32BE(20), key).toBe((room.h - 1) * 32);
       expect(png[24]).toBe(8);
       expect(png[25]).toBe(0);
     }
