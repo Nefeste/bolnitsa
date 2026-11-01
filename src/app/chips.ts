@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import type { Stage } from '../render/stage';
 import type { ChipIcon, RoomChip } from './flow';
+import type { Box } from './tags';
 
 /** Значки — SVG 16×16, цвет — от текста (currentColor). */
 const SVG: Record<ChipIcon, string> = {
@@ -29,7 +30,12 @@ export interface ChipRow {
 
 export class Chips {
   private root: HTMLDivElement;
-  private els = new Map<string, { el: HTMLDivElement; key: string }>();
+  /** `size` — ширина и высота на экране, точки; меряется раз после смены текста (подписи помещений их обходят, tags.ts) */
+  private els = new Map<string, { el: HTMLDivElement; key: string; size?: [number, number] }>();
+  /** значки на экране в последнем кадре: середина и размер */
+  boxes: Box[] = [];
+  /** на столько точек от середины помещения до нижнего края значка — над подписью помещения (tags.ts); 0 — значок на середине */
+  lift = 0;
   private rows: ChipRow[] = [];
   private v = new THREE.Vector3();
   visible = true;
@@ -63,6 +69,7 @@ export class Chips {
       }
       if (x.key === key) continue;
       x.key = key;
+      x.size = undefined;
       x.el.className = `roomchip t-${r.chip.tone}`;
       x.el.dataset.room = r.id;
       x.el.dataset.icon = r.chip.icon;
@@ -78,6 +85,7 @@ export class Chips {
   /** Каждый кадр: значки — над серединами помещений (выше подписей стройки); вне кадра — скрыты. */
   frame() {
     this.root.style.display = this.visible ? 'block' : 'none';
+    this.boxes = [];
     if (!this.visible) return;
     const cam = this.stage.cam.camera;
     const rect = this.stage.renderer.domElement.getBoundingClientRect();
@@ -90,7 +98,11 @@ export class Chips {
         continue;
       }
       x.el.style.display = 'flex';
-      x.el.style.transform = `translate(${rect.left + ((this.v.x + 1) / 2) * rect.width}px, ${rect.top + ((1 - this.v.y) / 2) * rect.height}px) translate(-50%, -50%)`;
+      x.size ??= [x.el.offsetWidth, x.el.offsetHeight];
+      const sx = rect.left + ((this.v.x + 1) / 2) * rect.width;
+      const sy = rect.top + ((1 - this.v.y) / 2) * rect.height - (this.lift > 0 ? this.lift + x.size[1] / 2 : 0);
+      x.el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -50%)`;
+      this.boxes.push({ x: sx, y: sy, w: x.size[0], h: x.size[1] });
     }
   }
 

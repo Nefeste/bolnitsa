@@ -156,8 +156,10 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # morning round: a clinical nurse hired on a ward's day nurse post (the choice in its card;
                                    # none at night), «До утра», at 08:30 of
                                    # day 2 she and then a doctor at the bedside by the engine's times, «на обходе» in the card,
-                                   # «Персонал» and the waiting patient's path;
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|33` for one part, `-- --only 7,10,11` —
+                                   # «Персонал» and the waiting patient's path; then room names at a middle zoom: one canvas, no
+                                   # DOM, no name over another or over a status chip, none close in, some on the overview,
+                                   # none in build mode, «Подписи помещений» off at once and after a reload, bigger with large text;
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|34` for one part, `-- --only 7,10,11` —
                                    # several in a row on one page, as in the full run
 node tools/app/soak.mjs --days 3   # after build: a long run in headless Chromium — the ready city at ×12 for three game days,
                                    # the meeting closed each morning; window memory after GC, DOM nodes, people, sim lag and
@@ -424,7 +426,10 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   (`docs/specs/2026-10-doctor-mode.md`): `caseView.ts` (a copy of Anamnez's player view of a case) and `doctor.ts` build the
   patient card and the doctor's lists here and send them ready-made — the window never sees a patient's truth.
 - `src/app/` — the game in the window: loads the database and models, starts with the empty building or the preset,
-  frame loop, clock, input, build tools (`build.ts`), room labels (`labels.ts`), auto-bench (`bench.ts`), the live scene
+  frame loop, clock, input, build tools (`build.ts`), room labels (`labels.ts`: build mode and the «Отделения» layer, DOM), room
+  names at a middle zoom (`tags.ts`: one canvas over the 3D view at the screen's resolution — `fadeOf` by zoom, `placeTags`
+  drops a name wider than its room on screen or over another name or a status chip, bigger rooms first; the chips rise above
+  the names, `Chips.lift`; «Подписи помещений» in «Настройках», `names` in `settings.ts`), auto-bench (`bench.ts`), the live scene
   behind the start screen (`docs/specs/2026-10-aaa-polish.md`, «Экран начала на живой сцене»: `main.tsx` starts the ready
   city as a `Game` with `backdrop` — no input, saves, icons or autopause, never `__ready` — and the choice reopens the page
   with its keys; `backdrop.ts` — the camera's circle over the rooms, pure), the player's

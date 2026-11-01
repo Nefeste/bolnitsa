@@ -274,6 +274,8 @@
     .card .row { display: flex; gap: 6px; margin-top: 6px; }
     button.small { padding: 1px 6px; font-size: var(--fs-small); }
     .labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+    /* подписи помещений на среднем плане (docs/specs/2026-10-aaa-polish.md) — один холст на весь экран, рисует его src/app/tags.ts */
+    .roomtags { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
     .rlabel { position: absolute; left: 0; top: 0; padding: 2px 7px; border-radius: var(--r-m); background: var(--glass-tag); border-left: 3px solid var(--ok); border-top: 3px solid transparent; font-size: calc(var(--fs-caption) * var(--ui-k, 1)); line-height: 1.25; white-space: nowrap; color: var(--text); }
     .rlabel.bad { border-left-color: var(--bad); }
     .rlabel.rest { border-left-color: var(--muted); }

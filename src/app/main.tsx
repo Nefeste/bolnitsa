@@ -59,6 +59,7 @@ const actions: Actions = {
   select: later('select'),
   setTab: later('setTab'),
   toggleDebug: later('toggleDebug'),
+  toggleNames: later('toggleNames'),
   bench: later('bench'),
   setLang: later('setLang'),
   toggleBuild: later('toggleBuild'),

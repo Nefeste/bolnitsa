@@ -12,18 +12,22 @@ const memory = () => {
 
 describe('настройки', () => {
   test('по умолчанию — вид владельца: стены вниз, перспектива, качество «авто» (#70)', () => {
-    expect(DEFAULT_SETTINGS).toEqual({ walls: 'down', projection: 'persp', quality: 'auto', debug: false, metric: null, text: 1 });
+    expect(DEFAULT_SETTINGS).toEqual({ walls: 'down', projection: 'persp', quality: 'auto', debug: false, metric: null, text: 1, names: true });
     expect(parseSettings(null)).toEqual(DEFAULT_SETTINGS);
     expect(readSettings(memory())).toEqual(DEFAULT_SETTINGS);
   });
 
   test('записанное — читается; чужое и испорченное — по умолчанию, поле за полем', () => {
     const store = memory();
-    writeSettings({ walls: 'cut', projection: 'ortho', quality: 'low', debug: true, metric: 'wait', text: 1.3 }, store);
-    expect(readSettings(store)).toEqual({ walls: 'cut', projection: 'ortho', quality: 'low', debug: true, metric: 'wait', text: 1.3 });
+    writeSettings({ walls: 'cut', projection: 'ortho', quality: 'low', debug: true, metric: 'wait', text: 1.3, names: false }, store);
+    expect(readSettings(store)).toEqual({ walls: 'cut', projection: 'ortho', quality: 'low', debug: true, metric: 'wait', text: 1.3, names: false });
     // размер текста — один из трёх, как в «Анамнезе»; другой — обычный
     expect(TEXT_SCALES).toEqual([1, 1.15, 1.3]);
     expect(parseSettings('{"text":1.15}').text).toBe(1.15);
+    // подписи помещений (spec docs/specs/2026-10-aaa-polish.md): выключает их только «нет» игрока; настройки до 0.63.0 — с ними
+    expect(parseSettings('{"names":false}').names).toBe(false);
+    expect(parseSettings('{"names":"no"}').names).toBe(true);
+    expect(parseSettings('{"walls":"cut"}').names).toBe(true);
     expect(parseSettings('{"text":2}').text).toBe(1);
     expect(parseSettings('{"text":"1.3"}').text).toBe(1);
     // слой «Показатели» (spec docs/specs/2026-10-metrics-layer.md): чужой показатель — слой выключен
