@@ -445,6 +445,14 @@
     .dcols { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1.15fr 1.1fr; gap: 10px; margin-top: 6px; }
     /* чужая карта — для чтения (spec docs/specs/2026-10-owner-play-2.md): уже, одна лента; часы идут, план виден по бокам */
     .dcard.read { left: max(1.5%, calc(50% - 330px)); right: max(1.5%, calc(50% - 330px)); }
+    /* лист передачи (spec docs/specs/2026-11-scenario-2.md, часть 2а): окно поверх карты, уже карты для чтения */
+    .dsheet { position: absolute; left: max(1.5%, calc(50% - 240px)); right: max(1.5%, calc(50% - 240px)); top: 112px; z-index: 6; display: flex; flex-direction: column; gap: 4px; padding: 8px 12px; background: var(--window); }
+    .dsheet p { margin: 0; }
+    .dsheet ul { margin: 0; padding-left: 18px; }
+    .dsheet .label { display: block; color: var(--muted); margin: 6px 0 2px; font-size: var(--fs-caption); text-transform: uppercase; letter-spacing: .06em; }
+    .dsheet .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .dsheet .tbtn { flex: 1 1 0; }
+    .prow.unsorted { border-left-color: var(--accent); }
     /* больной нанятого врача: «Ход приёма» и бланк «Ещё обследование» рядом (spec docs/specs/2026-10-two-ways.md, F2) */
     .dcard.read.order { left: max(1.5%, calc(50% - 560px)); right: max(1.5%, calc(50% - 560px)); }
     .dcols.two { grid-template-columns: 1fr 1fr; }

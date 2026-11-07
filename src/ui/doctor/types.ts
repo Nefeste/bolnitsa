@@ -1,7 +1,7 @@
 // Режим врача в окне (spec docs/specs/2026-10-doctor-mode.md, «Окно»): что панели знают о враче и о чём просят игру.
 // Состояние врача и вид карты приходят из потока расчёта готовыми (src/sim/doctor.ts) — правды о больном в них нет.
 import type { BodySystem, Id } from '../../content/types';
-import type { AskRule, Command, Difficulty } from '../../engine/shift/types';
+import type { AskRule, Command, Difficulty, Triage } from '../../engine/shift/types';
 import type { CardView, DoctorState } from '../../sim/doctor';
 import { DEFAULT_ROLE, type Role } from '../../app/roles';
 
@@ -29,6 +29,8 @@ export interface DoctorHud {
   theirsOpen?: boolean;
   /** кто вы (spec docs/specs/2026-10-two-ways.md, F4): роль, которую выбрали последней; настройки игрок мог поправить */
   role: Role;
+  /** открытый лист передачи (spec docs/specs/2026-11-scenario-2.md, часть 2а): чей — привезённого, что ждёт вашей сортировки */
+  sheet?: string;
 }
 
 export type DoctorAction =
@@ -68,6 +70,13 @@ export type DoctorAction =
   /** позвать первого из ждущих вас */
   | { kind: 'next' }
   /** «Кто вы» (F4): роль ставит настройки разом */
-  | { kind: 'role'; role: Role };
+  | { kind: 'role'; role: Role }
+  /**
+   * привезённые скорой (spec docs/specs/2026-11-scenario-2.md, часть 2а): открыть лист передачи (`null` — закрыть),
+   * отсортировать по нему, кто сортирует — вы или медсестра
+   */
+  | { kind: 'sheet'; id: string | null }
+  | { kind: 'sort'; id: string; triage: Triage }
+  | { kind: 'sorts'; on: boolean };
 
 export const initialDoctor: DoctorHud = { level: 'student', autopause: true, meanwhile: [], mineOpen: false, folded: false, role: DEFAULT_ROLE };

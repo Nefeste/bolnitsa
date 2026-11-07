@@ -75,6 +75,15 @@ export const economyRu = {
     },
     ward: (admitted: number, discharged: number, transferred: number, died: number, lying: number) =>
       `стационар: поступили ${admitted}, выписаны ${discharged}, переведены ${transferred}${died > 0 ? `, умерли ${died}` : ''}, лежат ${lying}`,
+    /** ваша сортировка привезённых и ночь (spec docs/specs/2026-11-scenario-2.md, часть 2а) */
+    sorting: (right: number, mine: number) => `сортировка привезённых: верно ${right} из ${mine}`,
+    sortMiss: (who: string, yours: string, scale: string, news2: number, flag?: string) =>
+      `например, ${who}: у вас — ${yours}, по шкале — ${scale} (NEWS2 — ${news2} ${pluralRu(news2, 'балл', 'балла', 'баллов')}${flag ? `, тревожный признак «${lowerFirst(flag)}»` : ''})`,
+    sortingHint: 'Ваша сортировка по листу передачи — со шкалой NEWS2 и тревожными признаками; кого сортировала медсестра, здесь нет',
+    triage: { red: 'красный', yellow: 'жёлтый', green: 'зелёный' } as Record<string, string>,
+    night: (arrived: number, wait: number, unseen: number) =>
+      `ночь: скорая привезла ${arrived}, дольше всех ждал врача — ${dur(wait)}${unseen > 0 ? `; врач не позвал до утра — ${unseen}` : ''}`,
+    nightHint: 'Привезённые скорой с 20:00 до планёрки: от приезда до того, как врач позвал',
     hired: 'Нанятые врачи',
     hiredRow: (role: string, skill: number, seen: number, correct: number) =>
       `${role}, навык ${skill}: ${seen} ${pluralRu(seen, 'приём', 'приёма', 'приёмов')}${seen > 0 ? `, верно ${correct} %` : ''}`,

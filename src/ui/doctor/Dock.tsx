@@ -105,6 +105,13 @@ export function Dock({ hud, actions }: { hud: Hud; actions: Actions }) {
         </div>
       ) : null}
       <Levels level={d.level} actions={actions} prefix="dock" />
+      {/* кто сортирует привезённых (spec docs/specs/2026-11-scenario-2.md, часть 2а): смотровая приёмного работает */}
+      {st.er ? (
+        <label className="row small" id="dock-nurse" title={t.handover.nurseHint}>
+          <input type="checkbox" id="dock-nurse-sorts" checked={!st.sorts} onChange={e => actions.doctor({ kind: 'sorts', on: !e.currentTarget.checked })} />
+          {t.handover.nurse}
+        </label>
+      ) : null}
       {/* «Свои больные» — кого нанятые врачи оставят вам: нанятых врачей в смене нет (начало сценария 1, ночь поликлиники) и своих не
           выбрано — новых ведёте вы, и строки нет (spec docs/specs/2026-11-demo.md, проход по снимкам 2) */}
       {st.colleagues.length > 0 || st.mine.length > 0 ? <Mine mine={st.mine} open={d.mineOpen} actions={actions} /> : null}
@@ -123,6 +130,29 @@ export function Dock({ hud, actions }: { hud: Hud; actions: Actions }) {
                   {t.openCard}
                 </button>
               </Row>
+            </ul>
+          </>
+        ) : null}
+        {/* привезённые ждут вашей сортировки (часть 2а): лист передачи — по кнопке */}
+        {st.handover.length > 0 ? (
+          <>
+            <div className="label">{t.handover.list}</div>
+            <ul id="dock-handover">
+              {st.handover.map(r => (
+                <li key={r.id} className="prow unsorted" id={`dh-${r.id}`}>
+                  <span className="who">
+                    {r.who}
+                    <small className="muted">
+                      {' '}
+                      «{r.reason}» · {r.door ? t.handover.door : t.handover.bay}
+                    </small>
+                  </span>
+                  <Find id={r.id} find={find} />
+                  <button type="button" className={d.sheet === r.id ? 'small on' : 'small'} id={`dock-sheet-${r.id}`} onClick={() => actions.doctor({ kind: 'sheet', id: r.id })}>
+                    {t.handover.open}
+                  </button>
+                </li>
+              ))}
             </ul>
           </>
         ) : null}

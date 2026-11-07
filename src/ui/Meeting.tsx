@@ -264,6 +264,23 @@ export function MeetingBody({ m, e, actions, screen = false }: { m: MeetingView;
         {why.arrived && d.arrivedBy ? <WhyArrived d={d} /> : null}
         {why.left && d.leftBy ? <WhyLeft b={d.leftBy} alone={m.doctors.length === 0} screen={screen} actions={actions} /> : null}
         {d.ward ? <p>{t.ward(d.ward.admitted, d.ward.discharged, d.ward.transferred, d.ward.died ?? 0, d.ward.lying)}</p> : null}
+        {/* ваша сортировка привезённых и ночь (spec docs/specs/2026-11-scenario-2.md, часть 2а) */}
+        {d.ambulance?.mine ? (
+          <p id="meet-sorting" title={t.sortingHint}>
+            {t.sorting(d.ambulance.mine - d.ambulance.under - d.ambulance.over, d.ambulance.mine)}
+            {m.sortMiss ? (
+              <span className="muted">
+                {' '}
+                · {t.sortMiss(m.sortMiss.who, t.triage[m.sortMiss.yours], t.triage[m.sortMiss.scale], m.sortMiss.news2, m.sortMiss.flag)}
+              </span>
+            ) : null}
+          </p>
+        ) : null}
+        {d.night ? (
+          <p id="meet-night" title={t.nightHint}>
+            {t.night(d.night.arrived, d.night.wait, d.night.unseen ?? 0)}
+          </p>
+        ) : null}
       </Section>
       {m.doctors.length > 0 || d.seen > 0 ? (
         <Section title={t.hired} id="meet-doctors">

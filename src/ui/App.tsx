@@ -11,6 +11,7 @@ import type { WallMode } from '../render/world';
 import { Card } from './doctor/Card';
 import { Encyclopedia, openEncyclopedia } from './Encyclopedia';
 import { Asks, Dock, OfficeRow, TakeCase } from './doctor/Dock';
+import { Handover } from './doctor/Handover';
 import { ROLES } from '../app/roles';
 import { toastsOf } from '../app/toasts';
 import { type QualityMode, TEXT_SCALES } from '../app/settings';
@@ -43,6 +44,12 @@ const Btn = ({ on, onClick, children, title, disabled, id }: { on?: boolean; onC
     {children}
   </button>
 );
+
+/** Открытый лист передачи (spec docs/specs/2026-11-scenario-2.md, часть 2а): привезённый из списка ждущих вашей сортировки. */
+function sheetOf(hud: Hud) {
+  const id = hud.doctor?.sheet;
+  return id === undefined ? undefined : hud.doctor?.state?.handover.find(r => r.id === id);
+}
 
 function TopBar({ hud, actions }: P) {
   const speeds: Speed[] = [1, 3, 12];
@@ -1273,6 +1280,8 @@ export function App({ store, actions, names }: { store: Store; actions: Actions;
       <ProblemsPanel hud={hud} actions={actions} />
       {!hud.build.on ? <Dock hud={hud} actions={actions} /> : null}
       {hud.doctor?.card ? <Card key={hud.doctor.card.id} v={hud.doctor.card} level={hud.doctor.level} meanwhile={hud.doctor.meanwhile} next={hud.doctor.next} actions={actions} /> : null}
+      {/* лист передачи (spec docs/specs/2026-11-scenario-2.md, часть 2а): привезённый, что ждёт вашей сортировки */}
+      {sheetOf(hud) ? <Handover row={sheetOf(hud)!} more={(hud.doctor?.state?.handover.length ?? 1) - 1} actions={actions} /> : null}
       {/* планёрка в 08:00 (spec docs/specs/2026-10-economy.md) — когда карта пациента закрыта */}
       {hud.economy?.open && !hud.doctor?.card ? <Meeting e={hud.economy} actions={actions} /> : null}
       {/* «Сценарий пройден» (spec docs/specs/2026-10-scenario-1.md) — после планёрки, когда карта закрыта */}
