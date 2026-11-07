@@ -43,7 +43,7 @@ describe('настройки', () => {
   });
 
   test('«меньше движения» (ADR 0023 устава): выбор игрока — «да» или «нет»; не выбирал — как в системе', () => {
-    // настройки до 0.68.0 и чужое значение — не выбирал
+    // настройки до 0.69.0 и чужое значение — не выбирал
     expect(parseSettings('{"walls":"cut"}').still).toBe(null);
     expect(parseSettings('{"still":"yes"}').still).toBe(null);
     expect(parseSettings('{"still":false}').still).toBe(false);

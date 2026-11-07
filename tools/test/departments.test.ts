@@ -47,7 +47,7 @@ describe('отделения помещений', () => {
     // кабинет специалиста — в отделении его болезней
     expect(Object.fromEntries(Object.values(db.roles).filter(r => r.department).map(r => [r.id, r.department]))).toEqual({
       'role.endocrinologist': 'dept.therapy', 'role.gastroenterologist': 'dept.therapy', 'role.infectionist': 'dept.infectious',
-      'role.surgeon': 'dept.surgery', 'role.therapist': 'dept.therapy',
+      'role.surgeon': 'dept.surgery', 'role.surgeon_clinic': 'dept.surgery', 'role.therapist': 'dept.therapy',
     });
   });
 

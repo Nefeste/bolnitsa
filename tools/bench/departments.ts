@@ -8,10 +8,14 @@
 // главной жалобе (первой), как в окошке регистратуры.
 //
 // bun tools/bench/departments.ts [--seeds 1,2,…,12] [--vitals] [--first] [--list]   (--list — кто направлен не туда)
+//
+// С `--engine` (spec, часть 6) — направление самого движка: та же больница, эндокринолог заменён амбулаторным хирургом, у
+// регистраторов навык 1 и 5 (`--skills 1,5`), двое суток; итоги суток — сколько направил регистратор, не туда, передали врачи,
+// и сколько ушло, не дождавшись.
 import type { ContentDb, Id } from '../../src/content/types';
 import { hospitalOf } from '../../src/engine/hospital/site';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
-import { presetStaff, withNightShift } from '../../src/engine/hospital/staff';
+import { presetStaff, salaryOf, withNightShift } from '../../src/engine/hospital/staff';
 import { complaintObservations, runExam } from '../../src/engine/med/exams';
 import { contextOf, posterior } from '../../src/engine/med/infer';
 import { primaryOf } from '../../src/engine/med/plan';
@@ -54,6 +58,33 @@ function routed(p: ShiftPatient, seed: number): { to: Id; top: number } {
     }
   }
   return { to: best, top };
+}
+
+// направление движка (часть 6): амбулаторный хирург вместо эндокринолога, навык регистраторов — из списка
+if (process.argv.includes('--engine')) {
+  const rec = db.presets['preset.city'];
+  const st = siteOfPreset(db, rec);
+  for (const skill of arg('skills', '1,5').split(',').map(Number)) {
+    let routed = 0;
+    let wrong = 0;
+    let sent = 0;
+    let left = 0;
+    for (const seed of SEEDS) {
+      const staff = withNightShift(db, st.rooms, presetStaff(db, rec)).map(m =>
+        m.role === 'role.endocrinologist' ? { ...m, role: 'role.surgeon_clinic', salary: salaryOf(db, 'role.surgeon_clinic', m.skill) } : m.role === 'role.registrar' ? { ...m, skill } : m,
+      );
+      const s = newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, st), staff, flow: { perHour: 0, auto: true }, economy: { cash: startCash(db, 'preset') } });
+      while (s.t < 56 * 3600) apply(db, s, { kind: 'advance', seconds: 300 });
+      for (const d of s.history) {
+        routed += d.routing?.routed ?? 0;
+        wrong += d.routing?.wrong ?? 0;
+        sent += d.routing?.sent ?? 0;
+        left += d.left;
+      }
+    }
+    console.log(`навык регистратора ${skill}: направил ${routed}, не туда ${wrong} (${((100 * wrong) / Math.max(1, routed)).toFixed(1)} %), передали врачи ${sent}, ушли не дождавшись ${left} — зёрна ${SEEDS.join(', ')}, двое суток`);
+  }
+  process.exit(0);
 }
 
 const rows = new Map<string, number>();

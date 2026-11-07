@@ -84,6 +84,10 @@ export const economyRu = {
     night: (arrived: number, wait: number, unseen: number) =>
       `ночь: скорая привезла ${arrived}, дольше всех ждал врача — ${dur(wait)}${unseen > 0 ? `; врач не позвал до утра — ${unseen}` : ''}`,
     nightHint: 'Привезённые скорой с 20:00 до планёрки: от приезда до того, как врач позвал',
+    /** направление по жалобе (spec docs/specs/2026-10-departments.md, часть 4) */
+    routing: (wrong: number, routed: number, sent: number) =>
+      `регистратор направил ${routed}, не туда — ${wrong}${sent > 0 ? `; врачи передали в отделение болезни — ${sent}` : ''}`,
+    routingHint: 'Регистратор направляет пришедших сами по жалобам: с навыком — по всем, с низким навыком — по главной. Не туда — по болезни, которую нашёл врач',
     hired: 'Нанятые врачи',
     hiredRow: (role: string, skill: number, seen: number, correct: number) =>
       `${role}, навык ${skill}: ${seen} ${pluralRu(seen, 'приём', 'приёма', 'приёмов')}${seen > 0 ? `, верно ${correct} %` : ''}`,

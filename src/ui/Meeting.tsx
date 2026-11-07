@@ -276,6 +276,12 @@ export function MeetingBody({ m, e, actions, screen = false }: { m: MeetingView;
             ) : null}
           </p>
         ) : null}
+        {/* направление по жалобе (spec docs/specs/2026-10-departments.md, часть 4) */}
+        {d.routing ? (
+          <p id="meet-routing" title={t.routingHint}>
+            {t.routing(d.routing.wrong, d.routing.routed, d.routing.sent)}
+          </p>
+        ) : null}
         {d.night ? (
           <p id="meet-night" title={t.nightHint}>
             {t.night(d.night.arrived, d.night.wait, d.night.unseen ?? 0)}

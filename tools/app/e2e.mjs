@@ -79,6 +79,7 @@ import { specialistsPart } from './e2e-specialists.mjs';
 import { demoPart } from './e2e-demo.mjs';
 import { handoverPart } from './e2e-handover.mjs';
 import { emergencyPart } from './e2e-emergency.mjs';
+import { routingPart } from './e2e-routing.mjs';
 import { serve } from './serve.mjs';
 
 const arg = (k, d) => {
@@ -207,6 +208,8 @@ try {
   if (run(35)) await handoverPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   // часть 36 — сценарий 2 «Приёмное» (spec docs/specs/2026-11-scenario-2.md, часть 2б): tools/app/e2e-emergency.mjs
   if (run(36)) await emergencyPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  // часть 37 — направление по жалобе и амбулаторный хирург (spec docs/specs/2026-10-departments.md, часть 4): tools/app/e2e-routing.mjs
+  if (run(37)) await routingPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);
