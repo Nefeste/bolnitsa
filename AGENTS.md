@@ -165,9 +165,10 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # meeting, ticked again — the nurse sorts the waiting; then scenario 2: its card second in
                                    # «Кампания», the ambulatory and its cash, the letters, no checkbox before the emergency room,
                                    # the first tutorial arrival — autopause, the «sheet» letter, the mentor's tip in the sheet,
-                                   # «Красный» — under «Ждут вас», «До утра» sorting each — the «night» letter, the meeting; then
-                                   # routing: the outpatient surgeon hired on the doctor post, a walk-in routed to surgery, «регистратор
-                                   # направил: хирургия» in the path, the routing line at the meeting;
+                                   # «Красный» — under «Ждут вас», «До утра» sorting each — the «night» letter, the meeting, «Цели»
+                                   # with the fourth step «Кабинет хирурга» and its goals; then routing: the outpatient surgeon hired
+                                   # on the doctor post, a walk-in routed to surgery, «регистратор направил: хирургия» in the path, the
+                                   # routing line at the meeting with an example of a wrong route;
                                    # screenshots in tools/app/out/; `-- --only 1|2|…|37` for one part, `-- --only 7,10,11` —
                                    # several in a row on one page, as in the full run
 node tools/app/soak.mjs --days 3   # after build: a long run in headless Chromium — the ready city at ×12 for three game days,
@@ -388,7 +389,9 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   else the main one) into `ShiftPatient.dept`; `docFor` and `colleagueTakes` send the routed to that department's doctor;
   `redirectOf` passes a patient whose chosen diagnosis is another department's to that department (`sendOn`); day totals —
   `DaySummary.routing`; the path's queue step carries `dept`, the meeting shows `#meet-routing`. Without such a doctor the flow
-  is the same byte for byte.
+  is the same byte for byte. Since 0.69.0 the registrar routes only to a department with such a doctor on duty, every other
+  department adds to the general flow (`meta.department`, `routeFor`), and a wrong route marks the patient (`misrouted`); the
+  meeting's example of one comes from the sim (`routeMissOf` in `src/sim/doctor.ts`, closed cases only).
   Undoing a mark keeps whatever room is being rebuilt (`keep` in the undo step): a mark never closes a room.
   The window (part 2) calls `deptsOf` itself. `src/app/departments.ts` — Okabe–Ito colours (`tools/test/departments-ui.test.ts`
   keeps all seven apart under three kinds of colour blindness), stripes, the «Отделения» layer and its legend, a patient's
@@ -455,7 +458,12 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   (the round block of your lying patient — `CardTips.round`); the hint states `sheet`, `bays` (`door` in the doctor state)
   and `night` (`nightUnstaffed` in `src/app/game.ts`, 16:00–20:00 with an emergency room and nobody there at night or no
   night doctor); a tutorial patient waits under «Ждут вас» (`why: 'yours'`). The economy simulator's `--only emergency`
-  plays it: the wing at 08:00, night therapists in both offices, sorting by the scale, the main goals by day 8.
+  plays it: the wing at 08:00, night therapists in both offices, sorting by the scale, the main goals by day 8. Part 3
+  (0.69.0): a guide step and a `roomWorks` goal may name a `role` — the room works and a member of that role is on its post
+  (the step also has its own `name`: «Кабинет хирурга», an office with the outpatient surgeon); `roomWorks` in `campaign.ts`
+  is the one check for goals and steps and counts each shift apart (staff-room places of those on that shift, like the shift
+  itself); goal kind `routing` — a day with the registrar routing at least `count` and none wrongly. The simulator builds the
+  surgeon's office with a second staff room and two door benches on the morning of day 2.
 - The demo for Next Fest (`docs/specs/2026-11-demo.md`, #176): the key `?demo=1` (Electron `--demo`, `main.tsx`) — only
   «Кампания» on the start screen, and after the first meeting closes the «Итог» window (`Game.afterMeeting`): what was built
   in the build order, the day's patients and how many left waiting for you, your receptions, cash, real time played, the
@@ -466,7 +474,8 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   (`Game.step`). With the build open the doctor hint says «Готово» first (`leave` in `hints.ts`), and «Свои больные» shows
   only with a hired doctor on duty or systems chosen.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`), Web Worker
-  (`worker.ts`) and its client in the window (`client.ts`). The window never runs the engine. The doctor mode
+  (`worker.ts`) and its client in the window (`client.ts`: a slice reaches the window whole, every field the sim sent but
+  `kind`). The window never runs the engine. The doctor mode
   (`docs/specs/2026-10-doctor-mode.md`): `caseView.ts` (a copy of Anamnez's player view of a case) and `doctor.ts` build the
   patient card and the doctor's lists here and send them ready-made — the window never sees a patient's truth.
 - `src/app/` — the game in the window: loads the database and models, starts with the empty building or the preset,
