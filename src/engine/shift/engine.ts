@@ -4150,7 +4150,7 @@ function callIn(db: ContentDb, s: ShiftState, list: readonly StaffMember[], late
   for (const m of late) {
     if ((s.desk?.[m.id] ?? 0) > s.t || busy.has(m.id)) continue;
     const back = backOf(m);
-    const id = back?.id ?? pickPc(db, s, m, list, false);
+    const id = back?.id ?? pickPc(db, s, m, list, false, false);
     if (id) call(m, id, back !== undefined);
   }
 }
@@ -4208,11 +4208,14 @@ function toDoors(db: ContentDb, s: ShiftState, list: readonly StaffMember[], lat
  * Кого зовёт свободный нанятый врач в потоке для ПК (spec 2026-10-walk, «Свой врач»): первого из записанных к нему; своих
  * нет и можно чужих (`steal`) — терапевт зовёт первого из самой длинной чужой очереди, кому дойти до него быстрее, чем
  * дождаться своего врача (по `PER_QUEUED` на каждого впереди и на него самого); специалист — никого. Только готовых:
- * оформленных и измеренных.
+ * оформленных и измеренных. У привезённого скорой своего врача нет: он лежит в смотровой, и врач идёт к нему, — его зовёт
+ * первый свободный врач смены наравне со своими, по срочности очереди (spec docs/specs/2026-11-scenario-2.md, «Замер»: прежде
+ * его звали только из чужих очередей, когда они были длиннее своей, и «красный» ждал днём часами). Ушедший со сменой
+ * (`onDuty` нет) — только своих.
  */
-function pickPc(db: ContentDb, s: ShiftState, m: StaffMember, list: readonly StaffMember[], steal: boolean): string | undefined {
+function pickPc(db: ContentDb, s: ShiftState, m: StaffMember, list: readonly StaffMember[], steal: boolean, onDuty = true): string | undefined {
   const can = s.queue.filter(x => readyAt(s.patients[x]) <= s.t && colleagueTakes(db, s, s.patients[x], m, list));
-  const own = can.find(x => s.patients[x].doc === m.id);
+  const own = can.find(x => s.patients[x].doc === m.id || (onDuty && s.patients[x].doc === undefined && s.patients[x].kind === 'ambulance'));
   if (own || !steal || db.roles[m.role]?.profile) return own;
   const by = new Map<string, string[]>();
   for (const x of can) {
