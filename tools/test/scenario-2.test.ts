@@ -135,10 +135,12 @@ describe('сценарий 2: цели', () => {
     expect(missionProgress(db, view([day(1, amb(6, 0, 1))]), sorting)).toMatchObject({ value: 0, done: false });
   });
 
-  test('ночи: подряд от последних суток; ночь без привезённых не рвёт и не продолжает; долго или не позвали — рвёт', () => {
+  test('ночи: подряд от последних суток; ночь без привезённых не рвёт и не продолжает; долго — рвёт, и кого не позвали до утра', () => {
     const n = (wait: number, unseen?: number) => ({ night: { arrived: 2, wait, ...(unseen ? { unseen } : {}) } });
     expect(missionProgress(db, view([day(1, n(5)), day(2, {}), day(3, n(10)), day(4, n(15))]), nights)).toMatchObject({ value: 3, done: true });
     expect(missionProgress(db, view([day(1, n(5)), day(2, n(16)), day(3, n(10)), day(4, n(3))]), nights)).toMatchObject({ value: 2, done: false });
-    expect(missionProgress(db, view([day(1, n(5)), day(2, n(5)), day(3, n(5, 1))]), nights)).toMatchObject({ value: 0, done: false });
+    // не позвали до утра: ожидание — до 08:00; привезли за две минуты до планёрки — не в укор, с ночи — рвёт
+    expect(missionProgress(db, view([day(1, n(5)), day(2, n(5)), day(3, n(2, 1))]), nights)).toMatchObject({ value: 3, done: true });
+    expect(missionProgress(db, view([day(1, n(5)), day(2, n(5)), day(3, n(240, 1))]), nights)).toMatchObject({ value: 0, done: false });
   });
 });

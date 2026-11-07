@@ -240,14 +240,15 @@ export function missionProgress(db: ContentDb, v: CampaignView, m: Mission): Mis
       const best = Math.max(0, ...days.map(h => (h.ambulance && h.ambulance.under + h.ambulance.over === 0 ? (h.ambulance.mine ?? 0) : 0)));
       return { value: Math.min(best, m.count), target: m.count, done: was || best >= m.count };
     }
-    // ночи подряд от последних суток назад: каждого привезённого врач позвал не позже чем через `minutes`; ночь без
-    // привезённых серию не рвёт и не продолжает
+    // ночи подряд от последних суток назад: каждого привезённого врач позвал не позже чем через `minutes`; кого не позвал
+    // до планёрки, тот ждёт до 08:00 — привезённого в 07:58 это не наказывает; ночь без привезённых серию не рвёт и не
+    // продолжает
     case 'nights': {
       let n = 0;
       for (let i = days.length - 1; i >= 0 && n < m.count; i--) {
         const night = days[i].night;
         if (!night) continue;
-        if (night.unseen || night.wait > m.minutes) break;
+        if (night.wait > m.minutes) break;
         n++;
       }
       return { value: Math.min(n, m.count), target: m.count, done: was || n >= m.count };
