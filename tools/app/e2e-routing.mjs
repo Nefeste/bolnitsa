@@ -92,11 +92,10 @@ export async function routingPart({ page, port, out, ok, fail, q, shots }) {
   const wrong = Number(/не туда — (\d+)/.exec(line)?.[1] ?? 0);
   if (wrong > 0 && /например, .+: у регистратора — .+, по болезни — .+ \(.+\)/.test(line)) ok('планёрка: пример направленного не туда — у регистратора одно отделение, по болезни другое');
   else if (wrong > 0) {
+    // что прислал поток и кого направили не туда — чтобы было видно, где пример потерялся
     const st = await page.evaluate(() => window.__game.client.save());
-    (await import('node:fs')).writeFileSync(join(out, 'e2e-routing-state.json'), JSON.stringify(st));
-    const all = [...Object.values(st.patients), ...(st.past ?? []).map(x => x.p)].filter(p => p.dept !== undefined);
-    const rows = all.map(p => ({ id: p.id, dept: p.dept, closed: !!p.closed, status: p.status, cond: p.patient?.truth?.conditions?.[0]?.id }));
-    fail(`планёрка: не туда — ${wrong}, а примера нет: «${line}»; от потока — ${JSON.stringify(await page.evaluate(() => window.__game.routeMiss ?? null))}; день ${st.history?.at(-1)?.day}, направленных в состоянии ${rows.length}, закрытых ${rows.filter(r => r.closed).length}: ${JSON.stringify(rows.slice(0, 6))}`);
+    const miss = [...Object.values(st.patients), ...(st.past ?? []).map(x => x.p)].filter(p => p.misrouted);
+    fail(`планёрка: не туда — ${wrong}, а примера нет: «${line}»; от потока — ${JSON.stringify(await page.evaluate(() => window.__game.routeMiss ?? null))}; направлены не туда: ${JSON.stringify(miss.map(p => ({ id: p.id, dept: p.dept, closed: !!p.closed, status: p.status })))}`);
   }
   await page.evaluate(() => window.__game.actions.money({ kind: 'close' }));
 }
