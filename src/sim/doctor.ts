@@ -11,6 +11,7 @@ import { complaintObservations } from '../engine/med/exams';
 import { evaluatePlan, primaryOf } from '../engine/med/plan';
 import type { Grade, ScoreNote } from '../engine/med/score';
 import { complaintText, observationText } from '../engine/med/text';
+import { routeDept } from '../engine/hospital/departments';
 import { type Block, doctorRoom, examWhere, type Problem } from '../engine/hospital/requirements';
 import {
   atDoctor, atDoorOf, bedsideEquipment, bedsideOf, boxBeds, brokenOf, colleaguesOf, forPlayer, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, type HospitalCtx,
@@ -539,6 +540,40 @@ export function sortMissOf(db: ContentDb, s: ShiftState): SortMiss | undefined {
   return {
     day, who: T.doctor.who(patientName(best.patient), best.patient.sex, best.patient.age), yours: best.triage, scale: scale.triage, news2: scale.news2,
     ...(scale.flag ? { flag: named(db.findings[scale.flag]?.name, scale.flag) } : {}),
+  };
+}
+
+/**
+ * Направлен не туда примером (spec docs/specs/2026-11-scenario-2.md, часть 3; spec docs/specs/2026-10-departments.md, часть
+ * 4) — для планёрки: кто, куда направил регистратор, отделение болезни и сама болезнь.
+ */
+export interface RouteMiss {
+  day: number;
+  who: string;
+  to: string;
+  dept: string;
+  disease: string;
+}
+
+/**
+ * Пример направленного не туда за сутки последней планёрки: из пришедших сами этих суток (номер — `сутки-w…`), кого регистратор
+ * направил не туда (`misrouted`). Только чей приём закрыт: болезнь ещё не принятого назвала бы диагноз. Первым — кто пришёл
+ * раньше. Ошибок нет — нет.
+ */
+export function routeMissOf(db: ContentDb, s: ShiftState): RouteMiss | undefined {
+  const day = s.history.at(-1)?.day;
+  if (day === undefined || !s.history.at(-1)?.routing?.wrong) return undefined;
+  const prefix = `${day}-w`;
+  let best: ShiftPatient | undefined;
+  for (const p of [...Object.values(s.patients), ...(s.past ?? []).map(x => x.p)]) {
+    if (!p.misrouted || p.dept === undefined || !p.closed || !p.id.startsWith(prefix)) continue;
+    if (!best || p.arriveT < best.arriveT) best = p;
+  }
+  if (!best) return undefined;
+  const dept = (id: Id) => lowerFirst(named(db.departments?.[id]?.name, id));
+  const cond = primaryOf(best.patient).id;
+  return {
+    day, who: T.doctor.who(patientName(best.patient), best.patient.sex, best.patient.age), to: dept(best.dept!), dept: dept(routeDept(db, cond)!), disease: lowerFirst(named(db.conditions[cond]?.name, cond)),
   };
 }
 
@@ -1107,8 +1142,8 @@ export class DoctorDesk {
   }
 
   /** Что добавить к срезу: состояние врача, вид карты и «Приняты» — если изменились. */
-  out(s: ShiftState): { doctor?: DoctorState; card?: CardView | null; seen?: SeenList; errors?: ErrorList; sortMiss?: SortMiss | null } {
-    const out: { doctor?: DoctorState; card?: CardView | null; seen?: SeenList; errors?: ErrorList; sortMiss?: SortMiss | null } = {};
+  out(s: ShiftState): { doctor?: DoctorState; card?: CardView | null; seen?: SeenList; errors?: ErrorList; sortMiss?: SortMiss | null; routeMiss?: RouteMiss | null } {
+    const out: { doctor?: DoctorState; card?: CardView | null; seen?: SeenList; errors?: ErrorList; sortMiss?: SortMiss | null; routeMiss?: RouteMiss | null } = {};
     const state = doctorState(this.db, s, this.level);
     const json = JSON.stringify(state);
     if (json !== this.sent) {
@@ -1135,7 +1170,11 @@ export class DoctorDesk {
     const miss = s.flow ? `${s.history.length}|${currentLang}` : '';
     if (miss !== this.missSent) {
       this.missSent = miss;
-      if (s.flow) out.sortMiss = sortMissOf(this.db, s) ?? null;
+      if (s.flow) {
+        out.sortMiss = sortMissOf(this.db, s) ?? null;
+        // направленный не туда примером (spec docs/specs/2026-11-scenario-2.md, часть 3) — те же сутки
+        out.routeMiss = routeMissOf(this.db, s) ?? null;
+      }
     }
     return out;
   }

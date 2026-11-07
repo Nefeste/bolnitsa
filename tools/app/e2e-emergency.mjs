@@ -5,7 +5,8 @@
 // снята — сортируете вы. Через две минуты — первый заданный, по скорой: автопауза, письмо «лист передачи», в листе —
 // подсказка наставницы «Лист передачи» со статьёй; «Понятно», «Красный» — он ваш, в «Ждут вас». «До утра» — каждого
 // привезённого сортирует лист; к вечеру — письмо «ночь»: врача на ночь нет. Планёрка: «Письма» — после первых суток, строка
-// «Сортировка». Снимки — `e2e-emergency-*.jpg`.
+// «Сортировка». Часть 3: во «Целях» — порядок стройки из четырёх шагов, четвёртый — «Кабинет хирурга», и его цели. Снимки —
+// `e2e-emergency-*.jpg`.
 import { join } from 'node:path';
 
 const SC = 'scenario.emergency';
@@ -78,6 +79,19 @@ export async function emergencyPart({ page, port, out, ok, fail, q, shots }) {
   const sorts = await page.evaluate(() => ({ checked: document.getElementById('dock-nurse-sorts')?.checked, sorts: window.__game.store.get().doctor?.state?.sorts }));
   if (sorts.checked === false && sorts.sorts === true) ok('смотровая работает — галочка «Пусть сортирует медсестра» видна и снята: сортируете вы');
   else fail(`галочка после смотровой: ${JSON.stringify(sorts)}`);
+
+  // ---------------------------------------------------------------- «Цели»: четвёртый шаг — «Кабинет хирурга» и его цели (часть 3)
+  await page.click('#tab-goals');
+  await page.waitForSelector('#goals', { timeout: 5000 });
+  const guide = await page.$$eval('#guide-list li', els => els.map(e => ({ room: e.dataset.room, cls: e.className, text: (e.textContent ?? '').replace(/\s+/g, ' ').trim() })));
+  const goals = await page.$$eval('#goals ul.goals li', els => els.map(e => ({ id: e.id, ok: e.classList.contains('ok') })));
+  const surgeonStep = guide[3];
+  if (
+    guide.length === 4 && guide[0].cls === 'done' && guide[1].cls === 'next' && surgeonStep.room === 'room.office' && surgeonStep.text.includes('Кабинет хирурга')
+    && goals.some(g => g.id === 'goal-surgeon' && !g.ok) && goals.some(g => g.id === 'goal-routing' && !g.ok)
+  ) ok(`«Цели» — порядок стройки из ${guide.length} шагов, четвёртый — «${surgeonStep.text.slice(1, 90)}…»; цели «Открыть кабинет хирурга» и «Сутки без направленных не туда»`);
+  else fail(`«Цели» сценария 2: ${JSON.stringify({ guide, goals })}`);
+  await page.click('#tab-goals');
 
   // ---------------------------------------------------------------- первый заданный по скорой: автопауза, письмо, лист
   await page.evaluate(() => window.__game.actions.setSpeed(3));

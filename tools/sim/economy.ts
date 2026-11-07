@@ -151,6 +151,26 @@ const WING: SiteCommand[] = [
   { kind: 'ready', type: 'room.ward', size: 'M', x: 38, y: 6, rot: 0, staff: true },
   { kind: 'ready', type: 'room.xray', size: 'M', x: 32, y: 16, rot: 2, staff: true },
 ];
+/**
+ * Часть 3 сценария 2 (spec docs/specs/2026-11-scenario-2.md): четвёртый шаг порядка стройки — кабинет хирурга. Разумный план
+ * строит его утром вторых суток, когда крыло приёмного уже работает: кабинет врача в крыле и амбулаторный хирург на дневную
+ * смену. И вторую ординаторскую: на вашем месте здесь нанятый терапевт, ему тоже нужно место, и днём врачей станет трое на
+ * два места (у игрока их двое: сам он места не занимает).
+ */
+const SURGEON_AT = (24 + 8) * 3600;
+const SURGEON_OFFICE: SiteCommand = { kind: 'ready', type: 'room.office', size: 'M', x: 46, y: 6, rot: 0, staff: false };
+const STAFF_ROOM: SiteCommand = { kind: 'ready', type: 'room.staff', size: 'S', x: 41, y: 16, rot: 2, staff: false };
+/** Пара скамей у двери кабинета хирурга (дверь — [49, 12]), как у кабинетов амбулатории (spec docs/specs/2026-10-door-benches.md). */
+const SURGEON_BENCHES: SiteCommand[] = [{ kind: 'bench', x: 50, y: 13 }, { kind: 'bench', x: 51, y: 13 }];
+
+/** Кабинет хирурга сценария 2: построить с ординаторской и скамьями у двери, нанять амбулаторного хирурга на день, закрыть стройку. */
+function surgeonOffice(s: ShiftState) {
+  const room = site(s, SURGEON_OFFICE)!;
+  site(s, STAFF_ROOM);
+  for (const cmd of SURGEON_BENCHES) site(s, cmd);
+  site(s, { kind: 'hire', room, role: 'role.doctor', as: 'role.surgeon_clinic', shift: 'day' });
+  apply(db, s, { kind: 'site', cmd: { kind: 'done' } });
+}
 
 /** Нужна ли помещению двойная дверь: в его образцах лежат (как в стройке, часть 2б) — палаты, рентген, смотровая. */
 const DOUBLE = new Set(['room.ward', 'room.xray', 'room.emergency', 'room.icu', 'room.ricu', 'room.box', 'room.ct', 'room.mri', 'room.or']);
@@ -213,6 +233,8 @@ interface DayRow {
   night?: { arrived: number; wait: number; unseen?: number };
   /** ваша сортировка за сутки: сколько, недооценили, переоценили */
   sorted?: { mine: number; under: number; over: number };
+  /** направление по жалобе (spec docs/specs/2026-10-departments.md, часть 4): направил регистратор, не туда, передали врачи */
+  routing?: { routed: number; wrong: number; sent: number };
   /** стационар за сутки: выписаны, из них рано, суток у выписанных и обычных сроков */
   ward?: { discharged: number; early: number; stayDays: number; stayNorm: number };
 }
@@ -344,8 +366,13 @@ function run(name: string, seed: number, manage: Manage): Run {
   const seen = new Set<string>();
   const waited = new Map<string, { since: number; until?: number }>();
   const end = (daysOf(name) * 24 + 8) * 3600;
+  let surgeon = name !== 'emergency';
   while (s.t < end) {
     if (name === 'emergency') sortArrivals(s);
+    if (!surgeon && s.t >= SURGEON_AT) {
+      surgeon = true;
+      surgeonOffice(s);
+    }
     for (const n of apply(db, s, { kind: 'advance', seconds: 300 })) {
       if (n.kind !== 'morning' || !n.staff) continue;
       for (const q of n.staff.quit ?? []) quits.push({ day: s.day, role: s.staff!.find(m => m.id === q.id)?.role ?? '' });
@@ -403,6 +430,7 @@ function run(name: string, seed: number, manage: Manage): Run {
       by: d.arrivedBy ?? {}, ...(d.leftBy ? { why: d.leftBy } : {}), ...(s.history[i - 1]?.inflow ? { forecast: s.history[i - 1].inflow } : {}),
       ...(d.night ? { night: { ...d.night } } : {}),
       ...(d.ambulance?.mine ? { sorted: { mine: d.ambulance.mine, under: d.ambulance.under, over: d.ambulance.over } } : {}),
+      ...(d.routing ? { routing: { ...d.routing } } : {}),
       ...(d.ward ? { ward: { discharged: d.ward.discharged, early: d.ward.early, stayDays: d.ward.stayDays, stayNorm: d.ward.stayNorm } } : {}),
     };
   });
@@ -469,6 +497,7 @@ if (asJson) {
         console.log(`      почему: сами ${d.by.walkIn ?? 0}, по записи ${d.by.appointment ?? 0}, скорая ${d.by.ambulance ?? 0}, повторно ${d.by.return ?? 0}${f ? ` · прогноз ${fmt(f.walk)} + ${fmt(f.book)} + ${fmt(f.amb)} (кабинетов ${f.offices}, специалистов ${f.booked}, мест ${f.bays}, ${f.pct} %)` : ''}${why ? ` · ушли: ${why}` : ''}`);
         // сценарий 2: ночь и ваша сортировка
         if (d.night || d.sorted) console.log(`      ${d.night ? `ночь: привезли ${d.night.arrived}, дольше всех ждал врача ${d.night.wait} мин${d.night.unseen ? `, не позвали ${d.night.unseen}` : ''}` : 'ночь: не привозили'}${d.sorted ? ` · сортировка: ваших ${d.sorted.mine}, недооценили ${d.sorted.under}, переоценили ${d.sorted.over}` : ''}${d.ward?.discharged ? ` · выписаны ${d.ward.discharged} (рано ${d.ward.early}), суток ${d.ward.stayDays} при обычных ${d.ward.stayNorm}` : ''}`);
+        if (d.routing) console.log(`      направление: регистратор направил ${d.routing.routed}, не туда ${d.routing.wrong}, врачи передали ${d.routing.sent}`);
       }
       const lines = Object.entries(r.lines).filter(([, v]) => v !== 0).map(([k, v]) => `${k} ${fmt(v)}`).join(', ');
       console.log(`    за ${r.days.length} сут.: ${lines}`);
@@ -568,6 +597,14 @@ if (asJson) {
       if (late.length) console.log(`  ✗ основные цели — не к ${EMERGENCY_DAYS}-м суткам: зёрна ${late.map(r => `${r.seed} (${last(r) === Infinity ? 'нет' : last(r)})`).join(', ')}`);
       else console.log(`  ✓ основные цели — к суткам ${rs.map(last).join(' / ')}, не позже ${EMERGENCY_DAYS}-х`);
       fails += late.length;
+      // часть 3: кабинет хирурга — утром вторых суток; его цели — к концу прогона
+      for (const id of ['surgeon', 'routing']) {
+        const text = db.scenarios![EMERGENCY_SC].missions.find(m => m.id === id)?.text.ru ?? id;
+        const never = rs.filter(r => r.goals?.[id] === undefined);
+        if (never.length) console.log(`  ✗ «${text}» — не выполнена: зёрна ${never.map(r => r.seed).join(', ')}`);
+        else console.log(`  ✓ «${text}» — к суткам ${rs.map(r => r.goals![id]).join(' / ')}`);
+        fails += never.length;
+      }
     }
     // персонал (spec 2026-10-staff-mood): игрок ничего не делает — за первые две недели уходят сами не больше двух (дальше
     // растут, а зарплату им не поднимают, — уходят: решение владельца, #83); поднимает, когда просят, — не больше двух за

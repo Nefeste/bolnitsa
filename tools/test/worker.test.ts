@@ -8,6 +8,7 @@ import { apply, newFlowShift } from '../../src/engine/shift/engine';
 import { sliceOf } from '../../src/engine/shift/slice';
 import { DAY } from '../../src/engine/shift/types';
 import { H, Handles, packSlice } from '../../src/sim/pack';
+import { SimClient, type Slice } from '../../src/sim/client';
 import type { FromSim, ToSim } from '../../src/sim/protocol';
 import { hospitalFor } from '../bench/hospital';
 
@@ -107,3 +108,33 @@ describe('поток расчёта', () => {
     }
   }, 60_000);
 });
+
+// Клиент потока в окне (src/sim/client.ts): срез — всё, что прислал поток, кроме вида сообщения. Пример ошибки сортировки на
+// планёрке (часть 2а сценария 2) терялся так с 0.66.0: клиент перечислял поля среза и это забыл (spec
+// docs/specs/2026-11-scenario-2.md, часть 3).
+describe('клиент потока в окне', () => {
+  test('срез доходит до окна весь: каждое поле, что прислал поток, — и примеры ошибок для планёрки', () => {
+    const real = globalThis.Worker;
+    class Fake {
+      onmessage: ((e: { data: FromSim }) => void) | null = null;
+      onerror: ((e: { message: string }) => void) | null = null;
+      postMessage() {}
+    }
+    globalThis.Worker = Fake as unknown as typeof globalThis.Worker;
+    try {
+      const client = new SimClient('sim.js');
+      let got: Slice | undefined;
+      client.onSlice = s => (got = s);
+      const msg = {
+        kind: 'slice', buf: new Int32Array(4), names: [], notices: [], lag: 0, errors: { rows: [], total: 0 },
+        sortMiss: { day: 1, who: 'А', yours: 'green', scale: 'red', news2: 7 }, routeMiss: { day: 1, who: 'Б', to: 'терапия', dept: 'хирургия', disease: 'острый холецистит' },
+      } as unknown as FromSim;
+      (client as unknown as { worker: Fake }).worker.onmessage!({ data: msg });
+      const { kind: _, ...want } = msg as FromSim & { kind: 'slice' };
+      expect(got).toEqual(want as unknown as Slice);
+    } finally {
+      globalThis.Worker = real;
+    }
+  });
+});
+

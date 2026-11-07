@@ -145,6 +145,23 @@ function deadlineCount(days: readonly DaySummary[], target: Id): number {
   return n;
 }
 
+/**
+ * Работает ли помещение типа `room`; с `role` — и на его месте человек этой должности (spec docs/specs/2026-11-scenario-2.md,
+ * часть 3: кабинет врача с амбулаторным хирургом). Так считают и цель, и шаг порядка стройки. Со сменами (spec
+ * docs/specs/2026-10-staff-shifts.md) — работает хоть в одной: места и места в ординаторской — у тех, кто в этой смене, как
+ * в самой смене (`dutyOf`); без смен — у всех сразу, как было.
+ */
+export function roomWorks(db: ContentDb, v: { hospital?: HospitalState; staff?: readonly StaffMember[] }, room: Id, role?: Id): boolean {
+  if (!v.hospital) return false;
+  const plan = planOf(db, v.hospital);
+  const staff = v.staff ?? [];
+  const crews = staff.some(m => m.shift !== undefined) ? [staff.filter(m => m.shift !== 'night' && !m.away), staff.filter(m => m.shift !== 'day' && !m.away)] : [staff];
+  return crews.some(crew => {
+    const working = workingRooms(db, plan, staffingOf(db, plan, crew));
+    return plan.rooms.some(r => r.type === room && working.has(r.id) && (role === undefined || crew.some(x => x.room === r.id && x.role === role)));
+  });
+}
+
 /** Ход задания сейчас; выполненное раньше — выполнено, что бы ни было потом. */
 export function missionProgress(db: ContentDb, v: CampaignView, m: Mission): MissionProgress {
   const was = v.campaign.done[m.id] !== undefined;
@@ -157,12 +174,7 @@ export function missionProgress(db: ContentDb, v: CampaignView, m: Mission): Mis
       return { value: Math.min(seen, m.count), target: m.count, accuracy, done: was || (seen >= m.count && accuracy >= m.accuracy) };
     }
     case 'roomWorks': {
-      let works = false;
-      if (v.hospital) {
-        const plan = planOf(db, v.hospital);
-        const working = workingRooms(db, plan, staffingOf(db, plan, v.staff ?? []));
-        works = plan.rooms.some(r => r.type === m.room && working.has(r.id));
-      }
+      const works = roomWorks(db, v, m.room, m.role);
       return { value: works || was ? 1 : 0, target: 1, done: was || works };
     }
     case 'streak': {
@@ -252,6 +264,12 @@ export function missionProgress(db: ContentDb, v: CampaignView, m: Mission): Mis
         n++;
       }
       return { value: Math.min(n, m.count), target: m.count, done: was || n >= m.count };
+    }
+    // часть 3 сценария 2 (spec docs/specs/2026-11-scenario-2.md; spec docs/specs/2026-10-departments.md, часть 4): лучшие сутки,
+    // когда регистратор никого не направил не туда, — сколько он направил
+    case 'routing': {
+      const best = Math.max(0, ...days.map(h => (h.routing && h.routing.wrong === 0 ? h.routing.routed : 0)));
+      return { value: Math.min(best, m.count), target: m.count, done: was || best >= m.count };
     }
     // окно — дни главы подряд; выполнено, если хоть в одном окне тяжёлых было не меньше порога, а умерло и выписано раньше
     // срока не больше доли; ход — последнее окно

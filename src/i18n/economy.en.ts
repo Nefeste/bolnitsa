@@ -80,6 +80,7 @@ export const economyEn: EconomyStrings = {
     routing: (wrong: number, routed: number, sent: number) =>
       `the registrar sent ${routed}, to the wrong department — ${wrong}${sent > 0 ? `; doctors passed on to the department of the illness — ${sent}` : ''}`,
     routingHint: 'The registrar sends walk-ins by their complaints: a skilled one by all of them, a low-skilled one by the main one. Wrong — by the illness the doctor found',
+    routeMiss: (who: string, to: string, dept: string, disease: string) => `for example, ${who}: the registrar — ${to}, by the illness — ${dept} (${disease})`,
     hired: 'Hired doctors',
     hiredRow: (role: string, skill: number, seen: number, correct: number) =>
       `${role}, skill ${skill}: ${seen} ${pl(seen, 'patient', 'patients')}${seen > 0 ? `, correct ${correct} %` : ''}`,

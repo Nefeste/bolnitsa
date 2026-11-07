@@ -88,6 +88,8 @@ export const economyRu = {
     routing: (wrong: number, routed: number, sent: number) =>
       `регистратор направил ${routed}, не туда — ${wrong}${sent > 0 ? `; врачи передали в отделение болезни — ${sent}` : ''}`,
     routingHint: 'Регистратор направляет пришедших сами по жалобам: с навыком — по всем, с низким навыком — по главной. Не туда — по болезни, которую нашёл врач',
+    /** направленный не туда примером (spec docs/specs/2026-11-scenario-2.md, часть 3): приём закрыт — болезнь уже известна */
+    routeMiss: (who: string, to: string, dept: string, disease: string) => `например, ${who}: у регистратора — ${to}, по болезни — ${dept} (${disease})`,
     hired: 'Нанятые врачи',
     hiredRow: (role: string, skill: number, seen: number, correct: number) =>
       `${role}, навык ${skill}: ${seen} ${pluralRu(seen, 'приём', 'приёма', 'приёмов')}${seen > 0 ? `, верно ${correct} %` : ''}`,

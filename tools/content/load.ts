@@ -1773,12 +1773,18 @@ function checkScenarios(db: ContentDb, errors: string[]) {
         if (cond && cond.params?.[name]?.[value] === undefined) at(`болезнь обучения ${t.condition}: параметра ${name} со значением ${value} у болезни нет`);
       }
     }
+    // должность на месте в помещении (spec docs/specs/2026-11-scenario-2.md, часть 3): нанимают и встаёт на место в нём
+    const standsIn = (role: string, room: string) => !!db.roles[role]?.hire && db.roles[role].rooms.includes(room);
     const missions = new Set<string>();
     for (const m of c.missions) {
       if (missions.has(m.id)) at(`задание ${m.id} повторяется`);
       missions.add(m.id);
       if (m.kind === 'roomWorks' && !c.build.includes(m.room)) at(`задание ${m.id}: ${m.room} нельзя построить в сценарии`);
-      if (!['seen', 'roomWorks', 'streak', 'days', 'stay', 'sorting', 'nights'].includes(m.kind)) at(`задание ${m.id}: вид ${m.kind} в сценарии ПК не считается`);
+      if (m.kind === 'roomWorks' && m.role !== undefined && !standsIn(m.role, m.room)) at(`задание ${m.id}: ${m.role} не встаёт на место в ${m.room}`);
+      if (!['seen', 'roomWorks', 'streak', 'days', 'stay', 'sorting', 'nights', 'routing'].includes(m.kind)) at(`задание ${m.id}: вид ${m.kind} в сценарии ПК не считается`);
+      // направление по жалобе (spec docs/specs/2026-10-departments.md, часть 4) — где можно нанять врача, который берёт
+      // пришедших сами своего отделения: без него регистратор не направляет
+      if (m.kind === 'routing' && !Object.values(db.roles).some(r => r.walkIns && c.build.some(room => standsIn(r.id, room)))) at(`задание ${m.id}: в сценарии регистратору не к кому направить`);
       // сортировка и ночь (spec docs/specs/2026-11-scenario-2.md) — где привозит скорая; свою сортировку — где сортирует игрок
       if ((m.kind === 'sorting' || m.kind === 'nights') && !c.build.some(r => db.rooms[r]?.emergency)) at(`задание ${m.id}: в сценарии не построить смотровую приёмного`);
       if (m.kind === 'sorting' && !c.sorts) at(`задание ${m.id}: привезённых сортирует медсестра — сортировка без ошибок ничего не значит`);
@@ -1802,6 +1808,9 @@ function checkScenarios(db: ContentDb, errors: string[]) {
       if (steps.has(g.room)) at(`порядок стройки: ${g.room} повторяется`);
       steps.add(g.room);
       if (!c.build.includes(g.room)) at(`порядок стройки: ${g.room} в сценарии не построить`);
+      // шаг с должностью (часть 3 сценария 2): она встаёт на место в помещении, а у шага — своё имя
+      if (g.role !== undefined && !standsIn(g.role, g.room)) at(`порядок стройки: ${g.role} не встаёт на место в ${g.room}`);
+      if (g.role !== undefined && !g.name) at(`порядок стройки: у шага ${g.room} с должностью ${g.role} нужно имя`);
     }
     // подсказки в карте (часть 2б): от персонажа; о болезни — заданного больного: её наставник знает, у других болезнь
     // подсказка выдала бы; статьи энциклопедии — из базы

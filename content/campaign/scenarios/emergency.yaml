@@ -5,7 +5,8 @@
 # «Приёмное» «Анамнеза»: тяжёлая пневмония по скорой, перелом лодыжек без смещения, аппендицит у молодого по скорой.
 # Письма — наставница сценария 1 и Ян Новак, новых персонажей нет; подсказки в карте и в листе передачи — подсказки главы 2
 # «Анамнеза» в нейтральном сеттинге, медицина в них та же. Слова, порядок стройки и числа целей — предложение агента на
-# одобрение владельца. Кабинет хирурга и «Сутки без направленных не туда» придут с частями 4–6 спецификации отделений.
+# одобрение владельца. Кабинет хирурга и «Сутки без направленных не туда» — часть 3, после частей 4–6 спецификации отделений
+# (амбулаторный хирург и направление по жалобе, решения владельца #140, #141).
 id: scenario.emergency
 order: 2
 name: { ru: "Приёмное", en: "Emergency department" }
@@ -43,6 +44,13 @@ guide:
       en: "for those who cannot go home: without a ward, only a transfer to another hospital"
   - room: room.xray
     why: { ru: "снимок лёгких при кашле и одышке, кости — при травме", en: "a chest X-ray for cough and breathlessness, bones for an injury" }
+  # часть 3: кабинет врача, на месте врача — амбулаторный хирург (spec docs/specs/2026-10-departments.md, часть 4)
+  - room: room.office
+    role: role.surgeon_clinic
+    name: { ru: "Кабинет хирурга", en: "Surgeon's office" }
+    why:
+      ru: "боль в животе и травмы — к хирургу, а не к терапевту: кабинет врача, на месте врача — амбулаторный хирург"
+      en: "abdominal pain and injuries go to a surgeon, not a therapist: a doctor's office with an outpatient surgeon on the doctor's post"
 missions:
   - id: sorting
     main: true
@@ -71,6 +79,22 @@ missions:
     text:
       ru: "Открыть рентген: построить, поставить аппарат, нанять рентгенолаборанта и рентгенолога"
       en: "Open an X-ray room: build it, install the machine, hire a radiographer and a radiologist"
+  # часть 3: кабинет хирурга и направление по жалобе (spec docs/specs/2026-10-departments.md, часть 4)
+  - id: surgeon
+    main: false
+    kind: roomWorks
+    room: room.office
+    role: role.surgeon_clinic
+    text:
+      ru: "Открыть кабинет хирурга: кабинет врача, на месте врача — амбулаторный хирург"
+      en: "Open a surgeon's office: a doctor's office with an outpatient surgeon on the doctor's post"
+  - id: routing
+    main: false
+    kind: routing
+    count: 20
+    text:
+      ru: "Сутки без направленных не туда — не меньше двадцати направленных регистратором"
+      en: "A day without misrouted patients, with at least twenty routed by the registrar"
 letters:
   - id: hello
     from: char.tutor
@@ -149,6 +173,19 @@ letters:
         Две ночи подряд привезённых смотрели быстро, это видно в отчётах. Спасибо, коллега.
       en: >-
         Two nights in a row the arrivals were seen quickly, and it shows in the reports. Thank you, colleague.
+  - id: surgeonDone
+    from: char.tutor
+    when: { mission: surgeon }
+    text:
+      ru: >-
+        Кабинет хирурга работает. Теперь регистратор направляет пришедших сами по жалобам: боль в животе и травмы — к
+        хирургу, остальных — к терапевту. Регистратор с опытом слушает все жалобы, новичок — только главную и ошибается
+        чаще. Ошибётся — врач передаст больного в нужное отделение, а на планёрке будет видно, сколько направлено не туда.
+      en: >-
+        The surgeon's office is open. Now the registrar routes walk-ins by their complaints: abdominal pain and injuries go to
+        the surgeon, everyone else to the therapist. An experienced registrar listens to every complaint, a novice only to
+        the main one and errs more often. If the registrar errs, the doctor passes the patient on to the right department,
+        and the meeting shows how many were misrouted.
   - id: end
     from: char.tutor
     when: end

@@ -1,5 +1,5 @@
 {
-  "version": "0.68.0",
+  "version": "0.70.0",
   "base": 78,
   "ids": {
     "achievements": [
@@ -1323,7 +1323,8 @@
       "scenario.emergency/night",
       "scenario.emergency/nightsDone",
       "scenario.emergency/sheet",
-      "scenario.emergency/sortingDone"
+      "scenario.emergency/sortingDone",
+      "scenario.emergency/surgeonDone"
     ],
     "scenarios.missions": [
       "scenario.ambulatory/antibiotics",
@@ -1332,8 +1333,10 @@
       "scenario.ambulatory/noLeft",
       "scenario.ambulatory/seen",
       "scenario.emergency/nights",
+      "scenario.emergency/routing",
       "scenario.emergency/sorting",
       "scenario.emergency/stay",
+      "scenario.emergency/surgeon",
       "scenario.emergency/xray"
     ],
     "scores": [

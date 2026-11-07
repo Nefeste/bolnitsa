@@ -10,18 +10,20 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { db } from '../../src/content';
 import type { ContentDb, Mission, Scenario } from '../../src/content/types';
-import { missionProgress } from '../../src/engine/campaign/campaign';
-import { doctorRoom } from '../../src/engine/hospital/requirements';
+import { missionProgress, roomWorks } from '../../src/engine/campaign/campaign';
+import { planOf } from '../../src/engine/hospital/build';
+import { doctorRoom, workingRooms } from '../../src/engine/hospital/requirements';
 import { hospitalOf, type SiteCommand } from '../../src/engine/hospital/site';
 import { siteOfPlan } from '../../src/engine/hospital/site-plan';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
-import { presetStaff, withNightShift } from '../../src/engine/hospital/staff';
+import { presetStaff, staffingOf, withNightShift } from '../../src/engine/hospital/staff';
 import { apply, hospitalCtx, newFlowShift, siteOpen } from '../../src/engine/shift/engine';
 import { startCash } from '../../src/engine/shift/money';
 import { type DaySummary, DAY, type ShiftPatient, type ShiftState, type Triage } from '../../src/engine/shift/types';
 import { buildDb, CONTENT_DIR } from '../content/load';
 import { setLang } from '../../src/i18n';
 import { useDb } from '../../src/sim/caseView';
+import { scenarioView } from '../../src/sim/campaign';
 import { doctorState } from '../../src/sim/doctor';
 import { type TipMoment, tipFits } from '../../src/sim/tips';
 
@@ -279,10 +281,10 @@ describe('сценарий 2: запись «Приёмное»', () => {
   test('запись: амбулатория, сортируете вы, порядок стройки, первые больные, цели, письма и подсказки на двух языках', () => {
     expect([sc.order, sc.start, sc.sorts, sc.budget]).toEqual([2, 'site.ambulatory', true, 600000]);
     expect(sc.tutorial.map(t => [t.condition, !!t.ambulance])).toEqual([['cond.pneumonia_cap', true], ['cond.ankle_fracture', false], ['cond.appendicitis', true]]);
-    expect(sc.guide.map(g => g.room)).toEqual(['room.emergency', 'room.ward', 'room.xray']);
+    expect(sc.guide.map(g => g.room)).toEqual(['room.emergency', 'room.ward', 'room.xray', 'room.office']);
     expect(sc.missions.filter(m => m.main).map(m => m.kind)).toEqual(['sorting', 'nights', 'stay']);
     expect(sc.tips.map(t => (typeof t.when === 'object' ? t.when.condition : t.when))).toEqual(['ambulance', 'rounds', 'cond.appendicitis']);
-    const texts = [sc.name, sc.about, ...sc.guide.map(g => g.why), ...sc.missions.map(m => m.text), ...sc.letters.map(l => l.text), ...sc.tips.flatMap(t => [t.name, t.text])];
+    const texts = [sc.name, sc.about, ...sc.guide.flatMap(g => [g.why, ...(g.name ? [g.name] : [])]), ...sc.missions.map(m => m.text), ...sc.letters.map(l => l.text), ...sc.tips.flatMap(t => [t.name, t.text])];
     for (const x of texts) expect([x.ru.length > 0, (x.en?.length ?? 0) > 0]).toEqual([true, true]);
   });
 
@@ -327,6 +329,98 @@ describe('сценарий 2: запись «Приёмное»', () => {
         'scenario.ambulatory: подсказка sheet: листа передачи в сценарии нет — сортирует медсестра или смотровой приёмного не построить',
         'scenario.ambulatory: подсказка round: обхода в сценарии нет — палату не построить',
       ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 120_000);
+});
+
+// Часть 3 (spec docs/specs/2026-11-scenario-2.md, «Часть 3: как сделано»): кабинет хирурга — четвёртый шаг порядка стройки и
+// дополнительная цель; «Сутки без направленных не туда» (spec docs/specs/2026-10-departments.md, часть 4).
+describe('сценарий 2, часть 3: кабинет хирурга', () => {
+  const sc = db.scenarios!['scenario.emergency'];
+  const OFFICE: SiteCommand = { kind: 'ready', type: 'room.office', size: 'M', x: 46, y: 6, rot: 0, staff: false };
+  /**
+   * Амбулатория сценария 2 с крылом приёмного, как в симуляторе экономики: ваш кабинет ведёт нанятый терапевт, ночью —
+   * терапевты в обоих кабинетах; в ординаторской — два места.
+   */
+  function wing(seed: number): ShiftState {
+    if (!amb.ok) throw new Error('амбулатория не строится');
+    const { mine, ...site } = amb.site;
+    const s = newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, site), staff: ambStaff(), flow: { perHour: 0, auto: true }, scenario: sc.id });
+    const offices = site.rooms.filter(r => r.type === 'room.office');
+    build(db, s, [
+      ...WING, { kind: 'hire', room: mine!, role: 'role.doctor', shift: 'day' },
+      ...offices.map((r): SiteCommand => ({ kind: 'hire', room: r.id, role: 'role.doctor', shift: 'night' })),
+    ]);
+    return s;
+  }
+  /** Новый кабинет врача в крыле и на его место — терапевт на дневную смену. */
+  function office(s: ShiftState): string {
+    const n = apply(db, s, { kind: 'site', cmd: OFFICE }).find(x => x.kind === 'site');
+    const room = n && n.kind === 'site' && n.ok ? n.room! : '';
+    build(db, s, [{ kind: 'hire', room, role: 'role.doctor', shift: 'day' }]);
+    return room;
+  }
+
+  test('запись: четвёртый шаг — «Кабинет хирурга», кабинет врача с амбулаторным хирургом; две дополнительные цели и письмо', () => {
+    expect(sc.guide[3]).toMatchObject({ room: 'room.office', role: 'role.surgeon_clinic', name: { ru: 'Кабинет хирурга' } });
+    expect(sc.missions.filter(m => !m.main).map(m => [m.id, m.kind])).toEqual([['xray', 'roomWorks'], ['surgeon', 'roomWorks'], ['routing', 'routing']]);
+    expect(sc.missions.find(m => m.id === 'surgeon')).toMatchObject({ room: 'room.office', role: 'role.surgeon_clinic' });
+    expect(sc.missions.find(m => m.id === 'routing')).toMatchObject({ count: 20 });
+    expect(sc.letters.find(l => l.id === 'surgeonDone')?.when).toEqual({ mission: 'surgeon' });
+  });
+
+  test('шаг и цель: кабинет с терапевтом — не кабинет хирурга; с амбулаторным хирургом — да, и с ночной сменой в ординаторской', () => {
+    const s = wing(4);
+    const v = () => ({ hospital: s.hospital, staff: s.staff });
+    const step = () => scenarioView(db, s)!.guide!.map(g => g.done);
+    expect(step()).toEqual([true, true, true, false]);
+    // терапевт на месте врача: кабинет работает, но он не хирурга
+    const room = office(s);
+    expect([roomWorks(db, v(), 'room.office'), roomWorks(db, v(), 'room.office', 'role.surgeon_clinic'), step()[3]]).toEqual([true, false, false]);
+    // на его место — амбулаторный хирург
+    build(db, s, [{ kind: 'dismiss', id: s.staff!.find(m => m.room === room && m.shift === 'day')!.id }, { kind: 'hire', room, role: 'role.doctor', as: 'role.surgeon_clinic', shift: 'day' }]);
+    expect([roomWorks(db, v(), 'room.office', 'role.surgeon_clinic'), step()[3]]).toEqual([true, true]);
+    // места в ординаторской — по сменам, как в самой смене: на обе смены сразу хирургу места нет (два места заняли терапевты
+    // вашего кабинета, днём и ночью), а днём есть
+    const plan = planOf(db, s.hospital!);
+    expect(workingRooms(db, plan, staffingOf(db, plan, s.staff!)).has(room)).toBe(false);
+    expect(hospitalCtx(db, s, 10 * H).working.has(room)).toBe(true);
+    // цель — утром следующих суток
+    liveUntil(s, 33, () => false);
+    expect(s.campaign!.done.surgeon).toBe(1);
+  }, 120_000);
+
+  test('«Сутки без направленных не туда»: лучшие сутки без ошибки — сколько направил регистратор; одна ошибка — не в счёт', () => {
+    const s0 = city(5);
+    const day = (n: number, routing?: { routed: number; wrong: number; sent: number }): DaySummary => ({ ...s0.summary, day: n, ...(routing ? { routing } : {}) });
+    const view = (history: DaySummary[]) => ({ campaign: { chapter: sc.id, since: 0, done: {}, letters: [] }, history });
+    const m: Mission = { id: 'r', main: false, text: { ru: '' }, kind: 'routing', count: 20 };
+    expect(missionProgress(db, view([day(1, { routed: 30, wrong: 1, sent: 1 }), day(2, { routed: 18, wrong: 0, sent: 0 }), day(3)]), m)).toMatchObject({ value: 18, target: 20, done: false });
+    expect(missionProgress(db, view([day(1, { routed: 30, wrong: 1, sent: 1 }), day(2, { routed: 22, wrong: 0, sent: 2 })]), m)).toMatchObject({ value: 20, done: true });
+  });
+
+  test('загрузчик: должность шага и цели встаёт на место в помещении, у шага с должностью — имя; не туда — где есть к кому направить', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bolnitsa-content-'));
+    try {
+      cpSync(CONTENT_DIR, dir, { recursive: true });
+      const file = join(dir, 'campaign/scenarios/emergency.yaml');
+      const text = readFileSync(file, 'utf8');
+      const swap = (from: string, to: string) => {
+        if (!text.includes(from)) throw new Error(`в записи нет «${from}»`);
+        return text.replace(from, to);
+      };
+      writeFileSync(file, swap('    role: role.surgeon_clinic\n    name: { ru: "Кабинет хирурга", en: "Surgeon\'s office" }\n', '    role: role.radiologist\n'));
+      expect(buildDb(dir).errors.filter(e => e.startsWith('scenario.emergency: порядок'))).toEqual([
+        'scenario.emergency: порядок стройки: role.radiologist не встаёт на место в room.office',
+        'scenario.emergency: порядок стройки: у шага room.office с должностью role.radiologist нужно имя',
+      ]);
+      writeFileSync(file, text);
+      // без врача, что берёт пришедших сами, регистратор не направляет
+      const role = join(dir, 'hospital/roles/surgeon_clinic.yaml');
+      writeFileSync(role, readFileSync(role, 'utf8').replace('walkIns: true\n', ''));
+      expect(buildDb(dir).errors.filter(e => e.startsWith('scenario.emergency: задание'))).toEqual(['scenario.emergency: задание routing: в сценарии регистратору не к кому направить']);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

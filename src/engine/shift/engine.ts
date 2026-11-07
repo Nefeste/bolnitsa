@@ -4065,14 +4065,16 @@ function routeTargets(db: ContentDb, list: readonly StaffMember[]): Set<Id> {
 /**
  * Куда регистратор направил бы пришедшего сам: тот же вывод по тому, что видно у двери, что у `routeOf`, — по всем жалобам
  * или по одной главной, — с вероятностями болезней, сложенными по отделениям (травма — к хирургии, `routeDept`); где больше
- * — туда, ничья — по номеру отделения.
+ * — туда, ничья — по номеру отделения. Направить можно только туда, где в смене есть врач, что берёт пришедших сами
+ * (`targets`), — остальные отделения складываются в общий поток, отделение больницы (`meta.department`, терапия): к их
+ * врачам пришедшие сами и так не попадут (spec docs/specs/2026-11-scenario-2.md, «Решения агента», 15).
  */
-export function deptRoute(db: ContentDb, s: ShiftState, p: ShiftPatient, all: boolean): Id {
+export function deptRoute(db: ContentDb, s: ShiftState, p: ShiftPatient, all: boolean, targets: ReadonlySet<Id>): Id {
   const obs = complaintObservations(p.patient).slice(0, all ? undefined : 1);
   const by = new Map<Id, number>();
   for (const b of posterior(db, candidatesOf(db, p.departments ?? s.meta.department), obs, contextOf(db, p.patient, obs))) {
-    const d = routeDept(db, b.id);
-    if (d !== undefined) by.set(d, (by.get(d) ?? 0) + b.p);
+    const d = routeFor(db, s, b.id, targets);
+    by.set(d, (by.get(d) ?? 0) + b.p);
   }
   let best = s.meta.department;
   let top = -1;
@@ -4093,12 +4095,23 @@ export function deptRoute(db: ContentDb, s: ShiftState, p: ShiftPatient, all: bo
  */
 function routeArrival(db: ContentDb, s: ShiftState, p: ShiftPatient) {
   if (!s.flow || p.kind !== 'walkIn' || p.to !== undefined || p.taught) return;
-  if (routeTargets(db, colleaguesOf(db, s)).size === 0) return;
+  const targets = routeTargets(db, colleaguesOf(db, s));
+  if (targets.size === 0) return;
   const skill = Math.max(0, ...hospitalCtx(db, s).staff.filter(m => m.role === REGISTRAR).map(m => m.skill));
-  p.dept = deptRoute(db, s, p, skill >= (db.inflow?.route ?? 3));
+  p.dept = deptRoute(db, s, p, skill >= (db.inflow?.route ?? 3), targets);
   const day = (s.summary.routing ??= { routed: 0, wrong: 0, sent: 0 });
   day.routed++;
-  if (p.dept !== routeDept(db, primaryOf(p.patient).id)) day.wrong++;
+  // не туда — по правде, среди тех же путей: болезнь отделения без такого врача — общий поток
+  if (p.dept !== routeFor(db, s, primaryOf(p.patient).id, targets)) {
+    day.wrong++;
+    p.misrouted = true;
+  }
+}
+
+/** Путь пришедшего сам с болезнью `cond`: её отделение, если в нём есть врач, что берёт пришедших сами, иначе общий поток. */
+function routeFor(db: ContentDb, s: ShiftState, cond: Id, targets: ReadonlySet<Id>): Id {
+  const d = routeDept(db, cond);
+  return d !== undefined && targets.has(d) ? d : s.meta.department;
 }
 
 /**
