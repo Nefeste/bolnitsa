@@ -1,5 +1,5 @@
 {
-  "version": "0.55.0",
+  "version": "0.65.1",
   "base": 78,
   "ids": {
     "achievements": [
@@ -1325,6 +1325,7 @@
       "score.news2"
     ],
     "sites": [
+      "site.ambulatory",
       "site.polyclinic"
     ],
     "skills": [
