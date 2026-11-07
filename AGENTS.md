@@ -420,7 +420,10 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   for the `sort` command, hired doctors call only the sorted, your sorts count in `AmbulanceDay.mine`; the `sorts` command
   with `on: false` hands sorting to the nurse, who sorts the waiting at once by the scale. The 08:00 meeting writes
   `DaySummary.night` (`nightOf`: ambulance arrivals since 20:00, the longest wait for a doctor, those never called). Goal
-  kinds `sorting` and `nights` (`campaign.ts`); the loader lets a PC scenario count `stay` too.
+  kinds `sorting` and `nights` (`campaign.ts`); the loader lets a PC scenario count `stay` too. Part 1б: the ready ambulatory
+  `content/hospital/sites/ambulatory.yaml` (`site.ambulatory`, the scenario's `start`) with a free east wing; a tutorial
+  patient with `ambulance: true` comes by ambulance — each stream takes the next tutorial patient of its own kind
+  (`tutorialNext(db, s, stream)`), the first one `FIRST_TAUGHT` after your office and the emergency room work.
 - The demo for Next Fest (`docs/specs/2026-11-demo.md`, #176): the key `?demo=1` (Electron `--demo`, `main.tsx`) — only
   «Кампания» on the start screen, and after the first meeting closes the «Итог» window (`Game.afterMeeting`): what was built
   in the build order, the day's patients and how many left waiting for you, your receptions, cash, real time played, the

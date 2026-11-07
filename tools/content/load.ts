@@ -1764,7 +1764,8 @@ function checkScenarios(db: ContentDb, errors: string[]) {
       const cond = db.conditions[t.condition];
       if (!cond) at(`болезнь обучения ${t.condition} не найдена`);
       else if (!cond.presenting || !departments.includes(cond.department)) at(`болезнь обучения ${t.condition} — не из приёма отделения ${departments.join(', ')}`);
-      if (t.ambulance) at(`болезнь обучения ${t.condition}: в сценарии заданные — пришедшие сами`);
+      // привезённый скорой (spec docs/specs/2026-11-scenario-2.md) — где строят смотровую приёмного (что стоит с начала, тоже в `build`)
+      if (t.ambulance && !c.build.some(r => db.rooms[r]?.emergency)) at(`болезнь обучения ${t.condition}: привезённый скорой, а смотровой приёмного в сценарии нет`);
       for (const [name, value] of Object.entries(t.params ?? {})) {
         if (cond && cond.params?.[name]?.[value] === undefined) at(`болезнь обучения ${t.condition}: параметра ${name} со значением ${value} у болезни нет`);
       }

@@ -1015,12 +1015,13 @@ function flowArrive(db: ContentDb, s: ShiftState, ev: Extract<ShiftEvent, { kind
   const kind: VisitKind = ev.stream === 'amb' || as?.arrival === 'ambulance' ? 'ambulance' : ev.stream === 'ret' ? 'return' : ev.stream === 'book' ? 'appointment' : 'walkIn';
   const key = ev.stream === 'ret' ? `return:${ev.of}` : ev.stream === 'book' ? `flow:book:${ev.to}:${ev.n}` : `flow:${ev.stream}:${ev.n}`;
   const id = ev.stream === 'ret' ? `${d}-r${ev.of}` : ev.stream === 'book' ? `${bookPrefix(d, ev.to!)}${String(ev.n).padStart(3, '0')}` : `${d}-${ev.stream === 'amb' ? 'a' : 'w'}${String(ev.n).padStart(4, '0')}`;
-  // сценарий ПК (spec 2026-10-scenario-1): первые пришедшие сами — заданные сценарием, по порядку
-  const teach = ev.stream === 'walk' ? tutorialNext(db, s) : undefined;
+  // сценарий ПК (spec 2026-10-scenario-1): первые пришедшие сами — заданные сценарием, по порядку; сценарий 2 (spec
+  // docs/specs/2026-11-scenario-2.md) — и привезённые скорой: каждый поток берёт следующего заданного своего вида
+  const teach = ev.stream === 'walk' || ev.stream === 'amb' ? tutorialNext(db, s, ev.stream) : undefined;
   // записанный к специалисту болен болезнью его профиля, которую больница принимает (как запись «Анамнеза», часть 59)
   const patient = ret ? returningPatient(db, s, ret)
-    : ev.stream === 'amb' ? ambulancePatient(db, s, d, key, admits, varied)
-      : teach ? taughtPatient(db, s, d, key, teach, gen)
+    : teach ? taughtPatient(db, s, d, key, teach, gen)
+      : ev.stream === 'amb' ? ambulancePatient(db, s, d, key, admits, varied)
         : generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${key}`), { ...gen, walkIn: true, ...(to ? { only: profileHere(db, to, admits) } : {}) });
   const own = ret ? [...new Set([...(s.patients[ret.of]?.departments ?? []), ...admits])] : admits;
   s.patients[id] = {
@@ -1044,16 +1045,25 @@ function flowArrive(db: ContentDb, s: ShiftState, ev: Extract<ShiftEvent, { kind
 }
 
 /**
- * Следующий заданный больной сценария ПК (spec 2026-10-scenario-1): пока не пришли все из списка и работает ваш кабинет.
- * Нанятые врачи заданных не берут (`taught`) — без вашего кабинета их некому принять: приходят обычные, а заданные ждут его.
+ * Следующий заданный больной сценария ПК (spec 2026-10-scenario-1) для потока `stream`: пока не пришли все из списка и
+ * работает ваш кабинет. Список идёт по порядку, и следующий — того вида, что в записи: привезённый скорой (spec
+ * docs/specs/2026-11-scenario-2.md) — только со скорой, пришедший сам — только сам; не того — приходят обычные. Нанятые
+ * врачи заданных не берут (`taught`) — без вашего кабинета их некому принять: приходят обычные, а заданные ждут его.
  */
-function tutorialNext(db: ContentDb, s: ShiftState): TutorialPatient | undefined {
+function tutorialNext(db: ContentDb, s: ShiftState, stream: 'walk' | 'amb'): TutorialPatient | undefined {
   const sc = scenarioOf(db, s.campaign);
   const k = s.campaign?.taught ?? 0;
-  if (!sc || k >= sc.tutorial.length) return undefined;
+  if (!sc || k >= sc.tutorial.length || !!sc.tutorial[k].ambulance !== (stream === 'amb')) return undefined;
   const ctx = hospitalCtx(db, s);
   const mine = doctorRoom(ctx.plan);
   return mine !== undefined && ctx.working.has(mine) ? sc.tutorial[k] : undefined;
+}
+
+/** Первый заданный своего вида ещё не приходил: до него в списке — только другого вида. */
+function firstTaught(db: ContentDb, s: ShiftState, stream: 'walk' | 'amb'): boolean {
+  const sc = scenarioOf(db, s.campaign);
+  const k = s.campaign?.taught ?? 0;
+  return !!sc && !sc.tutorial.slice(0, k).some(x => !!x.ambulance === (stream === 'amb'));
 }
 
 /**
@@ -1422,8 +1432,9 @@ function restream(db: ContentDb, s: ShiftState, stream: 'walk' | 'amb') {
   const next = s.events.find(e => e.event.kind === 'flow' && e.event.stream === stream);
   if (next) s.events = s.events.filter(e => e !== next);
   const n = next?.event.kind === 'flow' ? next.event.n : arrivedToday(s, `${s.day}-${stream === 'walk' ? 'w' : 'a'}`);
-  // первый заданный больной сценария — вскоре после того, как заработал ваш кабинет (`FIRST_TAUGHT`)
-  if (stream === 'walk' && !s.campaign?.taught && tutorialNext(db, s)) schedule(s, s.t + FIRST_TAUGHT, { kind: 'flow', stream, n });
+  // первый заданный больной сценария своего вида — вскоре после того, как заработал ваш кабинет или, у скорой, смотровая
+  // (`FIRST_TAUGHT`)
+  if (tutorialNext(db, s, stream) && firstTaught(db, s, stream)) schedule(s, s.t + FIRST_TAUGHT, { kind: 'flow', stream, n });
   else scheduleFlow(db, s, stream, n, s.t);
 }
 
