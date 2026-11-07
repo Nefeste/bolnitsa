@@ -154,6 +154,8 @@ export interface PathNames {
   room(id: string): string;
   /** когда следующая пересменка после часа `t` — до неё лежачего некому везти */
   nextShift(t: number): number;
+  /** отделение посреди фразы — «регистратор направил: хирургия» (spec docs/specs/2026-10-departments.md, часть 4) */
+  dept(id: Id): string;
 }
 
 const queueWhy = (x: Extract<Step, { k: 'queue' }>): string => {
@@ -171,7 +173,10 @@ const queueWhy = (x: Extract<Step, { k: 'queue' }>): string => {
 export function pathCard(j: Journey, female: boolean, now: number, names: PathNames): PathCard {
   // скорая без места в смотровой — это о приезде: сначала лежал у входа
   const door = j.steps.some(x => x.k === 'queue' && x.door);
-  const lines: PathLine[] = [{ at: clock(j.at), text: T.flow.arrived(female, j.kind), ...(door ? { why: T.flow.door } : {}), kind: 'start' }];
+  // регистратор направил в отделение (spec docs/specs/2026-10-departments.md, часть 4)
+  const dept = j.steps.find((x): x is Extract<Step, { k: 'queue' }> => x.k === 'queue' && x.dept !== undefined)?.dept;
+  const why = [...(door ? [T.flow.door] : []), ...(dept !== undefined ? [T.flow.routed(names.dept(dept))] : [])].join('; ');
+  const lines: PathLine[] = [{ at: clock(j.at), text: T.flow.arrived(female, j.kind), ...(why ? { why } : {}), kind: 'start' }];
   const end = j.end?.t ?? now;
   let waited = 0;
   let prev = j.at;
@@ -257,7 +262,9 @@ export function pathCard(j: Journey, female: boolean, now: number, names: PathNa
         const waits = d >= 60 || open;
         if (x.refer) {
           waited += d;
-          const why = [x.from !== undefined ? T.flow.referBy(names.who(x.from)) : T.flow.referYou, ...(waits ? [T.flow.ownWhy] : [])].join('; ');
+          // передал направленного не туда в отделение болезни (spec docs/specs/2026-10-departments.md, часть 4)
+          const by = x.from === undefined ? T.flow.referYou : x.dept !== undefined ? T.flow.redirectBy(names.who(x.from), names.dept(x.dept)) : T.flow.referBy(names.who(x.from));
+          const why = [by, ...(waits ? [T.flow.ownWhy] : [])].join('; ');
           lines.push({ at: clock(from), text: T.flow.referTo(female, names.dat(x.by), waits ? dur(d) : undefined), why, kind: 'wait', ...mark });
           break;
         }

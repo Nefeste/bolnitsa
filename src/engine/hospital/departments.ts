@@ -57,3 +57,14 @@ export function onlyDeptsChanged(a: Site, b: Site): boolean {
     return r.id === q.id && r.type === q.type && r.x === q.x && r.y === q.y && r.w === q.w && r.h === q.h && r.door === q.door && r.items === q.items && r.leaving === q.leaving;
   });
 }
+
+/**
+ * Отделение болезни для направления (spec docs/specs/2026-10-departments.md, часть 4): её отделение в медицинской базе, а
+ * если его больных берёт другое (`takes`: травму — хирургия) — то.
+ */
+export function routeDept(db: ContentDb, cond: Id): Id | undefined {
+  const d = db.conditions[cond]?.department;
+  if (d === undefined) return undefined;
+  return Object.values(db.departments ?? {}).find(x => x.takes?.includes(d))?.id ?? d;
+}
+

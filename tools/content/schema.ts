@@ -731,6 +731,8 @@ export const roleSchema = z.strictObject({
    * кабинета своя запись из них, и принимает он только записанных к нему
    */
   profile: z.array(z.string().regex(/^cond\.[a-z0-9_]+$/)).min(1).optional(),
+  /** берёт пришедших сами своего отделения, кого направил регистратор (spec docs/specs/2026-10-departments.md, часть 4) */
+  walkIns: z.literal(true).optional(),
   /** дательный падеж — «по записи к гастроэнтерологу»; у специалиста обязателен (часть 59) */
   dat: text.optional(),
   /** его кабинет — в этом отделении (spec docs/specs/2026-10-departments.md, часть 1): у инфекциониста — инфекционное */
@@ -991,6 +993,7 @@ export const inflowSchema = z.strictObject({
   hall: z.number().int().min(1).max(100).optional(),
   /** скамейки у дверей кабинетов (spec 2026-10-door-benches): у двери — не дальше стольких шагов от клетки перед дверью */
   bench: z.number().int().min(0).max(20).optional(),
+  route: z.number().int().min(1).max(5).optional(),
   targets: z.array(z.strictObject({ name: z.string().min(1), offices: z.number().int().min(0), bays: z.number().int().min(0), day: range, ambulance: range })).min(1),
 });
 

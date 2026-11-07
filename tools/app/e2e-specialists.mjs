@@ -32,8 +32,8 @@ export async function specialistsPart({ page, port, out, ok, fail, q, shots }) {
   await page.selectOption('#hire-doctor-as', 'role.gastroenterologist');
   const hint = (await page.getAttribute('#hire-doctor', 'title')) ?? '';
   if (
-    // терапевт первым, специалисты — по номеру должности
-    JSON.stringify(options.map(o => o.role)) === JSON.stringify(['role.therapist', 'role.endocrinologist', 'role.gastroenterologist', 'role.infectionist']) &&
+    // терапевт первым, специалисты и амбулаторный хирург (spec docs/specs/2026-10-departments.md, часть 4) — по номеру должности
+    JSON.stringify(options.map(o => o.role)) === JSON.stringify(['role.therapist', 'role.endocrinologist', 'role.gastroenterologist', 'role.infectionist', 'role.surgeon_clinic']) &&
     // зарплата — за смену (spec docs/specs/2026-10-staff-shifts.md)
     options.every(o => /₽ за смену/.test(o.text)) && hint.includes('своя запись')
   ) ok(`на месте врача — список: ${options.map(o => `«${o.text}»`).join(', ')}; подсказка гастроэнтеролога — «${hint.slice(0, 60)}…»`);

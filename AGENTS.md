@@ -165,8 +165,10 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # meeting, ticked again — the nurse sorts the waiting; then scenario 2: its card second in
                                    # «Кампания», the ambulatory and its cash, the letters, no checkbox before the emergency room,
                                    # the first tutorial arrival — autopause, the «sheet» letter, the mentor's tip in the sheet,
-                                   # «Красный» — under «Ждут вас», «До утра» sorting each — the «night» letter, the meeting;
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|36` for one part, `-- --only 7,10,11` —
+                                   # «Красный» — under «Ждут вас», «До утра» sorting each — the «night» letter, the meeting; then
+                                   # routing: the outpatient surgeon hired on the doctor post, a walk-in routed to surgery, «регистратор
+                                   # направил: хирургия» in the path, the routing line at the meeting;
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|37` for one part, `-- --only 7,10,11` —
                                    # several in a row on one page, as in the full run
 node tools/app/soak.mjs --days 3   # after build: a long run in headless Chromium — the ready city at ×12 for three game days,
                                    # the meeting closed each morning; window memory after GC, DOM nodes, people, sim lag and
@@ -212,7 +214,8 @@ bun tools/bench/referrals.ts                   # referral to a specialist (#62, 
 bun tools/bench/approvals.ts                   # «Главврач утверждает»: decisions per hour awaiting approval and how many are wrong
                                                # (`--rules below90,discharge`, `--answer silent`; next to it — the same day by default)
 bun tools/bench/departments.ts                 # departments (spec): how often a registrar routing walk-ins by complaint would pick
-                                               # the wrong department (`--first` — by the main complaint, `--vitals`, `--list`)
+                                               # the wrong department (`--first` — by the main complaint, `--vitals`, `--list`;
+                                               # `--engine` — the engine's own routing with the outpatient surgeon, `--skills 1,5`)
 bun tools/bench/emergency.ts                   # scenario 2 (spec): a district hospital around the clock — who came and left by day and
                                                # by night, how long the ambulance's patients waited for a doctor, beds and stays
                                                # (`--places 2` — two emergency bays, `--wards M` — four-bed wards, `--days`, `--seeds`)
@@ -378,7 +381,14 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   into them; `takes` — disease departments it also takes: trauma goes to surgery); a room's department — `deptOf`/`deptsOf`
   in `hospital/departments.ts`: the tool's mark (`SiteRoom.dept`, the `dept` site command, free and undoable), else the first
   staff member working there whose role has a `department`, else the room type's `department`; diagnostics and common rooms
-  have none. Nothing in the shift reads it yet (routing by complaint is for the demo), so the flow is the same with or without marks.
+  have none. The marks themselves change no flow. Part 4 (`docs/specs/2026-10-departments.md`, «Часть 4: как сделано»; owner's
+  decisions #140, #141): the outpatient surgeon `role.surgeon_clinic` (an office post, surgery, a profile of surgery and trauma,
+  `walkIns`); only while an office doctor with `walkIns` is on duty, the registrar routes a walk-in (`routeArrival`,
+  `deptRoute` in `engine.ts`: the door-side inference summed by `routeDept`, all complaints from registrar skill `inflow.route`,
+  else the main one) into `ShiftPatient.dept`; `docFor` and `colleagueTakes` send the routed to that department's doctor;
+  `redirectOf` passes a patient whose chosen diagnosis is another department's to that department (`sendOn`); day totals —
+  `DaySummary.routing`; the path's queue step carries `dept`, the meeting shows `#meet-routing`. Without such a doctor the flow
+  is the same byte for byte.
   Undoing a mark keeps whatever room is being rebuilt (`keep` in the undo step): a mark never closes a room.
   The window (part 2) calls `deptsOf` itself. `src/app/departments.ts` — Okabe–Ito colours (`tools/test/departments-ui.test.ts`
   keeps all seven apart under three kinds of colour blindness), stripes, the «Отделения» layer and its legend, a patient's

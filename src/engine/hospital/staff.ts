@@ -100,9 +100,10 @@ export function applicantsOf(db: ContentDb, seed: number, day: number, next: num
   let n = next;
   const roles = Object.keys(db.roles).sort();
   for (const role of [...roles.filter(id => !db.roles[id].profile), ...roles.filter(id => db.roles[id].profile)]) {
-    // санитар (spec 2026-10-orderlies, `optional`) и клиническая медсестра (`day`, решение владельца #183) — только в больнице
-    // ПК, их нанимают на место: кандидаты «Анамнеза» те же
-    if (!db.roles[role].hire || db.roles[role].optional || db.roles[role].day || !allow(role)) continue;
+    // санитар (spec 2026-10-orderlies, `optional`), клиническая медсестра (`day`, решение владельца #183) и амбулаторный хирург
+    // (`walkIns`, spec docs/specs/2026-10-departments.md, часть 4) — только в больнице ПК, их нанимают на место: кандидаты
+    // «Анамнеза» те же
+    if (!db.roles[role].hire || db.roles[role].optional || db.roles[role].day || db.roles[role].walkIns || !allow(role)) continue;
     const r = root.fork(role);
     const count = r.range(b.candidates[0], b.candidates[1]);
     for (let i = 0; i < count; i++) {

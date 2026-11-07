@@ -20,6 +20,7 @@ const names: PathNames = {
   role: id => (id === 'role.radiographer' ? 'Рентгенолаборант' : 'Медсестра'),
   room: id => (id === 'r2' ? 'смотровая приёмного' : 'палата'),
   nextShift: t => (Math.floor(t / 86400) * 86400 + 20 * 3600 > t ? Math.floor(t / 86400) * 86400 + 20 * 3600 : Math.floor(t / 86400) * 86400 + 32 * 3600),
+  dept: id => (id === 'dept.surgery' ? 'хирургия' : 'терапия'),
 };
 
 describe('путь пациента в карточке', () => {
@@ -157,6 +158,16 @@ describe('путь пациента в карточке', () => {
     const c = pathCard(j, true, H(12), names);
     expect(c.lines.map(l => l.text)).toEqual(['пришла сама', 'у терапевта — 35 мин', 'направлена к гастроэнтерологу', 'у врача — 20 мин']);
     expect(c.lines[2].why).toBe('направил терапевт: не уверен, а вторая гипотеза — по профилю специалиста');
+  });
+
+  // spec docs/specs/2026-10-departments.md, часть 4: регистратор направил не туда — врач передал в отделение болезни
+  test('передан в отделение болезни: кто передал и куда', () => {
+    const j: Journey = {
+      kind: 'walkIn', at: H(11),
+      steps: [{ t: H(11, 5), k: 'doctor', by: 's1' }, { t: H(11, 40), k: 'own', by: 's2', refer: true, from: 's1', dept: 'dept.surgery' }, { t: H(11, 40), k: 'doctor', by: 's2' }],
+    };
+    const c = pathCard(j, true, H(12), names);
+    expect(c.lines[2].why).toBe('передал терапевт: болезнь другого отделения — хирургия');
   });
 
   // spec docs/specs/2026-10-orderlies.md, «Что видно»: лежачего везут на каталке — ждал её, почему и как везли

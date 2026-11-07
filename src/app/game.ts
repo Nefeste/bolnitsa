@@ -1562,6 +1562,7 @@ export class Game {
       const r = this.plan.rooms.find(x => x.id === id);
       return lowerFirst(r ? named(this.db.rooms[r.type]?.name, r.type) : id);
     },
+    dept: (id: Id) => lowerFirst(named(this.db.departments?.[id]?.name, id)),
     nextShift: (t: number) => {
       const [a, b] = this.db.economy.staff.shifts?.day ?? [8, 20];
       const day = Math.floor(t / 86400) * 86400;
