@@ -26,8 +26,12 @@ export async function polyPart({ page, port, out, ok, fail, q, shots }) {
   // карточки новой игры; «Продолжить» и список сохранений (spec 2026-10-saves) — от прошлых частей сценария, не в счёт;
   // «Энциклопедия» (spec 2026-10-encyclopedia) — не больница
   const cards = (await page.$$eval('#start button', els => els.map(e => [e.id, e.querySelector('b')?.textContent ?? '']))).filter(([id]) => !id.startsWith('start-continue') && !id.startsWith('start-save') && id !== 'start-enc');
-  // первой — «Кампания»: сценарий 1 (spec docs/specs/2026-10-scenario-1.md), под ней — песочница
-  const want = [['start-scenario-ambulatory', 'Сценарий 1. Амбулатория'], ['start-empty', 'Пустое здание'], ['start-poly', 'Поликлиника'], ['start-preset', 'Городская больница']];
+  // первой — «Кампания»: сценарии 1 и 2 (spec docs/specs/2026-10-scenario-1.md, docs/specs/2026-11-scenario-2.md), под ней —
+  // песочница
+  const want = [
+    ['start-scenario-ambulatory', 'Сценарий 1. Амбулатория'], ['start-scenario-emergency', 'Сценарий 2. Приёмное'], ['start-empty', 'Пустое здание'],
+    ['start-poly', 'Поликлиника'], ['start-preset', 'Городская больница'],
+  ];
   if (JSON.stringify(cards) === JSON.stringify(want)) ok(`экран начала — «Кампания» и три карточки песочницы: ${cards.map(c => `«${c[1]}»`).join(', ')}`);
   else fail(`карточки начала: ${JSON.stringify(cards)}`);
   // живая сцена за экраном начала: проявилась к приёму, часы идут, камера едет по кругу; игрой она не считается
