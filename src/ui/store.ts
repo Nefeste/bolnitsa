@@ -184,6 +184,8 @@ export interface Hud {
   debug: boolean;
   /** подписи помещений на среднем плане (spec docs/specs/2026-10-aaa-polish.md): настройка игрока */
   names: boolean;
+  /** «меньше движения» (spec docs/specs/2026-10-settings.md; ADR 0023 устава): как на деле — выбор игрока или системы */
+  still: boolean;
   build: BuildHud;
   roomTypes: RoomTypeRow[];
   readyTypes: ReadyTypeRow[];
@@ -289,6 +291,7 @@ export const initial: Hud = {
   reserveHire: [],
   debug: false,
   names: true,
+  still: false,
   build: { on: false, withStaff: true, moving: false, spent: 0, undo: 0 },
   roomTypes: [],
   readyTypes: [],
@@ -340,6 +343,7 @@ export interface Actions {
   setTab(t: Tab | null): void;
   toggleDebug(): void;
   toggleNames(): void;
+  toggleStill(): void;
   bench(uncapped: boolean): void;
   setLang(l: Lang): void;
   /** стройка (spec docs/specs/2026-10-build.md) */

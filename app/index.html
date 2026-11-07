@@ -128,6 +128,9 @@
     .toast.go { cursor: pointer; }
     .toast.go:hover { background: var(--raised-hover); }
     @keyframes toast-in { from { transform: translateY(-6px); opacity: 0; } to { transform: none; } }
+    /* «меньше движения» (src/app/settings.ts, applyStill; ADR 0023 устава): строки не въезжают, вид экрана начала — без проявления */
+    .still .toast { animation: none; }
+    .still #view.backdrop::after { transition: none; }
     .label { color: var(--muted); margin: 0 2px 0 8px; }
     /* над окном врача: раскрытое меню «Слои» доходит до него и не должно уходить под него */
     .left { position: absolute; left: 8px; top: 56px; width: 150px; display: flex; flex-direction: column; gap: 6px; padding: 8px; z-index: 4; }

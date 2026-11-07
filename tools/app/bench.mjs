@@ -81,11 +81,11 @@ for (const s of shotList) {
 res.headless = { browser: version, args, capped, wallMs: Date.now() - tStart, consoleErrors: errors };
 writeFileSync(`${base}.json`, `${JSON.stringify(res, null, 2)}\n`);
 console.log(`\nChromium ${version}${capped ? ', vsync' : ', без vsync'}`);
-console.log('качество  план      людей  к/с    кадр ср/p95, мс    CPU ср/p95, мс   GPU ср, мс  вызовов  треуг.');
+console.log('качество  план      людей  к/с    кадр мед/p95, мс   >25 мс  CPU ср/p95, мс   GPU ср, мс  вызовов  треуг.');
 for (const r of res.runs) {
   const gpu = r.gpuMs ? String(r.gpuMs.mean) : '—';
   console.log(
-    `${r.quality.padEnd(8)}  ${r.camera.padEnd(8)} ${String(r.people).padStart(5)} ${String(r.fps).padStart(6)}   ${`${r.frameMs.mean} / ${r.frameMs.p95}`.padEnd(18)} ${`${r.cpuMs.mean} / ${r.cpuMs.p95}`.padEnd(16)} ${gpu.padStart(10)}  ${String(r.drawCalls).padStart(6)}  ${r.triangles}`,
+    `${r.quality.padEnd(8)}  ${r.camera.padEnd(8)} ${String(r.people).padStart(5)} ${String(r.fps).padStart(6)}   ${`${r.frameMs.p50} / ${r.frameMs.p95}`.padEnd(18)} ${`${r.over25share} %`.padStart(7)}  ${`${r.cpuMs.mean} / ${r.cpuMs.p95}`.padEnd(16)} ${gpu.padStart(10)}  ${String(r.drawCalls).padStart(6)}  ${r.triangles}`,
   );
 }
 console.log(`→ ${base}.json`);

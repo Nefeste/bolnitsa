@@ -61,7 +61,7 @@ import { ScenarioDesk, scenarioTitle } from './scenario';
 import { demoResult, snapshotName, wishlistUrl } from './demo';
 import { columnOf, type Metric, METRICS, METRICS_READY, MONEY_METRICS, moneyColumnOf, moneyTop, serviceRoom } from './metrics';
 import { ColumnLabels } from './collabels';
-import { applyText, AutoQuality, type QualityMode, readSettings, type Settings, type TextScale, writeSettings } from './settings';
+import { applyStill, applyText, AutoQuality, type QualityMode, readSettings, type Settings, stillOf, systemStill, type TextScale, writeSettings } from './settings';
 import { HoverLabel } from './hover';
 import { Labels } from './labels';
 import { fadeOf, RoomTags, TAG_GAP } from './tags';
@@ -580,7 +580,10 @@ export class Game {
     // живая сцена экрана начала — без слоя: она показывает больницу, а не числа
     const metric = this.backdrop ? null : ([asked, p.metric].find((m): m is Metric => !!m && METRICS_READY.includes(m)) ?? null);
     this.step(1, '', true);
-    store.set({ ready: true, status: '', progress: undefined, demoMode: this.demoMode, quality, qualityMode: p.quality, debug: p.debug, names: p.names, speed: this.speed, layers: { ...store.get().layers, metric } });
+    // «меньше движения» (ADR 0023 устава, правило 6): выбор игрока или как в системе
+    const still = stillOf(p, systemStill());
+    this.showStill(still);
+    store.set({ ready: true, status: '', progress: undefined, demoMode: this.demoMode, quality, qualityMode: p.quality, debug: p.debug, names: p.names, still, speed: this.speed, layers: { ...store.get().layers, metric } });
     requestAnimationFrame(this.loop);
   }
 
@@ -1419,6 +1422,18 @@ export class Game {
     }
   };
 
+  /**
+   * «Меньше движения» (spec docs/specs/2026-10-settings.md, «Меньше движения»; ADR 0023 устава, правило 6): камера — сразу и
+   * без скольжения, мебель — сразу, у выбранного — без пульса, строки извещений — без въезда.
+   */
+  private showStill(on: boolean) {
+    this.stage.cam.still = on;
+    this.stage.appear.still = on;
+    this.stage.highlight.still = on;
+    if (on) this.stage.cam.stopGlide();
+    applyStill(on);
+  }
+
   /** Настройки игрока поменялись — запомнить на этом компьютере (spec docs/specs/2026-10-settings.md). */
   private remember(patch: Partial<Settings>) {
     this.prefs = { ...this.prefs, ...patch };
@@ -1871,6 +1886,12 @@ export class Game {
       const debug = !this.store.get().debug;
       this.store.set({ debug });
       this.remember({ debug });
+    },
+    toggleStill: () => {
+      const still = !this.store.get().still;
+      this.showStill(still);
+      this.store.set({ still });
+      this.remember({ still });
     },
     toggleNames: () => {
       const names = !this.store.get().names;

@@ -64,6 +64,8 @@ export class Highlight {
   readonly ring = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.54, 40).rotateX(-Math.PI / 2), flat(ACCENT, 0.95));
   readonly hoverRing = new THREE.Mesh(new THREE.RingGeometry(0.46, 0.52, 40).rotateX(-Math.PI / 2), flat(0xffffff, 0.6));
   private clock = 0;
+  /** «Меньше движения» (настройка игрока, src/app/settings.ts): без пульса */
+  still = false;
 
   constructor() {
     this.group.name = 'highlight';
@@ -97,7 +99,8 @@ export class Highlight {
     this.selKey = this.frame(this.sel, selected, key(selected), this.selKey);
     const h = hovered && key(hovered) !== key(selected) ? hovered : null;
     this.hoverKey = this.frame(this.hover, h, key(h), this.hoverKey);
-    const pulse = 0.5 + 0.5 * Math.sin(this.clock * 4);
+    // «меньше движения» (ADR 0023 устава, правило 6): кольцо и рамка выбранного стоят ровно
+    const pulse = this.still ? 0.5 : 0.5 + 0.5 * Math.sin(this.clock * 4);
     (this.sel.material as THREE.MeshBasicMaterial).opacity = 0.7 + 0.25 * pulse;
     this.ring.visible = !!person;
     if (person) {

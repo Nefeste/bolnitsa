@@ -281,15 +281,19 @@ export class Stage {
     if (this.marks.instanceColor) this.marks.instanceColor.needsUpdate = true;
   }
 
-  /** Метка над вашей фигурой: покачивается, чтобы её было видно и на общем плане. */
+  /**
+   * Метка над вашей фигурой: покачивается, чтобы её было видно и на общем плане; «меньше движения» (`cam.still`, ADR 0023
+   * устава) — стоит.
+   */
   private updateYou(crowd: Crowd) {
     const w = crowd.walkers.get(YOU);
     this.you.visible = !!w;
     if (!w) return;
     const sitting = w.state === 'sit' || w.state === 'sitDown' || w.state === 'standUp';
-    const bob = Math.sin(performance.now() / 300) * 0.06;
+    const still = this.cam.still;
+    const bob = still ? 0 : Math.sin(performance.now() / 300) * 0.06;
     this.you.position.set(w.x, (sitting ? w.y + 1.65 : w.y + 2.15) + bob, w.z);
-    this.you.rotation.y = (performance.now() / 900) % (Math.PI * 2);
+    this.you.rotation.y = still ? 0 : (performance.now() / 900) % (Math.PI * 2);
   }
 
   private draw() {

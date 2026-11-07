@@ -24,10 +24,15 @@ export interface Settings {
   text: TextScale;
   /** подписи помещений на среднем плане (spec docs/specs/2026-10-aaa-polish.md, «Подписи помещений на среднем плане») */
   names: boolean;
+  /**
+   * «Меньше движения» (ADR 0023 устава, правило 6; spec docs/specs/2026-10-settings.md, «Меньше движения»): выбор игрока;
+   * `null` — не выбирал, как в системе (`prefers-reduced-motion`)
+   */
+  still: boolean | null;
 }
 
 /** По умолчанию — вид владельца: стены вниз (решение #70), перспектива; качество — «авто». */
-export const DEFAULT_SETTINGS: Settings = { walls: 'down', projection: 'persp', quality: 'auto', debug: false, metric: null, text: 1, names: true };
+export const DEFAULT_SETTINGS: Settings = { walls: 'down', projection: 'persp', quality: 'auto', debug: false, metric: null, text: 1, names: true, still: null };
 
 const KEY = 'bolnitsa.settings';
 const WALLS: readonly WallMode[] = ['full', 'cut', 'down'];
@@ -53,7 +58,28 @@ export function parseSettings(raw: string | null | undefined): Settings {
     text: pick(TEXT_SCALES, x.text, DEFAULT_SETTINGS.text),
     // по умолчанию — есть: выключает их только «нет» игрока
     names: x.names !== false,
+    // «меньше движения»: только «да» или «нет» игрока; иначе — как в системе
+    still: typeof x.still === 'boolean' ? x.still : null,
   };
+}
+
+/** «Меньше движения» на деле: выбор игрока, а не выбирал — как в системе. */
+export function stillOf(s: Pick<Settings, 'still'>, system: boolean): boolean {
+  return s.still ?? system;
+}
+
+/** «Меньше движения» в системе (`prefers-reduced-motion: reduce`); нет `matchMedia` — нет. */
+export function systemStill(): boolean {
+  try {
+    return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+}
+
+/** «Меньше движения» — на страницу: класс `still` у корня гасит движение панелей в `app/index.html` (всплывающие строки). */
+export function applyStill(on: boolean): void {
+  if (typeof document !== 'undefined') document.documentElement.classList.toggle('still', on);
 }
 
 /** Хранилище страницы, если оно есть и доступно (в закрытом окне браузера его может не быть). */

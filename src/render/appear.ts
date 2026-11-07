@@ -68,7 +68,7 @@ if ( owner >= 0.0 ) {
 }
 `;
 
-/** «Меньше движения» в системе: мебель появляется сразу. */
+/** «Меньше движения» в системе — пока окно не сказало, что выбрал игрок. */
 function reduced(): boolean {
   try {
     return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -87,6 +87,8 @@ export class Appear {
   };
   /** сколько вещей выросло при последней стройке — для сценария в браузере */
   last = 0;
+  /** «Меньше движения» (настройка игрока, src/app/settings.ts; ADR 0023 устава): мебель появляется сразу */
+  still = reduced();
 
   /** Секунды часов роста — с создания сцены: у float32 в шейдере точности хватает. */
   now(): number {
@@ -99,7 +101,7 @@ export class Appear {
    */
   set(owners: readonly { key: string; x: number; z: number }[], first: boolean) {
     const keys = owners.map(o => o.key);
-    const born = bornOf(keys, first || reduced() ? null : this.keys, this.now());
+    const born = bornOf(keys, first || this.still ? null : this.keys, this.now());
     this.keys = new Set(keys);
     this.born = born;
     this.last = born.reduce((n, b) => (b > LONG_AGO ? n + 1 : n), 0);
