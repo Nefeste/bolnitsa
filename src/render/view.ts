@@ -221,6 +221,11 @@ export class IsoCamera {
   private fly: { x: number; z: number; half: number } | null = null;
   /** скольжение после протяжки, м/с по земле; сдвиг, масштаб, полёт, «Следить» и общий план — отменяют */
   private glide = { x: 0, z: 0 };
+  /**
+   * «Меньше движения» (настройка игрока, src/app/settings.ts; ADR 0023 устава, правило 6): полёт «Найти», масштаб колесом и
+   * поворот — сразу, скольжения после протяжки нет
+   */
+  still = false;
 
   constructor(
     private w: number,
@@ -288,6 +293,7 @@ export class IsoCamera {
    * точек экрана в секунду, как у `pan`, но не быстрее 2,5 высот кадра в секунду, — и останавливается трением.
    */
   glideFrom(vxPx: number, vyPx: number, hPx: number) {
+    if (this.still) return;
     const v = Math.hypot(vxPx, vyPx);
     const s = v > GLIDE_MAX * hPx ? (GLIDE_MAX * hPx) / v : 1;
     const g = this.onGround(vxPx * s, vyPx * s, hPx);
@@ -370,7 +376,7 @@ export class IsoCamera {
   update(dt: number) {
     if (this.fly) {
       // за полсекунды почти долетает: каждое мгновение — доля оставшегося пути
-      const k = Math.min(1, dt * 7);
+      const k = this.still ? 1 : Math.min(1, dt * 7);
       this.target.x += (this.fly.x - this.target.x) * k;
       this.target.z += (this.fly.z - this.target.z) * k;
       this.half += (this.fly.half - this.half) * k;
@@ -384,7 +390,7 @@ export class IsoCamera {
       // плавный масштаб колесом; точка под курсором стоит на месте: камера — подобие с центром в ней, поэтому точка
       // взгляда сдвигается к ней на ту же долю, на какую меняется масштаб (по земле и по экрану — одна геометрия)
       const h0 = this._half;
-      this._half += (this.halfTo - this._half) * Math.min(1, dt * ZOOM_RATE);
+      this._half += (this.halfTo - this._half) * (this.still ? 1 : Math.min(1, dt * ZOOM_RATE));
       if (Math.abs(this.halfTo - this._half) < 0.005) this._half = this.halfTo;
       if (this.anchor) {
         const s = this._half / h0;
@@ -408,7 +414,7 @@ export class IsoCamera {
       if (Math.hypot(this.glide.x, this.glide.z) < GLIDE_STOP * 2 * this._half) this.stopGlide();
     }
     const d = this.yawTo - this.yaw;
-    this.yaw += Math.abs(d) < 1e-3 ? d : d * Math.min(1, dt * 10);
+    this.yaw += Math.abs(d) < 1e-3 || this.still ? d : d * Math.min(1, dt * 10);
     const dir = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), Math.cos(this.yaw) * Math.cos(this.pitch));
     const a = this.aspect;
     const o = this.ortho;

@@ -31,7 +31,7 @@ import { loadContent } from './content';
 import { listSlots, readSlot } from './saves';
 import { scenarioTitle } from './scenario';
 import { DEFAULT_ROLE, type Role, roleOf } from './roles';
-import { applyText, readSettings } from './settings';
+import { applyStill, applyText, readSettings, stillOf, systemStill } from './settings';
 
 declare const __VERSION__: string;
 
@@ -45,6 +45,8 @@ const store = new Store();
 // размер текста (spec docs/specs/2026-10-settings.md, «Размер текста») — из настроек игрока, и на экране начала
 const text = readSettings().text;
 applyText(text);
+// «меньше движения» (ADR 0023 устава, правило 6) — и на экране начала: облёт стоит, панели не въезжают
+applyStill(stillOf(readSettings(), systemStill()));
 store.set({ lang, version: __VERSION__, text });
 let game: Game | undefined;
 const later = <K extends keyof Actions>(k: K) => ((...a: unknown[]) => (game?.actions[k] as (...x: unknown[]) => void)?.(...a)) as Actions[K];
@@ -60,6 +62,7 @@ const actions: Actions = {
   setTab: later('setTab'),
   toggleDebug: later('toggleDebug'),
   toggleNames: later('toggleNames'),
+  toggleStill: later('toggleStill'),
   bench: later('bench'),
   setLang: later('setLang'),
   toggleBuild: later('toggleBuild'),
@@ -248,12 +251,12 @@ function frames(n: number): Promise<void> {
 }
 
 /**
- * Облёт: точка взгляда идёт по кругу над помещениями, `TOUR_SPEED` м/с; масштаб — кадр облёта. «Меньше движения» в системе
- * — камера стоит: люди ходят, кадр нет.
+ * Облёт: точка взгляда идёт по кругу над помещениями, `TOUR_SPEED` м/с; масштаб — кадр облёта. «Меньше движения» — выбор
+ * игрока в «Настройках» или, не выбирал, в системе — камера стоит: люди ходят, кадр нет.
  */
 function fly(g: Game) {
   const tour = tourOf(ringOf(g.plan.rooms));
-  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const still = stillOf(readSettings(), systemStill());
   const cam = g.stage.cam;
   cam.half = TOUR_HALF;
   let s = 0;

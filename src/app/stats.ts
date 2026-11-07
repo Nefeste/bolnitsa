@@ -3,6 +3,8 @@
 /** Сводка по выборке времён, мс. */
 export interface Summary {
   mean: number;
+  /** медиана — цель кадра ADR 0023 устава меряется по ней */
+  p50: number;
   p95: number;
   max: number;
 }
@@ -19,12 +21,13 @@ export function since(list: readonly number[], total: number, mark: number): num
 }
 
 export function summarize(xs: number[]): Summary {
-  if (!xs.length) return { mean: 0, p95: 0, max: 0 };
+  if (!xs.length) return { mean: 0, p50: 0, p95: 0, max: 0 };
   const s = [...xs].sort((a, b) => a - b);
   const mean = s.reduce((a, b) => a + b, 0) / s.length;
+  const p50 = s[Math.floor(s.length / 2)];
   const p95 = s[Math.min(s.length - 1, Math.floor(s.length * 0.95))];
   const r = (v: number) => Math.round(v * 100) / 100;
-  return { mean: r(mean), p95: r(p95), max: r(s[s.length - 1]) };
+  return { mean: r(mean), p50: r(p50), p95: r(p95), max: r(s[s.length - 1]) };
 }
 
 /** Окно замеров: интервал между кадрами, время счёта людей и время рисования на CPU. */

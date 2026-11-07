@@ -410,9 +410,53 @@ async function settingsPart() {
   const d = await view();
   if (d.mode === 2 && d.projection === 'persp' && d.quality === 'high' && d.auto && d.buttons.qauto && d.zoom === '1' && JSON.parse(d.saved ?? '{}').quality === 'auto') ok('качество «авто»: с высокого, по времени кадра; стены вниз, перспектива и обычный текст — снова');
   else fail(`«авто» и вид по умолчанию: ${JSON.stringify(d)}`);
+  await stillCheck();
   await page.click('#settings-close');
   if (await page.$('#settings')) fail('«✕» не закрыл «Настройки»');
   await iconsCheck();
+}
+
+/**
+ * «Меньше движения» (ADR 0023 устава, правило 6; spec docs/specs/2026-10-settings.md, «Меньше движения»): галочка в
+ * «Настройках», по умолчанию — как в системе (здесь — нет); с ней камера летит к точке за кадр и не скользит после
+ * протяжки, мебель появляется сразу, у корня страницы — класс `still`; выбор переживает перезагрузку. В конце — снова без неё.
+ */
+async function stillCheck() {
+  const look = () =>
+    page.evaluate(() => {
+      const g = window.__game;
+      return { box: document.getElementById('still')?.checked ?? null, cam: g.stage.cam.still, appear: g.stage.appear.still, root: document.documentElement.classList.contains('still'), saved: JSON.parse(localStorage.getItem('bolnitsa.settings') ?? '{}').still };
+    });
+  const a = await look();
+  if (a.box === false && !a.cam && !a.appear && !a.root && (a.saved ?? null) === null) ok('«Меньше движения»: по умолчанию — как в системе (в Chromium сценария — выключено)');
+  else fail(`«Меньше движения» по умолчанию: ${JSON.stringify(a)}`);
+  await page.click('#still');
+  const b = await look();
+  // полёт к точке — за один кадр, отпущенная карта не скользит
+  const jump = await page.evaluate(async () => {
+    const cam = window.__game.stage.cam;
+    const x = cam.target.x + 6;
+    cam.flyTo(x, cam.target.z, cam.half);
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const flew = !cam.flying && Math.abs(cam.target.x - x) < 1e-6;
+    cam.glideFrom(900, 0, 720);
+    return { flew, glide: cam.gliding };
+  });
+  if (b.box && b.cam && b.appear && b.root && b.saved === true && jump.flew && !jump.glide) ok('«Меньше движения»: камера — сразу и без скольжения, мебель — сразу, класс `still` у страницы; запомнено');
+  else fail(`«Меньше движения» не применилось: ${JSON.stringify({ b, jump })}`);
+  // перезагрузка — с низким качеством: без видеокарты кадр «высокого» тянется долго, а смотрим только галочку
+  await page.goto(`http://127.0.0.1:${port}/index.html?lang=ru&hospital=preset&flow=6,1&q=low`);
+  await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
+  await page.click('#game-menu-open');
+  await page.click('#settings-open');
+  await page.waitForSelector('#settings #still', { timeout: 5000 });
+  const c = await look();
+  if (c.box && c.cam && c.appear && c.root) ok('«Меньше движения» — и после перезагрузки');
+  else fail(`«Меньше движения» после перезагрузки: ${JSON.stringify(c)}`);
+  await page.click('#still');
+  const d = await look();
+  if (!d.box && !d.cam && !d.appear && !d.root && d.saved === false) ok('«Меньше движения» снято — движение как прежде');
+  else fail(`«Меньше движения» не снялось: ${JSON.stringify(d)}`);
 }
 
 /**
