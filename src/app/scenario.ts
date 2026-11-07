@@ -102,12 +102,15 @@ export function goalRow(sc: Scenario, g: GoalView): GoalRow {
   return { id: g.id, main: g.main, text: named(m?.text, g.id), value: g.value, target: g.target, ...(g.accuracy !== undefined ? { accuracy: g.accuracy } : {}), done: g.done };
 }
 
-/** Шаги порядка стройки для экрана: слова — из записи и базы, сделан ли — от потока; следующий — первый несделанный. */
+/**
+ * Шаги порядка стройки для экрана: слова — из записи и базы, сделан ли — от потока; следующий — первый несделанный. Шаг с
+ * должностью (spec docs/specs/2026-11-scenario-2.md, часть 3) — со своим именем: «Кабинет хирурга».
+ */
 export function guideRows(db: ContentDb, sc: Scenario, steps: readonly { room: Id; done: boolean }[]): GuideRow[] {
   const next = steps.findIndex(x => !x.done);
   return steps.map((x, i) => {
-    const g = sc.guide.find(y => y.room === x.room);
-    return { n: i + 1, type: x.room, name: named(db.rooms[x.room]?.name, x.room), why: named(g?.why), done: x.done, next: i === next };
+    const g = sc.guide[i]?.room === x.room ? sc.guide[i] : sc.guide.find(y => y.room === x.room);
+    return { n: i + 1, type: x.room, name: g?.name ? named(g.name) : named(db.rooms[x.room]?.name, x.room), why: named(g?.why), done: x.done, next: i === next };
   });
 }
 

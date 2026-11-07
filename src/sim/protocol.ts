@@ -12,7 +12,7 @@ import type { Id, Manage, Season } from '../content/types';
 import type { Lang } from '../i18n';
 import type { Difficulty } from '../engine/shift/types';
 import type { ScenarioView } from './campaign';
-import type { CardView, DoctorState, ErrorList, Refusal, SeenList, SortMiss } from './doctor';
+import type { CardView, DoctorState, ErrorList, Refusal, RouteMiss, SeenList, SortMiss } from './doctor';
 import type { Leg } from './legs';
 import type { NameRow } from './pack';
 import type { SaveMeta } from './packing';
@@ -120,6 +120,8 @@ export interface DoctorOut {
    * ошибок за сутки не было
    */
   sortMiss?: SortMiss | null;
+  /** направленный не туда за сутки примером (spec docs/specs/2026-11-scenario-2.md, часть 3); `null` — нет */
+  routeMiss?: RouteMiss | null;
   refused?: { act: 'take' | 'case'; id: string; why: Refusal };
 }
 

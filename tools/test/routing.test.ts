@@ -13,6 +13,9 @@ import { primaryOf } from '../../src/engine/med/plan';
 import { apply, deptRoute, newFlowShift } from '../../src/engine/shift/engine';
 import { startCash } from '../../src/engine/shift/money';
 import type { ShiftPatient, ShiftState } from '../../src/engine/shift/types';
+import { setLang } from '../../src/i18n';
+import { useDb } from '../../src/sim/caseView';
+import { routeMissOf } from '../../src/sim/doctor';
 
 const H = 3600;
 const rec = db.presets['preset.city'];
@@ -66,8 +69,12 @@ describe('отделения, часть 4: направление по жало
       if (by !== undefined && p.ref === undefined) expect([p.id, by]).toEqual([p.id, surgeon.id]);
     }
     expect(surg.some(p => (p.closed?.by ?? p.by) === surgeon.id)).toBe(true);
-    // не туда — по правде
-    expect(day.wrong).toBe(ps.filter(p => p.dept !== undefined && p.dept !== routeDept(db, primaryOf(p.patient).id)).length);
+    // путь — хирургия или общий поток: инфекционист города берёт только записанных, к нему не направляют
+    expect(new Set(ps.flatMap(p => (p.dept !== undefined ? [p.dept] : [])))).toEqual(new Set(['dept.surgery', 'dept.therapy']));
+    // не туда — по правде, среди тех же путей: болезнь отделения без такого врача — общий поток
+    const right = (p: ShiftPatient) => (routeDept(db, primaryOf(p.patient).id) === 'dept.surgery' ? 'dept.surgery' : 'dept.therapy');
+    for (const p of ps) if (p.dept !== undefined) expect([p.id, p.misrouted === true]).toEqual([p.id, p.dept !== right(p)]);
+    expect(day.wrong).toBe(ps.filter(p => p.misrouted && p.arriveT < 32 * H).length);
   }, 120_000);
 
   test('навык регистратора: 1–2 — по главной жалобе, 3–5 — по всем; низкий навык ошибается не реже', () => {
@@ -75,8 +82,9 @@ describe('отделения, часть 4: направление по жало
     const high = city(1, true, 5);
     const a = live(low, 56);
     const b = live(high, 56);
-    for (const p of a) if (p.dept !== undefined) expect([p.id, p.dept]).toEqual([p.id, deptRoute(db, low, p, false)]);
-    for (const p of b) if (p.dept !== undefined) expect([p.id, p.dept]).toEqual([p.id, deptRoute(db, high, p, true)]);
+    const targets = new Set(['dept.surgery']);
+    for (const p of a) if (p.dept !== undefined) expect([p.id, p.dept]).toEqual([p.id, deptRoute(db, low, p, false, targets)]);
+    for (const p of b) if (p.dept !== undefined) expect([p.id, p.dept]).toEqual([p.id, deptRoute(db, high, p, true, targets)]);
     const wrong = (s: ShiftState) => s.history.reduce((n, d) => n + (d.routing?.wrong ?? 0), 0);
     expect(wrong(low)).toBeGreaterThanOrEqual(wrong(high));
     // направленных не туда врачи передают в отделение болезни — так и в пути
@@ -85,4 +93,21 @@ describe('отделения, часть 4: направление по жало
     expect(sent.length).toBeGreaterThan(0);
     for (const x of sent) if (x.k === 'own') expect([x.refer, x.from !== undefined, db.departments![x.dept!] !== undefined]).toEqual([true, true, true]);
   }, 240_000);
+
+  // сценарий 2, часть 3 (spec docs/specs/2026-11-scenario-2.md): на планёрке — пример направленного не туда; только чей приём
+  // закрыт, иначе болезнь назвала бы диагноз
+  test('пример направленного не туда за сутки: из закрытых приёмов, отделение регистратора — не отделение болезни', () => {
+    useDb(db);
+    setLang('ru');
+    const s = city(3, true, 1);
+    const ps = live(s, 33);
+    expect(s.history[0].routing!.wrong).toBeGreaterThan(0);
+    const miss = routeMissOf(db, s)!;
+    expect(miss.day).toBe(1);
+    expect(miss.to).not.toBe(miss.dept);
+    const wrong = ps.filter(p => p.misrouted && p.closed && p.id.startsWith('1-w'));
+    expect(wrong.length).toBeGreaterThan(0);
+    const first = wrong.sort((a, b) => a.arriveT - b.arriveT)[0];
+    expect(miss.disease.toLowerCase()).toBe(db.conditions[primaryOf(first.patient).id].name.ru.toLowerCase());
+  }, 120_000);
 });

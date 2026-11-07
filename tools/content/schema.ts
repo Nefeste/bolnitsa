@@ -1071,7 +1071,8 @@ const dayKind = z.enum(['noNeedlessAntibiotic', 'noLeft', 'cashPositive', 'noWai
 /** Задание главы: вид — в движке, числа и текст — здесь. */
 const missionSchema = z.discriminatedUnion('kind', [
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('seen'), count, accuracy: pct, text }),
-  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('roomWorks'), room: roomId, text }),
+  // с `role` — и на месте в помещении человек этой должности (spec docs/specs/2026-11-scenario-2.md, часть 3)
+  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('roomWorks'), room: roomId, role: roleId.optional(), text }),
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('streak'), days: count, day: dayKind, text }),
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('days'), days: count, day: dayKind, text }),
   // глава 2 (spec 2026-09-chapter-2, часть 34): смена без ошибок сортировки со столькими пациентами
@@ -1092,6 +1093,8 @@ const missionSchema = z.discriminatedUnion('kind', [
   // столько ночей подряд, когда каждого привезённого врач позвал не позже чем через `minutes` минут
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('sorting'), count, text }),
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('nights'), count, minutes: count, text }),
+  // часть 3: сутки, когда регистратор направил столько пришедших сами и ни одного не туда
+  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('routing'), count, text }),
 ]);
 
 /** Письмо: от кого, когда — в начале главы, после дня N, при задании, в конце главы. */
@@ -1200,8 +1203,11 @@ export const scenarioSchema = z.strictObject({
   tutorial: tutorialSchema,
   missions: z.array(missionSchema).min(1),
   letters: z.array(scenarioLetterSchema).default([]),
-  /** порядок стройки (решение владельца #114): помещения по порядку и зачем каждое — строкой */
-  guide: z.array(z.strictObject({ room: roomId, why: text })).default([]),
+  /**
+   * порядок стройки (решение владельца #114): помещения по порядку и зачем каждое — строкой; `role` — шаг сделан, когда на
+   * месте в помещении человек этой должности, `name` — имя шага (часть 3 сценария 2: «Кабинет хирурга»)
+   */
+  guide: z.array(z.strictObject({ room: roomId, role: roleId.optional(), name: text.optional(), why: text })).default([]),
   /** подсказки наставника в карте больного (часть 2б): по порядку списка */
   tips: z.array(scenarioTipSchema).default([]),
 });

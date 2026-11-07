@@ -280,6 +280,13 @@ export function MeetingBody({ m, e, actions, screen = false }: { m: MeetingView;
         {d.routing ? (
           <p id="meet-routing" title={t.routingHint}>
             {t.routing(d.routing.wrong, d.routing.routed, d.routing.sent)}
+            {/* пример направленного не туда (spec docs/specs/2026-11-scenario-2.md, часть 3) */}
+            {m.routeMiss ? (
+              <span className="muted">
+                {' '}
+                · {t.routeMiss(m.routeMiss.who, m.routeMiss.to, m.routeMiss.dept, m.routeMiss.disease)}
+              </span>
+            ) : null}
           </p>
         ) : null}
         {d.night ? (

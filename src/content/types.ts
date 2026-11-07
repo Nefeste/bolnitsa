@@ -1067,7 +1067,11 @@ export type DayKind = 'noNeedlessAntibiotic' | 'noLeft' | 'cashPositive' | 'noWa
 
 export type Mission = { id: string; main: boolean; text: Text } & (
   | { kind: 'seen'; count: number; accuracy: number }
-  | { kind: 'roomWorks'; room: Id }
+  /**
+   * помещение `room` работает; с `role` — и на его месте человек этой должности (spec docs/specs/2026-11-scenario-2.md, часть
+   * 3: кабинет врача с амбулаторным хирургом)
+   */
+  | { kind: 'roomWorks'; room: Id; role?: Id }
   | { kind: 'streak'; days: number; day: DayKind }
   | { kind: 'days'; days: number; day: DayKind }
   /** глава 2 (spec 2026-09-chapter-2, часть 34): сортировка скорой, операции, сроки стационара */
@@ -1094,6 +1098,11 @@ export type Mission = { id: string; main: boolean; text: Text } & (
    */
   | { kind: 'sorting'; count: number }
   | { kind: 'nights'; count: number; minutes: number }
+  /**
+   * сценарий 2 ПК, часть 3 (spec docs/specs/2026-11-scenario-2.md; spec docs/specs/2026-10-departments.md, часть 4): сутки,
+   * когда регистратор направил по жалобам не меньше `count` пришедших сами и ни одного — не туда
+   */
+  | { kind: 'routing'; count: number }
 );
 
 /**
@@ -1219,9 +1228,21 @@ export interface Scenario {
    * Порядок стройки (spec docs/specs/2026-10-scenario-1.md, «Порядок стройки»; решение владельца #114): помещения в том
    * порядке, в каком их лучше строить, и зачем каждое — одной строкой. Пусто — порядка нет.
    */
-  guide: { room: Id; why: Text }[];
+  guide: GuideStep[];
   /** подсказки наставника в карте больного (часть 2б): по одной, первая по порядку из тех, что к месту */
   tips: ScenarioTip[];
+}
+
+/**
+ * Шаг порядка стройки: помещение и зачем оно. С `role` (spec docs/specs/2026-11-scenario-2.md, часть 3) шаг сделан, когда
+ * помещение работает и на его месте человек этой должности, — «Кабинет хирурга»: кабинет врача с амбулаторным хирургом; `name`
+ * — имя шага вместо имени помещения.
+ */
+export interface GuideStep {
+  room: Id;
+  role?: Id;
+  name?: Text;
+  why: Text;
 }
 
 /**

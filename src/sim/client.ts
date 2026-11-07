@@ -87,14 +87,10 @@ export class SimClient {
       this.roundTripsTaken++;
       if (this.roundTrips.length > 2000) this.roundTrips.splice(0, 1000);
     }
-    this.onSlice({
-      buf: msg.buf, names: msg.names, notices: msg.notices, lag: msg.lag, ...(msg.world ? { world: msg.world } : {}),
-      ...(msg.doctor ? { doctor: msg.doctor } : {}), ...(msg.card !== undefined ? { card: msg.card } : {}), ...(msg.seen ? { seen: msg.seen } : {}), ...(msg.errors ? { errors: msg.errors } : {}),
-      ...(msg.refused ? { refused: msg.refused } : {}),
-      ...(msg.path ? { path: msg.path } : {}), ...(msg.broken ? { broken: msg.broken } : {}), ...(msg.late ? { late: msg.late } : {}), ...(msg.crew ? { crew: msg.crew } : {}),
-      ...(msg.moods ? { moods: msg.moods } : {}), ...(msg.rides ? { rides: msg.rides } : {}), ...(msg.rounds ? { rounds: msg.rounds } : {}), ...(msg.scenario ? { scenario: msg.scenario } : {}),
-      ...(msg.money ? { money: msg.money } : {}), ...(msg.legs ? { legs: msg.legs } : {}),
-    });
+    // срез — всё, что прислал поток, кроме вида сообщения: поле не теряется оттого, что его забыли перечислить (так с 0.66.0
+    // терялся пример ошибки сортировки на планёрке, spec docs/specs/2026-11-scenario-2.md, часть 3)
+    const { kind: _, ...slice } = msg;
+    this.onSlice(slice);
   }
 
   start(msg: Extract<ToSim, { kind: 'start' }>) {

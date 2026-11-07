@@ -2,7 +2,7 @@
 // как сделано»). Готовая городская больница: в кабинете эндокринолога — увольнение и
 // выбор на месте врача, «Амбулаторный хирург» среди должностей, найм. Дальше часы: пришедшего сам, кого регистратор направил в
 // хирургию, зовёт амбулаторный хирург; в пути больного — «регистратор направил: хирургия». «До утра» — на планёрке строка
-// «регистратор направил N, не туда — K». Снимок — `e2e-routing-path.jpg`.
+// «регистратор направил N, не туда — K» и пример направленного не туда (часть 3 сценария 2). Снимок — `e2e-routing-path.jpg`.
 import { join } from 'node:path';
 
 /** @param {{ page: import('playwright-core').Page, port: number, out: string, ok: (m: string) => void, fail: (m: string) => void, q: string, shots: string }} x */
@@ -88,5 +88,15 @@ export async function routingPart({ page, port, out, ok, fail, q, shots }) {
   const line = flat(await page.innerText('#meet-routing').catch(() => ''));
   if (/^регистратор направил \d+, не туда — \d+/.test(line)) ok(`планёрка: «${line}»`);
   else fail(`планёрка, строка направления: «${line}»`);
+  // пример направленного не туда (spec docs/specs/2026-11-scenario-2.md, часть 3): есть ошибка — есть и пример
+  const wrong = Number(/не туда — (\d+)/.exec(line)?.[1] ?? 0);
+  if (wrong > 0 && /например, .+: у регистратора — .+, по болезни — .+ \(.+\)/.test(line)) ok('планёрка: пример направленного не туда — у регистратора одно отделение, по болезни другое');
+  else if (wrong > 0) {
+    const st = await page.evaluate(() => window.__game.client.save());
+    (await import('node:fs')).writeFileSync(join(out, 'e2e-routing-state.json'), JSON.stringify(st));
+    const all = [...Object.values(st.patients), ...(st.past ?? []).map(x => x.p)].filter(p => p.dept !== undefined);
+    const rows = all.map(p => ({ id: p.id, dept: p.dept, closed: !!p.closed, status: p.status, cond: p.patient?.truth?.conditions?.[0]?.id }));
+    fail(`планёрка: не туда — ${wrong}, а примера нет: «${line}»; от потока — ${JSON.stringify(await page.evaluate(() => window.__game.routeMiss ?? null))}; день ${st.history?.at(-1)?.day}, направленных в состоянии ${rows.length}, закрытых ${rows.filter(r => r.closed).length}: ${JSON.stringify(rows.slice(0, 6))}`);
+  }
   await page.evaluate(() => window.__game.actions.money({ kind: 'close' }));
 }

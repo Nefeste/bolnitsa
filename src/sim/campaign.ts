@@ -1,12 +1,10 @@
 // Ход сценария для окна (spec docs/specs/2026-10-scenario-1.md, часть 2): пришедшие письма, цели с ходом, конец и отметки окна
 // — поток расчёта собирает их из состояния движка и шлёт окну, когда они изменились. Цели окно само не считает: итоги суток —
 // в движке. Ход целей — по закрытым суткам, как их считает планёрка; «помещение работает» — по больнице сейчас. Порядок
-// стройки (решение владельца #114): шаг сделан, когда помещение его типа работает, — так же, как цель «помещение работает».
-import type { ContentDb, Id } from '../content/types';
-import { missionProgress, scenarioOf } from '../engine/campaign/campaign';
-import { planOf } from '../engine/hospital/build';
-import { workingRooms } from '../engine/hospital/requirements';
-import { staffingOf } from '../engine/hospital/staff';
+// стройки (решение владельца #114): шаг сделан, когда помещение его типа работает, — так же, как цель «помещение работает»;
+// шаг с должностью — когда и на месте в нём человек этой должности (spec docs/specs/2026-11-scenario-2.md, часть 3).
+import type { ContentDb, GuideStep, Id } from '../content/types';
+import { missionProgress, roomWorks, scenarioOf } from '../engine/campaign/campaign';
 import type { ShiftState } from '../engine/shift/types';
 
 export interface GoalView {
@@ -60,15 +58,10 @@ export function scenarioView(db: ContentDb, s: ShiftState): ScenarioView | undef
   };
 }
 
-/** Шаги порядка стройки: помещение того типа работает — шаг сделан. */
-function guideOf(db: ContentDb, s: ShiftState, guide: readonly { room: Id }[]): { room: Id; done: boolean }[] {
-  const types = new Set<Id>();
-  if (s.hospital) {
-    const plan = planOf(db, s.hospital);
-    const working = workingRooms(db, plan, staffingOf(db, plan, s.staff ?? []));
-    for (const r of plan.rooms) if (working.has(r.id)) types.add(r.type);
-  }
-  return guide.map(g => ({ room: g.room, done: types.has(g.room) }));
+/** Шаги порядка стройки: помещение того типа работает (с должностью шага на месте, если она есть) — шаг сделан. */
+function guideOf(db: ContentDb, s: ShiftState, guide: readonly GuideStep[]): { room: Id; done: boolean }[] {
+  const v = { hospital: s.hospital, staff: s.staff };
+  return guide.map(g => ({ room: g.room, done: roomWorks(db, v, g.room, g.role) }));
 }
 
 /**

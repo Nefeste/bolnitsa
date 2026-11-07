@@ -14,7 +14,7 @@ import { staffName } from './people';
 import { raisedOf } from '../engine/shift/mood';
 import { levelOf } from '../engine/shift/manage';
 import type { StaffMember } from '../engine/hospital/staff';
-import type { ErrorList, SortMiss } from '../sim/doctor';
+import type { ErrorList, RouteMiss, SortMiss } from '../sim/doctor';
 import type { LetterRow } from './scenario';
 
 /** Нанятый врач на планёрке: должность, навык, приёмы за сутки. */
@@ -76,6 +76,8 @@ export interface MeetingView {
   errors?: ErrorList;
   /** ошибка вашей сортировки за сутки примером (spec docs/specs/2026-11-scenario-2.md, часть 2а) — снимок утра */
   sortMiss?: SortMiss;
+  /** направленный не туда за сутки примером (spec docs/specs/2026-11-scenario-2.md, часть 3) — снимок утра */
+  routeMiss?: RouteMiss;
   /** сценарий (spec docs/specs/2026-10-scenario-1.md): письма, пришедшие утром, и выполненные цели — словами */
   scenario?: { letters: LetterRow[]; goals: string[] };
 }
@@ -233,11 +235,13 @@ export class Money {
     const errors = this.g.errors;
     // ошибка вашей сортировки (spec docs/specs/2026-11-scenario-2.md, часть 2а): пример — за эти же сутки
     const miss = this.g.sortMiss?.day === summary.day ? this.g.sortMiss : undefined;
+    // направленный не туда (spec docs/specs/2026-11-scenario-2.md, часть 3): пример — за эти же сутки
+    const route = this.g.routeMiss?.day === summary.day ? this.g.routeMiss : undefined;
     // сценарий (spec docs/specs/2026-10-scenario-1.md): письма утра и выполненные цели — разделом планёрки
     const scenario = this.g.scenario.meetingOf(summary.campaign);
     return {
       summary, doctors, rooms, broken: out, worse, tip: tipOf(summary, rooms, worse.length > 0, doctors.some(d => d.idle), this.hud.limit),
-      ...(people ? { staff: people } : {}), ...(errors.total > 0 ? { errors } : {}), ...(miss ? { sortMiss: miss } : {}), ...(scenario ? { scenario } : {}),
+      ...(people ? { staff: people } : {}), ...(errors.total > 0 ? { errors } : {}), ...(miss ? { sortMiss: miss } : {}), ...(route ? { routeMiss: route } : {}), ...(scenario ? { scenario } : {}),
     };
   }
 

@@ -39,7 +39,7 @@ import { type PersonInfo, Population, YOU } from '../render/population';
 import { Stage } from '../render/stage';
 import { type DragSample, type Projection, type Quality, releaseVelocity } from '../render/view';
 import type { WallMode } from '../render/world';
-import type { ErrorList, SeenList, SortMiss } from '../sim/doctor';
+import type { ErrorList, RouteMiss, SeenList, SortMiss } from '../sim/doctor';
 import { H, kindOf, REFERRED } from '../sim/pack';
 import { type Slice, SimClient } from '../sim/client';
 import type { PathView, World } from '../sim/protocol';
@@ -354,6 +354,8 @@ export class Game {
   errors: ErrorList = { rows: [], total: 0 };
   /** ошибка вашей сортировки примером (spec docs/specs/2026-11-scenario-2.md, часть 2а) — как прислал поток; планёрка её снимает */
   sortMiss: SortMiss | undefined;
+  /** направленный не туда примером (spec docs/specs/2026-11-scenario-2.md, часть 3) — как прислал поток; планёрка его снимает */
+  routeMiss: RouteMiss | undefined;
   private problems: ({ kind: Problem['kind'] | 'broken' | 'offShift'; text: string } | undefined)[] = [];
   /**
    * слой «Пути пациентов» (spec docs/specs/2026-10-layers.md, часть 2): переходы за сутки — как прислал поток расчёта; их пути
@@ -1179,6 +1181,7 @@ export class Game {
     if (s.seen) this.seen = s.seen;
     if (s.errors) this.errors = s.errors;
     if (s.sortMiss !== undefined) this.sortMiss = s.sortMiss ?? undefined;
+    if (s.routeMiss !== undefined) this.routeMiss = s.routeMiss ?? undefined;
     // смены (spec docs/specs/2026-10-staff-shifts.md): кто не в смене, а доводит приёмы, — ещё на месте
     if (s.late) this.pop.setLate(s.late);
     // усталость и перерывы (spec docs/specs/2026-10-staff-shifts.md, часть 2): люди идут отдыхать и назад, «Персонал» — заново
