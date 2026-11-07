@@ -1,5 +1,5 @@
 {
-  "version": "0.65.1",
+  "version": "0.67.0",
   "base": 78,
   "ids": {
     "achievements": [
@@ -1296,7 +1296,8 @@
       "rule.wells_dvt"
     ],
     "scenarios": [
-      "scenario.ambulatory"
+      "scenario.ambulatory",
+      "scenario.emergency"
     ],
     "scenarios.letters": [
       "scenario.ambulatory/asks",
@@ -1312,14 +1313,27 @@
       "scenario.ambulatory/look",
       "scenario.ambulatory/machine",
       "scenario.ambulatory/run",
-      "scenario.ambulatory/seenDone"
+      "scenario.ambulatory/seenDone",
+      "scenario.emergency/bays",
+      "scenario.emergency/budget",
+      "scenario.emergency/end",
+      "scenario.emergency/firstDay",
+      "scenario.emergency/hello",
+      "scenario.emergency/night",
+      "scenario.emergency/nightsDone",
+      "scenario.emergency/sheet",
+      "scenario.emergency/sortingDone"
     ],
     "scenarios.missions": [
       "scenario.ambulatory/antibiotics",
       "scenario.ambulatory/cash",
       "scenario.ambulatory/lab",
       "scenario.ambulatory/noLeft",
-      "scenario.ambulatory/seen"
+      "scenario.ambulatory/seen",
+      "scenario.emergency/nights",
+      "scenario.emergency/sorting",
+      "scenario.emergency/stay",
+      "scenario.emergency/xray"
     ],
     "scores": [
       "score.news2"

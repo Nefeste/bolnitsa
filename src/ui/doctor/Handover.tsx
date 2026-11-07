@@ -7,6 +7,7 @@ import type { Triage } from '../../engine/shift/types';
 import type { HandoverRow } from '../../sim/doctor';
 import type { Actions } from '../store';
 import { WindowHead } from '../WindowHead';
+import { MentorTip } from './Card';
 
 const COLORS: readonly Triage[] = ['red', 'yellow', 'green'];
 
@@ -48,6 +49,8 @@ export function Handover({ row, more, actions }: { row: HandoverRow; more: numbe
           </button>
         ))}
       </div>
+      {/* подсказка наставницы (spec docs/specs/2026-11-scenario-2.md, часть 2б): в сценарии, к первому листу */}
+      <MentorTip tip={row.tip} at={`${row.id}:sheet`} actions={actions} id="dsheet-tip" />
       <p className="muted small" id="dsheet-more">
         {more > 0 ? `${t.more(more)} · ` : ''}
         {t.clock}

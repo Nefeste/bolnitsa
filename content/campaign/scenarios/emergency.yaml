@@ -1,0 +1,210 @@
+# Сценарий 2 «Приёмное» (spec docs/specs/2026-11-scenario-2.md; геймдизайн §9): готовая амбулатория сценария 1 и свободное
+# крыло у входа скорой (решение владельца #197, вариант 1); привезённых сортируете вы, по листу передачи (решение владельца
+# #196, вариант 1). Касса — на смотровую, рентген, две палаты и ночные смены первых суток: её подобрал симулятор экономики
+# (`bun tools/sim/economy.ts --only emergency`, «Часть 2б: как сделано» спецификации). Первые больные — как в главе 2
+# «Приёмное» «Анамнеза»: тяжёлая пневмония по скорой, перелом лодыжек без смещения, аппендицит у молодого по скорой.
+# Письма — наставница сценария 1 и Ян Новак, новых персонажей нет; подсказки в карте и в листе передачи — подсказки главы 2
+# «Анамнеза» в нейтральном сеттинге, медицина в них та же. Слова, порядок стройки и числа целей — предложение агента на
+# одобрение владельца. Кабинет хирурга и «Сутки без направленных не туда» придут с частями 4–6 спецификации отделений.
+id: scenario.emergency
+order: 2
+name: { ru: "Приёмное", en: "Emergency department" }
+about:
+  ru: "Готовая амбулатория и пустое крыло у входа скорой: откройте приёмное, сортируйте привезённых сами и не оставьте ночь без врача."
+  en: "A ready clinic and an empty wing by the ambulance entrance: open an emergency department, triage the arrivals yourself and never leave a night without a doctor."
+start: site.ambulatory
+sorts: true
+budget: 600000
+department: dept.therapy
+build:
+  - room.reception
+  - room.waiting
+  - room.office
+  - room.triage
+  - room.procedure
+  - room.lab
+  - room.ecg
+  - room.toilet
+  - room.staff
+  - room.emergency
+  - room.ward
+  - room.xray
+tutorial:
+  - { condition: cond.pneumonia_cap, ambulance: true, params: { severity: severe } }
+  - { condition: cond.ankle_fracture, params: { stability: stable } }
+  - { condition: cond.appendicitis, ambulance: true, age: [18, 40] }
+# Порядок стройки (как в сценарии 1, решение владельца #114): что строить в свободном крыле и зачем.
+guide:
+  - room: room.emergency
+    why: { ru: "без неё скорая не приедет: сюда кладут привезённых", en: "without it no ambulance comes: this is where arrivals are laid" }
+  - room: room.ward
+    why:
+      ru: "кого нельзя отпустить домой: без палаты — только перевод в другую больницу"
+      en: "for those who cannot go home: without a ward, only a transfer to another hospital"
+  - room: room.xray
+    why: { ru: "снимок лёгких при кашле и одышке, кости — при травме", en: "a chest X-ray for cough and breathlessness, bones for an injury" }
+missions:
+  - id: sorting
+    main: true
+    kind: sorting
+    count: 4
+    text:
+      ru: "Сутки без ошибок вашей сортировки — не меньше четырёх привезённых"
+      en: "A day without errors in your triage, with at least four ambulance arrivals"
+  - id: nights
+    main: true
+    kind: nights
+    count: 2
+    minutes: 15
+    text:
+      ru: "Две ночи подряд: каждого привезённого врач позвал не позже чем через 15 минут"
+      en: "Two nights in a row with every ambulance arrival called by a doctor within 15 minutes"
+  - id: stay
+    main: true
+    kind: stay
+    count: 3
+    text: { ru: "Срок в стационаре не выше обычного: трое выписанных подряд", en: "Hospital stays no longer than usual: three discharged in a row" }
+  - id: xray
+    main: false
+    kind: roomWorks
+    room: room.xray
+    text:
+      ru: "Открыть рентген: построить, поставить аппарат, нанять рентгенолаборанта и рентгенолога"
+      en: "Open an X-ray room: build it, install the machine, hire a radiographer and a radiologist"
+letters:
+  - id: hello
+    from: char.tutor
+    when: start
+    text:
+      ru: >-
+        Коллега, амбулатория выросла: восточное крыло у входа скорой пустует, и здесь откроют приёмное. Скорая повезёт к
+        вам тех, кого нельзя отпустить домой, — и днём, и ночью. Начнём со смотровой: без неё машины не приедут.
+      en: >-
+        Colleague, the clinic has grown: the east wing by the ambulance entrance stands empty, and an emergency department
+        opens here. The ambulance will bring people who cannot be sent home, day and night. Let's start with the emergency
+        room: without it, no ambulance comes.
+  - id: budget
+    from: char.official
+    when: start
+    text:
+      ru: >-
+        Деньги на приёмное — в кассе: на смотровую, рентген, две палаты и ночные смены первых суток. Ночью врач нужен так
+        же, как днём.
+      en: >-
+        The money for the emergency department is in the till: for the emergency room, an X-ray room, two wards and the
+        night shifts of the first days. At night a doctor is needed just as much as by day.
+  - id: sheet
+    from: char.tutor
+    when: { hint: sheet }
+    text:
+      ru: >-
+        Скорая привезла первого. Сортируйте по листу передачи — по тому, что измерил фельдшер, а не по тому, как тяжело
+        человек выглядит. Утром вашу сортировку сверят со шкалой NEWS2.
+      en: >-
+        The ambulance has brought the first one. Triage by the handover sheet, by what the paramedic measured, not by how
+        ill the person looks. In the morning your triage is checked against the NEWS2 scale.
+  - id: bays
+    from: char.tutor
+    when: { hint: bays }
+    text:
+      ru: >-
+        Мест в смотровой не хватило: привезённый лежит у входа на каталке. Так бывает в часы, когда машины идут одна за
+        другой. Если так каждый день, нужна смотровая побольше.
+      en: >-
+        There were not enough places in the emergency room: an arrival lies at the entrance on a gurney. It happens in the
+        hours when ambulances come one after another. If it happens every day, you need a bigger emergency room.
+  - id: night
+    from: char.tutor
+    when: { hint: night }
+    text:
+      ru: >-
+        Вечер. В 20:00 дневная смена уйдёт, а скорая едет и ночью. Ночью нужны медсестра в смотровой и врач. Заболеет
+        кто-то — на его место встанет тот, кто в резерве.
+      en: >-
+        Evening. At 20:00 the day shift leaves, and the ambulance comes at night too. At night you need a nurse in the
+        emergency room and a doctor. If someone falls ill, whoever is in the reserve takes their place.
+  - id: firstDay
+    from: char.tutor
+    when: { afterDay: 1 }
+    text:
+      ru: >-
+        Первые сутки с приёмным позади. На планёрке — ваша сортировка: сколько верно и где ошиблись. И ночь: сколько
+        привезли и сколько ждали врача.
+      en: >-
+        The first day with the emergency department is behind us. At the meeting: your triage, how much was right and
+        where you erred. And the night: how many came and how long they waited for a doctor.
+  - id: sortingDone
+    from: char.tutor
+    when: { mission: sorting }
+    text:
+      ru: >-
+        Сутки без ошибок сортировки. Красного — сразу, жёлтого — скоро, зелёного — в свой черёд: так и работает приёмное.
+      en: >-
+        A day without triage errors. Red at once, yellow soon, green in turn: that is how an emergency department works.
+  - id: nightsDone
+    from: char.official
+    when: { mission: nights }
+    text:
+      ru: >-
+        Две ночи подряд привезённых смотрели быстро, это видно в отчётах. Спасибо, коллега.
+      en: >-
+        Two nights in a row the arrivals were seen quickly, and it shows in the reports. Thank you, colleague.
+  - id: end
+    from: char.tutor
+    when: end
+    text:
+      ru: >-
+        Приёмное работает: сортировка верная, ночью есть кому смотреть, больные выписываются в срок. Дальше — своя
+        операционная, чтобы не переводить тех, кому нужна операция.
+      en: >-
+        The emergency department works: the triage is right, there is someone to see patients at night, patients leave on
+        time. Next comes an operating room of your own, so that those who need surgery are not transferred.
+# Подсказки наставницы (часть 2б): в листе передачи — к первому привезённому, в блоке обхода — к первому вашему лежащему, в
+# карте — у заданного больного с аппендицитом. Это подсказки главы 2 «Анамнеза» (content/campaign/tips/handover.yaml,
+# rounds.yaml, appendicitis.yaml): первых мер и сознания в листе передачи здесь нет, операционной — тоже, поэтому — перевод.
+tips:
+  - id: handover
+    from: char.tutor
+    when: ambulance
+    name: { ru: "Лист передачи", en: "The handover sheet" }
+    text:
+      ru: >-
+        Скорая привезла человека — сначала лист передачи. Давление, пульс, частота дыхания, сатурация, температура: по ним
+        решайте, кого смотреть первым. Красного — сразу, жёлтого — скоро, зелёного — в порядке очереди. Утром на планёрке
+        вашу сортировку сверят со шкалой NEWS2.
+      en: >-
+        The ambulance has brought someone: the handover sheet comes first. Blood pressure, pulse, breathing rate,
+        saturation, temperature: by them decide whom to see first. Red at once, yellow soon, green in turn. In the morning
+        at the meeting your triage is checked against the NEWS2 scale.
+    see: [room.emergency]
+  - id: rounds
+    from: char.tutor
+    when: rounds
+    name: { ru: "Обход", en: "The round" }
+    text:
+      ru: >-
+        На обходе смотрите не на число суток, а на показатели по суткам: температура, пульс, дыхание. Лучше — лечение
+        действует; хуже — лечение не помогает, его пора сменить. Выписывают, когда болезнь прошла: раньше — человек
+        вернётся хуже, позже — койка занята зря.
+      en: >-
+        On the round, look not at the number of days but at the readings day by day: temperature, pulse, breathing. Better
+        means the treatment works; worse means it does not help and it is time to change it. Discharge when the illness has
+        passed: earlier and the person comes back worse, later and the bed is taken for nothing.
+    see: [room.ward]
+  - id: appendicitis
+    from: char.tutor
+    when: { condition: cond.appendicitis }
+    name: { ru: "Аппендицит и время", en: "Appendicitis and time" }
+    text:
+      ru: >-
+        При подозрении на аппендицит решает время. Боль, что началась у пупка и ушла вправо вниз, тошнота, отказ от еды,
+        болезненность справа внизу живота, лейкоциты в анализе крови — чем больше этого, тем вероятнее аппендицит.
+        Неосложнённый аппендицит оперируют в первые сутки после поступления: пока человек ждёт, растёт риск перфорации.
+        Операционной здесь нет — переводите в другую больницу, как только заподозрили.
+      en: >-
+        When appendicitis is suspected, time decides. Pain that began around the navel and moved to the lower right, nausea,
+        no appetite, tenderness in the lower right abdomen, white cells in the blood test: the more of these, the likelier
+        appendicitis. Uncomplicated appendicitis is operated on within the first day after admission: while the person
+        waits, the risk of perforation grows. There is no operating room here, so transfer to another hospital as soon as
+        you suspect it.
+    see: [cond.appendicitis, tx.appendectomy]

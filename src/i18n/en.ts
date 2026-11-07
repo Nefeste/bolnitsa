@@ -228,6 +228,9 @@ export const en: Strings = {
     leave: 'The build panel covers the doctor window: «Done» or B — and «Call» is in the doctor window at the bottom left.',
     decisions: "Hired doctors' decisions are in the «Asking for a look» tab: Enter — «Agree», Shift+Enter — the card; with no answer by the deadline the doctor's decision stands.",
     manage: "You are the manager: doctors decide on their own. Build, hire, watch the cash; the day and the doctors' errors — at the 08:00 meeting.",
+    sheet: 'An ambulance brought someone and you triage: «Handover sheet» in the doctor window at the bottom left. The colour decides whom a doctor calls first.',
+    bays: 'No free place in the emergency room: arrivals wait at the entrance on a gurney. More places — a bigger emergency room or a second one.',
+    night: 'At 20:00 the day shift leaves, and the ambulance comes at night too: «Hire for nights» in the card of the emergency room and of a doctor’s office.',
   },
   tabs: {
     patients: 'Patients',

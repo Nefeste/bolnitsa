@@ -1809,6 +1809,9 @@ function checkScenarios(db: ContentDb, errors: string[]) {
       if (!db.characters[t.from]) at(`подсказка ${t.id}: персонаж ${t.from} не найден`);
       const w = t.when;
       if (typeof w === 'object' && !c.tutorial.some(x => x.condition === w.condition)) at(`подсказка ${t.id}: болезни ${w.condition} нет среди заданных больных`);
+      // к листу передачи — где привозит скорая и сортирует игрок; к обходу — где строят палату (spec docs/specs/2026-11-scenario-2.md)
+      if (w === 'ambulance' && (!c.sorts || !c.build.some(r => db.rooms[r]?.emergency))) at(`подсказка ${t.id}: листа передачи в сценарии нет — сортирует медсестра или смотровой приёмного не построить`);
+      if (w === 'rounds' && !c.build.some(r => db.rooms[r]?.beds)) at(`подсказка ${t.id}: обхода в сценарии нет — палату не построить`);
       for (const id of t.see) if (!(db.conditions[id] || db.findings[id] || db.exams[id] || db.treatments[id] || db.risks[id] || db.rooms[id] || db.equipment[id] || db.roles[id])) at(`подсказка ${t.id}: статья ${id} не найдена`);
     }
   }

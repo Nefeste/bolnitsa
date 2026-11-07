@@ -1,8 +1,9 @@
 // из anamnez: src/state/tips.ts @ 4976f09, изменено: подсказки сценария ПК (spec docs/specs/2026-10-scenario-1.md, часть 2б) —
 // из записи сценария, номер — внутри сценария, порядок — порядок списка; выбирает их поток расчёта (правды о больном в окне
 // нет) и шлёт с видом карты готовыми словами; экраны — карта (шаги «Расспрос», «Осмотр», «Обследования»), шаг «Решение» и
-// разбор; скорой и обхода в сценарии 1 нет; о болезни — только у заданного больного; «следующая ждёт следующего действия»
-// — в окне (src/ui/doctor/Card.tsx).
+// разбор; о болезни — только у заданного больного; «следующая ждёт следующего действия» — в окне (src/ui/doctor/Card.tsx).
+// Сценарий 2 (spec docs/specs/2026-11-scenario-2.md, часть 2б): скорая — в листе передачи (src/ui/doctor/Handover.tsx), обход
+// — в блоке обхода вашего лежащего.
 //
 // Подсказки наставника: по одной, в момент, когда подсказка к месту, и каждая — один раз за сценарий. Движок о них не знает,
 // кроме отметки «показана» (`mark`) и «Без обучения»: вид решает по состоянию приёма и по тому, что уже показано.
@@ -11,8 +12,8 @@ import { scenarioOf } from '../engine/campaign/campaign';
 import type { ShiftPatient, ShiftState } from '../engine/shift/types';
 import { named } from '../i18n';
 
-/** Где врач: карта пациента, шаг «Решение», разбор после «Завершить приём». */
-export type TipScreen = 'card' | 'decision' | 'review';
+/** Где врач: карта пациента, шаг «Решение», разбор после «Завершить приём»; лист передачи; обход вашего лежащего. */
+export type TipScreen = 'card' | 'decision' | 'review' | 'handover' | 'rounds';
 
 /** Что сейчас с приёмом — всё, по чему видно, к месту ли подсказка. */
 export interface TipMoment {
@@ -61,6 +62,11 @@ export function tipFits(t: ScenarioTip, m: TipMoment): boolean {
       return m.screen === 'decision' && !m.decided;
     case 'review':
       return m.screen === 'review' && m.decided;
+    // лист передачи привезённого, что ждёт вашей сортировки; обход вашего лежащего
+    case 'ambulance':
+      return m.screen === 'handover';
+    case 'rounds':
+      return m.screen === 'rounds';
   }
 }
 
@@ -79,11 +85,12 @@ export interface TipView {
   see: { id: Id; name: string }[];
 }
 
-/** Подсказки карты по экранам: на шагах «Расспрос» … «Обследования», на шаге «Решение», на разборе. */
+/** Подсказки карты по экранам: на шагах «Расспрос» … «Обследования», на шаге «Решение», на разборе, в блоке обхода. */
 export interface CardTips {
   card?: TipView;
   decide?: TipView;
   review?: TipView;
+  round?: TipView;
 }
 
 /** Название статьи энциклопедии, на которую ссылается подсказка. */
@@ -118,6 +125,21 @@ export function cardTips(db: ContentDb, s: ShiftState, p: ShiftPatient, active: 
   } else if (p.closed && !p.closed.by) {
     const review = pick('review');
     if (review) out.review = review;
+    // ваш лежащий — блок обхода (spec docs/specs/2026-11-scenario-2.md, часть 2б)
+    const round = p.status === 'admitted' && p.stay ? pick('rounds') : undefined;
+    if (round) out.round = round;
   }
-  return out.card || out.decide || out.review ? out : undefined;
+  return out.card || out.decide || out.review || out.round ? out : undefined;
+}
+
+/**
+ * Подсказка в листе передачи (spec docs/specs/2026-11-scenario-2.md, часть 2б): привезённый ждёт вашей сортировки. Не
+ * сценарий, «Без обучения» или всё уже показано — нет.
+ */
+export function sheetTip(db: ContentDb, s: ShiftState, p: ShiftPatient): TipView | undefined {
+  const c = s.campaign;
+  const sc = scenarioOf(db, c);
+  if (!c || !sc || sc.tips.length === 0 || c.tips?.off) return undefined;
+  const t = tipFor(sc.tips, c.tips?.shown ?? [], momentOf(db, 'handover', p));
+  return t ? tipView(db, t) : undefined;
 }

@@ -1754,6 +1754,21 @@ export class Game {
     if (r) this.stage.highlight.flash({ x: r.x, y: r.y, w: r.w, h: r.h }, n.ok);
   }
 
+  /**
+   * Вечер (16:00–20:00) в больнице со смотровой приёмного, а на ночь в смотровой никого или нет ни одного врача (spec
+   * docs/specs/2026-11-scenario-2.md, часть 2б, подсказка `night`): в 20:00 дневная смена уйдёт, а скорая едет и ночью.
+   */
+  private nightUnstaffed(): boolean {
+    const hour = Math.floor((this.t % 86400) / 3600);
+    if (hour < 16 || hour >= 20) return false;
+    const er = this.plan.rooms.filter(r => this.db.rooms[r.type]?.emergency);
+    if (er.length === 0) return false;
+    const night = this.staff.filter(m => m.shift === 'night');
+    const bays = er.some(r => night.some(m => m.room === r.id));
+    const doctor = night.some(m => this.db.roles[m.role]?.stands === 'role.doctor');
+    return !bays || !doctor;
+  }
+
   /** Подсказка первых минут — по тому, что движок знает о больнице (`openBlocks`), часам, пришедшим и просьбам. */
   private hintNow(): Hud['hint'] {
     const { db, plan } = this;
@@ -1770,6 +1785,8 @@ export class Game {
         // по роли (spec docs/specs/2026-10-two-ways.md, F4)
         role: this.doctor.hud.role, decisions: st?.decisions.length ?? 0, answered: this.doctor.answered, met: this.money.hud.meeting !== undefined,
         callable: !this.doctor.called && !!st?.office && !st.current && st.yours.length + st.others.length > 0,
+        // приёмное (spec docs/specs/2026-11-scenario-2.md, часть 2б): ждут вашей сортировки, ждут у входа, вечер без ночной смены
+        handover: st?.handover.length ?? 0, door: st?.door ?? 0, night: this.nightUnstaffed(),
       },
       this.seenHints,
     );

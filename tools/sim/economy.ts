@@ -13,7 +13,14 @@
 //   ambulatory — сценарий 1 «Амбулатория» (spec docs/specs/2026-10-scenario-1.md, часть 4): касса сценария, разумный игрок
 //              строит в первые сутки все девять помещений его порядка стройки; ваш кабинет ведёт нанятый терапевт — вместо
 //              вас, его зарплату у игрока не платят: она — отдельной строкой. Не меньше 10 суток; критерий — цель «Пять
-//              суток с кассой в плюсе» выполнена к 10-м суткам («разумный игрок выходит в плюс к 10-м суткам»).
+//              суток с кассой в плюсе» выполнена к 10-м суткам («разумный игрок выходит в плюс к 10-м суткам»);
+//   emergency — сценарий 2 «Приёмное» (spec docs/specs/2026-11-scenario-2.md, часть 2б): касса сценария, готовая амбулатория;
+//              разумный игрок в 08:00 первых суток ставит в свободное крыло смотровую, две палаты и рентген «С персоналом»
+//              (с ними — ночная смена смотровой и палат), нанимает на ночь терапевтов в оба кабинета (в вашем ночью
+//              принимали бы вы); сортирует по листу —
+//              цвет по шкале, раз в шаг прогона; ваш кабинет ведёт нанятый терапевт, как в сценарии 1; заданных больных нет —
+//              врача никто не играет. Не меньше 10 суток; критерий — основные цели к 8-м суткам (срок в стационаре не
+//              измерить быстрее, чем лежат больные).
 // Критерии: касса ни разу не ниже предела минуса (кредит не нужен); за 7 суток больница не окупается целиком — не богатеет
 // нелепо; поток за сутки — в ориентирах геймдизайна §5. Персонал (spec docs/specs/2026-10-staff-mood.md): кто собирался уйти
 // и кто ушёл сам, настроение в конце, кто вырос и сколько смен пропущено по болезни; с `--days 14` и больше — критерий: игрок
@@ -34,7 +41,7 @@
 // критерии уровней: «Спокойно» — ушли, не дождавшись, не больше 5 % пришедших, касса ни разу не ниже нуля, за 7 суток
 // прибыль больше, чем на «Обычно»; «Обычно» — как выше; «Трудно» — ушли 10–20 %, касса не ниже предела минуса уровня, за
 // 7 суток не окупается. Касса сценария 1 — его, на любом уровне; его цель к 10-м суткам — критерий только «Обычно».
-//   bun tools/sim/economy.ts [--days 7] [--seeds 1,2,3] [--only clinic,district,city,poly,polyspec,ambulatory] [--hall N] [--bench N] [--raise]
+//   bun tools/sim/economy.ts [--days 7] [--seeds 1,2,3] [--only clinic,district,city,poly,polyspec,ambulatory,emergency] [--hall N] [--bench N] [--raise]
 //                            [--no-orderly night|all] [--reserve registrar,nurse] [--manage calm,normal,hard] [--clinical [ward,icu]] [--json]
 import type { ContentDb, Id, Manage } from '../../src/content/types';
 import { expensesOf, incomeOf } from '../../src/engine/economy/economy';
@@ -131,6 +138,20 @@ const AMBULATORY: Spec[] = (db.scenarios?.[AMBULATORY_SC]?.guide ?? []).map(g =>
   return at;
 });
 
+/**
+ * Сценарий 2 (spec docs/specs/2026-11-scenario-2.md, часть 2б): крыло приёмного — готовыми помещениями «С персоналом» на тех
+ * же местах, что в tools/test/scenario-2.test.ts; на ночь — их ночная смена и терапевты в обоих кабинетах.
+ */
+const EMERGENCY_SC = 'scenario.emergency';
+/** К каким суткам разумный план выполняет основные цели сценария 2. */
+const EMERGENCY_DAYS = 8;
+const WING: SiteCommand[] = [
+  { kind: 'ready', type: 'room.emergency', size: 'M', x: 42, y: 27, rot: 2, staff: true },
+  { kind: 'ready', type: 'room.ward', size: 'M', x: 30, y: 6, rot: 0, staff: true },
+  { kind: 'ready', type: 'room.ward', size: 'M', x: 38, y: 6, rot: 0, staff: true },
+  { kind: 'ready', type: 'room.xray', size: 'M', x: 32, y: 16, rot: 2, staff: true },
+];
+
 /** Нужна ли помещению двойная дверь: в его образцах лежат (как в стройке, часть 2б) — палаты, рентген, смотровая. */
 const DOUBLE = new Set(['room.ward', 'room.xray', 'room.emergency', 'room.icu', 'room.ricu', 'room.box', 'room.ct', 'room.mri', 'room.or']);
 
@@ -188,6 +209,12 @@ interface DayRow {
   by: Partial<Record<VisitKind, number>>;
   why?: LeftBy;
   forecast?: InflowDay;
+  /** ночь суток (spec docs/specs/2026-11-scenario-2.md): привезли, дольше всех ждал врача, кого не позвали до утра */
+  night?: { arrived: number; wait: number; unseen?: number };
+  /** ваша сортировка за сутки: сколько, недооценили, переоценили */
+  sorted?: { mine: number; under: number; over: number };
+  /** стационар за сутки: выписаны, из них рано, суток у выписанных и обычных сроков */
+  ward?: { discharged: number; early: number; stayDays: number; stayNorm: number };
 }
 interface Run {
   /** `week` — прибыль за первые 7 суток без стройки: критерий «не окупается за 7 суток» и при `--days` больше 7 */
@@ -263,13 +290,40 @@ function startOf(name: string, seed: number, manage: Manage): ShiftState {
     build(s, AMBULATORY);
     return s;
   }
+  if (name === 'emergency') {
+    // готовая амбулатория (решение владельца #197): ваш кабинет — не «ваш»: его ведёт нанятый терапевт, вместо вас
+    const p = siteOfPlan(db, db.sites!['site.ambulatory']);
+    if (!p.ok) throw new Error(`амбулатория: помещение ${p.room} — ${p.error.kind}`);
+    const { mine, ...site } = p.site;
+    // смены — как в окне (`hospitalAt` в src/app/game.ts): у амбулатории все в дневной, ночной нет
+    const s = newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, site), staff: withNightShift(db, site.rooms, p.staff), flow, scenario: EMERGENCY_SC, ...level });
+    // заданных больных нет: их принял бы игрок, а врача никто не играет
+    s.campaign!.taught = db.scenarios![EMERGENCY_SC].tutorial.length;
+    if (mine) site_(s, { kind: 'hire', room: mine, role: 'role.doctor', shift: 'day' });
+    for (const cmd of WING) site_(s, cmd);
+    // на ночь: медсёстры смотровой и палат — уже (готовое помещение «С персоналом» в больнице, что работает ночью, — и с
+    // ночной сменой); терапевты — в оба кабинета: ночью в вашем кабинете принимали бы вы
+    for (const r of s.hospital!.site!.rooms) if (r.type === 'room.office') site_(s, { kind: 'hire', room: r.id, role: 'role.doctor', shift: 'night' });
+    apply(db, s, { kind: 'site', cmd: { kind: 'done' } });
+    return s;
+  }
   const s = newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, emptySite()), staff: [], flow, economy: { cash: startCash(db, 'empty', manage) }, ...level });
   build(s, name === 'clinic' ? CLINIC : DISTRICT);
   return s;
 }
 
-/** Сколько суток прожить: сценарию 1 — не меньше 10, его критерий — к 10-м суткам. */
-const daysOf = (name: string) => (name === 'ambulatory' ? Math.max(DAYS, 10) : DAYS);
+/** Команда стройки сценария 2 — как `site`, но имя не занято параметром `site` готовой больницы. */
+const site_ = (s: ShiftState, cmd: SiteCommand) => site(s, cmd);
+
+/** Сценарий 2: привезённых сортирует игрок — разумный, по листу передачи: цвет — по шкале. */
+function sortArrivals(s: ShiftState) {
+  for (const p of Object.values(s.patients)) {
+    if (p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted && p.scale) apply(db, s, { kind: 'sort', id: p.id, triage: p.scale.triage });
+  }
+}
+
+/** Сколько суток прожить: сценариям 1 и 2 — не меньше 10, их критерии — к 10-м и к 8-м суткам. */
+const daysOf = (name: string) => (name === 'ambulatory' || name === 'emergency' ? Math.max(DAYS, 10) : DAYS);
 
 function run(name: string, seed: number, manage: Manage): Run {
   const s = start(name, seed, manage);
@@ -291,6 +345,7 @@ function run(name: string, seed: number, manage: Manage): Run {
   const waited = new Map<string, { since: number; until?: number }>();
   const end = (daysOf(name) * 24 + 8) * 3600;
   while (s.t < end) {
+    if (name === 'emergency') sortArrivals(s);
     for (const n of apply(db, s, { kind: 'advance', seconds: 300 })) {
       if (n.kind !== 'morning' || !n.staff) continue;
       for (const q of n.staff.quit ?? []) quits.push({ day: s.day, role: s.staff!.find(m => m.id === q.id)?.role ?? '' });
@@ -346,6 +401,9 @@ function run(name: string, seed: number, manage: Manage): Run {
       arrived: d.arrived, ambulance: d.ambulance?.arrived ?? 0, seen: col.reduce((n, c) => n + c.seen, d.seen), left: d.left, died: d.ward?.died ?? 0, lying: d.ward?.lying ?? 0,
       flowWalk: 0, flowAmb: 0, salaries: e.ledger.expenses.salaries, door: d.load?.door ?? 0, ...(d.load?.gurney ? { gurney: { ...d.load.gurney } } : {}),
       by: d.arrivedBy ?? {}, ...(d.leftBy ? { why: d.leftBy } : {}), ...(s.history[i - 1]?.inflow ? { forecast: s.history[i - 1].inflow } : {}),
+      ...(d.night ? { night: { ...d.night } } : {}),
+      ...(d.ambulance?.mine ? { sorted: { mine: d.ambulance.mine, under: d.ambulance.under, over: d.ambulance.over } } : {}),
+      ...(d.ward ? { ward: { discharged: d.ward.discharged, early: d.ward.early, stayDays: d.ward.stayDays, stayNorm: d.ward.stayNorm } } : {}),
     };
   });
   // поток от больницы сейчас — в среднем в сутки при часах по умолчанию
@@ -363,7 +421,7 @@ function run(name: string, seed: number, manage: Manage): Run {
   const office = s.hospital?.site?.rooms.find(r => r.type === 'room.office')?.id;
   // на месте врача нанимают терапевта (role.doctor — место, человек — role.therapist)
   const proxy = s.staff?.find(m => m.room === office)?.salary;
-  const goals = name === 'ambulatory' && s.campaign ? { ...s.campaign.done } : undefined;
+  const goals = (name === 'ambulatory' || name === 'emergency') && s.campaign ? { ...s.campaign.done } : undefined;
   return {
     scenario: name, manage, seed, start: first, value, minCash, profit: gain(days), week: gain(days.slice(0, 7)), days, lines, quits, leaves, moods, grew, sick, covered, bare, raised, rides, rounds, stuck,
     ...(goals ? { goals, ...(proxy !== undefined ? { proxy } : {}) } : {}),
@@ -371,7 +429,7 @@ function run(name: string, seed: number, manage: Manage): Run {
 }
 
 const fmt = (n: number) => Math.round(n).toLocaleString('ru-RU');
-const scenarios = ['clinic', 'district', 'city', 'poly', 'polyspec', 'ambulatory'].filter(x => ONLY.length === 0 || ONLY.includes(x));
+const scenarios = ['clinic', 'district', 'city', 'poly', 'polyspec', 'ambulatory', 'emergency'].filter(x => ONLY.length === 0 || ONLY.includes(x));
 const runs: Run[] = [];
 /** Больницы, что на уровне не строятся сразу: касса начала с пределом минуса меньше цены (на «Трудно» — районная). */
 const unbuilt: { name: string; manage: Manage; error: string }[] = [];
@@ -409,12 +467,14 @@ if (asJson) {
         const w = d.why;
         const why = w ? Object.entries(w.why).map(([k, v]) => `${k} ${v}`).join(', ') + (w.asks ? ` (из busy при просьбах ${w.asks})` : '') + (w.stood ? `; стояли ${w.stood}` : '') : '';
         console.log(`      почему: сами ${d.by.walkIn ?? 0}, по записи ${d.by.appointment ?? 0}, скорая ${d.by.ambulance ?? 0}, повторно ${d.by.return ?? 0}${f ? ` · прогноз ${fmt(f.walk)} + ${fmt(f.book)} + ${fmt(f.amb)} (кабинетов ${f.offices}, специалистов ${f.booked}, мест ${f.bays}, ${f.pct} %)` : ''}${why ? ` · ушли: ${why}` : ''}`);
+        // сценарий 2: ночь и ваша сортировка
+        if (d.night || d.sorted) console.log(`      ${d.night ? `ночь: привезли ${d.night.arrived}, дольше всех ждал врача ${d.night.wait} мин${d.night.unseen ? `, не позвали ${d.night.unseen}` : ''}` : 'ночь: не привозили'}${d.sorted ? ` · сортировка: ваших ${d.sorted.mine}, недооценили ${d.sorted.under}, переоценили ${d.sorted.over}` : ''}${d.ward?.discharged ? ` · выписаны ${d.ward.discharged} (рано ${d.ward.early}), суток ${d.ward.stayDays} при обычных ${d.ward.stayNorm}` : ''}`);
       }
       const lines = Object.entries(r.lines).filter(([, v]) => v !== 0).map(([k, v]) => `${k} ${fmt(v)}`).join(', ');
       console.log(`    за ${r.days.length} сут.: ${lines}`);
       // сценарий 1 (часть 4): когда выполнены цели; первые сутки в плюсе; касса без зарплаты терапевта вашего кабинета
       if (r.goals) {
-        const sc = db.scenarios![AMBULATORY_SC];
+        const sc = db.scenarios![r.scenario === 'emergency' ? EMERGENCY_SC : AMBULATORY_SC];
         const done = sc.missions.map(m => `«${m.text.ru}» — ${r.goals![m.id] !== undefined ? `сутки ${r.goals![m.id]}` : 'нет'}`).join('; ');
         const plus = r.days.find(d => d.income - d.expenses >= 0)?.day;
         const n = r.days.length;
@@ -497,6 +557,16 @@ if (asJson) {
       const late = rs.filter(r => (r.goals?.cash ?? Infinity) > 10);
       if (late.length) console.log(`  ✗ «Пять суток с кассой в плюсе» — не к 10-м суткам: зёрна ${late.map(r => r.seed).join(', ')}`);
       else console.log(`  ✓ «Пять суток с кассой в плюсе» — к суткам ${rs.map(r => r.goals!.cash).join(' / ')}, не позже 10-х`);
+      fails += late.length;
+    }
+    // сценарий 2 (spec docs/specs/2026-11-scenario-2.md, часть 2б): разумный план выполняет основные цели за неделю — срок в
+    // стационаре не измерить быстрее, чем лежат больные (замер: палаты полны с первых суток, выписок — около одной в сутки)
+    if (name === 'emergency' && manage === 'normal') {
+      const main = db.scenarios![EMERGENCY_SC].missions.filter(m => m.main);
+      const last = (r: Run) => Math.max(...main.map(m => r.goals?.[m.id] ?? Infinity));
+      const late = rs.filter(r => last(r) > EMERGENCY_DAYS);
+      if (late.length) console.log(`  ✗ основные цели — не к ${EMERGENCY_DAYS}-м суткам: зёрна ${late.map(r => `${r.seed} (${last(r) === Infinity ? 'нет' : last(r)})`).join(', ')}`);
+      else console.log(`  ✓ основные цели — к суткам ${rs.map(last).join(' / ')}, не позже ${EMERGENCY_DAYS}-х`);
       fails += late.length;
     }
     // персонал (spec 2026-10-staff-mood): игрок ничего не делает — за первые две недели уходят сами не больше двух (дальше

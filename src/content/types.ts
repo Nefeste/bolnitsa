@@ -1226,7 +1226,11 @@ export interface Scenario {
 export interface ScenarioTip {
   id: string;
   from: Id;
-  when: Exclude<TipWhen, 'ambulance' | 'rounds'>;
+  /**
+   * скорая и обход (spec docs/specs/2026-11-scenario-2.md, часть 2б) — подсказки к листу передачи и к обходу лежащего: где
+   * в сценарии строят смотровую приёмного и палату
+   */
+  when: TipWhen;
   name: Text;
   text: Text;
   see: Id[];
