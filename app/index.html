@@ -325,6 +325,10 @@
     .settings .row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
     .settings .label { margin: 4px 0 0; }
     .settings .check { display: flex; gap: 6px; align-items: center; cursor: pointer; margin-top: 4px; }
+    /* громкость звука (docs/specs/2026-11-sound.md, часть 1): подпись, ползунок, значение */
+    .settings .range { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+    .settings .range input { flex: 1; accent-color: var(--accent); }
+    .settings .range span { min-width: 72px; text-align: right; }
     .settings p { margin: 0; }
     /* сложность (docs/specs/2026-10-difficulty.md, часть 2): уровень «Управления» и мягкий режим — второй шаг экрана начала и
        «Настройки» */

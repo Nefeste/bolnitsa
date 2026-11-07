@@ -63,6 +63,7 @@ const actions: Actions = {
   toggleDebug: later('toggleDebug'),
   toggleNames: later('toggleNames'),
   toggleStill: later('toggleStill'),
+  setVolume: later('setVolume'),
   bench: later('bench'),
   setLang: later('setLang'),
   toggleBuild: later('toggleBuild'),

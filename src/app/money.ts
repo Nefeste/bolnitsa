@@ -260,7 +260,11 @@ export class Money {
       return;
     }
     this.g.doctor.close();
-    if (!this.hud.open) this.before = was;
+    if (!this.hud.open) {
+      this.before = was;
+      // планёрка — звуком; выполнена цель сценария — своим (spec docs/specs/2026-11-sound.md, часть 1)
+      this.g.sound.play(this.hud.meeting?.summary.campaign?.done.length ? 'goal' : 'meeting');
+    }
     this.g.setSpeed(0);
     this.hud.open = true;
   }
