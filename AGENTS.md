@@ -478,8 +478,10 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   city as a `Game` with `backdrop` — no input, saves, icons or autopause, never `__ready` — and the choice reopens the page
   with its keys; `backdrop.ts` — the camera's circle over the rooms, pure), the player's
   settings (`settings.ts`: walls, camera, quality «auto», text size — `TEXT_SCALES` 1/1.15/1.3 as `--ui-k`: `zoom` of `#ui`,
-  the font of map labels; kept in page storage, not in saves — bench and build change the view through
-  `showWalls`/`showQuality`, which do not write them); the build catalog (`docs/specs/2026-10-catalog.md`): groups by
+  the font of map labels; «Меньше движения» — `still`, `null` follows the system, `Game.showStill` sets `still` on the
+  camera, `Appear` and `Highlight` and the `still` class of the page (studio ADR 0023, rule 6; how the project meets
+  ADR 0023 — `docs/08-game-design.md` §13, «Графика (ADR 0023 устава)»); kept in page storage, not in saves — bench and
+  build change the view through `showWalls`/`showQuality`, which do not write them); the build catalog (`docs/specs/2026-10-catalog.md`): groups by
   department — `groups.ts` (`groupOf`, `groupOrder`, `grouped`), thumbnails of ready rooms — `thumbs.ts` (`sampleOf`: the
   sample on its own small lot by `addReady`; `ThumbQueue`: one at a time while the catalog is open), drawn by
   `src/render/thumbs.ts` (the map's floors, walls, doors and furniture, an ortho camera at the map's angle) into a PNG of
@@ -527,7 +529,7 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   the floor after a build (`appear.ts`, `docs/specs/2026-10-aaa-polish.md`, «Появление мебели»): every furniture vertex carries
   its thing's number (`owner`, `Batch.own`), a small texture holds each thing's middle and birth time, the vertex shader of the
   materials and of their shadow depth scales it; new things are those whose `thingKey` the last layout did not have; the first
-  layout and «reduce motion» never grow.
+  layout and «Меньше движения» (`Appear.still`) never grow.
 - `src/ui/` — panels (React) and their store; icons — `icons.tsx` (`Icon`: Carbon (IBM) under Apache 2.0, owner's decision
   #139, the text's colour, 16 points) over `icons.gen.ts` (made by `tools/app/icons.mjs`; three own icons in Carbon's style —
   doors and a bench); never put a Unicode symbol or emoji in the window instead of an icon (`tools/test/icons.test.ts`);

@@ -258,6 +258,8 @@ export const en: Strings = {
     /** подписи помещений на среднем плане (spec docs/specs/2026-10-aaa-polish.md) */
     names: 'Room names',
     namesHint: 'Room names on the map at a middle zoom: none closer in or further out',
+    still: 'Reduce motion',
+    stillHint: 'The camera moves at once and does not glide after a drag, furniture appears at once, the selection does not pulse; people walk as before. Not chosen: as in the system',
   },
   settings: {
     title: 'Settings',

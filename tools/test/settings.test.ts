@@ -2,7 +2,7 @@
 // качество «авто», текст обычный; чего нет в хранилище или испорчено — по умолчанию; «авто» — ступенью ниже, пока кадр
 // медленный.
 import { describe, expect, test } from 'bun:test';
-import { AUTO, AutoQuality, DEFAULT_SETTINGS, parseSettings, readSettings, TEXT_SCALES, writeSettings } from '../../src/app/settings';
+import { AUTO, AutoQuality, DEFAULT_SETTINGS, parseSettings, readSettings, stillOf, TEXT_SCALES, writeSettings } from '../../src/app/settings';
 
 /** Хранилище в памяти — как хранилище страницы. */
 const memory = () => {
@@ -12,15 +12,15 @@ const memory = () => {
 
 describe('настройки', () => {
   test('по умолчанию — вид владельца: стены вниз, перспектива, качество «авто» (#70)', () => {
-    expect(DEFAULT_SETTINGS).toEqual({ walls: 'down', projection: 'persp', quality: 'auto', debug: false, metric: null, text: 1, names: true });
+    expect(DEFAULT_SETTINGS).toEqual({ walls: 'down', projection: 'persp', quality: 'auto', debug: false, metric: null, text: 1, names: true, still: null });
     expect(parseSettings(null)).toEqual(DEFAULT_SETTINGS);
     expect(readSettings(memory())).toEqual(DEFAULT_SETTINGS);
   });
 
   test('записанное — читается; чужое и испорченное — по умолчанию, поле за полем', () => {
     const store = memory();
-    writeSettings({ walls: 'cut', projection: 'ortho', quality: 'low', debug: true, metric: 'wait', text: 1.3, names: false }, store);
-    expect(readSettings(store)).toEqual({ walls: 'cut', projection: 'ortho', quality: 'low', debug: true, metric: 'wait', text: 1.3, names: false });
+    writeSettings({ walls: 'cut', projection: 'ortho', quality: 'low', debug: true, metric: 'wait', text: 1.3, names: false, still: true }, store);
+    expect(readSettings(store)).toEqual({ walls: 'cut', projection: 'ortho', quality: 'low', debug: true, metric: 'wait', text: 1.3, names: false, still: true });
     // размер текста — один из трёх, как в «Анамнезе»; другой — обычный
     expect(TEXT_SCALES).toEqual([1, 1.15, 1.3]);
     expect(parseSettings('{"text":1.15}').text).toBe(1.15);
@@ -40,6 +40,17 @@ describe('настройки', () => {
     const broken = { getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('denied'); } };
     expect(readSettings(broken)).toEqual(DEFAULT_SETTINGS);
     expect(() => writeSettings(DEFAULT_SETTINGS, broken)).not.toThrow();
+  });
+
+  test('«меньше движения» (ADR 0023 устава): выбор игрока — «да» или «нет»; не выбирал — как в системе', () => {
+    // настройки до 0.69.0 и чужое значение — не выбирал
+    expect(parseSettings('{"walls":"cut"}').still).toBe(null);
+    expect(parseSettings('{"still":"yes"}').still).toBe(null);
+    expect(parseSettings('{"still":false}').still).toBe(false);
+    expect(parseSettings('{"still":true}').still).toBe(true);
+    expect([stillOf({ still: null }, true), stillOf({ still: null }, false)]).toEqual([true, false]);
+    // выбор игрока сильнее системы — в обе стороны
+    expect([stillOf({ still: false }, true), stillOf({ still: true }, false)]).toEqual([false, true]);
   });
 
   test('«авто»: быстрый кадр — высокое; медленный — ступенью ниже, и снова смотреть; на низком — остаться', () => {

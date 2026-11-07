@@ -138,6 +138,9 @@ export async function runBench(g: Game, opts: BenchOpts) {
           frames: interval.length,
           fps: Math.round((interval.length / secs) * 10) / 10,
           frameMs: iv,
+          // цель кадра ADR 0023 устава: медиана — `frameMs.p50`, кадров дольше 25 мс — не больше 1 %
+          over25ms: interval.filter(v => v > 25).length,
+          over25share: interval.length ? Math.round((interval.filter(v => v > 25).length / interval.length) * 1000) / 10 : 0,
           over33ms: interval.filter(v => v > 33.4).length,
           over100ms: interval.filter(v => v > 100).length,
           simMs: summarize(sim),

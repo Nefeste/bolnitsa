@@ -196,6 +196,10 @@ function SettingsPanel({ hud, actions }: P) {
       <label className="check" title={T.view.namesHint}>
         <input type="checkbox" id="names" checked={hud.names} onChange={actions.toggleNames} /> {T.view.names}
       </label>
+      {/* «меньше движения» (spec docs/specs/2026-10-settings.md; ADR 0023 устава, правило 6) */}
+      <label className="check" title={T.view.stillHint}>
+        <input type="checkbox" id="still" checked={hud.still} onChange={actions.toggleStill} /> {T.view.still}
+      </label>
       <div className="label">{T.view.quality}</div>
       <div className="row">
         {q.map(([m, s]) => (

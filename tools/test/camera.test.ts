@@ -186,3 +186,38 @@ describe('скорость руки при отпускании', () => {
     expect(releaseVelocity([], 10)).toBeNull();
   });
 });
+
+// «Меньше движения» (ADR 0023 устава, правило 6; spec docs/specs/2026-10-settings.md, «Меньше движения»): камера отвечает на
+// действие игрока сразу — полёт «Найти», масштаб колесом и поворот за один кадр, скольжения после протяжки нет; точка под
+// курсором при масштабе — на своём месте, как и с движением.
+describe('камера: «меньше движения»', () => {
+  test('полёт, колесо и поворот — за один кадр; отпущенная карта не скользит', () => {
+    const cam = settled();
+    cam.still = true;
+    cam.flyTo(12, 30, 6);
+    cam.update(1 / 60);
+    expect([cam.flying, cam.target.x, cam.target.z, cam.half]).toEqual([false, 12, 30, 6]);
+    cam.zoom(2);
+    cam.update(1 / 60);
+    expect([cam.zooming, cam.half]).toEqual([false, 12]);
+    const y0 = cam.yaw;
+    cam.rotate(1);
+    cam.update(1 / 60);
+    expect(cam.yaw).toBeCloseTo(y0 + Math.PI / 2, 9);
+    cam.glideFrom(800, 0, 720);
+    expect(cam.gliding).toBe(false);
+  });
+
+  test.each(['persp', 'ortho'] as const)('%s: масштаб к точке под курсором — сразу, точка стоит на месте', projection => {
+    const cam = settled(projection);
+    cam.still = true;
+    const ground = cam.groundAt(0.45, -0.35)!;
+    const before = ndcOf(cam, ground.x, ground.z);
+    cam.zoom(0.5, { x: ground.x, z: ground.z });
+    cam.update(1 / 60);
+    expect(cam.zooming).toBe(false);
+    const after = ndcOf(cam, ground.x, ground.z);
+    expect(Math.abs(after.x - before.x)).toBeLessThan(2e-3);
+    expect(Math.abs(after.y - before.y)).toBeLessThan(2e-3);
+  });
+});
