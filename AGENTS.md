@@ -224,6 +224,9 @@ bun tools/bench/departments.ts                 # departments (spec): how often a
 bun tools/bench/emergency.ts                   # scenario 2 (spec): a district hospital around the clock — who came and left by day and
                                                # by night, how long the ambulance's patients waited for a doctor, beds and stays
                                                # (`--places 2` — two emergency bays, `--wards M` — four-bed wards, `--days`, `--seeds`)
+bun tools/bench/surgery.ts                     # scenario 3 (spec): ready hospitals with an operating room, nobody playing — surgery and
+                                               # trauma arrivals by day, operations decided and done, on time and late, complicated at
+                                               # the incision, complications, the wait for the table (`--hospital district,city`, `--days`)
 bun tools/bench/rounds.ts                      # the morning round (staff motion spec, part 2): each hired doctor's lying patients at
                                                # 08:30, how many need a decision, then the engine's rounds of the morning — when, beds,
                                                # game minutes (`--days 7`, `--seed`, `--hospital poly`, `--clinical` — a clinical nurse
