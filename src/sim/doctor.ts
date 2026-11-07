@@ -10,11 +10,11 @@ import { askMinutes } from '../engine/career/skills';
 import { complaintObservations } from '../engine/med/exams';
 import { evaluatePlan, primaryOf } from '../engine/med/plan';
 import type { Grade, ScoreNote } from '../engine/med/score';
-import { complaintText } from '../engine/med/text';
+import { complaintText, observationText } from '../engine/med/text';
 import { type Block, doctorRoom, examWhere, type Problem } from '../engine/hospital/requirements';
 import {
   atDoctor, bedsideEquipment, bedsideOf, boxBeds, brokenOf, colleaguesOf, forPlayer, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, type HospitalCtx,
-  hospitalCtx, icuBeds, isOut, moreUrgent, observationsOf, operationOf, type OrBlock, orBlock, reviewedCase, reviewFor, ricuBeds, targetPlace, wardBeds,
+  hospitalCtx, icuBeds, isOut, moreUrgent, observationsOf, operationOf, type OrBlock, orBlock, reviewedCase, reviewFor, ricuBeds, siteOpen, targetPlace, wardBeds,
 } from '../engine/shift/engine';
 import { inBox, inIcu, inRicu, orQueueOf, stayEquipment } from '../engine/shift/engine';
 import { asksOf } from '../engine/shift/approve';
@@ -35,7 +35,7 @@ export const LEVELS: readonly Difficulty[] = ['trainee', 'student', 'resident', 
 export const DEFAULT_LEVEL: Difficulty = 'student';
 
 /** Почему поток не сделал «Взять» или действие в карте (spec «Как случай становится вашим»). */
-export type Refusal = 'busy' | 'noOffice' | 'gone' | 'notHere' | 'unsorted' | 'notInOffice' | 'dayClosed' | 'coming';
+export type Refusal = 'busy' | 'noOffice' | 'gone' | 'notHere' | 'unsorted' | 'sortFirst' | 'notInOffice' | 'dayClosed' | 'coming';
 
 /** Больной в окне врача — словами, без правды. */
 export interface PatientRow {
@@ -180,6 +180,13 @@ export interface DoctorState {
   colleagues: ColleagueRow[];
   mine: BodySystem[];
   dayOpen: boolean;
+  /**
+   * привезённых скорой (spec docs/specs/2026-11-scenario-2.md, часть 2а): `er` — смотровая приёмного работает, в окне —
+   * галочка «Пусть сортирует медсестра»; `sorts` — сортируете вы; `handover` — кто ждёт вашей сортировки, по времени приезда
+   */
+  er?: true;
+  sorts?: true;
+  handover: HandoverRow[];
 }
 
 /** Вид карты для окна: вид приёма «Анамнеза» и где больной сейчас. */
@@ -343,8 +350,11 @@ function rowOf(db: ContentDb, p: ShiftPatient, why?: PatientRow['why']): Patient
   };
 }
 
-/** Состояние врача: дёшево, без вывода — его считают на каждый срез и шлют, если изменилось. */
-export function doctorState(db: ContentDb, s: ShiftState): DoctorState {
+/**
+ * Состояние врача: дёшево, без вывода — его считают на каждый срез и шлют, если изменилось. `level` — уровень медицины окна:
+ * на лёгких в листе передачи — баллы шкалы.
+ */
+export function doctorState(db: ContentDb, s: ShiftState, level: Difficulty = DEFAULT_LEVEL): DoctorState {
   const office = officeOf(db, s);
   let current: PatientRow | undefined;
   const yours: { row: PatientRow; order: number }[] = [];
@@ -429,6 +439,94 @@ export function doctorState(db: ContentDb, s: ShiftState): DoctorState {
     colleagues: colleaguesOf(db, s).map(m => ({ id: m.id, role: named(db.roles[m.role]?.name, m.role), skill: m.skill })),
     mine: [...(s.meta.mine ?? [])],
     dayOpen: s.dayOpen,
+    ...(s.flow && siteOpen(db, s, 'amb') ? { er: true as const } : {}),
+    ...(s.meta.sorts ? { sorts: true as const } : {}),
+    handover: handoverRows(db, s, level),
+  };
+}
+
+// --- лист передачи (spec docs/specs/2026-11-scenario-2.md, часть 2а; handoverRow «Анамнеза» @ bed1996) -------------------
+
+/** Привезённый скорой, что ждёт вашей сортировки: кто, повод и что измерил фельдшер; на лёгких уровнях — баллы шкалы. */
+export interface HandoverRow {
+  id: string;
+  /** «Петров Иван, 45 лет, м» */
+  who: string;
+  /** повод — главная жалоба словами пациента */
+  reason: string;
+  /** что измерил фельдшер — строками измерений */
+  measured: string[];
+  /** мест в смотровой нет — лежит на каталке у входа */
+  door: boolean;
+  /** когда привезли, игровые секунды */
+  at: number;
+  /** «Практикант» и «Студент», как в «Анамнезе»: баллы NEWS2 по листу и тревожный признак, что поднял цвет */
+  news2?: number;
+  flag?: string;
+}
+
+/** Лёгкие уровни медицины: подсказки числом (spec «Сложность»). */
+const easy = (level: Difficulty) => level === 'trainee' || level === 'student';
+
+/** Кто ждёт вашей сортировки — только когда сортируете вы (`meta.sorts`): медсестра сортирует привезённого сразу. */
+function handoverRows(db: ContentDb, s: ShiftState, level: Difficulty): HandoverRow[] {
+  if (!s.meta.sorts) return [];
+  return Object.values(s.patients)
+    .filter(p => p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted && p.scale)
+    .sort((a, b) => a.arriveT - b.arriveT || (a.id < b.id ? -1 : 1))
+    .map(p => {
+      const scale = p.scale!;
+      const paramedic = p.results.find(r => r.exam === 'exam.vitals');
+      const flag = easy(level) && scale.flag ? named(db.findings[scale.flag]?.name, scale.flag) : undefined;
+      return {
+        id: p.id, who: T.doctor.who(patientName(p.patient), p.patient.sex, p.patient.age), reason: complaintOf(db, p),
+        // у порогов того же измерения — пульс от 150, давление ниже 100 — своего текста нет: строку пишет само измерение
+        measured: (paramedic?.obs ?? []).filter(o => o.value !== undefined).map(o => observationText(db, o, p.patient.sex, p.patient.seed)).filter(m => m !== ''),
+        door: !p.bay, at: p.arriveT,
+        ...(easy(level) ? { news2: scale.news2 } : {}),
+        ...(flag ? { flag } : {}),
+      };
+    });
+}
+
+/** Ошибка вашей сортировки примером — для планёрки: кто, ваш цвет и цвет по шкале, баллы и тревожный признак. */
+export interface SortMiss {
+  day: number;
+  who: string;
+  yours: Triage;
+  scale: Triage;
+  news2: number;
+  flag?: string;
+}
+
+const RANK: Record<Triage, number> = { red: 0, yellow: 1, green: 2 };
+
+/**
+ * Пример ошибки сортировки за сутки последней планёрки: из привезённых этих суток (номер — `сутки-a…`), чей цвет не по шкале.
+ * Медсестра сортирует по шкале — такой цвет поставили вы. Первым — недооценённый, потом — кого больше всего ошиблись, потом —
+ * последний. Ошибок нет или сутки ещё не кончились — нет.
+ */
+export function sortMissOf(db: ContentDb, s: ShiftState): SortMiss | undefined {
+  const day = s.history.at(-1)?.day;
+  if (day === undefined || !s.history.at(-1)?.ambulance?.mine) return undefined;
+  const prefix = `${day}-a`;
+  const seen = new Set<string>();
+  let best: ShiftPatient | undefined;
+  const score = (p: ShiftPatient) => {
+    const d = RANK[p.triage] - RANK[p.scale!.triage];
+    return [d > 0 ? 1 : 0, Math.abs(d), p.arriveT];
+  };
+  const better = (a: number[], b: number[]) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+  for (const p of [...Object.values(s.patients), ...(s.past ?? []).map(x => x.p)]) {
+    if (seen.has(p.id) || p.kind !== 'ambulance' || !p.id.startsWith(prefix) || !p.sorted || !p.scale || p.triage === p.scale.triage) continue;
+    seen.add(p.id);
+    if (!best || better(score(p), score(best)) > 0) best = p;
+  }
+  if (!best) return undefined;
+  const scale = best.scale!;
+  return {
+    day, who: T.doctor.who(patientName(best.patient), best.patient.sex, best.patient.age), yours: best.triage, scale: scale.triage, news2: scale.news2,
+    ...(scale.flag ? { flag: named(db.findings[scale.flag]?.name, scale.flag) } : {}),
   };
 }
 
@@ -552,7 +650,8 @@ export function takeCommand(db: ContentDb, s: ShiftState, id: string): { cmd?: C
   if (s.consults?.some(c => c.id === id)) return { cmd: { kind: 'consult', id, answer: 'look' } };
   if (p.by && !p.closed && (p.status === 'inRoom' || p.status === 'waiting' || p.status === 'away')) return { cmd: { kind: 'takeOver', id } };
   if (!p.by && !p.closed && p.status === 'waiting') {
-    if (p.kind === 'ambulance' && !p.sorted) return { refused: 'unsorted' };
+    // сортируете вы (spec docs/specs/2026-11-scenario-2.md, часть 2а) — сначала лист передачи
+    if (p.kind === 'ambulance' && !p.sorted) return { refused: s.meta.sorts ? 'sortFirst' : 'unsorted' };
     if (s.current) return yours === 'waiting' ? { open: true } : { refused: 'busy' };
     return { cmd: { kind: 'call', id } };
   }
@@ -966,6 +1065,7 @@ export class DoctorDesk {
   private cardSent = '';
   private seenSent = '';
   private errorsSent = '';
+  private missSent = '';
   private version = 0;
 
   constructor(private db: ContentDb) {
@@ -981,6 +1081,7 @@ export class DoctorDesk {
     this.cardSent = '';
     this.seenSent = '';
     this.errorsSent = '';
+    this.missSent = '';
   }
 
   /** Новая смена или сохранение — окну всё заново. */
@@ -990,12 +1091,13 @@ export class DoctorDesk {
     this.cardSent = '';
     this.seenSent = '';
     this.errorsSent = '';
+    this.missSent = '';
   }
 
   /** Что добавить к срезу: состояние врача, вид карты и «Приняты» — если изменились. */
-  out(s: ShiftState): { doctor?: DoctorState; card?: CardView | null; seen?: SeenList; errors?: ErrorList } {
-    const out: { doctor?: DoctorState; card?: CardView | null; seen?: SeenList; errors?: ErrorList } = {};
-    const state = doctorState(this.db, s);
+  out(s: ShiftState): { doctor?: DoctorState; card?: CardView | null; seen?: SeenList; errors?: ErrorList; sortMiss?: SortMiss | null } {
+    const out: { doctor?: DoctorState; card?: CardView | null; seen?: SeenList; errors?: ErrorList; sortMiss?: SortMiss | null } = {};
+    const state = doctorState(this.db, s, this.level);
     const json = JSON.stringify(state);
     if (json !== this.sent) {
       this.sent = json;
@@ -1016,6 +1118,12 @@ export class DoctorDesk {
     if (errors !== this.errorsSent) {
       this.errorsSent = errors;
       if (s.flow) out.errors = errorsList(this.db, s);
+    }
+    // ошибка вашей сортировки примером (spec docs/specs/2026-11-scenario-2.md, часть 2а) — для планёрки: новые сутки или язык
+    const miss = s.flow ? `${s.history.length}|${currentLang}` : '';
+    if (miss !== this.missSent) {
+      this.missSent = miss;
+      if (s.flow) out.sortMiss = sortMissOf(this.db, s) ?? null;
     }
     return out;
   }

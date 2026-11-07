@@ -69,6 +69,14 @@ export const economyEn: EconomyStrings = {
     },
     ward: (admitted: number, discharged: number, transferred: number, died: number, lying: number) =>
       `inpatients: admitted ${admitted}, discharged ${discharged}, transferred ${transferred}${died > 0 ? `, died ${died}` : ''}, in beds ${lying}`,
+    sorting: (right: number, mine: number) => `triage of ambulance arrivals: ${right} of ${mine} right`,
+    sortMiss: (who: string, yours: string, scale: string, news2: number, flag?: string) =>
+      `for example, ${who}: you — ${yours}, by the scale — ${scale} (NEWS2 ${news2} ${pl(news2, 'point', 'points')}${flag ? `, red flag «${lowerFirst(flag)}»` : ''})`,
+    sortingHint: 'Your triage by the handover sheet against the NEWS2 scale and red flags; those the nurse triaged are not here',
+    triage: { red: 'red', yellow: 'yellow', green: 'green' },
+    night: (arrived: number, wait: number, unseen: number) =>
+      `night: the ambulance brought ${arrived}, the longest wait for a doctor — ${dur(wait)}${unseen > 0 ? `; not called by a doctor by morning — ${unseen}` : ''}`,
+    nightHint: 'Ambulance arrivals from 20:00 until the meeting: from arrival until a doctor called them',
     hired: 'Hired doctors',
     hiredRow: (role: string, skill: number, seen: number, correct: number) =>
       `${role}, skill ${skill}: ${seen} ${pl(seen, 'patient', 'patients')}${seen > 0 ? `, correct ${correct} %` : ''}`,

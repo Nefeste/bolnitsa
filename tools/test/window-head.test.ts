@@ -53,18 +53,20 @@ function windows(): Win[] {
 describe('строка заголовка окна', () => {
   const all = windows();
 
-  test('окна поверх карты — все восемь, и каждое начинается строкой заголовка со значком набора', () => {
-    expect(all.map(w => w.id)).toEqual(['dcard', 'demo-summary', 'enc', 'game-menu', 'meeting', 'scenario-done', 'settings', 'term']);
+  // лист передачи (spec docs/specs/2026-11-scenario-2.md, часть 2а) — девятое
+  test('окна поверх карты — все девять, и каждое начинается строкой заголовка со значком набора', () => {
+    expect(all.map(w => w.id)).toEqual(['dcard', 'demo-summary', 'dsheet', 'enc', 'game-menu', 'meeting', 'scenario-done', 'settings', 'term']);
     for (const w of all) {
       expect([w.id, w.head]).toEqual([w.id, true]);
       expect([w.id, !!w.icon && w.icon in ICONS]).toEqual([w.id, true]);
     }
   });
 
-  test('значки — по окну: у меню и «Настроек» — как у кнопок, что их открывают; у прочих свой', () => {
+  test('значки — по окну: у меню и «Настроек» — как у кнопок, что их открывают; лист передачи — как карта больного; у прочих свой', () => {
     expect(Object.fromEntries(all.map(w => [w.id, w.icon]))).toEqual({
       dcard: 'card',
       'demo-summary': 'result',
+      dsheet: 'card',
       enc: 'book',
       'game-menu': 'menu',
       meeting: 'meeting',
@@ -79,6 +81,6 @@ describe('строка заголовка окна', () => {
   });
 
   test('«Закрыть» — у окон, которые закрывает Esc; планёрку закрывает «Продолжить», окна выбора — выбор', () => {
-    expect(all.filter(w => w.close).map(w => w.id)).toEqual(['dcard', 'enc', 'game-menu', 'settings']);
+    expect(all.filter(w => w.close).map(w => w.id)).toEqual(['dcard', 'dsheet', 'enc', 'game-menu', 'settings']);
   });
 });

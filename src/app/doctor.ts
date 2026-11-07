@@ -42,6 +42,11 @@ export class Doctor {
   private heldId: string | undefined;
   /** скорость до автопаузы на просьбу или результаты: ответили или позвали — она же; поменяли скорость сами — забыта */
   private stopped: Speed | null = null;
+  /**
+   * скорость до листа передачи (spec docs/specs/2026-11-scenario-2.md, часть 2а): закрыли — она же; null — лист часы не держит
+   * (не открыт или их держит своя карта)
+   */
+  private sheetBefore: Speed | null = null;
   /** собирать «За это время»: идёт действие карты */
   private collecting = false;
   /** где стоит фигура врача — номер помещения плана; -1 — фигуры нет */
@@ -66,6 +71,11 @@ export class Doctor {
   /** Держит ли часы своя карта: пациент перед вами — скорость не меняется, пока карта открыта. */
   get holding(): boolean {
     return this.before !== null;
+  }
+
+  /** Часы стоят из-за окна врача: своя карта или лист передачи — клавиши скорости молчат. */
+  get still(): boolean {
+    return this.before !== null || this.sheetBefore !== null;
   }
 
   /** Смена началась: окну — база для знания о медицине (списки обследований, их цена, «Что это?»); потоку — язык, уровень. */
@@ -95,6 +105,12 @@ export class Doctor {
       const next = st.current ? undefined : (st.yours[0] ?? st.others[0]);
       if (next?.id !== this.hud.next?.id || next?.who !== this.hud.next?.who) this.hud.next = next ? { id: next.id, who: next.who } : undefined;
       this.placeFigure();
+      // открытый лист передачи (spec docs/specs/2026-11-scenario-2.md, часть 2а): его привезённого уже не сортировать — лист
+      // следующего, никого — закрыть
+      if (this.hud.sheet !== undefined && !st.handover.some(r => r.id === this.hud.sheet)) {
+        if (st.handover[0]) this.hud.sheet = st.handover[0].id;
+        else this.closeSheet();
+      }
       if (this.taking && st.current?.id === this.taking) {
         // позвали или взяли — идёт к вам: часы идут, автопаузу игры — снять (spec 2026-10-owner-play-2)
         this.say(true, st.current.coming !== undefined ? T.doctor.notices.coming(st.current.who) : T.doctor.notices.taken(st.current.who));
@@ -168,6 +184,10 @@ export class Doctor {
       else if (cur.coming === undefined && (cur.back === undefined || cur.back <= this.g.t)) this.own(n.id);
     } else if (n.kind === 'worse') {
       // автопауза и окно врача раскрыто: обход — в нём
+      this.stop();
+      this.hud.folded = false;
+    } else if (n.kind === 'ambulance' && this.hud.state?.handover.some(r => r.id === n.id)) {
+      // привезённый ждёт вашей сортировки (spec docs/specs/2026-11-scenario-2.md, часть 2а): лист — в окне врача
       this.stop();
       this.hud.folded = false;
     }
@@ -370,7 +390,9 @@ export class Doctor {
   // ---------------------------------------------------------------- своя карта: часы стоят
 
   private hold(id: string) {
-    this.before = this.g.ff ? 1 : this.g.speed;
+    // лист передачи уже держал часы — теперь их держит карта, со скоростью до листа
+    this.before = this.sheetBefore ?? (this.g.ff ? 1 : this.g.speed);
+    this.sheetBefore = null;
     this.heldId = id;
     this.g.ff = false;
     this.g.speed = 0;
@@ -383,7 +405,32 @@ export class Doctor {
     this.before = null;
     this.heldId = undefined;
     this.collecting = false;
-    this.g.speed = back;
+    // лист передачи ещё открыт — часы держит он
+    if (this.hud.sheet !== undefined) this.sheetBefore = back;
+    else this.g.speed = back;
+  }
+
+  /** Лист передачи (spec docs/specs/2026-11-scenario-2.md, часть 2а): открыть — часы стоят, как у своей карты. */
+  private openSheet(id: string) {
+    delete this.hud.said;
+    this.hud.sheet = id;
+    if (this.sheetBefore !== null || this.holding) return;
+    this.sheetBefore = this.g.ff ? 1 : this.g.speed;
+    this.g.ff = false;
+    this.g.speed = 0;
+  }
+
+  /** Закрыть лист передачи (Esc, «Закрыть»): держал часы — идут с прежней скоростью. */
+  closeSheet(): boolean {
+    if (this.hud.sheet === undefined) return false;
+    delete this.hud.sheet;
+    if (this.sheetBefore !== null) {
+      const back = this.sheetBefore;
+      this.sheetBefore = null;
+      this.g.speed = back;
+    }
+    this.g.refresh();
+    return true;
   }
 
   /** Закрыть карту (Esc, «Закрыть»): поток больше не шлёт её вид; держала часы — идут с прежней скоростью. */
@@ -501,6 +548,26 @@ export class Doctor {
         }
         break;
       }
+      // привезённые скорой (spec docs/specs/2026-11-scenario-2.md, часть 2а)
+      case 'sheet':
+        if (a.id === null) this.closeSheet();
+        else this.openSheet(a.id);
+        break;
+      case 'sort': {
+        client.command({ kind: 'sort', id: a.id, triage: a.triage });
+        // следующий ждущий — его лист; никого — лист закрыть и снять автопаузу на привезённого
+        const next = this.hud.state?.handover.find(r => r.id !== a.id);
+        if (next) this.hud.sheet = next.id;
+        else {
+          this.closeSheet();
+          this.unstop();
+        }
+        break;
+      }
+      case 'sorts':
+        client.command({ kind: 'sorts', on: a.on });
+        if (!a.on) this.closeSheet();
+        break;
     }
     this.g.refresh();
   }

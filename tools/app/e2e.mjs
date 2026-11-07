@@ -77,6 +77,7 @@ import { scenarioPart } from './e2e-scenario.mjs';
 import { shiftsPart } from './e2e-shifts.mjs';
 import { specialistsPart } from './e2e-specialists.mjs';
 import { demoPart } from './e2e-demo.mjs';
+import { handoverPart } from './e2e-handover.mjs';
 import { serve } from './serve.mjs';
 
 const arg = (k, d) => {
@@ -201,6 +202,8 @@ try {
   if (run(33)) await roundsPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   // часть 34 — подписи помещений на среднем плане (spec docs/specs/2026-10-aaa-polish.md): tools/app/e2e-tags.mjs
   if (run(34)) await tagsPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  // часть 35 — лист передачи (spec docs/specs/2026-11-scenario-2.md, часть 2а): tools/app/e2e-handover.mjs
+  if (run(35)) await handoverPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);

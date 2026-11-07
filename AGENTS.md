@@ -159,7 +159,11 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # «Персонал» and the waiting patient's path; then room names at a middle zoom: one canvas, no
                                    # DOM, no name over another or over a status chip, none close in, some on the overview,
                                    # none in build mode, «Подписи помещений» off at once and after a reload, bigger with large text;
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|34` for one part, `-- --only 7,10,11` —
+                                   # then the handover sheet (scenario 2, part 2а): «Пусть сортирует медсестра» unticked, an
+                                   # arrival — autopause, «Привезла скорая», the sheet with its head, measurements and NEWS2, the
+                                   # clock held against buttons and keys, «Красный», «До утра» — «Сортировка» and «Ночь» at the
+                                   # meeting, ticked again — the nurse sorts the waiting;
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|35` for one part, `-- --only 7,10,11` —
                                    # several in a row on one page, as in the full run
 node tools/app/soak.mjs --days 3   # after build: a long run in headless Chromium — the ready city at ×12 for three game days,
                                    # the meeting closed each morning; window memory after GC, DOM nodes, people, sim lag and
@@ -423,7 +427,14 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   kinds `sorting` and `nights` (`campaign.ts`); the loader lets a PC scenario count `stay` too. Part 1б: the ready ambulatory
   `content/hospital/sites/ambulatory.yaml` (`site.ambulatory`, the scenario's `start`) with a free east wing; a tutorial
   patient with `ambulance: true` comes by ambulance — each stream takes the next tutorial patient of its own kind
-  (`tutorialNext(db, s, stream)`), the first one `FIRST_TAUGHT` after your office and the emergency room work.
+  (`tutorialNext(db, s, stream)`), the first one `FIRST_TAUGHT` after your office and the emergency room work. Part 2а, the
+  window: the sim's doctor state carries `er` (a working emergency room — the «Пусть сортирует медсестра» checkbox, the
+  `sorts` command), `sorts` and `handover` (arrivals waiting for your sort: who, reason, the paramedic's measured lines, at the
+  door or in a bay; NEWS2 and the red flag on «Практикант» and «Студент»); `src/ui/doctor/Handover.tsx` is the sheet with the
+  three colours (the `sort` command), and it holds the clock like your own card (`openSheet`, `still` in `src/app/doctor.ts`:
+  speed keys, «До утра» and the meeting wait); calling an unsorted arrival is refused with `sortFirst`. The meeting shows
+  «Сортировка привезённых: верно N из M» with one miss as an example (`sortMissOf` in the sim: a colour not by the scale is
+  always yours — the nurse sorts by the scale) and the «Ночь» line from `DaySummary.night`.
 - The demo for Next Fest (`docs/specs/2026-11-demo.md`, #176): the key `?demo=1` (Electron `--demo`, `main.tsx`) — only
   «Кампания» on the start screen, and after the first meeting closes the «Итог» window (`Game.afterMeeting`): what was built
   in the build order, the day's patients and how many left waiting for you, your receptions, cash, real time played, the

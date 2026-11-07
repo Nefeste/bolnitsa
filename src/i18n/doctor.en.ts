@@ -1,6 +1,7 @@
 // Режим врача по-английски — того же вида, что doctor.ru.ts (тип `DoctorStrings`: пропуск строки ломает tsc). Медицинские
 // названия здесь не пишутся: база пока только по-русски, в английском интерфейсе они — по-русски (spec
 // docs/specs/2026-10-doctor-mode.md, «Строки и языки»); подписи скрытых параметров болезни (`when`) — тоже.
+import { lowerFirst } from './case';
 import type { DoctorStrings } from './doctor.ru';
 import { WHEN, whenList } from './when';
 
@@ -432,6 +433,27 @@ export const doctorEn: DoctorStrings = {
       } as Record<string, string>,
     },
     queued: (name: string) => `${name} is in your queue: you are with another patient`,
+    handover: {
+      list: 'Brought by ambulance — your triage',
+      open: 'Handover sheet',
+      door: 'at the entrance, on a gurney',
+      bay: 'in the emergency room',
+      nurse: 'Let the nurse triage',
+      nurseHint: 'The emergency nurse triages arrivals at once, by the NEWS2 scale. Untick it and you triage them, by the handover sheet',
+      title: 'Handover sheet',
+      arrived: (at: string, where: string) => `brought in at ${at} · ${where}`,
+      reason: (r: string) => `Reason: ${lowerFirst(r)}`,
+      measured: 'The paramedic measured:',
+      nothing: 'The paramedic measured nothing',
+      news2: (n: number) => `NEWS2 by the sheet — ${n} ${plural(n, 'point', 'points')}`,
+      flag: (f: string) => `red flag: «${lowerFirst(f)}»`,
+      sortAs: 'Triage — the place in the queue to a doctor:',
+      triage: { red: 'Red', yellow: 'Yellow', green: 'Green' },
+      triageHint: { red: 'Urgent: a doctor calls them first', yellow: 'Soon: after the red ones', green: 'Can wait' },
+      more: (n: number) => `${n} more waiting`,
+      closeHint: 'close: triage later',
+      clock: 'The clock stands still while the sheet is open',
+    },
     lists: {
       office: 'In your office',
       coming: 'On the way to you',
@@ -463,6 +485,7 @@ export const doctorEn: DoctorStrings = {
       gone: 'The patient is no longer in the hospital',
       notHere: 'This patient cannot be taken now: lying in a ward, in surgery or the visit is closed',
       unsorted: 'An ambulance patient is first triaged by the emergency nurse',
+      sortFirst: 'Triage first: «Handover sheet» in the doctor window',
       notInOffice: 'This patient is no longer in your office',
       coming: 'The patient is still on the way — the visit starts when they come in',
       dayClosed: 'The day is closed',

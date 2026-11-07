@@ -39,7 +39,7 @@ import { type PersonInfo, Population, YOU } from '../render/population';
 import { Stage } from '../render/stage';
 import { type DragSample, type Projection, type Quality, releaseVelocity } from '../render/view';
 import type { WallMode } from '../render/world';
-import type { ErrorList, SeenList } from '../sim/doctor';
+import type { ErrorList, SeenList, SortMiss } from '../sim/doctor';
 import { H, kindOf, REFERRED } from '../sim/pack';
 import { type Slice, SimClient } from '../sim/client';
 import type { PathView, World } from '../sim/protocol';
@@ -352,6 +352,8 @@ export class Game {
   private seen: SeenList = { rows: [], total: 0 };
   /** ошибки нанятых врачей за сутки (spec docs/specs/2026-10-two-ways.md, F5) — как прислал поток расчёта; планёрка их снимает */
   errors: ErrorList = { rows: [], total: 0 };
+  /** ошибка вашей сортировки примером (spec docs/specs/2026-11-scenario-2.md, часть 2а) — как прислал поток; планёрка её снимает */
+  sortMiss: SortMiss | undefined;
   private problems: ({ kind: Problem['kind'] | 'broken' | 'offShift'; text: string } | undefined)[] = [];
   /**
    * слой «Пути пациентов» (spec docs/specs/2026-10-layers.md, часть 2): переходы за сутки — как прислал поток расчёта; их пути
@@ -1176,6 +1178,7 @@ export class Game {
     if (s.path && s.path.id === this.watching) this.path = s.path;
     if (s.seen) this.seen = s.seen;
     if (s.errors) this.errors = s.errors;
+    if (s.sortMiss !== undefined) this.sortMiss = s.sortMiss ?? undefined;
     // смены (spec docs/specs/2026-10-staff-shifts.md): кто не в смене, а доводит приёмы, — ещё на месте
     if (s.late) this.pop.setLate(s.late);
     // усталость и перерывы (spec docs/specs/2026-10-staff-shifts.md, часть 2): люди идут отдыхать и назад, «Персонал» — заново
@@ -1693,7 +1696,7 @@ export class Game {
    */
   private pickUnder() {
     const m = this.mouse;
-    const modal = this.doctor.holding || this.money.open;
+    const modal = this.doctor.still || this.money.open;
     if (!m.inside || m.drag || modal || this.builder.drag) this.under = { room: -1 };
     else {
       const key = this.builder.on ? undefined : this.stage.pickPerson(m.x, m.y, this.crowd);
@@ -1789,15 +1792,15 @@ export class Game {
 
   readonly actions: Actions = {
     setSpeed: s => {
-      // ваш пациент перед вами, его карта открыта — часы стоят (spec 2026-10-owner-play-2); чужая карта — нет; планёрка —
-      // «Продолжить» (spec 2026-10-economy)
-      if (this.doctor.holding || this.money.open) return;
+      // ваш пациент перед вами, его карта открыта — часы стоят (spec 2026-10-owner-play-2), и лист передачи — тоже (spec
+      // docs/specs/2026-11-scenario-2.md, часть 2а); чужая карта — нет; планёрка — «Продолжить» (spec 2026-10-economy)
+      if (this.doctor.still || this.money.open) return;
       this.doctor.manualSpeed();
       this.setSpeed(s);
       this.hud();
     },
     untilMorning: () => {
-      if (this.doctor.holding || this.money.open) return;
+      if (this.doctor.still || this.money.open) return;
       this.doctor.manualSpeed();
       // до планёрки в 08:00 (геймдизайн §2, «До утра»; spec 2026-10-economy) — как можно быстрее, до первого события автопаузы
       const day = Math.floor(this.t / 86400) * 86400;
@@ -2160,6 +2163,7 @@ export class Game {
 
   /** Esc и ПКМ без протяжки: в стройке — призрак, инструмент, стройка; окно настроек, меню игры; иначе — снять выбор. */
   private cancel() {
+    if (this.doctor.closeSheet()) return;
     if (this.doctor.close()) return;
     if (this.money.open) return this.money.dispatch({ kind: 'close' });
     if (this.builder.cancel()) this.hud();
@@ -2271,8 +2275,9 @@ export class Game {
     window.addEventListener('keydown', e => {
       if ((e.target as HTMLElement | null)?.tagName === 'INPUT') return;
       const k = e.code;
-      // ваш пациент перед вами: клавиши игры молчат, Esc — закрыть карту (spec 2026-10-doctor-mode); чужая карта — нет
-      if (this.doctor.holding && k !== 'Escape') return;
+      // ваш пациент перед вами или открыт лист передачи: клавиши игры молчат, Esc — закрыть (spec 2026-10-doctor-mode); чужая
+      // карта — нет
+      if (this.doctor.still && k !== 'Escape') return;
       if (k === 'Space') {
         e.preventDefault();
         this.actions.setSpeed(this.speed === 0 && !this.ff ? 1 : 0);

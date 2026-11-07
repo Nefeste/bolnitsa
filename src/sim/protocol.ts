@@ -12,7 +12,7 @@ import type { Id, Manage, Season } from '../content/types';
 import type { Lang } from '../i18n';
 import type { Difficulty } from '../engine/shift/types';
 import type { ScenarioView } from './campaign';
-import type { CardView, DoctorState, ErrorList, Refusal, SeenList } from './doctor';
+import type { CardView, DoctorState, ErrorList, Refusal, SeenList, SortMiss } from './doctor';
 import type { Leg } from './legs';
 import type { NameRow } from './pack';
 import type { SaveMeta } from './packing';
@@ -115,6 +115,11 @@ export interface DoctorOut {
   seen?: SeenList;
   /** ошибки нанятых врачей за сутки (spec docs/specs/2026-10-two-ways.md, F5), когда изменились — для планёрки */
   errors?: ErrorList;
+  /**
+   * ошибка вашей сортировки примером (spec docs/specs/2026-11-scenario-2.md, часть 2а) — для планёрки, после каждой; `null` —
+   * ошибок за сутки не было
+   */
+  sortMiss?: SortMiss | null;
   refused?: { act: 'take' | 'case'; id: string; why: Refusal };
 }
 
