@@ -1082,6 +1082,13 @@ export type Mission = { id: string; main: boolean; text: Text } & (
    */
   | { kind: 'staff'; count: number; accuracy: number; doctors: number }
   | { kind: 'mortality'; days: number; percent: number; lying: number }
+  /**
+   * сценарий 2 ПК (spec docs/specs/2026-11-scenario-2.md): сутки, когда вы отсортировали без ошибки не меньше `count`
+   * привезённых скорой (решение владельца #196); `count` ночей подряд, когда каждого привезённого врач позвал не позже чем
+   * через `minutes` минут, — ночь без привезённых серию не рвёт и не продолжает
+   */
+  | { kind: 'sorting'; count: number }
+  | { kind: 'nights'; count: number; minutes: number }
 );
 
 /**
@@ -1189,6 +1196,11 @@ export interface Scenario {
   about: Text;
   /** с чего начинается: `empty` — пустое здание песочницы, иначе — готовая больница записи `sites/` */
   start: 'empty' | Id;
+  /**
+   * привезённых скорой сортирует игрок, по листу передачи (spec docs/specs/2026-11-scenario-2.md, решение владельца #196);
+   * нет — медсестра приёмного по шкале
+   */
+  sorts?: true;
   budget: number;
   department: Id;
   build: Id[];

@@ -32,7 +32,7 @@ import type { Observation, Patient } from '../med/types';
 import {
   type ClosedCase, type ColleagueDay, type Command, DAY, type Flow, type GoneRow, type DaySummary, type Difficulty, easyLevel, type Notice, type PlannedReturn, REGISTRATION, SHIFT_END, SHIFT_SCHEMA_VERSION,
   SHIFT_START, type ShiftEvent, type ShiftPatient, type ShiftState, TRIAGE, type Triage, type VisitKind, type WardDay, type AmbulanceDay, type SurgeryDay, type Ride,
-  type ChiefDay, type InflowDay, type LeftWhy,
+  type ChiefDay, type InflowDay, type LeftWhy, type NightDay,
 } from './types';
 import { type Ask, askFor, askLong } from './consult';
 import { type ApproveAsk, approveFor, ASK_RULES, asksDecisions, asksOf, DEFAULT_ASKS } from './approve';
@@ -244,7 +244,7 @@ export function newSingle(
  */
 export function newFlowShift(
   db: ContentDb,
-  opts: { seed: number; season: Season; difficulty?: Difficulty; hospital: HospitalState; staff: StaffMember[]; flow: Flow; economy?: { cash: number }; scenario?: Id; manage?: Manage; soft?: boolean } & Variety,
+  opts: { seed: number; season: Season; difficulty?: Difficulty; hospital: HospitalState; staff: StaffMember[]; flow: Flow; economy?: { cash: number }; scenario?: Id; manage?: Manage; soft?: boolean; sorts?: boolean } & Variety,
 ): ShiftState {
   // рост (spec 2026-10-staff-mood, раздел 3): у людей со сменой — разный стаж, растут не в одно утро
   const s = singleBase(db, { ...opts, staff: tenure(db, opts.seed, opts.staff), venue: SANDBOX_VENUE });
@@ -261,6 +261,9 @@ export function newFlowShift(
     s.meta.department = sc.department;
     s.campaign = startChapter(db, sc.id, s.day - 1);
   }
+  // привезённых скорой сортируете вы (spec docs/specs/2026-11-scenario-2.md, решение владельца #196): по записи сценария
+  // или по выбору игрока
+  if (opts.sorts || sc?.sorts) s.meta.sorts = true;
   // касса (spec 2026-10-economy): с ней — плательщики, оплата случаев, расходы и репутация «Анамнеза»; до плана суток
   const cash = sc ? sc.budget : opts.economy?.cash;
   if (cash !== undefined) s.economy = openEconomy(db, cash, s.t);
@@ -623,6 +626,8 @@ function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       return replan(db, s, cmd.id, cmd.treatments);
     case 'sort':
       return sortAmbulance(db, s, cmd.id, cmd.triage);
+    case 'sorts':
+      return setSorts(db, s, cmd.on);
     case 'operate':
       return operate(db, s, cmd.id);
     case 'soft':
@@ -1298,6 +1303,30 @@ function wardLying(db: ContentDb, s: ShiftState) {
 // --- сутки на ПК (spec 2026-10-day) -----------------------------------------------------------------------------------
 
 /**
+ * Ночь суток в потоке для ПК (spec docs/specs/2026-11-scenario-2.md, «Ночь»): привезённые скорой с конца дневной смены этих
+ * суток до планёрки — в состоянии и строками журнала. Ожидание — от приезда до того, как врач позвал; кого не позвал до
+ * утра, тот ждёт до 08:00. Не привозили — undefined.
+ */
+function nightOf(db: ContentDb, s: ShiftState): NightDay | undefined {
+  const from = (s.day - 1) * DAY + (db.economy.staff.shifts?.day[1] ?? 20) * HOUR;
+  const seen = new Set<string>();
+  let arrived = 0;
+  let wait = 0;
+  let unseen = 0;
+  const count = (p: { id: string; kind: VisitKind; arriveT: number; calledT?: number }) => {
+    if (p.kind !== 'ambulance' || p.arriveT < from || p.arriveT >= s.t || seen.has(p.id)) return;
+    seen.add(p.id);
+    arrived++;
+    if (p.calledT === undefined) unseen++;
+    wait = Math.max(wait, Math.round(((p.calledT ?? s.t) - p.arriveT) / MIN));
+  };
+  for (const p of Object.values(s.patients)) count(p);
+  for (const r of s.gone ?? []) count(r);
+  if (arrived === 0) return undefined;
+  return { arrived, wait, ...(unseen > 0 ? { unseen } : {}) };
+}
+
+/**
  * Планёрка (spec 2026-10-day): в 08:00 сутки потока для ПК кончаются, а часы идут дальше. Что «Анамнез» делает, закрывая
  * день (`closeDay`) и открывая следующий (`nextDay`), — здесь, кроме того, что на ПК идёт само по часам: кто в больнице, тот
  * на месте, очередь и события — те же, операционная работала ночью. Итог суток — ровно за 24 часа: каждый счётчик
@@ -1318,6 +1347,9 @@ function morning(db: ContentDb, s: ShiftState, notices: Notice[]) {
   if (s.gone) s.gone.sort((x, y) => x.arriveT - y.arriveT || (x.id < y.id ? -1 : 1));
   // узкие места суток для планёрки (spec 2026-10-economy): ожидание врача и койки — сейчас
   meeting.closeLoad(s, wardBeds(db, s).length + icuBeds(db, s).length + ricuBeds(db, s).length + boxBeds(db, s).length);
+  // ночь суток (spec docs/specs/2026-11-scenario-2.md): привезённые с конца дневной смены и сколько ждали врача
+  const night = nightOf(db, s);
+  if (night) s.summary.night = night;
   const summary: DaySummary = { ...s.summary, grades: { ...s.summary.grades } };
   s.history.push(summary);
   // сценарий ПК (spec 2026-10-scenario-1): цели и письма по поводам — по закрытым суткам, тем же счётом, что вечер главы
@@ -2834,7 +2866,31 @@ function sortAmbulance(db: ContentDb, s: ShiftState, id: string, triage: Triage)
   if (d > 0) day.under++;
   if (d < 0) day.over++;
   enqueue(s, p, p.arriveT);
+  // поток для ПК (spec docs/specs/2026-11-scenario-2.md): ваша сортировка — в цель сценария; свободный нанятый врач зовёт
+  // отсортированного, как после медсестры
+  if (s.flow) {
+    day.mine = (day.mine ?? 0) + 1;
+    staffDesks(db, s);
+  }
   return later(db, s, undefined, MIN);
+}
+
+/**
+ * Кто сортирует привезённых в потоке для ПК (spec docs/specs/2026-11-scenario-2.md, решение владельца #196): вы или
+ * медсестра. Отдали медсестре — кого вы ещё не отсортировали, она сортирует сразу, по шкале и по времени приезда.
+ */
+function setSorts(db: ContentDb, s: ShiftState, on: boolean): Notice[] {
+  if (!s.flow || on === (s.meta.sorts === true)) return [];
+  if (on) {
+    s.meta.sorts = true;
+    return [];
+  }
+  delete s.meta.sorts;
+  const waiting = Object.values(s.patients)
+    .filter(p => p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted)
+    .sort((a, b) => a.arriveT - b.arriveT || (a.id < b.id ? -1 : 1));
+  for (const p of waiting) nurseSorts(db, s, p);
+  return [];
 }
 
 function wardDay(s: ShiftState): WardDay {
@@ -3824,7 +3880,8 @@ function arriveByAmbulance(db: ContentDb, s: ShiftState, p: ShiftPatient, notice
   const vf = arrestAfter(db, s, p);
   if (vf !== undefined) schedule(s, Math.max(s.t, p.arriveT + vf), { kind: 'arrest', id: p.id });
   notices.push({ kind: 'ambulance', id: p.id });
-  if (s.flow) nurseSorts(db, s, p);
+  // сортируете вы (spec docs/specs/2026-11-scenario-2.md) — ждёт вашей команды `sort`; иначе — медсестра по шкале
+  if (s.flow && !s.meta.sorts) nurseSorts(db, s, p);
 }
 
 /**
