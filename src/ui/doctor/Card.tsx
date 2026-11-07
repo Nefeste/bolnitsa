@@ -153,6 +153,8 @@ function CardWindow({ v, level, meanwhile, next, actions }: P) {
       ) : null}
       {/* ваш лежащий — обход (spec docs/specs/2026-10-economy.md): заново, когда сменили лечение */}
       {v.round ? <Round key={v.round.current.join(',')} id={v.id} r={v.round} actions={actions} /> : null}
+      {/* обход вашего лежащего (spec docs/specs/2026-11-scenario-2.md, часть 2б): подсказка наставницы */}
+      {v.round ? <MentorTip tip={v.tips?.round} at={`${v.id}:round`} actions={actions} id="dcard-round-tip" /> : null}
       {v.decision ? (
         <>
           {/* подсказка наставницы на разборе (spec docs/specs/2026-10-scenario-1.md, часть 2б) */}
@@ -302,7 +304,7 @@ let tipHold: string | undefined;
  * больше нет. Часы идут, как шли (решение владельца #116). `at` — момент приёма: пока он тот же, вторая подряд не
  * показывается.
  */
-function MentorTip({ tip, at, actions }: { tip?: TipView; at: string; actions: Actions }) {
+export function MentorTip({ tip, at, actions, id = 'dcard-tip' }: { tip?: TipView; at: string; actions: Actions; id?: string }) {
   const t = T.scenario;
   const [, redraw] = useState(0);
   if (!tip || tipsClosed.has(tip.id) || tipHold === at) return null;
@@ -313,7 +315,7 @@ function MentorTip({ tip, at, actions }: { tip?: TipView; at: string; actions: A
     redraw(n => n + 1);
   };
   return (
-    <div className="dtip" id="dcard-tip" data-tip={tip.id}>
+    <div className="dtip" id={id} data-tip={tip.id}>
       <button type="button" className="close small" id="tip-skip" onClick={close} title={t.skip}>
         <Icon name="close" />
       </button>

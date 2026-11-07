@@ -13,8 +13,8 @@ import type { Grade, ScoreNote } from '../engine/med/score';
 import { complaintText, observationText } from '../engine/med/text';
 import { type Block, doctorRoom, examWhere, type Problem } from '../engine/hospital/requirements';
 import {
-  atDoctor, bedsideEquipment, bedsideOf, boxBeds, brokenOf, colleaguesOf, forPlayer, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, type HospitalCtx,
-  hospitalCtx, icuBeds, isOut, moreUrgent, observationsOf, operationOf, type OrBlock, orBlock, reviewedCase, reviewFor, ricuBeds, siteOpen, targetPlace, wardBeds,
+  atDoctor, atDoorOf, bedsideEquipment, bedsideOf, boxBeds, brokenOf, colleaguesOf, forPlayer, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, type HospitalCtx,
+  hospitalCtx, icuBeds, isOut, moreUrgent, observationsOf, operationOf, type OrBlock, orBlock, reviewedCase, reviewFor, ricuBeds, targetPlace, wardBeds,
 } from '../engine/shift/engine';
 import { inBox, inIcu, inRicu, orQueueOf, stayEquipment } from '../engine/shift/engine';
 import { asksOf } from '../engine/shift/approve';
@@ -28,7 +28,7 @@ import {
 } from './caseView';
 import { confidenceWord, noteText, riskName, suggestedTreatments, treatmentGroupsFor } from './caseView';
 import { lowerFirst } from '../i18n/case';
-import { cardTips, type CardTips } from './tips';
+import { cardTips, type CardTips, sheetTip, type TipView } from './tips';
 
 /** Уровни медицины (геймдизайн §10) — от лёгкого к трудному; по умолчанию — «Студент» (spec «Сложность»). */
 export const LEVELS: readonly Difficulty[] = ['trainee', 'student', 'resident', 'doctor'];
@@ -187,6 +187,8 @@ export interface DoctorState {
   er?: true;
   sorts?: true;
   handover: HandoverRow[];
+  /** привезённых ждут у входа — мест в смотровой нет (spec docs/specs/2026-11-scenario-2.md, часть 2б) */
+  door?: number;
 }
 
 /** Вид карты для окна: вид приёма «Анамнеза» и где больной сейчас. */
@@ -390,13 +392,16 @@ export function doctorState(db: ContentDb, s: ShiftState, level: Difficulty = DE
       const i = order.get(p.id) ?? Number.MAX_SAFE_INTEGER;
       if (p.calledT !== undefined) yours.push({ row: rowOf(db, p, p.from ? 'taken' : 'back'), order: i });
       else if (forPlayer(db, s, p)) yours.push({ row: rowOf(db, p, 'own'), order: i });
+      // заданный больной сценария (spec docs/specs/2026-11-scenario-2.md, часть 2б): нанятые врачи его не зовут — он ваш
+      else if (p.taught && order.has(p.id)) yours.push({ row: rowOf(db, p, 'yours'), order: i });
       // строки словами — только первым (ниже): очередь бывает длинной
       else if (order.has(p.id)) others.push({ id: p.id, order: i });
     }
   }
   others.sort((a, b) => a.order - b.order);
   const shown = others.slice(0, OTHERS).map(x => rowOf(db, s.patients[x.id]));
-  const staff = hospitalCtx(db, s).staff;
+  const ctx = hospitalCtx(db, s);
+  const staff = ctx.staff;
   const asks: AskRow[] = (s.consults ?? []).flatMap(c => {
     const p = s.patients[c.id];
     const m = staff.find(x => x.id === c.by);
@@ -439,9 +444,12 @@ export function doctorState(db: ContentDb, s: ShiftState, level: Difficulty = DE
     colleagues: colleaguesOf(db, s).map(m => ({ id: m.id, role: named(db.roles[m.role]?.name, m.role), skill: m.skill })),
     mine: [...(s.meta.mine ?? [])],
     dayOpen: s.dayOpen,
-    ...(s.flow && siteOpen(db, s, 'amb') ? { er: true as const } : {}),
+    // смотровая приёмного построена — галочка видна и ночью без ночной смены (spec docs/specs/2026-11-scenario-2.md, часть 2а)
+    ...(s.flow && ctx.plan.rooms.some(r => db.rooms[r.type]?.emergency) ? { er: true as const } : {}),
     ...(s.meta.sorts ? { sorts: true as const } : {}),
     handover: handoverRows(db, s, level),
+    // мест в смотровой нет — сколько привезённых ждут у входа (часть 2б, подсказка «мест нет»)
+    ...(s.flow && atDoorOf(s).length > 0 ? { door: atDoorOf(s).length } : {}),
   };
 }
 
@@ -463,6 +471,8 @@ export interface HandoverRow {
   /** «Практикант» и «Студент», как в «Анамнезе»: баллы NEWS2 по листу и тревожный признак, что поднял цвет */
   news2?: number;
   flag?: string;
+  /** подсказка наставницы в листе (spec docs/specs/2026-11-scenario-2.md, часть 2б): сценарий, ещё не показана */
+  tip?: TipView;
 }
 
 /** Лёгкие уровни медицины: подсказки числом (spec «Сложность»). */
@@ -478,6 +488,7 @@ function handoverRows(db: ContentDb, s: ShiftState, level: Difficulty): Handover
       const scale = p.scale!;
       const paramedic = p.results.find(r => r.exam === 'exam.vitals');
       const flag = easy(level) && scale.flag ? named(db.findings[scale.flag]?.name, scale.flag) : undefined;
+      const tip = sheetTip(db, s, p);
       return {
         id: p.id, who: T.doctor.who(patientName(p.patient), p.patient.sex, p.patient.age), reason: complaintOf(db, p),
         // у порогов того же измерения — пульс от 150, давление ниже 100 — своего текста нет: строку пишет само измерение
@@ -485,6 +496,7 @@ function handoverRows(db: ContentDb, s: ShiftState, level: Difficulty): Handover
         door: !p.bay, at: p.arriveT,
         ...(easy(level) ? { news2: scale.news2 } : {}),
         ...(flag ? { flag } : {}),
+        ...(tip ? { tip } : {}),
       };
     });
 }

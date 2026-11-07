@@ -74,6 +74,23 @@ describe('подсказки первых минут', () => {
     expect(hintOf({ ...base, role: 'manager' }, none)).toBe('run');
   });
 
+  // приёмное (spec docs/specs/2026-11-scenario-2.md, часть 2б): лист передачи — сразу после решений врачей и раньше закрытой
+  // больницы; мест в смотровой нет и вечер без ночной смены — после «пробела», раньше подсказок по роли
+  test('приёмное: «лист передачи», «мест нет», «ночь» — по порядку, закрытые не возвращаются', () => {
+    const block: Block = { kind: 'noRoom', room: 'room.reception' };
+    const open = { ...base, paused: false };
+    expect(hintOf({ ...base, block, handover: 1 }, none)).toBe('sheet');
+    expect(hintOf({ ...base, block, handover: 1, decisions: 1 }, none)).toBe('decisions');
+    expect(hintOf({ ...base, block, handover: 1, asks: 1 }, none)).toBe('asks');
+    expect(hintOf({ ...base, block, handover: 1 }, new Set<HintKey>(['sheet']))).toBe('build');
+    expect(hintOf({ ...open, door: 2, night: true, callable: true }, none)).toBe('bays');
+    expect(hintOf({ ...open, door: 2, night: true, callable: true }, new Set<HintKey>(['bays']))).toBe('night');
+    expect(hintOf({ ...open, night: true, callable: true }, new Set<HintKey>(['night']))).toBe('call');
+    // часы стоят до первого пришедшего — сначала «пробел»
+    expect(hintOf({ ...base, night: true }, none)).toBe('run');
+    expect(hintOf({ ...open, door: 0, night: false }, none)).toBe('look');
+  });
+
   test('каждый ключ достижим и записан в списке', () => {
     const reached = new Set<HintKey>();
     const states: HintInput[] = [
@@ -91,6 +108,9 @@ describe('подсказки первых минут', () => {
       { ...base, paused: false, callable: true, buildOn: true },
       { ...base, paused: false, role: 'chief' },
       { ...base, paused: false, role: 'manager' },
+      { ...base, paused: false, handover: 1 },
+      { ...base, paused: false, door: 1 },
+      { ...base, paused: false, night: true },
     ];
     for (const s of states) {
       const k = hintOf(s, none);

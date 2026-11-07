@@ -7,10 +7,14 @@
 import type { Block } from '../engine/hospital/requirements';
 import type { Role } from './roles';
 
-export type HintKey = 'build' | 'draw' | 'furnish' | 'door' | 'hire' | 'machine' | 'fix' | 'run' | 'look' | 'asks' | 'call' | 'leave' | 'decisions' | 'manage';
+export type HintKey =
+  | 'build' | 'draw' | 'furnish' | 'door' | 'hire' | 'machine' | 'fix' | 'run' | 'look' | 'asks' | 'call' | 'leave' | 'decisions' | 'manage'
+  | 'sheet' | 'bays' | 'night';
 
 /** Порядок подсказок — для проверок: все ключи, какие бывают. */
-export const HINT_KEYS: readonly HintKey[] = ['build', 'draw', 'furnish', 'door', 'hire', 'machine', 'fix', 'run', 'look', 'asks', 'call', 'leave', 'decisions', 'manage'];
+export const HINT_KEYS: readonly HintKey[] = [
+  'build', 'draw', 'furnish', 'door', 'hire', 'machine', 'fix', 'run', 'look', 'asks', 'call', 'leave', 'decisions', 'manage', 'sheet', 'bays', 'night',
+];
 
 export interface HintInput {
   /** первое, без чего больницу не открыть (`openBlocks`); нет — открыта */
@@ -37,6 +41,13 @@ export interface HintInput {
   callable?: boolean;
   /** первая планёрка уже была — «Управляющему» больше нечего объяснять */
   met?: boolean;
+  /**
+   * приёмное (spec docs/specs/2026-11-scenario-2.md, часть 2б): сколько привезённых ждут вашей сортировки; сколько привезённых
+   * ждут у входа — мест в смотровой нет; вечер (16:00–20:00), а на ночь нет ни смены в смотровой, ни врача
+   */
+  handover?: number;
+  door?: number;
+  night?: boolean;
 }
 
 /**
@@ -50,6 +61,8 @@ export function hintOf(s: HintInput, seen: ReadonlySet<HintKey>): HintKey | unde
   if (s.asks > 0 && !seen.has('asks')) return 'asks';
   // решение врача ждёт ответа — где оно, пока ни на одно не отвечали (у любой роли)
   if ((s.decisions ?? 0) > 0 && !s.answered && !seen.has('decisions')) return 'decisions';
+  // привезённый ждёт вашей сортировки — где лист передачи (spec docs/specs/2026-11-scenario-2.md, часть 2б)
+  if ((s.handover ?? 0) > 0 && !seen.has('sheet')) return 'sheet';
   const b = s.block;
   if (b) {
     if (b.kind === 'noRoom') return s.buildOn ? (s.drawing ? undefined : pick('draw')) : pick('build');
@@ -64,6 +77,9 @@ export function hintOf(s: HintInput, seen: ReadonlySet<HintKey>): HintKey | unde
     return pick('fix');
   }
   if (s.paused && s.arrived === 0 && !seen.has('run')) return 'run';
+  // приёмное: мест в смотровой нет; вечер, а на ночь никого (spec docs/specs/2026-11-scenario-2.md, часть 2б)
+  if ((s.door ?? 0) > 0 && !seen.has('bays')) return 'bays';
+  if (s.night && !seen.has('night')) return 'night';
   // по роли (spec 2026-10-two-ways, F4): «Врачу» — как позвать первого; «Главврачу» — где решения; «Управляющему» — что делать
   const role = s.role ?? 'doctor';
   // стройка открыта — её панель закрывает окно врача (spec docs/specs/2026-11-demo.md, проход по снимкам 1): сначала «Готово»

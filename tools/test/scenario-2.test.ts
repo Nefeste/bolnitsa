@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { db } from '../../src/content';
 import type { ContentDb, Mission, Scenario } from '../../src/content/types';
 import { missionProgress } from '../../src/engine/campaign/campaign';
+import { doctorRoom } from '../../src/engine/hospital/requirements';
 import { hospitalOf, type SiteCommand } from '../../src/engine/hospital/site';
 import { siteOfPlan } from '../../src/engine/hospital/site-plan';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
@@ -19,6 +20,10 @@ import { apply, hospitalCtx, newFlowShift, siteOpen } from '../../src/engine/shi
 import { startCash } from '../../src/engine/shift/money';
 import { type DaySummary, DAY, type ShiftPatient, type ShiftState, type Triage } from '../../src/engine/shift/types';
 import { buildDb, CONTENT_DIR } from '../content/load';
+import { setLang } from '../../src/i18n';
+import { useDb } from '../../src/sim/caseView';
+import { doctorState } from '../../src/sim/doctor';
+import { type TipMoment, tipFits } from '../../src/sim/tips';
 
 const H = 3600;
 const rec = db.presets['preset.city'];
@@ -153,6 +158,8 @@ describe('сценарий 2: цели', () => {
 // Часть 1б (spec docs/specs/2026-11-scenario-2.md, «Часть 1б: как сделано»): готовая амбулатория сценария 2 (решение владельца
 // #197) и привезённые скорой среди заданных больных.
 const amb = siteOfPlan(db, db.sites!['site.ambulatory']);
+/** Люди амбулатории — со сменами, как в окне (`hospitalAt` в src/app/game.ts): у амбулатории все в дневной. */
+const ambStaff = () => (amb.ok ? withNightShift(db, amb.site.rooms, amb.staff) : []);
 /** Крыло приёмного: смотровая на два места у входа скорой, рентген, две палаты — готовыми помещениями «С персоналом». */
 const WING: SiteCommand[] = [
   { kind: 'ready', type: 'room.emergency', size: 'M', x: 42, y: 27, rot: 2, staff: true },
@@ -177,7 +184,7 @@ describe('сценарий 2: готовая амбулатория (решен�
     );
     expect(amb.site.mine).toBe(amb.site.rooms[0].id);
     // крыла нет — скорая не приезжает
-    const s = newFlowShift(db, { seed: 7, season: 'winter', hospital: hospitalOf(db, amb.site), staff: amb.staff, flow: { perHour: 0, auto: true }, economy: { cash: 2_000_000 } });
+    const s = newFlowShift(db, { seed: 7, season: 'winter', hospital: hospitalOf(db, amb.site), staff: ambStaff(), flow: { perHour: 0, auto: true }, economy: { cash: 2_000_000 } });
     expect(siteOpen(db, s, 'walk')).toBe(true);
     expect(siteOpen(db, s, 'amb')).toBe(false);
     build(db, s, WING);
@@ -202,7 +209,7 @@ describe('сценарий 2: привезённые скорой среди з�
 
   test('первый заданный по скорой — через две минуты после того, как заработала смотровая, и он ваш; до неё пришедшие сами — обычные; второй, пришедший сам, — следом', () => {
     if (!amb.ok) throw new Error('амбулатория не строится');
-    const s = newFlowShift(tdb, { seed: 8, season: 'winter', hospital: hospitalOf(tdb, amb.site), staff: amb.staff, flow: { perHour: 0, auto: true }, scenario: sc.id });
+    const s = newFlowShift(tdb, { seed: 8, season: 'winter', hospital: hospitalOf(tdb, amb.site), staff: ambStaff(), flow: { perHour: 0, auto: true }, scenario: sc.id });
     // до смотровой: пришедшие сами есть, заданных нет — следующий заданный по скорой
     liveUntil(s, 10, () => false, tdb);
     const walkIns = Object.values(s.patients).filter(p => p.kind === 'walkIn');
@@ -233,7 +240,7 @@ describe('сценарий 2: привезённые скорой среди з�
     const second = Object.values(s.patients).find(p => p.taught && p.kind === 'walkIn')!;
     expect(second.patient.truth.conditions[0].id).toBe('cond.ankle_fracture');
     // сценарий 1 — как прежде: первый заданный пришёл сам
-    const one = newFlowShift(db, { seed: 8, season: 'winter', hospital: hospitalOf(db, amb.site), staff: amb.staff, flow: { perHour: 0, auto: true }, scenario: 'scenario.ambulatory' });
+    const one = newFlowShift(db, { seed: 8, season: 'winter', hospital: hospitalOf(db, amb.site), staff: ambStaff(), flow: { perHour: 0, auto: true }, scenario: 'scenario.ambulatory' });
     liveUntil(one, 10, () => (one.campaign!.taught ?? 0) > 0);
     expect(Object.values(one.patients).find(p => p.taught)!.kind).toBe('walkIn');
   }, 120_000);
@@ -259,5 +266,69 @@ describe('сценарий 2: привезённые скорой среди з�
     const amb: [string, string] = ['tutorial: [cond.arvi,', 'tutorial: [{ condition: cond.arvi, ambulance: true },'];
     expect(broken(amb)).toEqual(['scenario.ambulatory: болезнь обучения cond.arvi: привезённый скорой, а смотровой приёмного в сценарии нет']);
     expect(broken(amb, ['build: [room.reception,', 'build: [room.emergency, room.reception,'])).toEqual([]);
+  }, 120_000);
+});
+
+// Часть 2б (spec docs/specs/2026-11-scenario-2.md, «Часть 2б: как сделано»): сценарий 2 на экране начала — его запись; начало,
+// как в окне; подсказки наставницы в листе передачи и на обходе; загрузчик.
+describe('сценарий 2: запись «Приёмное»', () => {
+  useDb(db);
+  setLang('ru');
+  const sc = db.scenarios!['scenario.emergency'];
+
+  test('запись: амбулатория, сортируете вы, порядок стройки, первые больные, цели, письма и подсказки на двух языках', () => {
+    expect([sc.order, sc.start, sc.sorts, sc.budget]).toEqual([2, 'site.ambulatory', true, 600000]);
+    expect(sc.tutorial.map(t => [t.condition, !!t.ambulance])).toEqual([['cond.pneumonia_cap', true], ['cond.ankle_fracture', false], ['cond.appendicitis', true]]);
+    expect(sc.guide.map(g => g.room)).toEqual(['room.emergency', 'room.ward', 'room.xray']);
+    expect(sc.missions.filter(m => m.main).map(m => m.kind)).toEqual(['sorting', 'nights', 'stay']);
+    expect(sc.tips.map(t => (typeof t.when === 'object' ? t.when.condition : t.when))).toEqual(['ambulance', 'rounds', 'cond.appendicitis']);
+    const texts = [sc.name, sc.about, ...sc.guide.map(g => g.why), ...sc.missions.map(m => m.text), ...sc.letters.map(l => l.text), ...sc.tips.flatMap(t => [t.name, t.text])];
+    for (const x of texts) expect([x.ru.length > 0, (x.en?.length ?? 0) > 0]).toEqual([true, true]);
+  });
+
+  test('начало — как в окне: амбулатория со сменами, касса сценария, ваш кабинет первый; первый привезённый — с подсказкой «Лист передачи», один раз', () => {
+    if (!amb.ok) throw new Error('амбулатория не строится');
+    const s = newFlowShift(db, { seed: 8, season: 'winter', hospital: hospitalOf(db, amb.site), staff: ambStaff(), flow: { perHour: 0, auto: true }, scenario: sc.id });
+    expect([s.meta.sorts, s.economy!.cash, doctorRoom(hospitalCtx(db, s).plan)]).toEqual([true, 600000, amb.site.rooms[0].id]);
+    expect(s.staff!.every(m => m.shift === 'day')).toBe(true);
+    // смотровая — первый шаг порядка стройки; через две минуты — первый заданный, по скорой, ждёт вашей сортировки
+    liveUntil(s, 10, () => false);
+    build(db, s, [WING[0]]);
+    liveUntil(s, 11, () => doctorState(db, s).handover.length > 0);
+    const row = doctorState(db, s).handover[0];
+    expect([s.patients[row.id].taught, s.patients[row.id].patient.truth.conditions[0].id]).toEqual([true, 'cond.pneumonia_cap']);
+    expect(row.tip?.id).toBe('handover');
+    expect(row.tip?.see.map(x => x.id)).toEqual(['room.emergency']);
+    // «Понятно» — отметка «показана»: больше её нет
+    apply(db, s, { kind: 'mark', what: 'tip', id: 'handover' });
+    expect(doctorState(db, s).handover[0].tip).toBeUndefined();
+  }, 120_000);
+
+  test('подсказки «скорая» и «обход» — к листу передачи и к блоку обхода, не к карте', () => {
+    const tip = (when: 'ambulance' | 'rounds' | 'caseOpen') => ({ id: 'x', from: 'char.tutor', when, name: { ru: 'x' }, text: { ru: 'x' }, see: [] });
+    const at = (screen: TipMoment['screen']): TipMoment => ({ screen, patient: 'p', condition: 'cond.arvi', taught: false, asked: 0, examined: 0, tested: 0, decided: false });
+    expect(tipFits(tip('ambulance'), at('handover'))).toBe(true);
+    expect(tipFits(tip('ambulance'), at('card'))).toBe(false);
+    expect(tipFits(tip('rounds'), at('rounds'))).toBe(true);
+    expect(tipFits(tip('rounds'), { ...at('review'), decided: true })).toBe(false);
+    expect(tipFits(tip('caseOpen'), at('handover'))).toBe(false);
+  });
+
+  test('загрузчик: подсказка к листу передачи — где сортирует игрок и строят смотровую; к обходу — где строят палату', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bolnitsa-content-'));
+    try {
+      cpSync(CONTENT_DIR, dir, { recursive: true });
+      const file = join(dir, 'campaign/scenarios/ambulatory.yaml');
+      const text = readFileSync(file, 'utf8');
+      const add = "tips:\n  - { id: sheet, from: char.tutor, when: ambulance, name: { ru: Лист }, text: { ru: Лист }, see: [] }\n  - { id: round, from: char.tutor, when: rounds, name: { ru: Обход }, text: { ru: Обход }, see: [] }\n";
+      if (!text.includes('tips:\n')) throw new Error('в записи нет подсказок');
+      writeFileSync(file, text.replace('tips:\n', add));
+      expect(buildDb(dir).errors.filter(e => e.startsWith('scenario.ambulatory: подсказка'))).toEqual([
+        'scenario.ambulatory: подсказка sheet: листа передачи в сценарии нет — сортирует медсестра или смотровой приёмного не построить',
+        'scenario.ambulatory: подсказка round: обхода в сценарии нет — палату не построить',
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   }, 120_000);
 });

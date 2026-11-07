@@ -162,8 +162,11 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # then the handover sheet (scenario 2, part 2а): «Пусть сортирует медсестра» unticked, an
                                    # arrival — autopause, «Привезла скорая», the sheet with its head, measurements and NEWS2, the
                                    # clock held against buttons and keys, «Красный», «До утра» — «Сортировка» and «Ночь» at the
-                                   # meeting, ticked again — the nurse sorts the waiting;
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|35` for one part, `-- --only 7,10,11` —
+                                   # meeting, ticked again — the nurse sorts the waiting; then scenario 2: its card second in
+                                   # «Кампания», the ambulatory and its cash, the letters, no checkbox before the emergency room,
+                                   # the first tutorial arrival — autopause, the «sheet» letter, the mentor's tip in the sheet,
+                                   # «Красный» — under «Ждут вас», «До утра» sorting each — the «night» letter, the meeting;
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|36` for one part, `-- --only 7,10,11` —
                                    # several in a row on one page, as in the full run
 node tools/app/soak.mjs --days 3   # after build: a long run in headless Chromium — the ready city at ×12 for three game days,
                                    # the meeting closed each morning; window memory after GC, DOM nodes, people, sim lag and
@@ -225,7 +228,9 @@ bun tools/sim/economy.ts --seeds 1,2,3         # economy simulator: scripted hos
                                                # arrived by kind, the meeting's forecast for it and the left by reason
                                                # (`docs/specs/2026-10-why.md`); the morning rounds — how many, beds, minutes
                                                # (`--clinical` — a clinical nurse on the day nurse post of every room with beds,
-                                               # `--clinical ward` — of the wards only)
+                                               # `--clinical ward` — of the wards only); `--only emergency` — scenario 2 with its
+                                               # cash: the wing at 08:00, night therapists, sorting by the scale, the main goals
+                                               # by day 8
 bun tools/sim/halls.ts --flow 14               # the polyclinic under load: waiting halls by the offices vs at the entrance
                                                # (both: `--hall 0` — seats of the whole hospital, `--bench 0` — no door benches)
 bun tools/bench/state.ts --days 14             # the engine snapshot at the end of each game day without the window: its size and the
@@ -428,13 +433,19 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   `content/hospital/sites/ambulatory.yaml` (`site.ambulatory`, the scenario's `start`) with a free east wing; a tutorial
   patient with `ambulance: true` comes by ambulance — each stream takes the next tutorial patient of its own kind
   (`tutorialNext(db, s, stream)`), the first one `FIRST_TAUGHT` after your office and the emergency room work. Part 2а, the
-  window: the sim's doctor state carries `er` (a working emergency room — the «Пусть сортирует медсестра» checkbox, the
+  window: the sim's doctor state carries `er` (an emergency room is built — the «Пусть сортирует медсестра» checkbox, the
   `sorts` command), `sorts` and `handover` (arrivals waiting for your sort: who, reason, the paramedic's measured lines, at the
   door or in a bay; NEWS2 and the red flag on «Практикант» and «Студент»); `src/ui/doctor/Handover.tsx` is the sheet with the
   three colours (the `sort` command), and it holds the clock like your own card (`openSheet`, `still` in `src/app/doctor.ts`:
   speed keys, «До утра» and the meeting wait); calling an unsorted arrival is refused with `sortFirst`. The meeting shows
   «Сортировка привезённых: верно N из M» with one miss as an example (`sortMissOf` in the sim: a colour not by the scale is
-  always yours — the nurse sorts by the scale) and the «Ночь» line from `DaySummary.night`.
+  always yours — the nurse sorts by the scale) and the «Ночь» line from `DaySummary.night`. Part 2б: the record
+  `content/campaign/scenarios/emergency.yaml` (`scenario.emergency`, `start: site.ambulatory`, `sorts: true`); scenario tips
+  may use `when: ambulance` (shown in the sheet — `sheetTip` in `src/sim/tips.ts`, `HandoverRow.tip`) and `when: rounds`
+  (the round block of your lying patient — `CardTips.round`); the hint states `sheet`, `bays` (`door` in the doctor state)
+  and `night` (`nightUnstaffed` in `src/app/game.ts`, 16:00–20:00 with an emergency room and nobody there at night or no
+  night doctor); a tutorial patient waits under «Ждут вас» (`why: 'yours'`). The economy simulator's `--only emergency`
+  plays it: the wing at 08:00, night therapists in both offices, sorting by the scale, the main goals by day 8.
 - The demo for Next Fest (`docs/specs/2026-11-demo.md`, #176): the key `?demo=1` (Electron `--demo`, `main.tsx`) — only
   «Кампания» on the start screen, and after the first meeting closes the «Итог» window (`Game.afterMeeting`): what was built
   in the build order, the day's patients and how many left waiting for you, your receptions, cash, real time played, the

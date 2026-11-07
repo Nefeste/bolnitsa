@@ -1163,13 +1163,14 @@ const scenarioLetterSchema = z.strictObject({
 
 /**
  * Подсказка наставника в карте больного сценария ПК (spec docs/specs/2026-10-scenario-1.md, часть 2б): как подсказка главы,
- * но в записи сценария и без порядка — порядок списка; скорой и обхода в сценарии 1 нет.
+ * но в записи сценария и без порядка — порядок списка. Скорая и обход — к листу передачи и к обходу лежащего (spec
+ * docs/specs/2026-11-scenario-2.md, часть 2б).
  */
 const scenarioTipSchema = z.strictObject({
   id: slug,
   from: z.string().regex(/^char\.[a-z0-9_]+$/),
   when: z.union([
-    z.literal('caseOpen'), z.literal('afterAsk'), z.literal('decision'), z.literal('review'),
+    z.literal('caseOpen'), z.literal('afterAsk'), z.literal('decision'), z.literal('review'), z.literal('ambulance'), z.literal('rounds'),
     z.strictObject({ condition: z.string().regex(/^cond\.[a-z0-9_]+$/) }),
   ]),
   name: text,
