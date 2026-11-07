@@ -1774,7 +1774,10 @@ function checkScenarios(db: ContentDb, errors: string[]) {
       if (missions.has(m.id)) at(`задание ${m.id} повторяется`);
       missions.add(m.id);
       if (m.kind === 'roomWorks' && !c.build.includes(m.room)) at(`задание ${m.id}: ${m.room} нельзя построить в сценарии`);
-      if (!['seen', 'roomWorks', 'streak', 'days'].includes(m.kind)) at(`задание ${m.id}: вид ${m.kind} в сценарии ПК не считается`);
+      if (!['seen', 'roomWorks', 'streak', 'days', 'stay', 'sorting', 'nights'].includes(m.kind)) at(`задание ${m.id}: вид ${m.kind} в сценарии ПК не считается`);
+      // сортировка и ночь (spec docs/specs/2026-11-scenario-2.md) — где привозит скорая; свою сортировку — где сортирует игрок
+      if ((m.kind === 'sorting' || m.kind === 'nights') && !c.build.some(r => db.rooms[r]?.emergency)) at(`задание ${m.id}: в сценарии не построить смотровую приёмного`);
+      if (m.kind === 'sorting' && !c.sorts) at(`задание ${m.id}: привезённых сортирует медсестра — сортировка без ошибок ничего не значит`);
     }
     if (!c.missions.some(m => m.main)) at('нет основных заданий');
     const letters = new Set<string>();

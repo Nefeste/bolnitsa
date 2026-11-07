@@ -1085,6 +1085,10 @@ const missionSchema = z.discriminatedUnion('kind', [
   // `percent` % лежавших, а лежало не меньше `lying`
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('staff'), count, accuracy: pct, doctors: count, text }),
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('mortality'), days: count, percent: pct, lying: count, text }),
+  // сценарий 2 ПК (spec docs/specs/2026-11-scenario-2.md): сутки без ошибок вашей сортировки со столькими привезёнными;
+  // столько ночей подряд, когда каждого привезённого врач позвал не позже чем через `minutes` минут
+  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('sorting'), count, text }),
+  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('nights'), count, minutes: count, text }),
 ]);
 
 /** Письмо: от кого, когда — в начале главы, после дня N, при задании, в конце главы. */
@@ -1184,6 +1188,8 @@ export const scenarioSchema = z.strictObject({
   name: text,
   about: text,
   start: z.union([z.literal('empty'), z.string().regex(/^site\.[a-z0-9_]+$/)]),
+  /** привезённых скорой сортирует игрок, по листу передачи (spec docs/specs/2026-11-scenario-2.md, решение владельца #196) */
+  sorts: z.literal(true).optional(),
   budget: int,
   department: z.string().regex(/^dept\.[a-z0-9_]+$/),
   build: z.array(roomId).min(1),

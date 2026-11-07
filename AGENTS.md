@@ -415,6 +415,12 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   the sim and sends them with the card (`CardView.tips`: the steps, «Решение», the review), one at a time when they fit, each
   once; a tip about a disease only for a tutorial patient (otherwise it would give the diagnosis away); «Понятно» is the
   `tip` mark, and the next tip waits for the doctor's next action (`src/ui/doctor/Card.tsx`, `MentorTip`).
+  Scenario 2 «Приёмное» (`docs/specs/2026-11-scenario-2.md`; owner's decisions #196, #197), part 1а in the engine: with
+  `meta.sorts` (the record's `sorts: true` or `newFlowShift(…, { sorts })`) the player sorts ambulance arrivals — they wait
+  for the `sort` command, hired doctors call only the sorted, your sorts count in `AmbulanceDay.mine`; the `sorts` command
+  with `on: false` hands sorting to the nurse, who sorts the waiting at once by the scale. The 08:00 meeting writes
+  `DaySummary.night` (`nightOf`: ambulance arrivals since 20:00, the longest wait for a doctor, those never called). Goal
+  kinds `sorting` and `nights` (`campaign.ts`); the loader lets a PC scenario count `stay` too.
 - The demo for Next Fest (`docs/specs/2026-11-demo.md`, #176): the key `?demo=1` (Electron `--demo`, `main.tsx`) — only
   «Кампания» on the start screen, and after the first meeting closes the «Итог» window (`Game.afterMeeting`): what was built
   in the build order, the day's patients and how many left waiting for you, your receptions, cash, real time played, the
