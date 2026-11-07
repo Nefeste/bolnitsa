@@ -200,6 +200,12 @@ function SettingsPanel({ hud, actions }: P) {
       <label className="check" title={T.view.stillHint}>
         <input type="checkbox" id="still" checked={hud.still} onChange={actions.toggleStill} /> {T.view.still}
       </label>
+      {/* громкость звука (spec docs/specs/2026-11-sound.md, часть 1): ступени по 10 %, 0 — без звука */}
+      <label className="range" title={T.view.volumeHint}>
+        {T.view.volume}
+        <input type="range" id="volume" min={0} max={100} step={10} value={Math.round(hud.volume * 100)} onChange={e => actions.setVolume(Number(e.target.value) / 100)} />
+        <span id="volume-value">{T.view.volumeValue(Math.round(hud.volume * 100))}</span>
+      </label>
       <div className="label">{T.view.quality}</div>
       <div className="row">
         {q.map(([m, s]) => (

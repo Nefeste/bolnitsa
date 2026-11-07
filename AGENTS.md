@@ -168,8 +168,10 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # «Красный» — under «Ждут вас», «До утра» sorting each — the «night» letter, the meeting, «Цели»
                                    # with the fourth step «Кабинет хирурга» and its goals; then routing: the outpatient surgeon hired
                                    # on the doctor post, a walk-in routed to surgery, «регистратор направил: хирургия» in the path, the
-                                   # routing line at the meeting with an example of a wrong route;
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|37` for one part, `-- --only 7,10,11` —
+                                   # routing line at the meeting with an example of a wrong route; then sound: the files after the first
+                                   # press, «Звук» in «Настройки», a button's click, build, demolish, refuse, hire, silence at 0, the
+                                   # meeting;
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|38` for one part, `-- --only 7,10,11` —
                                    # several in a row on one page, as in the full run
 node tools/app/soak.mjs --days 3   # after build: a long run in headless Chromium — the ready city at ×12 for three game days,
                                    # the meeting closed each morning; window memory after GC, DOM nodes, people, sim lag and
@@ -185,6 +187,8 @@ npm run bench:headless -- --qualities low --secs 5   # after build: auto-bench i
 npm run dist:linux                 # build + AppImage and tar.gz → release/ (not in git) — local checks only, not released
 npm run dist:win                   # build + Windows x64 zips → release/ (from Linux, no wine): full and app.asar update
 npm run assets -- <sources dir>    # rebuild assets/models/*.glb from the CC0 packs (byte-identical; see assets/LICENSES.md)
+npm run sound                      # the sounds from formulas (docs/specs/2026-11-sound.md): assets/audio/*.wav and its registry
+                                   # assets/audio/LICENSES.md (tools/sound/gen.ts, a copy of Skazy's; byte-identical)
 node tools/app/people.mjs --fetch <dir>   # Rocketbox people (MIT): download the pinned sources, check SHA-256
 node tools/app/people.mjs <dir>    # then rebuild assets/models/rocketbox/ (glb + mask, byte-identical; docs/specs/2026-10-people.md)
 bun tools/app/people-licenses.ts   # then the Rocketbox tables of assets/LICENSES.md from sources.json and cast.ts
@@ -478,6 +482,14 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   `kind`). The window never runs the engine. The doctor mode
   (`docs/specs/2026-10-doctor-mode.md`): `caseView.ts` (a copy of Anamnez's player view of a case) and `doctor.ts` build the
   patient card and the doctor's lists here and send them ready-made — the window never sees a patient's truth.
+- Sound (`docs/specs/2026-11-sound.md`, part 1; owner's decision #72): `src/app/sound.ts` — the cues (`CUES`: a file
+  `assets/audio/<cue>.wav` each), the cue of a site result (`siteCue`), one cue at most every `GAP_MS`, the volume in steps
+  (`volumeOf`, `Settings.volume`, «Звук» in «Настройки»); `Sound` loads the files and plays them through Web Audio from the
+  player's first press (`unlock`), counts `played` for the browser scenario, and is off on the start screen's live scene and
+  with the `bench` and `shot` keys. A sound only answers the player's action or an event they wait for (studio ADR 0023, rule
+  6): a window button (`bindInput`), a site result and an urgent notice (`onSlice`, `notice` in `game.ts`), a scenario letter
+  but the morning's, the meeting or a done goal (`show` in `money.ts`). The files are made by `tools/sound/gen.ts` from formulas
+  (a copy of Skazy's generator; never edit them by hand), each with its line in `assets/audio/LICENSES.md`.
 - `src/app/` — the game in the window: loads the database and models, starts with the empty building or the preset,
   frame loop, clock, input, build tools (`build.ts`), room labels (`labels.ts`: build mode and the «Отделения» layer, DOM), room
   names at a middle zoom (`tags.ts`: one canvas over the 3D view at the screen's resolution — `fadeOf` by zoom, `placeTags`

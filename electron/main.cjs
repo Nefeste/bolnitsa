@@ -45,6 +45,8 @@ const TYPES = {
   '.glb': 'model/gltf-binary',
   '.png': 'image/png',
   '.md': 'text/markdown; charset=utf-8',
+  // звуки (docs/specs/2026-11-sound.md, часть 1)
+  '.wav': 'audio/wav',
 };
 const timings = { processToReadyMs: 0, readyToShowMs: 0, firstFrameMs: 0, processStartToFirstFrameMs: 0 };
 let blocked = 0;

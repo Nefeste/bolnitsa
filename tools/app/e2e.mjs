@@ -38,6 +38,8 @@
 // сложность: второй шаг экрана начала — «Управление» и мягкий режим, игра на выбранном уровне, смена в «Настройках», строка
 // сохранения, tools/app/e2e-difficulty.mjs. Часть 33 — утренний обход: врач у койки по часам движка, его карточка,
 // «Персонал», путь ждущего; клиническая медсестра — только днём, найм и её обход палаты в 08:30, tools/app/e2e-rounds.mjs.
+// Часть 38 — звук: файлы с первого нажатия, «Звук» в «Настройках», щелчок, стройка, отказ, найм, тишина при 0, планёрка,
+// tools/app/e2e-sound.mjs.
 // Ошибок в консоли и запросов наружу нет.
 // Снимки — tools/app/out/e2e.png, e2e-build-*.png и e2e-flow-*.png; `--shots high` — снимки частей 2 и 3 в этом качестве
 // (на время снимка).
@@ -80,6 +82,7 @@ import { demoPart } from './e2e-demo.mjs';
 import { handoverPart } from './e2e-handover.mjs';
 import { emergencyPart } from './e2e-emergency.mjs';
 import { routingPart } from './e2e-routing.mjs';
+import { soundPart } from './e2e-sound.mjs';
 import { serve } from './serve.mjs';
 
 const arg = (k, d) => {
@@ -210,6 +213,8 @@ try {
   if (run(36)) await emergencyPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   // часть 37 — направление по жалобе и амбулаторный хирург (spec docs/specs/2026-10-departments.md, часть 4): tools/app/e2e-routing.mjs
   if (run(37)) await routingPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  // часть 38 — звук (spec docs/specs/2026-11-sound.md, часть 1): tools/app/e2e-sound.mjs
+  if (run(38)) await soundPart({ page, port, out, ok, fail, q: arg('q', 'low') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);

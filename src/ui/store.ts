@@ -186,6 +186,8 @@ export interface Hud {
   names: boolean;
   /** «меньше движения» (spec docs/specs/2026-10-settings.md; ADR 0023 устава): как на деле — выбор игрока или системы */
   still: boolean;
+  /** громкость звука (spec docs/specs/2026-11-sound.md, часть 1): 0–1 шагом 0,1 */
+  volume: number;
   build: BuildHud;
   roomTypes: RoomTypeRow[];
   readyTypes: ReadyTypeRow[];
@@ -292,6 +294,7 @@ export const initial: Hud = {
   debug: false,
   names: true,
   still: false,
+  volume: 0.7,
   build: { on: false, withStaff: true, moving: false, spent: 0, undo: 0 },
   roomTypes: [],
   readyTypes: [],
@@ -344,6 +347,8 @@ export interface Actions {
   toggleDebug(): void;
   toggleNames(): void;
   toggleStill(): void;
+  /** громкость звука, 0–1 */
+  setVolume(v: number): void;
   bench(uncapped: boolean): void;
   setLang(l: Lang): void;
   /** стройка (spec docs/specs/2026-10-build.md) */

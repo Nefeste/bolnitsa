@@ -62,6 +62,7 @@ import { demoResult, snapshotName, wishlistUrl } from './demo';
 import { columnOf, type Metric, METRICS, METRICS_READY, MONEY_METRICS, moneyColumnOf, moneyTop, serviceRoom } from './metrics';
 import { ColumnLabels } from './collabels';
 import { applyStill, applyText, AutoQuality, type QualityMode, readSettings, type Settings, stillOf, systemStill, type TextScale, writeSettings } from './settings';
+import { DEFAULT_VOLUME, siteCue, Sound, volumeOf } from './sound';
 import { HoverLabel } from './hover';
 import { Labels } from './labels';
 import { fadeOf, RoomTags, TAG_GAP } from './tags';
@@ -415,6 +416,11 @@ export class Game {
    */
   backdrop = false;
   /**
+   * звук (spec docs/specs/2026-11-sound.md, часть 1): кнопки, стройка, найм, срочные извещения, письма, планёрка; на живой
+   * сцене экрана начала и в «Авто-бенче» — без звука
+   */
+  sound = new Sound(DEFAULT_VOLUME, false);
+  /**
    * демо (spec docs/specs/2026-11-demo.md): игра открыта ключом `demo` — после первой планёрки сценария окно «Итог»
    * (`demoShown` — уже было) со снимком больницы (`demoShot` — PNG адресом `data:`)
    */
@@ -451,6 +457,8 @@ export class Game {
     const g = new Game(db, store, host, version);
     g.backdrop = opts.backdrop === true;
     g.demoMode = !g.backdrop && new URLSearchParams(location.search).get('demo') === '1';
+    const keys = new URLSearchParams(location.search);
+    g.sound = new Sound(g.prefs.volume, !g.backdrop && !keys.has('bench') && !keys.has('shot'));
     g.start = start;
     g.role = role;
     // названия сценариев — строкам сохранений в меню игры (spec docs/specs/2026-10-scenario-1.md)
@@ -585,7 +593,7 @@ export class Game {
     // «меньше движения» (ADR 0023 устава, правило 6): выбор игрока или как в системе
     const still = stillOf(p, systemStill());
     this.showStill(still);
-    store.set({ ready: true, status: '', progress: undefined, demoMode: this.demoMode, quality, qualityMode: p.quality, debug: p.debug, names: p.names, still, speed: this.speed, layers: { ...store.get().layers, metric } });
+    store.set({ ready: true, status: '', progress: undefined, demoMode: this.demoMode, quality, qualityMode: p.quality, debug: p.debug, names: p.names, still, volume: p.volume, speed: this.speed, layers: { ...store.get().layers, metric } });
     requestAnimationFrame(this.loop);
   }
 
@@ -1158,7 +1166,10 @@ export class Game {
     if (s.scenario) {
       // первый вид после загрузки — каталог стройки по списку сценария
       const first = !this.scenario.view;
+      const letters = this.scenario.view?.letters.length;
       this.scenario.onView(s.scenario);
+      // пришло письмо (spec docs/specs/2026-11-sound.md, часть 1); письма утра звучат планёркой
+      if (letters !== undefined && s.scenario.letters.length > letters && !s.notices.some(n => n.kind === 'morning')) this.sound.play('letter');
       for (const k of s.scenario.hints) this.seenHints.add(k as HintKey);
       if (first && !this.scenarioId) this.texts();
     }
@@ -1216,6 +1227,9 @@ export class Game {
         this.builder.onResult(n);
         this.flashOf(n);
         this.staffResult(n);
+        // стройка, снос, найм, отказ (spec docs/specs/2026-11-sound.md, часть 1)
+        const cue = siteCue(n.cmd, n.ok);
+        if (cue) this.sound.play(cue);
       } else this.notice(n);
     }
     if (this.ff && this.ffStop(s.notices)) this.setSpeed(0);
@@ -1249,6 +1263,8 @@ export class Game {
     const tone: Tone | undefined =
       (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'arrest' || n.kind === 'worse' ? 'urgent' : n.kind === 'left' ? 'warn' : undefined;
     const who = n.kind === 'arrived' || n.kind === 'left' || n.kind === 'ambulance' || n.kind === 'arrest' || n.kind === 'worse' || n.kind === 'reached' ? n.id : undefined;
+    // срочное — звуком (spec docs/specs/2026-11-sound.md, часть 1): событие, которого игрок ждёт, — «пришёл срочный больной»
+    if (tone === 'urgent') this.sound.play('urgent');
     this.notices.unshift({ t: this.t, text, at: this.stamp(), ...(tone ? { tone } : {}), ...(who ? { who } : {}) });
     // персонал на планёрке (spec docs/specs/2026-10-staff-mood.md): кто собирается уйти и кто уходит — строками журнала
     if (n.kind === 'morning' && n.staff) {
@@ -1902,6 +1918,12 @@ export class Game {
       this.store.set({ names });
       this.remember({ names });
     },
+    setVolume: v => {
+      const volume = volumeOf(v);
+      this.sound.setVolume(volume);
+      this.store.set({ volume });
+      this.remember({ volume });
+    },
     bench: uncapped => {
       if (uncapped && window.shell) window.shell.relaunch(['--bench', '--uncapped']);
       else void import('./bench').then(m => m.runBench(this, {}));
@@ -2226,6 +2248,18 @@ export class Game {
 
   private bindInput() {
     const el = this.stage.renderer.domElement;
+    // звук (spec docs/specs/2026-11-sound.md, часть 1): браузер даёт его после первого нажатия игрока; кнопка окна — щелчок
+    const unlock = () => this.sound.unlock();
+    window.addEventListener('pointerdown', unlock, { capture: true });
+    window.addEventListener('keydown', unlock, { capture: true });
+    document.addEventListener(
+      'click',
+      e => {
+        const b = e.target instanceof Element ? e.target.closest('button') : null;
+        if (b && !b.disabled) this.sound.play('click');
+      },
+      { capture: true },
+    );
     el.addEventListener(
       'wheel',
       e => {

@@ -260,6 +260,9 @@ export const en: Strings = {
     namesHint: 'Room names on the map at a middle zoom: none closer in or further out',
     still: 'Reduce motion',
     stillHint: 'The camera moves at once and does not glide after a drag, furniture appears at once, the selection does not pulse; people walk as before. Not chosen: as in the system',
+    volume: 'Sound',
+    volumeHint: 'Buttons, building, hiring, urgent notices, letters and the meeting. 0 is no sound',
+    volumeValue: (pct: number) => (pct === 0 ? 'off' : `${pct} %`),
   },
   settings: {
     title: 'Settings',

@@ -5,6 +5,7 @@
 import type { Projection, Quality } from '../render/view';
 import type { WallMode } from '../render/world';
 import { type Metric, METRICS } from './metrics';
+import { DEFAULT_VOLUME, volumeOf } from './sound';
 
 /** Качество: «авто» — по первым секундам игры, или своё. */
 export type QualityMode = 'auto' | Quality;
@@ -29,10 +30,12 @@ export interface Settings {
    * `null` — не выбирал, как в системе (`prefers-reduced-motion`)
    */
   still: boolean | null;
+  /** громкость звука (spec docs/specs/2026-11-sound.md, часть 1): от 0 до 1 шагом 0,1; 0 — без звука */
+  volume: number;
 }
 
 /** По умолчанию — вид владельца: стены вниз (решение #70), перспектива; качество — «авто». */
-export const DEFAULT_SETTINGS: Settings = { walls: 'down', projection: 'persp', quality: 'auto', debug: false, metric: null, text: 1, names: true, still: null };
+export const DEFAULT_SETTINGS: Settings = { walls: 'down', projection: 'persp', quality: 'auto', debug: false, metric: null, text: 1, names: true, still: null, volume: DEFAULT_VOLUME };
 
 const KEY = 'bolnitsa.settings';
 const WALLS: readonly WallMode[] = ['full', 'cut', 'down'];
@@ -60,6 +63,8 @@ export function parseSettings(raw: string | null | undefined): Settings {
     names: x.names !== false,
     // «меньше движения»: только «да» или «нет» игрока; иначе — как в системе
     still: typeof x.still === 'boolean' ? x.still : null,
+    // громкость — ближайшая ступень; не было — по умолчанию
+    volume: x.volume === undefined ? DEFAULT_VOLUME : volumeOf(x.volume),
   };
 }
 
