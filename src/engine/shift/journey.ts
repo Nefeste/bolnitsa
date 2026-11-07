@@ -35,9 +35,10 @@ export type Step =
   | { t: number; k: 'results'; ready: number }
   /**
    * ждёт своего врача: вернулся с результатами, а врач занят; `refer` — направлен к другому нанятому врачу: вами или, когда
-   * есть `from`, нанятым терапевтом `from` по второй гипотезе (spec 2026-10-specialists, часть 2)
+   * есть `from`, нанятым терапевтом `from` по второй гипотезе (spec 2026-10-specialists, часть 2); `dept` — врач `from` передал
+   * его в отделение его болезни, направленного не туда (spec docs/specs/2026-10-departments.md, часть 4)
    */
-  | { t: number; k: 'own'; by: string; refer?: true; from?: string }
+  | { t: number; k: 'own'; by: string; refer?: true; from?: string; dept?: Id }
   /** нанятый врач просит вас посмотреть его — ждёт ответа до `until` (spec 2026-10-consults) */
   | { t: number; k: 'ask'; by: string; until: number }
   /** решение нанятого врача `by` ждёт главврача у двери кабинета — до `until` (spec 2026-10-two-ways, F3) */
@@ -251,13 +252,15 @@ export function away(s: ShiftState, p: ShiftPatient) {
 
 /**
  * Ждёт своего врача: результаты пришли, а врач занят (`results`); `refer` — направлен к другому (`handOver`): вами или
- * нанятым врачом `from`.
+ * нанятым врачом `from`; `dept` — тот передал его в отделение болезни.
  */
-export function own(s: ShiftState, p: ShiftPatient, refer = false, from?: string) {
+export function own(s: ShiftState, p: ShiftPatient, refer = false, from?: string, dept?: Id) {
   if (p.by === undefined) return;
   const j = journeyOf(s, p);
   if (!j) return;
-  push(j, { t: s.t, k: 'own', by: p.by, ...(refer ? { refer: true as const } : {}), ...(from !== undefined ? { from } : {}) });
+  push(j, {
+    t: s.t, k: 'own', by: p.by, ...(refer ? { refer: true as const } : {}), ...(from !== undefined ? { from } : {}), ...(dept !== undefined ? { dept } : {}),
+  });
 }
 
 /** Снова в общей очереди и ждёт вас: ваш больной вернулся с результатами, вы забрали его, «подождите» (`enqueue`). */

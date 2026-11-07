@@ -550,6 +550,7 @@ export const en: Strings = {
     ownWhy: 'the doctor is seeing another patient',
     referTo: (_f: boolean, who: string, d?: string) => `referred to ${who}${d ? `, waiting — ${d}` : ''}`,
     referBy: (role: string) => `referred by the ${role.toLowerCase()}: not sure, and the second hypothesis is in the specialist's field`,
+    redirectBy: (role: string, dept: string) => `passed on by the ${role.toLowerCase()}: a disease of another department — ${dept}`,
     referYou: 'you referred them',
     ask: (d: string, until: string) => `the doctor asks you to have a look — waiting for your answer ${d} (until ${until})`,
     askLate: 'no answer — the doctor decided alone',

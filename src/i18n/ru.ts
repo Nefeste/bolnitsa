@@ -619,6 +619,8 @@ export const ru = {
     referTo: (f: boolean, dat: string, d?: string) => `${f ? 'направлена' : 'направлен'} к ${dat}${d ? `, ожидание — ${d}` : ''}`,
     /** кто направил: нанятый врач сам — не уверен, вторая гипотеза из профиля специалиста; или вы */
     referBy: (role: string) => `направил ${role.toLowerCase()}: не уверен, а вторая гипотеза — по профилю специалиста`,
+    /** передал направленного не туда в отделение болезни (spec docs/specs/2026-10-departments.md, часть 4) */
+    redirectBy: (role: string, dept: string) => `передал ${role.toLowerCase()}: болезнь другого отделения — ${dept}`,
     referYou: 'вы направили',
     ask: (d: string, until: string) => `врач просит вас посмотреть — ждёт ответа ${d} (до ${until})`,
     askLate: 'ответа не было — врач решил сам',

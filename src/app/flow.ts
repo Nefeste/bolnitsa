@@ -262,7 +262,9 @@ export function pathCard(j: Journey, female: boolean, now: number, names: PathNa
         const waits = d >= 60 || open;
         if (x.refer) {
           waited += d;
-          const why = [x.from !== undefined ? T.flow.referBy(names.who(x.from)) : T.flow.referYou, ...(waits ? [T.flow.ownWhy] : [])].join('; ');
+          // передал направленного не туда в отделение болезни (spec docs/specs/2026-10-departments.md, часть 4)
+          const by = x.from === undefined ? T.flow.referYou : x.dept !== undefined ? T.flow.redirectBy(names.who(x.from), names.dept(x.dept)) : T.flow.referBy(names.who(x.from));
+          const why = [by, ...(waits ? [T.flow.ownWhy] : [])].join('; ');
           lines.push({ at: clock(from), text: T.flow.referTo(female, names.dat(x.by), waits ? dur(d) : undefined), why, kind: 'wait', ...mark });
           break;
         }

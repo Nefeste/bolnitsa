@@ -4546,7 +4546,7 @@ function colleagueStep(db: ContentDb, s: ShiftState, p: ShiftPatient, ev?: Shift
     const to = redirectOf(db, s, p, m, r.phase.diagnosis);
     if (to) {
       (s.summary.routing ??= { routed: 0, wrong: 0, sent: 0 }).sent++;
-      return sendOn(db, s, p, m, to);
+      return sendOn(db, s, p, m, to, routeDept(db, r.phase.diagnosis));
     }
   }
   // поток для ПК: выбрал диагноз — дальше только вопросы перед лечением и решение, — но не уверен: просит вас посмотреть, а
@@ -4715,9 +4715,10 @@ function answerConsult(db: ContentDb, s: ShiftState, cmd: Extract<Command, { kin
  * Передать больного другому нанятому врачу `to` (spec 2026-10-consults; spec 2026-10-specialists, часть 2): тот позовёт его
  * первым, когда освободится, и рассудит заново своим навыком — со всем, что узнано; специалист — с поправкой профиля
  * направленного (`priorOf`). Поток для ПК (spec 2026-10-walk): из кабинета `room` прежнего врача или вашего — в зону ожидания
- * у кабинета нового, к `at`. `from` — направил нанятый врач сам (по второй гипотезе); нет — вы.
+ * у кабинета нового, к `at`. `from` — направил нанятый врач сам (по второй гипотезе); нет — вы. `dept` — он передал больного в
+ * отделение его болезни (spec docs/specs/2026-10-departments.md, часть 4): так — в пути.
  */
-function handOver(db: ContentDb, s: ShiftState, p: ShiftPatient, to: StaffMember, room: string | undefined, at: number, from?: string) {
+function handOver(db: ContentDb, s: ShiftState, p: ShiftPatient, to: StaffMember, room: string | undefined, at: number, from?: string, dept?: Id) {
   p.by = to.id;
   p.ref = to.id;
   p.phase = {};
@@ -4732,12 +4733,12 @@ function handOver(db: ContentDb, s: ShiftState, p: ShiftPatient, to: StaffMember
     moveTo(ctx.plan, ctx.working, p, room, to.room, at);
     seatDoor(db, s, ctx.plan, p);
   }
-  journey.own(s, p, true, from);
+  journey.own(s, p, true, from, dept);
 }
 
 /** Нанятый врач `m` передаёт больного со своего приёма врачу `to`: минута — передать карту, и он свободен. */
-function passOn(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffMember, to: StaffMember, from?: string) {
-  handOver(db, s, p, to, m.room, s.t + MIN, from);
+function passOn(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffMember, to: StaffMember, from?: string, dept?: Id) {
+  handOver(db, s, p, to, m.room, s.t + MIN, from, dept);
   (s.desk ??= {})[m.id] = s.t + MIN;
   schedule(s, s.t + MIN, { kind: 'free', by: m.id });
   staffDesks(db, s);
@@ -4745,12 +4746,13 @@ function passOn(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffMember, t
 
 /**
  * Нанятый терапевт `m` не уверен, а его вторая гипотеза — из профиля специалиста `to` (решение владельца #112): направляет
- * больного к нему сам, а не просит вас посмотреть; в итогах дня врача — `sent`.
+ * больного к нему сам, а не просит вас посмотреть; в итогах дня врача — `sent`. `dept` — не направляет, а передаёт в отделение
+ * болезни (spec docs/specs/2026-10-departments.md, часть 4).
  */
-function sendOn(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffMember, to: StaffMember) {
+function sendOn(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffMember, to: StaffMember, dept?: Id) {
   const day = colleagueDay(s, m.id);
   day.sent = (day.sent ?? 0) + 1;
-  passOn(db, s, p, m, to, m.id);
+  passOn(db, s, p, m, to, m.id, dept);
 }
 
 /**
