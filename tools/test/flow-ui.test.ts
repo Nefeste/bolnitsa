@@ -20,6 +20,7 @@ const names: PathNames = {
   role: id => (id === 'role.radiographer' ? 'Рентгенолаборант' : 'Медсестра'),
   room: id => (id === 'r2' ? 'смотровая приёмного' : 'палата'),
   nextShift: t => (Math.floor(t / 86400) * 86400 + 20 * 3600 > t ? Math.floor(t / 86400) * 86400 + 20 * 3600 : Math.floor(t / 86400) * 86400 + 32 * 3600),
+  dept: id => (id === 'dept.surgery' ? 'хирургия' : 'терапия'),
 };
 
 describe('путь пациента в карточке', () => {

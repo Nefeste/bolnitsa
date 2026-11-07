@@ -524,6 +524,7 @@ export const en: Strings = {
     none: 'no hired doctor is seeing patients',
     you: 'waiting for you',
     door: 'no free place in the emergency room — at the entrance first',
+    routed: (dept: string) => `the registrar sent them to: ${dept}`,
     full: 'standing by the office: no free seat in its waiting area — half the patience',
     far: (m: number) => `standing by the office: no waiting area within ${m} m of the door — half the patience`,
     benchFull: 'on a bench by the office: no free seat in its waiting area',

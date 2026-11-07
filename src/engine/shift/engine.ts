@@ -15,6 +15,7 @@ import { type CampaignProgress, campaignEvening, chapterOf, nextChapterOf, plotO
 import { build, emptyPlot, type HospitalState, type PlacedRoom, type Plan, planOf, presetHospital, sizeOf, UNDO_DEPTH, widenPlot } from '../hospital/build';
 import { bedsideIn, DOCTOR, doctorRoom, examWhere, NONE_BROKEN, openBlocks, type Problem, problemsOf, slotKey, type Staffing, workingRooms } from '../hospital/requirements';
 import { applicantsOf, doctorOf, dutyOf, grow, memberAt, onDuty, ORDERLY, presetStaff, readingOf, type StaffMember, speedOf, staffingOf, wageOf } from '../hospital/staff';
+import { routeDept } from '../hospital/departments';
 import { metersBetween, WALK_SPEED, walkSeconds } from '../hospital/walk';
 import { log2 } from '../core/math';
 import { P_ONE, RNG_VERSION, Rng } from '../core/rng';
@@ -59,6 +60,8 @@ import { CLINICAL, roundLeft, roundMinutes, roundOf, roundsDue } from './rounds'
 const MIN = 60;
 const HOUR = 60 * MIN;
 const TRIAGE_RANK: Record<Triage, number> = { red: 0, yellow: 1, green: 2 };
+/** Регистратор: он направляет пришедших сами (spec docs/specs/2026-10-departments.md, часть 4). */
+const REGISTRAR = 'role.registrar';
 /** Сколько минут готовы ждать: красный не уходит, а ухудшается (`09-game-design.md` §4). */
 const PATIENCE: Record<Exclude<Triage, 'red'>, [number, number]> = { yellow: [120, 180], green: [60, 150] };
 /** Слоты записи: каждые 20 минут с 08:00 до 13:40, занято около 60 %. */
@@ -1036,6 +1039,8 @@ function flowArrive(db: ContentDb, s: ShiftState, ev: Extract<ShiftEvent, { kind
   };
   if (teach) s.campaign!.taught = (s.campaign!.taught ?? 0) + 1;
   if (ev.stream !== 'ret') scheduleFlow(db, s, ev.stream, ev.n + 1, s.t, ev.to);
+  // регистратор направляет по жалобам (spec docs/specs/2026-10-departments.md, часть 4) — до того, как его позовут
+  routeArrival(db, s, s.patients[id]);
   arrive(db, s, s.patients[id], notices);
   // путь пациента (spec 2026-10-flow-ui): стоит ли и почему — решил приход (spec 2026-10-own-hall); сел ли на скамейку у
   // двери (spec 2026-10-door-benches)
@@ -3829,10 +3834,13 @@ function docFor(db: ContentDb, s: ShiftState, p: ShiftPatient, list: readonly St
     if (id) load.set(id, (load.get(id) ?? 0) + 1);
   }
   const ctx = hospitalCtx(db, s);
+  // направлен регистратором (spec docs/specs/2026-10-departments.md, часть 4) — к наименее занятому врачу его отделения
+  const routed = p.dept !== undefined && routeTargets(db, list).has(p.dept) ? p.dept : undefined;
   let best: StaffMember | undefined;
   let n = Number.POSITIVE_INFINITY;
   for (const m of list) {
-    if (db.roles[m.role]?.profile) continue;
+    const r = db.roles[m.role];
+    if (routed !== undefined ? !(r?.walkIns && r.department === routed) : r?.profile) continue;
     // на перерыве (spec 2026-10-staff-shifts, часть 2) — ждать его дольше на остаток перерыва
     const q = (load.get(m.id) ?? 0) * PER_QUEUED + fromDesk(ctx.plan, ctx.working, m.room) + restLeft(s, m.id);
     if (q < n) {
@@ -4032,9 +4040,82 @@ function profileHere(db: ContentDb, m: StaffMember, admits: readonly Id[]): Id[]
  */
 function colleagueTakes(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffMember, list: readonly StaffMember[]): boolean {
   if (!newcomer(p, s.flow !== undefined)) return false;
-  if (db.roles[m.role]?.profile) return p.to === m.id;
-  if (bookedHere(p, list)) return false;
+  // направленный регистратором в отделение, где в смене есть его врач (spec docs/specs/2026-10-departments.md, часть 4), —
+  // только к нему; остальных — как прежде
+  const routed = p.dept !== undefined && routeTargets(db, list).has(p.dept) ? p.dept : undefined;
+  const role = db.roles[m.role];
+  if (role?.profile) return p.to === m.id || (routed !== undefined && role.walkIns === true && role.department === routed && !bookedHere(p, list));
+  if (bookedHere(p, list) || routed !== undefined) return false;
   return !forPlayer(db, s, p);
+}
+
+/**
+ * Куда регистратор направляет (spec docs/specs/2026-10-departments.md, часть 4): отделения врачей кабинетов в смене, кто
+ * берёт пришедших сами своего отделения (`walkIns`: амбулаторный хирург). Пусто — регистратор не направляет.
+ */
+function routeTargets(db: ContentDb, list: readonly StaffMember[]): Set<Id> {
+  const out = new Set<Id>();
+  for (const m of list) {
+    const r = db.roles[m.role];
+    if (r?.walkIns && r.department) out.add(r.department);
+  }
+  return out;
+}
+
+/**
+ * Куда регистратор направил бы пришедшего сам: тот же вывод по тому, что видно у двери, что у `routeOf`, — по всем жалобам
+ * или по одной главной, — с вероятностями болезней, сложенными по отделениям (травма — к хирургии, `routeDept`); где больше
+ * — туда, ничья — по номеру отделения.
+ */
+export function deptRoute(db: ContentDb, s: ShiftState, p: ShiftPatient, all: boolean): Id {
+  const obs = complaintObservations(p.patient).slice(0, all ? undefined : 1);
+  const by = new Map<Id, number>();
+  for (const b of posterior(db, candidatesOf(db, p.departments ?? s.meta.department), obs, contextOf(db, p.patient, obs))) {
+    const d = routeDept(db, b.id);
+    if (d !== undefined) by.set(d, (by.get(d) ?? 0) + b.p);
+  }
+  let best = s.meta.department;
+  let top = -1;
+  for (const [d, x] of [...by].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
+    if (x > top) {
+      best = d;
+      top = x;
+    }
+  }
+  return best;
+}
+
+/**
+ * Регистратор в смене направляет пришедшего сам (spec docs/specs/2026-10-departments.md, часть 4; решение владельца #141):
+ * лучший по навыку из тех, кто в смене, с навыка `inflow.route` слушает все жалобы, ниже — одну главную. Только поток для
+ * ПК и только когда есть куда направить; записанного к специалисту и заданного больного сценария — нет. В итоги суток —
+ * сколько направил и сколько не туда (по правде — для планёрки).
+ */
+function routeArrival(db: ContentDb, s: ShiftState, p: ShiftPatient) {
+  if (!s.flow || p.kind !== 'walkIn' || p.to !== undefined || p.taught) return;
+  if (routeTargets(db, colleaguesOf(db, s)).size === 0) return;
+  const skill = Math.max(0, ...hospitalCtx(db, s).staff.filter(m => m.role === REGISTRAR).map(m => m.skill));
+  p.dept = deptRoute(db, s, p, skill >= (db.inflow?.route ?? 3));
+  const day = (s.summary.routing ??= { routed: 0, wrong: 0, sent: 0 });
+  day.routed++;
+  if (p.dept !== routeDept(db, primaryOf(p.patient).id)) day.wrong++;
+}
+
+/**
+ * Направлен не туда (spec docs/specs/2026-10-departments.md, часть 4): нанятый врач `m` выбрал диагноз `dx`, а болезнь —
+ * другого отделения, и его врач в смене. Врач без профиля передаёт больного врачу отделения болезни (`walkIns`), такой врач
+ * — болезнь не его отделения — врачу без профиля; прочие специалисты — как прежде. Уже направленного не гоняют, лежащего в
+ * смотровой приёмного — тоже.
+ */
+function redirectOf(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffMember, dx: Id): StaffMember | undefined {
+  if (p.ref !== undefined || p.bay) return undefined;
+  const d = routeDept(db, dx);
+  const role = db.roles[m.role];
+  const list = colleaguesOf(db, s).filter(x => x.id !== m.id);
+  if (d === undefined) return undefined;
+  if (!role?.profile) return d !== s.meta.department && routeTargets(db, list).has(d) ? list.find(x => db.roles[x.role]?.walkIns && db.roles[x.role]?.department === d) : undefined;
+  if (role.walkIns && d !== role.department) return list.find(x => !db.roles[x.role]?.profile);
+  return undefined;
 }
 
 /**
@@ -4457,6 +4538,15 @@ function colleagueStep(db: ContentDb, s: ShiftState, p: ShiftPatient, ev?: Shift
       p.tired = tired;
       const day = colleagueDay(s, m.id);
       day.tired = (day.tired ?? 0) + 1;
+    }
+  }
+  // направлен не туда (spec docs/specs/2026-10-departments.md, часть 4): выбрал диагноз другого отделения, а его врач в смене —
+  // передаёт туда, как к специалисту (#112)
+  if (s.flow && r.phase.diagnosis !== undefined && p.phase?.diagnosis === undefined) {
+    const to = redirectOf(db, s, p, m, r.phase.diagnosis);
+    if (to) {
+      (s.summary.routing ??= { routed: 0, wrong: 0, sent: 0 }).sent++;
+      return sendOn(db, s, p, m, to);
     }
   }
   // поток для ПК: выбрал диагноз — дальше только вопросы перед лечением и решение, — но не уверен: просит вас посмотреть, а

@@ -17,9 +17,10 @@ export type Step =
    * ответа; `door` — скорая без места в смотровой, ждёт у входа; стоял у кабинета, терпения вдвое меньше (spec
    * 2026-10-own-hall): `full` — в своём зале мест не было, `far` — зала не дальше стольких метров от двери кабинета нет;
    * `bench` — при этом сел на скамейку у двери, и терпение как есть (spec 2026-10-door-benches); `sat` — пришедший сам сел в
-   * зале ожидания или встал у двери (spec 2026-10-walk): до того его оформляли и он шёл, терпение — с этого часа
+   * зале ожидания или встал у двери (spec 2026-10-walk): до того его оформляли и он шёл, терпение — с этого часа; `dept` —
+   * куда его направил регистратор (spec docs/specs/2026-10-departments.md, часть 4)
    */
-  | { t: number; k: 'queue'; why: QueueWhy; ahead: number; docs?: number; asks?: number; door?: true; full?: true; far?: number; bench?: true; sat?: number }
+  | { t: number; k: 'queue'; why: QueueWhy; ahead: number; docs?: number; asks?: number; door?: true; full?: true; far?: number; bench?: true; sat?: number; dept?: Id }
   /** у врача: нанятого (`by` — номер в штате, `room` — его кабинет) или у вас */
   | { t: number; k: 'doctor'; by?: string; room?: string }
   /**
@@ -185,6 +186,7 @@ export function arrived(s: ShiftState, p: ShiftPatient, docs: () => number, mine
     ...(stood.full && p.patience > 0 ? { full: true as const } : {}), ...(stood.far !== undefined && p.patience > 0 ? { far: stood.far } : {}),
     ...(stood.bench && p.patience > 0 ? { bench: true as const } : {}),
     ...(p.seatAt !== undefined && p.seatAt > s.t ? { sat: p.seatAt } : {}),
+    ...(p.dept !== undefined ? { dept: p.dept } : {}),
   });
 }
 

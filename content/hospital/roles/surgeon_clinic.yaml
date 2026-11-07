@@ -1,0 +1,55 @@
+id: role.surgeon_clinic
+name: { ru: "Амбулаторный хирург" }
+gen: { ru: "амбулаторного хирурга" }
+dat: { ru: "амбулаторному хирургу" }
+# хирург на приёме (spec docs/specs/2026-10-departments.md, часть 4; решение владельца #140): встаёт на место врача в кабинете,
+# как терапевт и специалисты; у кабинета своя запись — с болезнями профиля; берёт и пришедших сами, кого регистратор направил
+# в хирургию. Профиль — болезни хирургии и травмы (травму берёт хирургия, `takes` в departments.yaml), с которыми приходят
+# сами; аппендицит в медицинской базе — болезнь терапии, как в «Анамнезе», и в профиль не входит. Хирург операционной
+# (role.surgeon) — как был. Зарплата — как у специалистов, игровой баланс
+salary: [4000, 7500]
+department: dept.surgery
+stands: role.doctor
+walkIns: true
+needs: room.staff
+profile:
+  - cond.adhesive_sbo
+  - cond.biliary_colic
+  - cond.cholecystitis
+  - cond.diverticulitis
+  - cond.dvt
+  - cond.limb_ischemia
+  - cond.mallory_weiss
+  - cond.pancreatitis
+  - cond.paraproctitis
+  - cond.perforated_ulcer
+  - cond.renal_colic
+  - cond.strangulated_hernia
+  - cond.superficial_thrombophlebitis
+  - cond.ulcer_bleeding
+  - cond.variceal_bleeding
+  - cond.ankle_fracture
+  - cond.ankle_sprain
+  - cond.burn
+  - cond.calf_strain
+  - cond.chest_contusion
+  - cond.clavicle_fracture
+  - cond.concussion
+  - cond.distal_radius_fracture
+  - cond.femoral_neck_fracture
+  - cond.foot_contusion
+  - cond.hand_wound
+  - cond.head_bruise
+  - cond.head_wound
+  - cond.hip_contusion
+  - cond.knee_contusion
+  - cond.knee_ligament
+  - cond.mt5_fracture
+  - cond.patella_fracture
+  - cond.rib_fracture
+  - cond.shoulder_contusion
+  - cond.traumatic_hemothorax
+  - cond.traumatic_pneumothorax
+  - cond.wrist_contusion
+texts:
+  hint: { ru: "Хирург на приёме: к нему записываются с болью в животе и с травмами, и регистратор направляет к нему таких пришедших сами. Ведёт приём в кабинете, как терапевт; оперирует — хирург операционной. Нужно место в ординаторской." }

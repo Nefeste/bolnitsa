@@ -1202,7 +1202,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       id: r.id, name: r.name, gen: r.gen, hire: r.hire, salary: r.salary,
       ...(r.stands ? { stands: r.stands } : {}), ...(r.needs ? { needs: r.needs } : {}), ...(r.reads ? { reads: true as const } : {}),
       ...(r.optional ? { optional: true as const } : {}), ...(r.day ? { day: true as const } : {}),
-      ...(r.profile ? { profile: [...r.profile] } : {}), ...(r.dat ? { dat: r.dat } : {}), ...(r.department ? { department: r.department } : {}),
+      ...(r.profile ? { profile: [...r.profile] } : {}), ...(r.walkIns ? { walkIns: true as const } : {}), ...(r.dat ? { dat: r.dat } : {}), ...(r.department ? { department: r.department } : {}),
       // встающий на чужое место работает там же, где та должность; с `in` — только в этих помещениях
       rooms: Object.keys(rooms).sort().filter(id => rooms[id].staff.includes(r.stands ?? r.id) && (!r.in || r.in.includes(id))), texts: r.texts,
     };
@@ -1725,6 +1725,9 @@ function checkHospital(c: {
       if (new Set(r.profile).size !== r.profile.length) errors.push(`${r.id}: болезни профиля повторяются`);
       if (!r.profile.some(id => c.conditions[id]?.presenting && c.conditions[id].arrival !== 'ambulance')) errors.push(`${r.id}: к нему некому записаться — все болезни профиля привозит скорая`);
       if (!r.dat) errors.push(`${r.id}: у специалиста нужен дательный падеж (dat) — «по записи к …»`);
+      // берёт пришедших сами своего отделения (spec docs/specs/2026-10-departments.md, часть 4): отделение — не терапия, куда
+      // идут все, кого не направили
+      if (r.walkIns && (!r.department || r.department === 'dept.therapy')) errors.push(`${r.id}: пришедших сами берёт врач отделения, а не терапии`);
     }
   }
   // снимок помещения описывает один человек — от его навыка точность
