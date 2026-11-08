@@ -52,9 +52,10 @@ export async function demoPart({ page, port, out, ok, fail, q, shots }) {
   await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&seed=5&backdrop=0&demo=1`);
   await page.waitForSelector('#start-scenario-ambulatory', { timeout: 60000 });
   mark('экран начала');
-  const sandbox = await page.$('#start-empty, #start-preset, #start-poly');
-  if (!sandbox) ok(`экран начала демо: «Кампания», песочницы нет (снимок ${await shot('e2e-demo-1-start.jpg')} КБ)`);
-  else fail('экран начала демо: есть карточки песочницы');
+  // ни песочницы, ни «Для врача» (spec docs/specs/2026-11-doctor-shift.md, часть 2)
+  const sandbox = await page.$('#start-empty, #start-preset, #start-poly, #start-shift');
+  if (!sandbox) ok(`экран начала демо: «Кампания», ни песочницы, ни «Для врача» (снимок ${await shot('e2e-demo-1-start.jpg')} КБ)`);
+  else fail('экран начала демо: есть карточки песочницы или «Для врача»');
   await listen();
   await page.click('#start-scenario-ambulatory');
   await page.waitForSelector('#start-go', { timeout: 10000 });

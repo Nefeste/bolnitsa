@@ -12,8 +12,28 @@
 // точности и не больше чем на ступень выше худшей категории: быстрый врач с неверными
 // диагнозами хорошей смены не делает. Проверено на стратегиях «виртуального врача»: разумный —
 // A, ждущий результаты в кабинете — B, ленивый и «всё подряд» — C, «всем один диагноз» — D.
+import type { ContentDb } from '../content/types';
 import type { Grade } from '../engine/med/score';
 import type { ShiftPatient, ShiftState } from '../engine/shift/types';
+
+/**
+ * Конец смены врача (spec docs/specs/2026-11-doctor-shift.md, решение агента 1): конец дневной смены первых суток — 20:00 по
+ * `content/hospital/economy.yaml` (`staff.shifts.day`), секунды от начала первых суток.
+ */
+export const shiftEndOf = (db: ContentDb): number => (db.economy.staff.shifts?.day[1] ?? 20) * 3600;
+
+/** Смена кончилась — окну: итог (никого не приняли — нет), сколько пришли и сколько ушли, не дождавшись. */
+export interface ShiftEnd {
+  result?: ShiftResult;
+  arrived: number;
+  left: number;
+}
+
+/** Итог в конце смены: досчитан тем же счётом, что `shiftResult`. */
+export function shiftEnd(s: ShiftState): ShiftEnd {
+  const result = shiftResult(s);
+  return { ...(result ? { result } : {}), arrived: s.summary.arrived, left: s.summary.left };
+}
 
 /** Скорость: не дольше стольких минут на приём — A, B, C; дольше — D. */
 export const SPEED_MINUTES: readonly [number, number, number] = [25, 40, 60];

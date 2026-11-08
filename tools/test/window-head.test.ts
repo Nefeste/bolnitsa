@@ -53,9 +53,10 @@ function windows(): Win[] {
 describe('строка заголовка окна', () => {
   const all = windows();
 
-  // лист передачи (spec docs/specs/2026-11-scenario-2.md, часть 2а) — девятое
-  test('окна поверх карты — все девять, и каждое начинается строкой заголовка со значком набора', () => {
-    expect(all.map(w => w.id)).toEqual(['dcard', 'demo-summary', 'dsheet', 'enc', 'game-menu', 'meeting', 'scenario-done', 'settings', 'term']);
+  // лист передачи (spec docs/specs/2026-11-scenario-2.md, часть 2а) — девятое; «Итог смены» (spec docs/specs/2026-11-doctor-shift.md,
+  // часть 2) — десятое
+  test('окна поверх карты — все десять, и каждое начинается строкой заголовка со значком набора', () => {
+    expect(all.map(w => w.id)).toEqual(['dcard', 'demo-summary', 'dsheet', 'enc', 'game-menu', 'meeting', 'scenario-done', 'settings', 'shift-summary', 'term']);
     for (const w of all) {
       expect([w.id, w.head]).toEqual([w.id, true]);
       expect([w.id, !!w.icon && w.icon in ICONS]).toEqual([w.id, true]);
@@ -72,6 +73,7 @@ describe('строка заголовка окна', () => {
       meeting: 'meeting',
       'scenario-done': 'finish',
       settings: 'settings',
+      'shift-summary': 'result',
       term: 'info',
     });
   });

@@ -55,6 +55,8 @@ import { type HintKey, hintOf } from './hints';
 import { problemList, problemTint, roomLevel, sameList, shiftGap } from './problems';
 import { endsOf, heatOf, heatPixels, legKey, legRows, lengthOf } from './paths';
 import type { Leg } from '../sim/legs';
+import { type ShiftEnd, shiftEndOf } from '../sim/shift';
+import { readRecords, recordKey, recordShift, type ShiftRecord, today, writeRecords } from './records';
 import { DEFAULT_ROLE, firstOffice, type Role, ROLE_SETS, startFor } from './roles';
 import { type NoticeRow, type Tone } from './toasts';
 import { ScenarioDesk, scenarioTitle } from './scenario';
@@ -257,7 +259,7 @@ function sameSpots(db: ContentDb, a: readonly StaffMember[], b: readonly StaffMe
  */
 function reopen(extra: Record<string, string>) {
   const q = new URLSearchParams(location.search);
-  for (const k of ['load', 'hospital', 'seed', 'flow', 'start', 'role', 'scenario', 'manage', 'soft']) q.delete(k);
+  for (const k of ['load', 'hospital', 'seed', 'flow', 'start', 'role', 'scenario', 'manage', 'soft', 'solo']) q.delete(k);
   for (const [k, v] of Object.entries(extra)) q.set(k, v);
   location.search = q.toString();
 }
@@ -315,6 +317,10 @@ export class Game {
    */
   manage: Manage = 'normal';
   soft = false;
+  /** смена врача (spec docs/specs/2026-11-doctor-shift.md): принимаете только вы — ни стройки, ни кассы, ни роли */
+  solo = false;
+  /** смена врача кончилась в 20:00: часы стоят, окно «Итог смены» */
+  private shiftOver = false;
   /** настройки игрока (spec docs/specs/2026-10-settings.md; решение владельца #70): вид и качество — с этого компьютера */
   private prefs: Settings = readSettings();
   /** качество «авто»: по первым секундам игры — ступенью ниже, пока кадр медленный */
@@ -449,7 +455,7 @@ export class Game {
   /** `loaded` — открыть сохранение (spec docs/specs/2026-10-saves.md): больница, поток и вид — из него, часы на паузе. */
   static async create(
     host: HTMLElement, store: Store, version: string, quality: Quality, start: Start = 'preset', flow: Flow = AUTO, loaded?: SaveFile, role: Role = DEFAULT_ROLE,
-    scenario?: Id, opts: { backdrop?: boolean; manage?: Manage; soft?: boolean } = {},
+    scenario?: Id, opts: { backdrop?: boolean; manage?: Manage; soft?: boolean; solo?: boolean } = {},
   ): Promise<Game> {
     const t0 = performance.now();
     store.set({ status: T.app.loading, version });
@@ -469,7 +475,9 @@ export class Game {
     // сложность (spec docs/specs/2026-10-difficulty.md, часть 2): у сохранения — его, у новой игры — выбранная на экране начала
     g.manage = (loaded ? loaded.state.meta.manage : opts.manage) ?? 'normal';
     g.soft = loaded ? loaded.state.meta.soft === true : opts.soft === true;
-    store.set({ manage: g.manage, soft: g.soft });
+    // смена врача (spec docs/specs/2026-11-doctor-shift.md): у сохранения — из его состояния
+    g.solo = loaded ? loaded.state.meta.solo === true : opts.solo === true && start !== 'empty';
+    store.set({ manage: g.manage, soft: g.soft, solo: g.solo });
     g.loaded = loaded;
     g.load.content = Math.round(performance.now() - t0);
     await g.build(quality);
@@ -557,9 +565,10 @@ export class Game {
     if (saved) this.client.load(saved);
     else {
       // касса начала и сложность (spec docs/specs/2026-10-difficulty.md): бюджет песочницы — по уровню «Управления»
+      // смена врача (spec docs/specs/2026-11-doctor-shift.md): кассы нет — её не задают
       this.client.start({
         kind: 'start', seed, season: SCENE.season, hospital: this.hospital, staff: this.staff, flow: this.flow,
-        economy: { cash: startCash(this.db, this.start, this.manage) },
+        ...(this.solo ? { solo: true } : { economy: { cash: startCash(this.db, this.start, this.manage) } }),
         ...(this.scenarioId ? { scenario: this.scenarioId } : {}),
         ...(this.manage !== 'normal' ? { manage: this.manage } : {}),
         ...(this.soft ? { soft: true } : {}),
@@ -671,6 +680,30 @@ export class Game {
   }
 
   /** Кнопки «Итога» (spec docs/specs/2026-11-demo.md): сохранить снимок, страница Steam, играть дальше. */
+  /**
+   * Смена врача кончилась (spec docs/specs/2026-11-doctor-shift.md, часть 2): часы стоят, итог — в рекорд больницы и уровня
+   * (день — по часам компьютера), окно «Итог смены». Никого не приняли — итога и рекорда нет.
+   */
+  private onShiftEnd(end: ShiftEnd) {
+    if (this.shiftOver) return;
+    this.shiftOver = true;
+    this.setSpeed(0);
+    const hospital = this.start === 'poly' ? 'poly' : 'preset';
+    const key = recordKey(hospital, this.manage);
+    let best = false;
+    let prev: ShiftRecord | undefined = readRecords()[key];
+    if (end.result) {
+      const r = end.result;
+      const out = recordShift(readRecords(), key, { grade: r.overall, points: r.points, seen: r.seen, arrived: r.arrived, day: today() });
+      best = out.best;
+      prev = out.prev;
+      if (best) writeRecords(out.records);
+    }
+    this.store.set({ shiftEnd: { end, venue: hospital === 'poly' ? T.shift.poly : T.shift.city, manage: this.manage, best, ...(prev ? { prev } : {}) } });
+    this.sound.play('meeting');
+    this.hud();
+  }
+
   private demoAction(a: DemoAction) {
     const d = this.store.get().demo;
     if (!d) return;
@@ -1184,6 +1217,8 @@ export class Game {
         this.store.set({ layers: { ...l, days, day: l.day !== null && days.includes(l.day) ? l.day : null } });
       }
     }
+    // смена врача (spec docs/specs/2026-11-doctor-shift.md): 20:00 — итог и рекорд, часы стоят
+    if (s.shift) this.onShiftEnd(s.shift);
     // первый пришедший (spec docs/specs/2026-10-scenario-1.md): письмо о его пути — когда он пришёл
     if (this.scenario.view && s.buf[H.arrived] > 0) this.scenario.reach('look');
     if (s.world || s.scenario) this.scenarioOffice();
@@ -1379,7 +1414,8 @@ export class Game {
       // 08:00, чтобы планёрка открылась в 08:00 (spec 2026-10-economy)
       const lag = this.lastSlice?.lag ?? 0;
       const game = this.ff ? (!this.client.busy && lag < 300 ? Math.max(0, Math.min(600, this.ffUntil - this.t - lag)) : 0) : this.speed * GAME_PER_REAL * dt;
-      this.client.frame(game, this.ff ? 14 : 10);
+      // смена врача (spec docs/specs/2026-11-doctor-shift.md): не дальше 20:00 — расчётный поток держит то же
+      this.client.frame(this.solo ? Math.max(0, Math.min(game, shiftEndOf(this.db) - this.t - lag)) : game, this.ff ? 14 : 10);
     }
     this.edgePan(dt);
     // стройка: клетка под курсором — и когда камера едет, а мышь стоит
@@ -1845,18 +1881,20 @@ export class Game {
   readonly actions: Actions = {
     setSpeed: s => {
       // ваш пациент перед вами, его карта открыта — часы стоят (spec 2026-10-owner-play-2), и лист передачи — тоже (spec
-      // docs/specs/2026-11-scenario-2.md, часть 2а); чужая карта — нет; планёрка — «Продолжить» (spec 2026-10-economy)
-      if (this.doctor.still || this.money.open) return;
+      // docs/specs/2026-11-scenario-2.md, часть 2а); чужая карта — нет; планёрка — «Продолжить» (spec 2026-10-economy); смена
+      // врача кончилась — «Итог смены» (spec docs/specs/2026-11-doctor-shift.md)
+      if (this.doctor.still || this.money.open || this.shiftOver) return;
       this.doctor.manualSpeed();
       this.setSpeed(s);
       this.hud();
     },
     untilMorning: () => {
-      if (this.doctor.still || this.money.open) return;
+      if (this.doctor.still || this.money.open || this.shiftOver) return;
       this.doctor.manualSpeed();
-      // до планёрки в 08:00 (геймдизайн §2, «До утра»; spec 2026-10-economy) — как можно быстрее, до первого события автопаузы
+      // до планёрки в 08:00 (геймдизайн §2, «До утра»; spec 2026-10-economy) — как можно быстрее, до первого события автопаузы;
+      // в смене врача — до её конца в 20:00 (spec docs/specs/2026-11-doctor-shift.md)
       const day = Math.floor(this.t / 86400) * 86400;
-      this.ffUntil = this.t % 86400 < 8 * 3600 ? day + 8 * 3600 : day + 86400 + 8 * 3600;
+      this.ffUntil = this.solo ? shiftEndOf(this.db) : this.t % 86400 < 8 * 3600 ? day + 8 * 3600 : day + 86400 + 8 * 3600;
       this.ff = true;
       this.hud();
     },
@@ -1937,11 +1975,14 @@ export class Game {
       this.doctor.relang();
     },
     // стройка (spec docs/specs/2026-10-build.md)
+    // в смене врача (spec docs/specs/2026-11-doctor-shift.md) больница готовая — стройки нет
     toggleBuild: () => {
+      if (this.solo) return;
       this.builder.toggle();
       this.hud();
     },
     setTool: t => {
+      if (this.solo) return;
       this.builder.setTool(t);
       this.hud();
     },
@@ -2096,6 +2137,9 @@ export class Game {
     money: a => this.money.dispatch(a),
     scenario: a => this.scenario.dispatch(a),
     demo: a => this.demoAction(a),
+    // «Новая смена» (spec docs/specs/2026-11-doctor-shift.md): та же больница и уровень, больные — новые
+    shiftAgain: () =>
+      reopen({ hospital: this.start, solo: '1', seed: String(Math.floor(Math.random() * 2 ** 31)), ...(this.manage !== 'normal' ? { manage: this.manage } : {}), ...(this.soft ? { soft: '1' } : {}) }),
     // подсказки первых минут (spec docs/specs/2026-10-aaa-polish.md)
     dismissHint: () => {
       const h = this.store.get().hint;
@@ -2398,7 +2442,7 @@ export class Game {
         this.hud();
       } else if (k === 'KeyZ' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        if (this.hospital.site) this.actions.undo();
+        if (this.hospital.site && !this.solo) this.actions.undo();
       } else if (k === 'Backquote') this.actions.toggleDebug();
       else this.mouse.keys.add(k);
     });

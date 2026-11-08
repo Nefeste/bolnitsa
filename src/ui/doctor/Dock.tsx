@@ -95,8 +95,9 @@ export function Dock({ hud, actions }: { hud: Hud; actions: Actions }) {
           <Icon name="fold" />
         </button>
       </div>
-      {/* сценарий кампании — в роли «Врач», без смены (решение владельца #115: цель считает только ваши приёмы) */}
-      {hud.scenario ? null : <RoleRow role={d.role} actions={actions} />}
+      {/* сценарий кампании — в роли «Врач», без смены (решение владельца #115: цель считает только ваши приёмы); смена врача
+          (spec docs/specs/2026-11-doctor-shift.md) — тоже: принимаете вы */}
+      {hud.scenario || hud.solo ? null : <RoleRow role={d.role} actions={actions} />}
       {/* отметить свой кабинет — совет «Врачу»; у «Главврача» и «Управляющего» своего кабинета и нет (F4) */}
       {!st.office && d.role === 'doctor' ? <p className="muted small">{t.noOfficeHint}</p> : null}
       {d.said ? (

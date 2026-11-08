@@ -3,6 +3,7 @@ import { doctorEn } from './doctor.en';
 import { economyEn } from './economy.en';
 import { scenarioEn } from './scenario.en';
 import { demoEn } from './demo.en';
+import { shiftEn } from './shift.en';
 import { encyclopediaEn } from './encyclopedia.en';
 import type { Strings } from './ru';
 
@@ -12,6 +13,8 @@ export const en: Strings = {
   // сценарий кампании (spec docs/specs/2026-10-scenario-1.md, часть 2): письма, «Цели», «Сценарий пройден»
   ...scenarioEn,
   ...demoEn,
+  // смена врача (spec docs/specs/2026-11-doctor-shift.md, часть 2)
+  ...shiftEn,
   app: {
     title: 'Hospital',
     loading: 'Loading…',

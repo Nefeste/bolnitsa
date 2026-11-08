@@ -15,6 +15,7 @@ import { patientName } from './caseView';
 import { comingAt, DoctorDesk, officeOf, takeCommand } from './doctor';
 import { type Leg, legsOf } from './legs';
 import { Handles, packSlice } from './pack';
+import { shiftEnd, type ShiftEnd, shiftEndOf } from './shift';
 import { type DoctorOut, type FromSim, LEGS_EVERY, type PathView, ROOMS_DAYS, type RoomsMoney, type ToSim, type World } from './protocol';
 
 /** Счёт до `ms` от сейчас; одно событие — всегда (как `budget` в session.ts «Анамнеза»). */
@@ -58,6 +59,8 @@ export function createSim(db: ContentDb): SimHost {
   /** ход сценария (spec docs/specs/2026-10-scenario-1.md): по чему он посчитан и каким окно его уже получило */
   let scenarioAt: unknown[] = [];
   let sentScenario = '';
+  /** смена врача (spec docs/specs/2026-11-doctor-shift.md): итог уже ушёл окну */
+  let sentShift = false;
   /** чей путь показывает окно и каким он был отправлен */
   let watch: string | null = null;
   let sentPath: string | undefined;
@@ -155,6 +158,12 @@ export function createSim(db: ContentDb): SimHost {
         scenario = now;
       }
     }
+    // смена врача (spec docs/specs/2026-11-doctor-shift.md): дошли до 20:00 — итог, один раз
+    let shift: ShiftEnd | undefined;
+    if (s!.meta.solo && !sentShift && s!.until === undefined && s!.t >= shiftEndOf(db)) {
+      sentShift = true;
+      shift = shiftEnd(s!);
+    }
     // деньги по помещениям (часть 2 слоя «Показатели»): сегодня — когда сдвинулись; прошедшие сутки — когда их прибавилось
     let money: RoomsMoney | undefined;
     if (s!.flow && s!.hospital?.site) {
@@ -189,7 +198,7 @@ export function createSim(db: ContentDb): SimHost {
     }
     const lag = owed + (s!.until !== undefined ? s!.until - s!.t : 0);
     const { buf, names } = packSlice(s!, sliceOf(s!, officeOf(db, s!)), lag, handles, rooms, staff, patientName);
-    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...(late ? { late } : {}), ...(crew ? { crew } : {}), ...(moods ? { moods } : {}), ...(rides ? { rides } : {}), ...(rounds ? { rounds } : {}), ...(scenario ? { scenario } : {}), ...(money ? { money } : {}), ...(legs ? { legs } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
+    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...(late ? { late } : {}), ...(crew ? { crew } : {}), ...(moods ? { moods } : {}), ...(rides ? { rides } : {}), ...(rounds ? { rounds } : {}), ...(scenario ? { scenario } : {}), ...(money ? { money } : {}), ...(legs ? { legs } : {}), ...(shift ? { shift } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
   };
   const fresh = () => {
     owed = 0;
@@ -205,6 +214,7 @@ export function createSim(db: ContentDb): SimHost {
     sentDays = -1;
     scenarioAt = [];
     sentScenario = '';
+    sentShift = false;
     sentPath = undefined;
     legsAt = -Infinity;
     sentLegs = '';
@@ -228,6 +238,7 @@ export function createSim(db: ContentDb): SimHost {
               ...(msg.scenario ? { scenario: msg.scenario } : {}),
               ...(msg.manage ? { manage: msg.manage } : {}),
               ...(msg.soft ? { soft: true } : {}),
+              ...(msg.solo ? { solo: true } : {}),
             });
             fresh();
             return slice([]);
@@ -268,6 +279,8 @@ export function createSim(db: ContentDb): SimHost {
           case 'tick': {
             if (!s) return { kind: 'error', message: 'нет смены' };
             owed += msg.seconds;
+            // смена врача (spec docs/specs/2026-11-doctor-shift.md): часы — не дальше 20:00; начатое действие доживает своё
+            if (s.meta.solo) owed = Math.max(0, Math.min(owed, shiftEndOf(db) - Math.max(s.t, s.until ?? s.t)));
             const more = budget(msg.budgetMs);
             const notices: Notice[] = [];
             if (s.until !== undefined) notices.push(...catchUp(db, s, more));

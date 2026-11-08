@@ -395,6 +395,8 @@ export function doctorState(db: ContentDb, s: ShiftState, level: Difficulty = DE
       else if (forPlayer(db, s, p)) yours.push({ row: rowOf(db, p, 'own'), order: i });
       // заданный больной сценария (spec docs/specs/2026-11-scenario-2.md, часть 2б): нанятые врачи его не зовут — он ваш
       else if (p.taught && order.has(p.id)) yours.push({ row: rowOf(db, p, 'yours'), order: i });
+      // смена врача (spec docs/specs/2026-11-doctor-shift.md): принимаете только вы — ждут вас все, без подписи
+      else if (s.meta.solo && order.has(p.id)) yours.push({ row: rowOf(db, p), order: i });
       // строки словами — только первым (ниже): очередь бывает длинной
       else if (order.has(p.id)) others.push({ id: p.id, order: i });
     }

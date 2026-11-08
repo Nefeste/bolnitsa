@@ -19,6 +19,8 @@ import { Meeting, Reports, signed } from './Meeting';
 import { DeptLegend, Layers, PathSection, PathsPanel, PatientsTab, ProblemsPanel } from './flow';
 import { byGuide, GoalsTab, GuideToggle, LetterCard, ScenarioDone, StepMark } from './Scenario';
 import { DemoSummary } from './Demo';
+import { ShiftSummary } from './Shift';
+import { recordKey, type ShiftHospital } from '../app/records';
 import { type Actions, type Hud, type Level, type LevelRow, type RoomCard, type Speed, type Store, type Tab, type Tool, useHud } from './store';
 import { Icon, type IconName } from './icons';
 import { WindowHead } from './WindowHead';
@@ -67,11 +69,13 @@ function TopBar({ hud, actions }: P) {
             {T.top.speed(s)}
           </Btn>
         ))}
-        <Btn id="speed-ff" on={hud.ff} onClick={actions.untilMorning} title={`4 — ${T.top.morningSoon}`}>
-          <Icon name="morning" /> {T.top.morning}
+        {/* смена врача (spec docs/specs/2026-11-doctor-shift.md): до конца смены, а не до утра */}
+        <Btn id="speed-ff" on={hud.ff} onClick={actions.untilMorning} title={`4 — ${hud.solo ? T.shift.untilEndSoon : T.top.morningSoon}`}>
+          <Icon name="morning" /> {hud.solo ? T.shift.untilEnd : T.top.morning}
         </Btn>
       </span>
-      <Money hud={hud} />
+      {/* кассы в смене врача нет */}
+      {hud.solo ? null : <Money hud={hud} />}
       {/* крупный текст на узком экране — с многоточием; целиком — в подсказке */}
       <span className="stat" id="counts" title={`${T.top.arrived} ${hud.arrived} · ${T.top.seen} ${hud.seen} · ${T.top.left} ${hud.left} · ${T.top.queue} ${hud.queue}`}>
         {T.top.arrived} <b>{hud.arrived}</b> · {T.top.seen} <b>{hud.seen}</b> · {T.top.left} <b>{hud.left}</b> · {T.top.queue} <b>{hud.queue}</b>
@@ -227,10 +231,15 @@ function SettingsPanel({ hud, actions }: P) {
         <input type="checkbox" id="debug" checked={hud.debug} onChange={actions.toggleDebug} /> {T.view.debug}
       </label>
       <p className="muted small">{t.where}</p>
-      {/* сложность этой игры (spec docs/specs/2026-10-difficulty.md, часть 2; решение владельца #136): в любой момент */}
-      <h3 className="sub">{T.manage.title}</h3>
-      <Difficulty level={{ manage: hud.manage, soft: hud.soft }} set={l => (l.manage !== hud.manage ? actions.setManage(l.manage) : actions.setSoft(l.soft))} />
-      <p className="muted small">{T.manage.now}</p>
+      {/* сложность этой игры (spec docs/specs/2026-10-difficulty.md, часть 2; решение владельца #136): в любой момент; в смене
+          врача — нет: рекорд — по больнице и уровню (spec docs/specs/2026-11-doctor-shift.md) */}
+      {hud.solo ? null : (
+        <>
+          <h3 className="sub">{T.manage.title}</h3>
+          <Difficulty level={{ manage: hud.manage, soft: hud.soft }} set={l => (l.manage !== hud.manage ? actions.setManage(l.manage) : actions.setSoft(l.soft))} />
+          <p className="muted small">{T.manage.now}</p>
+        </>
+      )}
     </div>
   );
 }
@@ -242,7 +251,7 @@ const MANAGES: readonly Manage[] = ['calm', 'normal', 'hard'];
  * под ними — что он меняет и его числа из базы; «Мягкий режим» — галочка. На втором шаге экрана начала и в «Настройках».
  * `cash` — касса начала этого начала; у сценария она своя — нет.
  */
-function Difficulty({ level, set, row, cash }: { level: Level; set: (l: Level) => void; row?: LevelRow; cash?: number }) {
+function Difficulty({ level, set, row, cash, solo }: { level: Level; set: (l: Level) => void; row?: LevelRow; cash?: number; solo?: boolean }) {
   const t = T.manage;
   return (
     <div className="difficulty" id="difficulty">
@@ -254,12 +263,15 @@ function Difficulty({ level, set, row, cash }: { level: Level; set: (l: Level) =
           </Btn>
         ))}
       </div>
+      {/* смена врача (spec docs/specs/2026-11-doctor-shift.md): кассы нет — только поток и терпение */}
       <p className="small" id="manage-line">
-        {t.line[level.manage]}
+        {solo ? T.shift.line[level.manage] : t.line[level.manage]}
       </p>
       {row ? (
         <p className="muted small" id="manage-numbers">
-          {t.numbers(factor(row.inflow), factor(row.patience), factor(row.salary), factor(row.pay), factor(row.breakdown), row.overdraft !== undefined ? money(row.overdraft) : '—', cash !== undefined ? money(cash) : undefined)}
+          {solo
+            ? T.shift.numbers(factor(row.inflow), factor(row.patience))
+            : t.numbers(factor(row.inflow), factor(row.patience), factor(row.salary), factor(row.pay), factor(row.breakdown), row.overdraft !== undefined ? money(row.overdraft) : '—', cash !== undefined ? money(cash) : undefined)}
         </p>
       ) : null}
       <label className="check">
@@ -280,9 +292,12 @@ function LeftTools({ hud, actions }: P) {
         <button type="button" id="game-menu-open" className={hud.menu.open ? 'on' : undefined} title={T.saves.menuHint} onClick={actions.toggleMenu}>
           <Icon name="menu" /> {T.saves.menu}
         </button>
-        <button type="button" id="build" onClick={actions.toggleBuild} title="B">
-          <Icon name="build" /> {T.left.build}
-        </button>
+        {/* смена врача (spec docs/specs/2026-11-doctor-shift.md): больница готовая — стройки нет */}
+        {hud.solo ? null : (
+          <button type="button" id="build" onClick={actions.toggleBuild} title="B">
+            <Icon name="build" /> {T.left.build}
+          </button>
+        )}
         <Layers hud={hud} actions={actions} />
       </div>
     );
@@ -544,7 +559,7 @@ function SiteCard({ r, actions, hud }: { r: RoomCard; actions: Actions; hud: Hud
         <div className="posts">
           <dt>{T.card.posts}</dt>
           <dd>
-            {r.posts?.length ? <Posts r={r} actions={actions} /> : '—'}
+            {r.posts?.length ? <Posts r={r} actions={actions} solo={hud.solo} /> : '—'}
             {r.note ? (
               <div className="muted" id="card-note">
                 {r.note}
@@ -554,17 +569,22 @@ function SiteCard({ r, actions, hud }: { r: RoomCard; actions: Actions; hud: Hud
         </div>
       </dl>
       <MoneyChart r={r} />
-      <div className="row">
-        {r.furnish?.ok ? (
-          <button type="button" id="card-furnish" onClick={() => actions.furnish(r.id)}>
-            {r.furnish.text}
-          </button>
-        ) : null}
-        <button type="button" id="card-demolish" onClick={() => actions.demolish(r.id)}>
-          {r.demolish}
-        </button>
-      </div>
-      <OfficeRow r={r} hud={hud} actions={actions} />
+      {/* смена врача (spec docs/specs/2026-11-doctor-shift.md): больница готовая — ни обставить, ни снести, ни отметить кабинет */}
+      {hud.solo ? null : (
+        <>
+          <div className="row">
+            {r.furnish?.ok ? (
+              <button type="button" id="card-furnish" onClick={() => actions.furnish(r.id)}>
+                {r.furnish.text}
+              </button>
+            ) : null}
+            <button type="button" id="card-demolish" onClick={() => actions.demolish(r.id)}>
+              {r.demolish}
+            </button>
+          </div>
+          <OfficeRow r={r} hud={hud} actions={actions} />
+        </>
+      )}
     </>
   );
 }
@@ -630,7 +650,7 @@ function RightTabs({ hud, actions }: P) {
           <input type="checkbox" id="staff-on-duty" checked={onDuty} onChange={e => setOnDuty(e.target.checked)} /> {T.card.onDutyOnly}
         </label>
         {/* «Нанять в резерв» (spec docs/specs/2026-10-staff-mood.md, часть 5; решение владельца #97) */}
-        {hud.reserveHire.length > 0 ? (
+        {hud.reserveHire.length > 0 && !hud.solo ? (
           <div className="reserve" id="reserve-hire" title={T.card.reserveHireHint}>
             <span className="label">{T.card.reserveHire}</span>
             {hud.reserveHire.map(r => (
@@ -688,7 +708,8 @@ function RightTabs({ hud, actions }: P) {
  * [Уволить] · ночь [Нанять · 1 625 ₽]»; кто без смены (сохранение до смен) — «круглые сутки». Полные слова найма — в
  * подсказке кнопки: карточка не растёт и не закрывает карту.
  */
-function Posts({ r, actions }: { r: RoomCard; actions: Actions }) {
+/** Места помещения; в смене врача (spec docs/specs/2026-11-doctor-shift.md) — кто на месте, без найма и увольнения. */
+function Posts({ r, actions, solo }: { r: RoomCard; actions: Actions; solo?: boolean }) {
   const posts = r.posts ?? [];
   const roles = [...new Set(posts.map(p => p.role))];
   return (
@@ -712,10 +733,14 @@ function Posts({ r, actions }: { r: RoomCard; actions: Actions }) {
                   ) : p.who ? (
                     <>
                       <span>{p.who}</span>
-                      <button type="button" className="small" id={`dismiss-${id}`} title={p.fire} onClick={() => actions.dismiss(p.staffId!)}>
-                        {T.card.dismiss}
-                      </button>
+                      {solo ? null : (
+                        <button type="button" className="small" id={`dismiss-${id}`} title={p.fire} onClick={() => actions.dismiss(p.staffId!)}>
+                          {T.card.dismiss}
+                        </button>
+                      )}
                     </>
+                  ) : solo ? (
+                    <span className="muted">—</span>
                   ) : p.options ? (
                     <HirePick room={r.id} role={p.role} id={id} shift={shift} options={p.options} actions={actions} />
                   ) : (
@@ -938,9 +963,10 @@ function BottomCard({ hud, actions, names }: P) {
           ))}
         </dl>
         {info.kind === 'staff' && info.fatigue !== undefined ? <Fatigue value={info.fatigue} worn={info.worn} /> : null}
-        {info.kind === 'staff' ? <Mood info={info} actions={actions} /> : null}
+        {/* смена врача (spec docs/specs/2026-11-doctor-shift.md): ни зарплаты, ни учёбы, ни увольнения — только кто это */}
+        {info.kind === 'staff' && !hud.solo ? <Mood info={info} actions={actions} /> : null}
         {/* в резерве (spec docs/specs/2026-10-staff-mood.md, часть 5): места с «Уволить» у него нет — здесь */}
-        {info.kind === 'staff' && info.fire !== undefined && info.id !== undefined ? (
+        {info.kind === 'staff' && !hud.solo && info.fire !== undefined && info.id !== undefined ? (
           <div className="row">
             <button type="button" className="small" id="card-dismiss" onClick={() => actions.dismiss(info.id!)}>
               {T.card.dismissHint(money(info.fire))}
@@ -1173,6 +1199,45 @@ function ScenarioStart({ sc, hud, actions, back }: { sc: { id: Id; title: string
   );
 }
 
+/**
+ * Второй шаг смены врача (spec docs/specs/2026-11-doctor-shift.md, часть 2): больница — поликлиника или городская — и уровень
+ * «Управления» (кассы нет — только поток и терпение); у больницы — лучший итог на выбранном уровне. «Начать смену» — она.
+ */
+function ShiftStart({ hud, actions, back }: { hud: Hud; actions: Actions; back: () => void }) {
+  const t = T.shift;
+  const [level, setLevel] = useState<Level>(NORMAL);
+  const [hospital, setHospital] = useState<ShiftHospital>('poly');
+  const row = hud.startLevels?.[level.manage];
+  return (
+    <div className="start panel" id="start-shift-step">
+      <div className="game">{T.app.title}</div>
+      <h2>{t.start}</h2>
+      <p className="intro">{t.lead}</p>
+      <h2>{t.hospital}</h2>
+      {(['poly', 'preset'] as const).map(h => {
+        const best = hud.startRecords?.[recordKey(h, level.manage)];
+        return (
+          <button key={h} type="button" id={`shift-${h}`} className={hospital === h ? 'on' : undefined} onClick={() => setHospital(h)}>
+            <b>{h === 'poly' ? t.poly : t.city}</b>
+            <span>
+              {h === 'poly' ? t.polyHint : t.cityHint} · {best ? t.best(best.grade, best.points) : t.noBest}
+            </span>
+          </button>
+        );
+      })}
+      <h2>{t.level}</h2>
+      <Difficulty level={level} set={setLevel} row={row} solo />
+      <p className="muted small">{t.levelHint}</p>
+      <button type="button" id="shift-go" className="on" onClick={() => actions.startGame({ solo: hospital }, undefined, level)}>
+        <b>{t.go}</b>
+      </button>
+      <button type="button" id="start-back" className="small" onClick={back}>
+        <Icon name="back" /> {T.start.back}
+      </button>
+    </div>
+  );
+}
+
 function StartChooser({ hud, actions }: P) {
   const saves = hud.startSaves ?? [];
   // «Продолжить» — самое новое сохранение с шапкой
@@ -1182,6 +1247,9 @@ function StartChooser({ hud, actions }: P) {
   // сценарий выбран — второй шаг: сложность (spec docs/specs/2026-10-difficulty.md, часть 2)
   const [scenario, setScenario] = useState<{ id: Id; title: string; about: string } | null>(null);
   const campaign = hud.startScenarios ?? [];
+  // смена врача (spec docs/specs/2026-11-doctor-shift.md, часть 2) — свой второй шаг
+  const [shift, setShift] = useState(false);
+  if (shift) return <ShiftStart hud={hud} actions={actions} back={() => setShift(false)} />;
   if (pick) return <RoleChooser start={pick} hud={hud} actions={actions} back={() => setPick(null)} />;
   if (scenario) return <ScenarioStart sc={scenario} hud={hud} actions={actions} back={() => setScenario(null)} />;
   return (
@@ -1228,6 +1296,16 @@ function StartChooser({ hud, actions }: P) {
           <button type="button" id="start-preset" onClick={() => setPick('preset')}>
             <b>{T.start.preset}</b>
             <span>{T.start.presetHint}</span>
+          </button>
+        </>
+      )}
+      {/* «Для врача» (spec docs/specs/2026-11-doctor-shift.md, часть 2): в демо его нет, как и песочницы */}
+      {hud.demoMode ? null : (
+        <>
+          <h2>{T.shift.section}</h2>
+          <button type="button" id="start-shift" onClick={() => setShift(true)}>
+            <b>{T.shift.start}</b>
+            <span>{T.shift.startHint}</span>
           </button>
         </>
       )}
@@ -1298,6 +1376,8 @@ export function App({ store, actions, names }: { store: Store; actions: Actions;
       {!hud.economy?.open && !hud.doctor?.card ? <ScenarioDone s={hud.scenario} actions={actions} /> : null}
       {/* «Итог» демо (spec docs/specs/2026-11-demo.md) — после первой планёрки */}
       {!hud.economy?.open && !hud.doctor?.card ? <DemoSummary d={hud.demo} actions={actions} /> : null}
+      {/* смена врача (spec docs/specs/2026-11-doctor-shift.md, часть 2): «Итог смены» в 20:00 */}
+      {!hud.doctor?.card ? <ShiftSummary s={hud.shiftEnd} actions={actions} /> : null}
       {hud.debug ? <DebugMenu {...p} /> : null}
       {/* энциклопедия (spec docs/specs/2026-10-encyclopedia.md) — поверх всего, и карты пациента */}
       <Encyclopedia />

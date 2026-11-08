@@ -11,6 +11,7 @@ import { presetStaff, withNightShift } from '../../src/engine/hospital/staff';
 import { apply, capacityOf, colleaguesOf, current, newFlowShift } from '../../src/engine/shift/engine';
 import type { Flow, ShiftPatient, ShiftState } from '../../src/engine/shift/types';
 import { T } from '../../src/i18n';
+import { DoctorDesk } from '../../src/sim/doctor';
 import { ownCases, SHIFT_CATEGORIES, shiftResult, SPEED_MINUTES } from '../../src/sim/shift';
 import { playOwn } from '../sim/doctor-player';
 import { hash, liveTo } from './site-kit';
@@ -78,6 +79,19 @@ describe('смена врача: принимаете только вы', () => 
     // отказ — своими словами, а не «нельзя»
     expect(whyText(db, s.hospital!.site, { kind: 'shift' })).toBe(T.site.shift);
     expect(T.site.shift).not.toBe(T.site.unknown);
+  });
+});
+
+describe('смена врача: окно врача', () => {
+  test('«Ждут вас» — все из очереди, без подписи: принимаете только вы', () => {
+    const s = poly(1);
+    apply(db, s, { kind: 'site', cmd: { kind: 'done' } });
+    liveTo(db, s, 10);
+    const waiting = s.queue.filter(id => s.patients[id]?.status === 'waiting');
+    expect(waiting.length).toBeGreaterThan(1);
+    const st = new DoctorDesk(db).out(s).doctor!;
+    expect(st.yours.map(r => r.id).sort()).toEqual([...waiting].sort());
+    expect(st.yours.every(r => r.why === undefined)).toBe(true);
   });
 });
 

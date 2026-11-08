@@ -40,10 +40,12 @@
 // «Персонал», путь ждущего; клиническая медсестра — только днём, найм и её обход палаты в 08:30, tools/app/e2e-rounds.mjs.
 // Часть 38 — звук: файлы с первого нажатия, «Звук» в «Настройках», щелчок, стройка, отказ, найм, тишина при 0, планёрка,
 // tools/app/e2e-sound.mjs.
+// Часть 39 — смена врача: «Для врача» на экране начала, второй шаг, смена без стройки и кассы, ваш приём, «До конца
+// смены» — «Итог смены» в 20:00, рекорд, «Новая смена», карточка с лучшим итогом, tools/app/e2e-shift.mjs.
 // Ошибок в консоли и запросов наружу нет.
 // Снимки — tools/app/out/e2e.png, e2e-build-*.png и e2e-flow-*.png; `--shots high` — снимки частей 2 и 3 в этом качестве
 // (на время снимка).
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|…|33 или 7,10,11] [--shots low|medium|high] [--port 8093]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|…|39 или 7,10,11] [--shots low|medium|high] [--port 8093]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -83,6 +85,7 @@ import { handoverPart } from './e2e-handover.mjs';
 import { emergencyPart } from './e2e-emergency.mjs';
 import { routingPart } from './e2e-routing.mjs';
 import { soundPart } from './e2e-sound.mjs';
+import { shiftPart } from './e2e-shift.mjs';
 import { serve } from './serve.mjs';
 
 const arg = (k, d) => {
@@ -215,6 +218,7 @@ try {
   if (run(37)) await routingPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   // часть 38 — звук (spec docs/specs/2026-11-sound.md, часть 1): tools/app/e2e-sound.mjs
   if (run(38)) await soundPart({ page, port, out, ok, fail, q: arg('q', 'low') });
+  if (run(39)) await shiftPart({ page, port, out, ok, fail, q: arg('q', 'low') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);
