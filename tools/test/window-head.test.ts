@@ -54,9 +54,9 @@ describe('строка заголовка окна', () => {
   const all = windows();
 
   // лист передачи (spec docs/specs/2026-11-scenario-2.md, часть 2а) — девятое; «Итог смены» (spec docs/specs/2026-11-doctor-shift.md,
-  // часть 2) — десятое
-  test('окна поверх карты — все десять, и каждое начинается строкой заголовка со значком набора', () => {
-    expect(all.map(w => w.id)).toEqual(['dcard', 'demo-summary', 'dsheet', 'enc', 'game-menu', 'meeting', 'scenario-done', 'settings', 'shift-summary', 'term']);
+  // часть 2) — десятое; «Итог дня» (часть 3) — одиннадцатое
+  test('окна поверх карты — все одиннадцать, и каждое начинается строкой заголовка со значком набора', () => {
+    expect(all.map(w => w.id)).toEqual(['daily-summary', 'dcard', 'demo-summary', 'dsheet', 'enc', 'game-menu', 'meeting', 'scenario-done', 'settings', 'shift-summary', 'term']);
     for (const w of all) {
       expect([w.id, w.head]).toEqual([w.id, true]);
       expect([w.id, !!w.icon && w.icon in ICONS]).toEqual([w.id, true]);
@@ -65,6 +65,7 @@ describe('строка заголовка окна', () => {
 
   test('значки — по окну: у меню и «Настроек» — как у кнопок, что их открывают; лист передачи — как карта больного; у прочих свой', () => {
     expect(Object.fromEntries(all.map(w => [w.id, w.icon]))).toEqual({
+      'daily-summary': 'result',
       dcard: 'card',
       'demo-summary': 'result',
       dsheet: 'card',

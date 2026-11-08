@@ -21,6 +21,7 @@ import { DeptLegend, Layers, PathSection, PathsPanel, PatientsTab, ProblemsPanel
 import { byGuide, GoalsTab, GuideToggle, LetterCard, ScenarioDone, StepMark } from './Scenario';
 import { DemoSummary } from './Demo';
 import { ShiftSummary } from './Shift';
+import { DailyStart, DailySummary } from './Daily';
 import { recordKey, type ShiftHospital } from '../app/records';
 import { type Actions, type Hud, type Level, type LevelRow, type RoomCard, type Speed, type Store, type Tab, type Tool, useHud } from './store';
 import { Icon, type IconName } from './icons';
@@ -70,10 +71,13 @@ function TopBar({ hud, actions }: P) {
             {T.top.speed(s)}
           </Btn>
         ))}
-        {/* смена врача (spec docs/specs/2026-11-doctor-shift.md): до конца смены, а не до утра */}
-        <Btn id="speed-ff" on={hud.ff} onClick={actions.untilMorning} title={`4 — ${hud.solo ? T.shift.untilEndSoon : T.top.morningSoon}`}>
-          <Icon name="morning" /> {hud.solo ? T.shift.untilEnd : T.top.morning}
-        </Btn>
+        {/* смена врача (spec docs/specs/2026-11-doctor-shift.md): до конца смены, а не до утра; у случая дня (часть 3) конца нет —
+        больной один и ждёт вас */}
+        {hud.daily ? null : (
+          <Btn id="speed-ff" on={hud.ff} onClick={actions.untilMorning} title={`4 — ${hud.solo ? T.shift.untilEndSoon : T.top.morningSoon}`}>
+            <Icon name="morning" /> {hud.solo ? T.shift.untilEnd : T.top.morning}
+          </Btn>
+        )}
       </span>
       {/* кассы в смене врача нет */}
       {hud.solo ? null : <Money hud={hud} />}
@@ -1152,9 +1156,12 @@ function GameMenu({ hud, actions }: P) {
       <WindowHead icon="menu" titleId="game-menu-title" close={{ id: 'game-menu-close', hint: 'Esc', onClick: actions.toggleMenu }}>
         {T.saves.menu}
       </WindowHead>
-      <button type="button" id="save-new" className="on" title={T.saves.saveHint} onClick={actions.saveGame}>
-        {T.saves.save}
-      </button>
+      {/* случай дня (spec docs/specs/2026-11-doctor-shift.md, часть 3) не сохраняют */}
+      {hud.daily ? null : (
+        <button type="button" id="save-new" className="on" title={T.saves.saveHint} onClick={actions.saveGame}>
+          {T.saves.save}
+        </button>
+      )}
       <SaveList rows={hud.menu.rows} load={actions.loadGame} remove={actions.deleteGame} prefix="save" />
       <button type="button" id="new-game" title={T.saves.newGameHint} onClick={actions.newGame}>
         {T.saves.newGame}
@@ -1285,9 +1292,11 @@ function StartChooser({ hud, actions }: P) {
   // сценарий выбран — второй шаг: сложность (spec docs/specs/2026-10-difficulty.md, часть 2)
   const [scenario, setScenario] = useState<{ id: Id; title: string; about: string } | null>(null);
   const campaign = hud.startScenarios ?? [];
-  // смена врача (spec docs/specs/2026-11-doctor-shift.md, часть 2) — свой второй шаг
+  // смена врача (spec docs/specs/2026-11-doctor-shift.md, часть 2) и случай дня (часть 3) — свои вторые шаги
   const [shift, setShift] = useState(false);
+  const [daily, setDaily] = useState(false);
   if (shift) return <ShiftStart hud={hud} actions={actions} back={() => setShift(false)} />;
+  if (daily) return <DailyStart hud={hud} actions={actions} back={() => setDaily(false)} />;
   if (pick) return <RoleChooser start={pick} hud={hud} actions={actions} back={() => setPick(null)} />;
   if (scenario) return <ScenarioStart sc={scenario} hud={hud} actions={actions} back={() => setScenario(null)} />;
   return (
@@ -1344,6 +1353,10 @@ function StartChooser({ hud, actions }: P) {
           <button type="button" id="start-shift" onClick={() => setShift(true)}>
             <b>{T.shift.start}</b>
             <span>{T.shift.startHint}</span>
+          </button>
+          <button type="button" id="start-daily" onClick={() => setDaily(true)}>
+            <b>{T.daily.start}</b>
+            <span>{T.daily.startHint}</span>
           </button>
         </>
       )}
@@ -1416,6 +1429,8 @@ export function App({ store, actions, names }: { store: Store; actions: Actions;
       {!hud.economy?.open && !hud.doctor?.card ? <DemoSummary d={hud.demo} actions={actions} /> : null}
       {/* смена врача (spec docs/specs/2026-11-doctor-shift.md, часть 2): «Итог смены» в 20:00 */}
       {!hud.doctor?.card ? <ShiftSummary s={hud.shiftEnd} actions={actions} /> : null}
+      {/* случай дня (spec docs/specs/2026-11-doctor-shift.md, часть 3): «Итог дня» — под открытой картой разбора не видно */}
+      {!hud.doctor?.card ? <DailySummary s={hud.dailyEnd} actions={actions} /> : null}
       {hud.debug ? <DebugMenu {...p} /> : null}
       {/* энциклопедия (spec docs/specs/2026-10-encyclopedia.md) — поверх всего, и карты пациента */}
       <Encyclopedia />

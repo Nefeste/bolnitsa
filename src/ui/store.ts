@@ -20,6 +20,8 @@ import type { ProblemGo, ProblemList } from '../app/problems';
 import type { LegRow } from '../app/paths';
 import type { DemoHud } from './Demo';
 import type { Records, ShiftRecord } from '../app/records';
+import type { DailyRecord, DailyRow } from '../app/daily';
+import type { DailyEnd } from '../sim/daily';
 import type { ShiftEnd } from '../sim/shift';
 
 /** Скорость игры (spec docs/specs/2026-10-walk.md): ×1, ×3, ×12; 0 — пауза. */
@@ -247,6 +249,13 @@ export interface Hud {
   startRecords?: Records;
   /** окно «Итог смены» — смена кончилась в 20:00 */
   shiftEnd?: ShiftHud;
+  /**
+   * случай дня (spec docs/specs/2026-11-doctor-shift.md, часть 3): какой день играется; на экране начала — список последних
+   * дней с итогами; окно «Итог дня» — приём больного дня закрыт
+   */
+  daily?: string;
+  startDaily?: DailyRow[];
+  dailyEnd?: DailyHud;
   progress?: { done: number; total: number; text: string };
 }
 
@@ -341,6 +350,14 @@ export class Store {
 }
 
 /** Окно «Итог смены» (spec docs/specs/2026-11-doctor-shift.md, часть 2): итог, больница и уровень, рекорд. */
+/** «Итог дня»: какой день, итог этой попытки, засчитанный итог дня (первая попытка) и эта ли она. */
+export interface DailyHud {
+  day: string;
+  end: DailyEnd;
+  record: DailyRecord;
+  first: boolean;
+}
+
 export interface ShiftHud {
   end: ShiftEnd;
   /** название больницы — заголовку */
@@ -408,7 +425,7 @@ export interface Actions {
    * начало игры: пустое здание, готовая больница или поликлиника и роль (spec docs/specs/2026-10-two-ways.md, F4); `{ load }`
    * — сохранение (spec 2026-10-saves); `level` — сложность новой игры (spec docs/specs/2026-10-difficulty.md, часть 2)
    */
-  startGame(kind: 'empty' | 'preset' | 'poly' | { load: string } | { scenario: Id } | { solo: 'preset' | 'poly' }, role?: Role, level?: Level): void;
+  startGame(kind: 'empty' | 'preset' | 'poly' | { load: string } | { scenario: Id } | { solo: 'preset' | 'poly' } | { daily: string }, role?: Role, level?: Level): void;
   /** сложность в игре (spec docs/specs/2026-10-difficulty.md, часть 2; решение владельца #136): в любой момент — с этой минуты */
   setManage(level: Manage): void;
   setSoft(on: boolean): void;
@@ -444,6 +461,9 @@ export interface Actions {
   demo(a: DemoAction): void;
   /** «Итог смены» (spec docs/specs/2026-11-doctor-shift.md): новая смена в той же больнице на том же уровне или в меню */
   shiftAgain(): void;
+  /** случай дня: тот же день заново; разбор приёма больного дня */
+  dailyAgain(): void;
+  dailyReview(): void;
   /** «Настройки» (spec docs/specs/2026-10-settings.md): окно из меню игры */
   toggleSettings(): void;
   /** меню игры (spec docs/specs/2026-10-saves.md): раскрыть, сохранить, загрузить ячейку, удалить, новая игра */

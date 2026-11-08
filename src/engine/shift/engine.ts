@@ -247,13 +247,18 @@ export function newSingle(
  */
 export function newFlowShift(
   db: ContentDb,
-  opts: { seed: number; season: Season; difficulty?: Difficulty; hospital: HospitalState; staff: StaffMember[]; flow: Flow; economy?: { cash: number }; scenario?: Id; manage?: Manage; soft?: boolean; sorts?: boolean; solo?: boolean } & Variety,
+  opts: {
+    seed: number; season: Season; difficulty?: Difficulty; hospital: HospitalState; staff: StaffMember[]; flow: Flow; economy?: { cash: number }; scenario?: Id; manage?: Manage;
+    soft?: boolean; sorts?: boolean; solo?: boolean; daily?: number;
+  } & Variety,
 ): ShiftState {
   // рост (spec 2026-10-staff-mood, раздел 3): у людей со сменой — разный стаж, растут не в одно утро
   const s = singleBase(db, { ...opts, staff: tenure(db, opts.seed, opts.staff), venue: SANDBOX_VENUE });
   // смена врача (spec docs/specs/2026-11-doctor-shift.md; из anamnez: `newSingle` @ bed1996): принимаете только вы — до того,
   // как поток посчитан: он от кабинетов, где принимают
   if (opts.solo) s.meta.solo = true;
+  // случай дня (spec docs/specs/2026-11-doctor-shift.md, часть 3): больной дня — первым пришедшим сам, с первой минуты
+  if (opts.daily !== undefined) s.meta.daily = opts.daily;
   s.flow = { ...opts.flow };
   // уровень «Управления» и мягкий режим (spec 2026-10-difficulty) — с начала: по ним поток, терпение и касса
   if (opts.manage && opts.manage !== 'normal') s.meta.manage = opts.manage;
@@ -274,6 +279,7 @@ export function newFlowShift(
   const cash = sc ? sc.budget : opts.economy?.cash;
   if (cash !== undefined) s.economy = openEconomy(db, cash, s.t);
   planDay(db, s);
+  if (opts.daily !== undefined) schedule(s, s.t, { kind: 'flow', stream: 'walk', n: 1 });
   // усталость (spec 2026-10-staff-shifts, часть 2): у врачей в смене перерывы и туалет — с первой минуты, даже если звать
   // ещё некого
   if (s.staff?.some(m => m.shift !== undefined)) {
@@ -1040,8 +1046,12 @@ function flowArrive(db: ContentDb, s: ShiftState, ev: Extract<ShiftEvent, { kind
   // сценарий ПК (spec 2026-10-scenario-1): первые пришедшие сами — заданные сценарием, по порядку; сценарий 2 (spec
   // docs/specs/2026-11-scenario-2.md) — и привезённые скорой: каждый поток берёт следующего заданного своего вида
   const teach = ev.stream === 'walk' || ev.stream === 'amb' ? tutorialNext(db, s, ev.stream) : undefined;
+  // случай дня (spec docs/specs/2026-11-doctor-shift.md, часть 3): первый пришедший сам — больной дня, тем же вызовом
+  // генератора, что в подборе дня
+  const daily = ev.stream === 'walk' && s.meta.daily !== undefined && !Object.values(s.patients).some(p => p.daily) ? s.meta.daily : undefined;
   // записанный к специалисту болен болезнью его профиля, которую больница принимает (как запись «Анамнеза», часть 59)
   const patient = ret ? returningPatient(db, s, ret)
+    : daily !== undefined ? generatePatient(db, daily, { department: DAILY_DEPARTMENT, season: s.meta.season })
     : teach ? taughtPatient(db, s, d, key, teach, gen)
       : ev.stream === 'amb' ? ambulancePatient(db, s, d, key, admits, varied)
         : generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${key}`), { ...gen, walkIn: true, ...(to ? { only: profileHere(db, to, admits) } : {}) });
@@ -1053,6 +1063,7 @@ function flowArrive(db: ContentDb, s: ShiftState, ev: Extract<ShiftEvent, { kind
     ...(ret && s.patients[ret.of]?.closed?.stay?.end === 'early' ? { afterEarly: true as const } : {}),
     ...(to ? { to: to.id } : {}),
     ...(teach ? { taught: true as const } : {}),
+    ...(daily !== undefined ? { daily: true as const } : {}),
     ...(own.length > 1 ? { departments: own } : {}),
     ...(s.economy ? { payer: kind === 'ambulance' ? 'oms' : payerOf(db, s.meta.seed, id, s.economy.reputation ?? db.economy.reputation.start) } : {}),
   };
@@ -1067,6 +1078,12 @@ function flowArrive(db: ContentDb, s: ShiftState, ev: Extract<ShiftEvent, { kind
   const sat = s.patients[id].bench !== undefined ? { bench: true as const } : {};
   journey.arrived(s, s.patients[id], () => colleaguesOf(db, s).filter((m, _, list) => colleagueTakes(db, s, s.patients[id], m, list)).length, () => !!teach || forPlayer(db, s, s.patients[id]), stood === 'far' ? { far: db.inflow?.hall ?? 0, ...sat } : stood === 'full' ? { full: true, ...sat } : {});
 }
+
+/**
+ * Отделение больного дня (spec docs/specs/2026-11-doctor-shift.md, часть 3): из него генератор берёт болезнь — как у случая дня
+ * «Анамнеза» (`DEPARTMENT` его `caseView.ts`); подбор дня (`src/sim/daily.ts`) зовёт генератор так же.
+ */
+export const DAILY_DEPARTMENT = 'dept.therapy';
 
 /**
  * Следующий заданный больной сценария ПК (spec 2026-10-scenario-1) для потока `stream`: пока не пришли все из списка и
@@ -3752,6 +3769,8 @@ function arrive(db: ContentDb, s: ShiftState, p: ShiftPatient, notices: Notice[]
   const [lo, hi] = sure === 'red' ? [0, 0] : PATIENCE[sure];
   // ось «Управление» (spec 2026-10-difficulty): терпение пришедших — на множитель уровня
   p.patience = Math.round(scaled(branch(s, `patience:${p.id}`).range(lo, hi) * MIN * patienceOf(s.meta.difficulty), manageOf(db, s).patience));
+  // больной дня (spec docs/specs/2026-11-doctor-shift.md, часть 3) ждёт вас сколько нужно: другого приёма у вас нет
+  if (p.daily) p.patience = 0;
   // своя больница: пришёл в полную зону ожидания — стоит, и ждать готов вдвое меньше; в потоке для ПК — по своему залу,
   // это решает `seatPc` (spec 2026-10-own-hall)
   if (s.hospital && !s.flow && p.patience > 0 && s.queue.length >= ctx.seats) p.patience = Math.round(p.patience / 2);

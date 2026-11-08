@@ -45,10 +45,12 @@
 // Часть 40 — сценарий 3 «Хирургия»: третья карточка «Кампании», больница сценария 2 со свободной землёй, письма, три шага
 // порядка стройки, операционная с бригадой на день и третья палата, первый заданный — ваш, подсказка «Аппендицит и время»,
 // «В операционную», к вечеру — «ночь без бригады», планёрка со строкой «Операции», tools/app/e2e-surgery.mjs.
+// Часть 41 — случай дня: «Для врача» → «Случай дня», 30 дней, день — городская больница без потока, только вы, без
+// сохранений; больной дня в 08:00, ваш приём — «Итог дня», «Разбор», «Сыграть снова», итог дня в списке, tools/app/e2e-daily.mjs.
 // Ошибок в консоли и запросов наружу нет.
 // Снимки — tools/app/out/e2e.png, e2e-build-*.png и e2e-flow-*.png; `--shots high` — снимки частей 2 и 3 в этом качестве
 // (на время снимка).
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|…|40 или 7,10,11] [--shots low|medium|high] [--port 8093]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|…|41 или 7,10,11] [--shots low|medium|high] [--port 8093]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -90,6 +92,7 @@ import { routingPart } from './e2e-routing.mjs';
 import { soundPart } from './e2e-sound.mjs';
 import { shiftPart } from './e2e-shift.mjs';
 import { surgeryPart } from './e2e-surgery.mjs';
+import { dailyPart } from './e2e-daily.mjs';
 import { serve } from './serve.mjs';
 
 const arg = (k, d) => {
@@ -225,6 +228,8 @@ try {
   if (run(39)) await shiftPart({ page, port, out, ok, fail, q: arg('q', 'low') });
   // часть 40 — сценарий 3 «Хирургия» (spec docs/specs/2026-11-scenario-3.md, части 2–3): tools/app/e2e-surgery.mjs
   if (run(40)) await surgeryPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  // часть 41 — случай дня (spec docs/specs/2026-11-doctor-shift.md, часть 3): tools/app/e2e-daily.mjs
+  if (run(41)) await dailyPart({ page, port, out, ok, fail, q: arg('q', 'low') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);
