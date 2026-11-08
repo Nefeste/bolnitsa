@@ -118,7 +118,7 @@ export function GuideList({ steps }: { steps: readonly GuideRow[] }) {
     <>
       <ol className="guide" id="guide-list">
         {steps.map(x => (
-          <li key={x.type} className={x.done ? 'done' : x.next ? 'next' : undefined} data-room={x.type}>
+          <li key={x.n} className={x.done ? 'done' : x.next ? 'next' : undefined} data-room={x.type}>
             <span className="gstep" aria-hidden="true">
               {x.done ? <Icon name="done" /> : x.n}
             </span>
@@ -149,8 +149,14 @@ export function GuideToggle({ s, actions, id }: { s: ScenarioHud; actions: Actio
  */
 export function byGuide<R extends { id: Id }>(rows: readonly R[], s: ScenarioHud | undefined): { row: R; step?: GuideRow }[] {
   const steps = s?.guide?.on ? s.guide.steps : [];
-  const step = new Map(steps.map(x => [x.type, x]));
-  const first = steps.flatMap(x => rows.filter(r => r.id === x.type));
+  // у помещения два шага (сценарий 3: операционная и санитар в ней) — строка одна, на месте первого: её шаг — первый
+  // несделанный, а сделаны оба — первый
+  const step = new Map<Id, GuideRow>();
+  for (const x of steps) {
+    const was = step.get(x.type);
+    if (!was || (was.done && !x.done)) step.set(x.type, x);
+  }
+  const first = [...step.keys()].flatMap(type => rows.filter(r => r.id === type));
   return [...first, ...rows.filter(r => !step.has(r.id))].map(row => ({ row, ...(step.has(row.id) ? { step: step.get(row.id)! } : {}) }));
 }
 

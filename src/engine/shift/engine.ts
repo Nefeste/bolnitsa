@@ -690,7 +690,7 @@ function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
     case 'site': {
       // касса ПК (spec 2026-10-economy): зарплаты и содержание — по эту минуту; больница стала другой — и поток от неё
       accrue(db, s);
-      const was = s.flow?.auto ? capacityOf(db, s) : undefined;
+      const was = flowWas(db, s);
       const out = siteCommand(db, s, cmd.cmd);
       reflow(db, s, was);
       // нанят первый со сменой (spec 2026-10-staff-shifts): пересменки этих суток — с этой минуты; нанятый делать
@@ -947,7 +947,7 @@ export function scheduleDuty(db: ContentDb, s: ShiftState) {
  * больницы — по новой больнице; свободные зовут ждущих.
  */
 function duty(db: ContentDb, s: ShiftState) {
-  const was = s.flow?.auto ? capacityOf(db, s, s.t - 1) : undefined;
+  const was = flowWas(db, s, s.t - 1);
   // настроение (spec 2026-10-staff-mood): дошёл ли ушедший со сменой до предела к её концу; уходящие сами — прочь, их
   // зарплата — по эту минуту
   shiftEnded(db, s);
@@ -1072,13 +1072,16 @@ function flowArrive(db: ContentDb, s: ShiftState, ev: Extract<ShiftEvent, { kind
  * Следующий заданный больной сценария ПК (spec 2026-10-scenario-1) для потока `stream`: пока не пришли все из списка и
  * работает ваш кабинет. Список идёт по порядку, и следующий — того вида, что в записи: привезённый скорой (spec
  * docs/specs/2026-11-scenario-2.md) — только со скорой, пришедший сам — только сам; не того — приходят обычные. Нанятые
- * врачи заданных не берут (`taught`) — без вашего кабинета их некому принять: приходят обычные, а заданные ждут его.
+ * врачи заданных не берут (`taught`) — без вашего кабинета их некому принять: приходят обычные, а заданные ждут его. У
+ * сценария с помещениями обучения (`tutorialRoom`, сценарий 3 — операционная) заданные ждут и их.
  */
 function tutorialNext(db: ContentDb, s: ShiftState, stream: 'walk' | 'amb'): TutorialPatient | undefined {
   const sc = scenarioOf(db, s.campaign);
   const k = s.campaign?.taught ?? 0;
   if (!sc || k >= sc.tutorial.length || !!sc.tutorial[k].ambulance !== (stream === 'amb')) return undefined;
   const ctx = hospitalCtx(db, s);
+  // сценарий 3 (spec docs/specs/2026-11-scenario-3.md, часть 2): заданным больным нужна операционная — ждут, пока она работает
+  if (sc.tutorialRoom && !sc.tutorialRoom.every(t => ctx.rooms.includes(t))) return undefined;
   const mine = doctorRoom(ctx.plan);
   return mine !== undefined && ctx.working.has(mine) ? sc.tutorial[k] : undefined;
 }
@@ -1554,13 +1557,30 @@ function inflowDay(db: ContentDb, s: ShiftState): InflowDay {
   };
 }
 
-/** Больница стала другой (стройка, найм, отложенный снос): поток, чья частота изменилась, — заново от этой минуты. */
-function reflow(db: ContentDb, s: ShiftState, was: Capacity | undefined) {
+/**
+ * Что задаёт поток до перемены больницы (стройка, найм, пересменка, отложенный снос) — для `reflow`: кабинеты, места и
+ * специалисты (`capacityOf`) и виды работающих помещений — их ждут заданные больные сценария (`tutorialRoom`).
+ */
+interface FlowWas {
+  cap: Capacity;
+  rooms: readonly Id[];
+}
+const flowWas = (db: ContentDb, s: ShiftState, at = s.t): FlowWas | undefined => (s.flow?.auto ? { cap: capacityOf(db, s, at), rooms: hospitalCtx(db, s, at).rooms } : undefined);
+
+/**
+ * Больница стала другой (стройка, найм, отложенный снос): поток, чья частота изменилась, — заново от этой минуты. Заработали
+ * помещения, которых ждали заданные больные сценария (spec docs/specs/2026-11-scenario-3.md, часть 2: операционная), — заново и
+ * поток того вида, чей заданный следующий: первый своего вида придёт вскоре (`FIRST_TAUGHT`).
+ */
+function reflow(db: ContentDb, s: ShiftState, was: FlowWas | undefined) {
   if (!was || !s.flow?.auto) return;
   const now = capacityOf(db, s);
-  if (now.offices !== was.offices) restream(db, s, 'walk');
-  if (now.bays !== was.bays) restream(db, s, 'amb');
-  if (now.booked.join() !== was.booked.join()) rebook(db, s, was.booked, now.booked);
+  const need = scenarioOf(db, s.campaign)?.tutorialRoom;
+  const rooms = need ? hospitalCtx(db, s).rooms : [];
+  const opened = !!need && need.some(t => !was.rooms.includes(t)) && need.every(t => rooms.includes(t));
+  if (now.offices !== was.cap.offices || (opened && tutorialNext(db, s, 'walk'))) restream(db, s, 'walk');
+  if (now.bays !== was.cap.bays || (opened && tutorialNext(db, s, 'amb'))) restream(db, s, 'amb');
+  if (now.booked.join() !== was.cap.booked.join()) rebook(db, s, was.cap.booked, now.booked);
 }
 
 function ledgerOf(s: ShiftState): Ledger {
@@ -3677,7 +3697,7 @@ function handle(db: ContentDb, s: ShiftState, ev: ShiftEvent, notices: Notice[])
     case 'siteFree': {
       // касса и поток от больницы (spec 2026-10-economy) — как у команды стройки
       accrue(db, s);
-      const was = s.flow?.auto ? capacityOf(db, s) : undefined;
+      const was = flowWas(db, s);
       siteFree(db, s);
       return reflow(db, s, was);
     }

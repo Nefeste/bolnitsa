@@ -1,19 +1,24 @@
 // Сценарий 3 «Хирургия» (spec docs/specs/2026-11-scenario-3.md), часть 1: начало — ваша больница из сценария 2 и свободная
 // земля под хирургию (решение владельца #209, вариант 1); цели «срочные операции в срок» (без «подряд») и «ночная бригада»;
-// срочные операции в срок, начатые ночью, — в итогах суток потока для ПК.
+// срочные операции в срок, начатые ночью, — в итогах суток потока для ПК. Часть 2: запись сценария — первые больные ждут
+// операционную (`tutorialRoom`), порядок стройки с третьей палатой и санитаром в операционной, цели, письма, подсказки;
+// строка «Операции» на планёрке.
 import { describe, expect, test } from 'bun:test';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { guideRows } from '../../src/app/scenario';
 import { db } from '../../src/content';
 import type { Mission } from '../../src/content/types';
-import { missionProgress } from '../../src/engine/campaign/campaign';
-import { addReady, EMPTY_LOT, emptySite, hospitalOf, widerLot } from '../../src/engine/hospital/site';
+import { missionProgress, roomWorks } from '../../src/engine/campaign/campaign';
+import { addReady, EMPTY_LOT, emptySite, hospitalOf, type SiteCommand, widerLot } from '../../src/engine/hospital/site';
 import { siteOfPlan } from '../../src/engine/hospital/site-plan';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { presetStaff, withNightShift } from '../../src/engine/hospital/staff';
 import { apply, hospitalCtx, newFlowShift } from '../../src/engine/shift/engine';
 import type { DaySummary, Flow, ShiftState, SurgeryDay } from '../../src/engine/shift/types';
+import { T } from '../../src/i18n';
+import { byGuide } from '../../src/ui/Scenario';
 import { buildDb, CONTENT_DIR } from '../content/load';
 
 const AUTO: Flow = { perHour: 0, auto: true };
@@ -106,5 +111,98 @@ describe('сценарий 3: ночные операции в итогах су
     const day = s.history[0].surgery!;
     expect(day.night).toBeGreaterThan(0);
     expect(day.night!).toBeLessThanOrEqual(day.onTime);
+  }, 120_000);
+});
+
+describe('сценарий 3: запись — первые больные, порядок стройки, цели, письма', () => {
+  const sc = db.scenarios!['scenario.surgery'];
+  const OR: SiteCommand = { kind: 'ready', type: 'room.or', size: 'M', x: 55, y: 6, rot: 0, staff: true };
+  const WARD: SiteCommand = { kind: 'ready', type: 'room.ward', size: 'M', x: 64, y: 6, rot: 0, staff: true };
+  const start = (seed: number) =>
+    newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, built.site), staff: withNightShift(db, built.site.rooms, built.staff), flow: AUTO, scenario: sc.id });
+  const site = (s: ShiftState, cmd: SiteCommand) => {
+    const n = apply(db, s, { kind: 'site', cmd }).find(x => x.kind === 'site');
+    if (!n || n.kind !== 'site' || !n.ok) throw new Error(`стройка: ${JSON.stringify(cmd)} — ${JSON.stringify(n)}`);
+  };
+
+  test('третий; начало — больница сценария 2 со свободной землёй, строят и операционную; сортирует медсестра; первые больные — к операционной', () => {
+    expect([sc.order, sc.start, sc.sorts]).toEqual([3, 'site.emergency', undefined]);
+    expect(sc.build).toEqual([...db.scenarios!['scenario.emergency'].build, 'room.or']);
+    expect(sc.tutorialRoom).toEqual(['room.or']);
+    expect(sc.tutorial.map(t => [t.condition, !!t.ambulance])).toEqual([['cond.appendicitis', true], ['cond.ankle_fracture', false], ['cond.strangulated_hernia', true]]);
+    // всем троим нужна операция: аппендициту — в сутки, ущемлённой грыже — за 2 часа, перелому со смещением — без срока
+    expect(sc.tutorial.map(t => db.conditions[t.condition].surgery?.window)).toEqual([24, undefined, 2]);
+    expect(sc.tutorial[1].params).toEqual({ stability: 'unstable' });
+    expect(sc.guide.map(g => [g.room, g.role, g.count])).toEqual([['room.or', undefined, undefined], ['room.ward', undefined, 3], ['room.or', 'role.orderly', undefined]]);
+    expect(sc.missions.filter(m => m.main).map(m => m.kind)).toEqual(['roomWorks', 'operations', 'onTime']);
+    // письма: заведующая хирургией — с начала; к вечеру без ночной бригады — подсказка `nightOr`
+    expect(db.characters['char.head_surgeon'].name.en).toBe('Amara Obi');
+    expect(sc.letters.find(l => l.from === 'char.head_surgeon' && l.when === 'start')).toBeDefined();
+    expect(sc.letters.find(l => typeof l.when === 'object' && 'hint' in l.when)?.when).toEqual({ hint: 'nightOr' });
+  });
+
+  test('первые больные ждут операционную: до неё заданных нет, заработала — первый по скорой через две минуты, с аппендицитом; второй — пришедший сам, с переломом', () => {
+    const s = start(5);
+    const ambulance = () => Object.values(s.patients).some(p => p.kind === 'ambulance');
+    while (s.t < 24 * H && !ambulance()) apply(db, s, { kind: 'advance', seconds: 60 });
+    // скорая везёт, сами идут, а заданных нет
+    expect(ambulance()).toBe(true);
+    expect(Object.values(s.patients).some(p => p.kind === 'walkIn')).toBe(true);
+    expect(Object.values(s.patients).some(p => p.taught)).toBe(false);
+    const at = s.t;
+    site(s, OR);
+    apply(db, s, { kind: 'site', cmd: { kind: 'done' } });
+    while (s.t < at + 10 * 60 && !s.campaign!.taught) apply(db, s, { kind: 'advance', seconds: 60 });
+    const first = Object.values(s.patients).find(p => p.taught)!;
+    expect([first.kind, first.arriveT, first.patient.truth.conditions[0].id]).toEqual(['ambulance', at + 120, 'cond.appendicitis']);
+    while (s.t < at + 12 * H && (s.campaign!.taught ?? 0) < 2) apply(db, s, { kind: 'advance', seconds: 60 });
+    const second = Object.values(s.patients).find(p => p.taught && p.id !== first.id)!;
+    expect([second.kind, second.patient.truth.conditions[0].id]).toEqual(['walkIn', 'cond.ankle_fracture']);
+  }, 120_000);
+
+  test('порядок стройки: операционная, третья палата, санитар в операционной; в каталоге — одна строка операционной', () => {
+    const s = start(6);
+    const steps = () => sc.guide.map(g => roomWorks(db, s, g.room, g.role, g.count));
+    expect(steps()).toEqual([false, false, false]);
+    site(s, OR);
+    site(s, WARD);
+    apply(db, s, { kind: 'site', cmd: { kind: 'done' } });
+    expect(steps()).toEqual([true, true, true]);
+    // каталог: у операционной два шага — строка одна, на месте первого; её шаг — первый несделанный, а сделаны оба — первый
+    const rows = ['room.ward', 'room.or', 'room.office'].map(id => ({ id }));
+    const view = (done: boolean[]) => ({ guide: { on: true, steps: guideRows(db, sc, sc.guide.map((g, i) => ({ room: g.room, done: done[i] }))) } }) as Parameters<typeof byGuide>[1];
+    const out = (done: boolean[]) => byGuide(rows, view(done)).map(x => [x.row.id, x.step?.n]);
+    expect(out([false, false, false])).toEqual([['room.or', 1], ['room.ward', 2], ['room.office', undefined]]);
+    expect(out([true, false, false])).toEqual([['room.or', 3], ['room.ward', 2], ['room.office', undefined]]);
+    expect(out([true, true, true])).toEqual([['room.or', 1], ['room.ward', 2], ['room.office', undefined]]);
+    expect(guideRows(db, sc, sc.guide.map(g => ({ room: g.room, done: false })))[1].name).toBe('Палата для оперированных');
+  }, 120_000);
+
+  test('планёрка: строка «Операции» — сделано, срочные в срок и поздно, в срок ночью, осложнения', () => {
+    expect(T.meeting.surgery(3, 2, 1, 1, 1)).toBe('операции: 3, срочные — в срок 2, поздно 1 (в срок ночью — 1); осложнения после операции — 1');
+    expect(T.meeting.surgery(1, 0, 0, 0, 0)).toBe('операции: 1');
+  });
+
+  test('загрузчик: помещение обучения — из тех, что строят; шаг числом — с именем и не сделан с начала; шаги не повторяются', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bolnitsa-content-'));
+    try {
+      cpSync(CONTENT_DIR, dir, { recursive: true });
+      const file = join(dir, 'campaign/scenarios/surgery.yaml');
+      const text = readFileSync(file, 'utf8');
+      for (const anchor of ['tutorialRoom: room.or\n', 'guide:\n']) if (!text.includes(anchor)) throw new Error(`в записи нет ${anchor}`);
+      writeFileSync(
+        file,
+        text
+          .replace('tutorialRoom: room.or\n', 'tutorialRoom: [room.or, room.icu]\n')
+          .replace('guide:\n', 'guide:\n  - { room: room.ward, count: 2, name: { ru: "Палата", en: "Ward" }, why: { ru: "нужна", en: "needed" } }\n  - { room: room.or, why: { ru: "нужна", en: "needed" } }\n'),
+      );
+      expect(buildDb(dir).errors.filter(e => e.startsWith('scenario.surgery:')).sort()).toEqual([
+        'scenario.surgery: помещение обучения room.icu в сценарии не построить',
+        'scenario.surgery: порядок стройки: room.or повторяется',
+        'scenario.surgery: порядок стройки: шаг room.ward числом 2 сделан с начала',
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   }, 120_000);
 });

@@ -77,6 +77,9 @@ export const economyEn: EconomyStrings = {
     night: (arrived: number, wait: number, unseen: number) =>
       `night: the ambulance brought ${arrived}, the longest wait for a doctor — ${dur(wait)}${unseen > 0 ? `; not called by a doctor by morning — ${unseen}` : ''}`,
     nightHint: 'Ambulance arrivals from 20:00 until the meeting: from arrival until a doctor called them',
+    surgery: (done: number, onTime: number, late: number, complications: number, night: number) =>
+      `operations: ${done}${onTime + late > 0 ? `, urgent — on time ${onTime}, late ${late}` : ''}${night > 0 ? ` (on time at night — ${night})` : ''}${complications > 0 ? `; complications after surgery — ${complications}` : ''}`,
+    surgeryHint: 'Operations of the day. An urgent operation has its own deadline: on time means made it, late means missed it. At night means started on the night shift',
     routing: (wrong: number, routed: number, sent: number) =>
       `the registrar sent ${routed}, to the wrong department — ${wrong}${sent > 0 ? `; doctors passed on to the department of the illness — ${sent}` : ''}`,
     routingHint: 'The registrar sends walk-ins by their complaints: a skilled one by all of them, a low-skilled one by the main one. Wrong — by the illness the doctor found',

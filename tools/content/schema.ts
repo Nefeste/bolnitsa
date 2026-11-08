@@ -1210,13 +1210,19 @@ export const scenarioSchema = z.strictObject({
   department: z.string().regex(/^dept\.[a-z0-9_]+$/),
   build: z.array(roomId).min(1),
   tutorial: tutorialSchema,
+  /**
+   * помещения обучения (spec docs/specs/2026-11-scenario-3.md, часть 2): заданные больные приходят, когда они работают, —
+   * сценарию 3 нужна операционная
+   */
+  tutorialRoom: z.union([roomId, z.array(roomId).min(1)]).optional(),
   missions: z.array(missionSchema).min(1),
   letters: z.array(scenarioLetterSchema).default([]),
   /**
    * порядок стройки (решение владельца #114): помещения по порядку и зачем каждое — строкой; `role` — шаг сделан, когда на
-   * месте в помещении человек этой должности, `name` — имя шага (часть 3 сценария 2: «Кабинет хирурга»)
+   * месте в помещении человек этой должности, `count` — когда работают столько таких помещений (часть 2 сценария 3: третья
+   * палата), `name` — имя шага (часть 3 сценария 2: «Кабинет хирурга»)
    */
-  guide: z.array(z.strictObject({ room: roomId, role: roleId.optional(), name: text.optional(), why: text })).default([]),
+  guide: z.array(z.strictObject({ room: roomId, role: roleId.optional(), count: z.number().int().min(2).max(20).optional(), name: text.optional(), why: text })).default([]),
   /** подсказки наставника в карте больного (часть 2б): по порядку списка */
   tips: z.array(scenarioTipSchema).default([]),
 });

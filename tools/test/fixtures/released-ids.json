@@ -1,5 +1,5 @@
 {
-  "version": "0.74.0",
+  "version": "0.75.0",
   "base": 78,
   "ids": {
     "achievements": [
@@ -110,6 +110,7 @@
     "characters": [
       "char.chief",
       "char.city_chief",
+      "char.head_surgeon",
       "char.icu_head",
       "char.mentor",
       "char.neurologist",
@@ -1298,7 +1299,8 @@
     ],
     "scenarios": [
       "scenario.ambulatory",
-      "scenario.emergency"
+      "scenario.emergency",
+      "scenario.surgery"
     ],
     "scenarios.letters": [
       "scenario.ambulatory/asks",
@@ -1324,7 +1326,16 @@
       "scenario.emergency/nightsDone",
       "scenario.emergency/sheet",
       "scenario.emergency/sortingDone",
-      "scenario.emergency/surgeonDone"
+      "scenario.emergency/surgeonDone",
+      "scenario.surgery/budget",
+      "scenario.surgery/end",
+      "scenario.surgery/firstDay",
+      "scenario.surgery/hello",
+      "scenario.surgery/night",
+      "scenario.surgery/nightDone",
+      "scenario.surgery/ontimeDone",
+      "scenario.surgery/orDone",
+      "scenario.surgery/surgeon"
     ],
     "scenarios.missions": [
       "scenario.ambulatory/antibiotics",
@@ -1337,7 +1348,12 @@
       "scenario.emergency/sorting",
       "scenario.emergency/stay",
       "scenario.emergency/surgeon",
-      "scenario.emergency/xray"
+      "scenario.emergency/xray",
+      "scenario.surgery/night",
+      "scenario.surgery/ontime",
+      "scenario.surgery/operations",
+      "scenario.surgery/or",
+      "scenario.surgery/wait"
     ],
     "scores": [
       "score.news2"

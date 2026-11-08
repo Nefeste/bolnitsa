@@ -147,18 +147,19 @@ function deadlineCount(days: readonly DaySummary[], target: Id): number {
 
 /**
  * Работает ли помещение типа `room`; с `role` — и на его месте человек этой должности (spec docs/specs/2026-11-scenario-2.md,
- * часть 3: кабинет врача с амбулаторным хирургом). Так считают и цель, и шаг порядка стройки. Со сменами (spec
- * docs/specs/2026-10-staff-shifts.md) — работает хоть в одной: места и места в ординаторской — у тех, кто в этой смене, как
- * в самой смене (`dutyOf`); без смен — у всех сразу, как было.
+ * часть 3: кабинет врача с амбулаторным хирургом); с `count` — работают столько таких помещений (spec
+ * docs/specs/2026-11-scenario-3.md, часть 2: третья палата — для оперированных). Так считают и цель, и шаг порядка стройки. Со
+ * сменами (spec docs/specs/2026-10-staff-shifts.md) — работает хоть в одной: места и места в ординаторской — у тех, кто в
+ * этой смене, как в самой смене (`dutyOf`); без смен — у всех сразу, как было.
  */
-export function roomWorks(db: ContentDb, v: { hospital?: HospitalState; staff?: readonly StaffMember[] }, room: Id, role?: Id): boolean {
+export function roomWorks(db: ContentDb, v: { hospital?: HospitalState; staff?: readonly StaffMember[] }, room: Id, role?: Id, count = 1): boolean {
   if (!v.hospital) return false;
   const plan = planOf(db, v.hospital);
   const staff = v.staff ?? [];
   const crews = staff.some(m => m.shift !== undefined) ? [staff.filter(m => m.shift !== 'night' && !m.away), staff.filter(m => m.shift !== 'day' && !m.away)] : [staff];
   return crews.some(crew => {
     const working = workingRooms(db, plan, staffingOf(db, plan, crew));
-    return plan.rooms.some(r => r.type === room && working.has(r.id) && (role === undefined || crew.some(x => x.room === r.id && x.role === role)));
+    return plan.rooms.filter(r => r.type === room && working.has(r.id) && (role === undefined || crew.some(x => x.room === r.id && x.role === role))).length >= count;
   });
 }
 

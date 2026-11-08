@@ -988,8 +988,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       ...c, tutorial: c.tutorial.map(t => (typeof t === 'string' ? { condition: t } : t)), ...(tutorialRoom ? { tutorialRoom: [tutorialRoom].flat() } : {}),
     }])),
     // сценарии ПК (spec docs/specs/2026-10-scenario-1.md): заданный пациент строкой — пришедший сам, как у главы
-    scenarios: Object.fromEntries(Object.values(scenarios).sort((a, b) => a.order - b.order).map(c => [c.id, {
-      ...c, tutorial: c.tutorial.map(t => (typeof t === 'string' ? { condition: t } : t)),
+    scenarios: Object.fromEntries(Object.values(scenarios).sort((a, b) => a.order - b.order).map(({ tutorialRoom, ...c }) => [c.id, {
+      ...c, tutorial: c.tutorial.map(t => (typeof t === 'string' ? { condition: t } : t)), ...(tutorialRoom ? { tutorialRoom: [tutorialRoom].flat() } : {}),
     }])),
     tips: Object.fromEntries(Object.values(tips).sort((a, b) => a.order - b.order).map(t => [t.id, t])),
     achievements: Object.fromEntries(Object.values(achievements).sort((a, b) => a.order - b.order).map(a => [a.id, a])),
@@ -1789,6 +1789,9 @@ function checkScenarios(db: ContentDb, errors: string[]) {
     for (const r of standing) if (!c.build.includes(r)) at(`помещение ${r} стоит с начала, а в сценарии его не построить`);
     if (!Object.values(db.conditions).some(x => x.presenting && x.department === c.department)) at(`в отделении ${c.department} нет болезней`);
     const departments = [c.department, ...new Set(c.build.flatMap(r => db.rooms[r]?.admits ?? []))];
+    // помещения обучения (spec docs/specs/2026-11-scenario-3.md, часть 2): их строят в сценарии, и есть кого ждать
+    for (const t of c.tutorialRoom ?? []) if (!c.build.includes(t)) at(`помещение обучения ${t} в сценарии не построить`);
+    if (c.tutorialRoom && c.tutorial.length === 0) at('помещения обучения, а заданных больных нет');
     for (const t of c.tutorial) {
       const cond = db.conditions[t.condition];
       if (!cond) at(`болезнь обучения ${t.condition} не найдена`);
@@ -1830,11 +1833,15 @@ function checkScenarios(db: ContentDb, errors: string[]) {
         hints.add(l.when.hint);
       }
     }
-    // порядок стройки (решение владельца #114): только то, что в сценарии строят, каждое помещение — один раз
+    // порядок стройки (решение владельца #114): только то, что в сценарии строят, каждое помещение — один раз; с должностью
+    // или числом — ещё раз (сценарий 3: операционная и санитар в ней, третья палата)
     const steps = new Set<string>();
     for (const g of c.guide) {
-      if (steps.has(g.room)) at(`порядок стройки: ${g.room} повторяется`);
-      steps.add(g.room);
+      const key = `${g.room}:${g.role ?? ''}:${g.count ?? 1}`;
+      if (steps.has(key)) at(`порядок стройки: ${g.room}${g.role ? ` с должностью ${g.role}` : ''}${g.count ? ` числом ${g.count}` : ''} повторяется`);
+      steps.add(key);
+      if (g.count !== undefined && !g.name) at(`порядок стройки: у шага ${g.room} числом ${g.count} нужно имя`);
+      if (g.count !== undefined && standing.filter(t => t === g.room).length >= g.count) at(`порядок стройки: шаг ${g.room} числом ${g.count} сделан с начала`);
       if (!c.build.includes(g.room)) at(`порядок стройки: ${g.room} в сценарии не построить`);
       // шаг с должностью (часть 3 сценария 2): она встаёт на место в помещении, а у шага — своё имя
       if (g.role !== undefined && !standsIn(g.role, g.room)) at(`порядок стройки: ${g.role} не встаёт на место в ${g.room}`);

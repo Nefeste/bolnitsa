@@ -235,6 +235,7 @@ export const en: Strings = {
     sheet: 'An ambulance brought someone and you triage: «Handover sheet» in the doctor window at the bottom left. The colour decides whom a doctor calls first.',
     bays: 'No free place in the emergency room: arrivals wait at the entrance on a gurney. More places — a bigger emergency room or a second one.',
     night: 'At 20:00 the day shift leaves, and the ambulance comes at night too: «Hire for nights» in the card of the emergency room and of a doctor’s office.',
+    nightOr: 'At 20:00 the operating room’s team leaves, and urgent patients come at night too: «Hire for nights» in the operating room’s card.',
   },
   tabs: {
     patients: 'Patients',

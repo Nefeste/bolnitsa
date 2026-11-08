@@ -26,11 +26,11 @@ export async function polyPart({ page, port, out, ok, fail, q, shots }) {
   // карточки новой игры; «Продолжить» и список сохранений (spec 2026-10-saves) — от прошлых частей сценария, не в счёт;
   // «Энциклопедия» (spec 2026-10-encyclopedia) — не больница
   const cards = (await page.$$eval('#start button', els => els.map(e => [e.id, e.querySelector('b')?.textContent ?? '']))).filter(([id]) => !id.startsWith('start-continue') && !id.startsWith('start-save') && id !== 'start-enc');
-  // первой — «Кампания»: сценарии 1 и 2 (spec docs/specs/2026-10-scenario-1.md, docs/specs/2026-11-scenario-2.md), под ней —
-  // песочница, под ней — «Для врача» (spec docs/specs/2026-11-doctor-shift.md, часть 2)
+  // первой — «Кампания»: сценарии 1–3 (spec docs/specs/2026-10-scenario-1.md, docs/specs/2026-11-scenario-2.md,
+  // docs/specs/2026-11-scenario-3.md), под ней — песочница, под ней — «Для врача» (spec docs/specs/2026-11-doctor-shift.md, часть 2)
   const want = [
-    ['start-scenario-ambulatory', 'Сценарий 1. Амбулатория'], ['start-scenario-emergency', 'Сценарий 2. Приёмное'], ['start-empty', 'Пустое здание'],
-    ['start-poly', 'Поликлиника'], ['start-preset', 'Городская больница'], ['start-shift', 'Смена врача'],
+    ['start-scenario-ambulatory', 'Сценарий 1. Амбулатория'], ['start-scenario-emergency', 'Сценарий 2. Приёмное'], ['start-scenario-surgery', 'Сценарий 3. Хирургия'],
+    ['start-empty', 'Пустое здание'], ['start-poly', 'Поликлиника'], ['start-preset', 'Городская больница'], ['start-shift', 'Смена врача'],
   ];
   if (JSON.stringify(cards) === JSON.stringify(want)) ok(`экран начала — «Кампания», три карточки песочницы и «Для врача»: ${cards.map(c => `«${c[1]}»`).join(', ')}`);
   else fail(`карточки начала: ${JSON.stringify(cards)}`);
