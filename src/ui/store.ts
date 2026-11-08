@@ -190,6 +190,9 @@ export interface Hud {
   still: boolean;
   /** громкость звука (spec docs/specs/2026-11-sound.md, часть 1): 0–1 шагом 0,1 */
   volume: number;
+  /** громкость музыки (spec docs/specs/2026-11-sound.md, часть 3): так же; что звучит сейчас — номер пьесы в `TRACKS` */
+  music: number;
+  track?: number;
   build: BuildHud;
   roomTypes: RoomTypeRow[];
   readyTypes: ReadyTypeRow[];
@@ -303,6 +306,7 @@ export const initial: Hud = {
   names: true,
   still: false,
   volume: 0.7,
+  music: 0.5,
   build: { on: false, withStaff: true, moving: false, spent: 0, undo: 0 },
   roomTypes: [],
   readyTypes: [],
@@ -368,6 +372,8 @@ export interface Actions {
   toggleStill(): void;
   /** громкость звука, 0–1 */
   setVolume(v: number): void;
+  /** громкость музыки, 0–1 */
+  setMusic(v: number): void;
   bench(uncapped: boolean): void;
   setLang(l: Lang): void;
   /** стройка (spec docs/specs/2026-10-build.md) */
