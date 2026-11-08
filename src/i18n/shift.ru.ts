@@ -7,6 +7,9 @@ import { pluralRu as plural } from './plural';
 const points = (p: number) => p.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 /** День рекорда из `2026-11-08`: «08.11.2026». */
 const day = (iso: string) => iso.split('-').reverse().join('.');
+const MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+/** День случая дня из `2026-11-08`: «8 ноября». */
+const dayName = (iso: string) => `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]}`;
 
 export const shiftRu = {
   shift: {
@@ -50,6 +53,24 @@ export const shiftRu = {
     bestLine: (grade: string, p: number, iso: string) => `Лучший здесь: ${grade}, балл ${points(p)} — ${day(iso)}.`,
     again: 'Новая смена',
     menu: 'В меню',
+  },
+  /** случай дня (spec docs/specs/2026-11-doctor-shift.md, часть 3): экран начала, список дней, «Итог дня» */
+  daily: {
+    start: 'Случай дня',
+    startHint: 'один трудный больной в сутки, у всех тот же; любой из последних 30 дней — когда угодно',
+    lead: 'Трудный больной: по жалобам похоже на многое, и расспроса с осмотром мало. Городская больница, других больных нет — только он. Засчитывается первая попытка; переиграть можно.',
+    days: 'Дни',
+    day: (iso: string, i: number) => (i === 0 ? `Сегодня, ${dayName(iso)}` : i === 1 ? `Вчера, ${dayName(iso)}` : dayName(iso)),
+    played: (grade: string, verdict: string) => `сыгран: ${grade}, ${verdict}`,
+    notPlayed: 'не сыгран',
+    verdict: { correct: 'диагноз верный', partly: 'почти верный', wrong: 'неверный' } as Record<string, string>,
+    /** окно «Итог дня» */
+    title: (iso: string) => `Случай дня · ${dayName(iso)}`,
+    grade: (grade: string, verdict: string) => `Итог: ${grade}, ${verdict}`,
+    first: 'Засчитано — первая попытка.',
+    counted: (grade: string, verdict: string) => `Засчитана первая попытка: ${grade}, ${verdict}.`,
+    review: 'Разбор',
+    again: 'Сыграть снова',
   },
 };
 

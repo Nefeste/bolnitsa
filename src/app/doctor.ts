@@ -407,7 +407,8 @@ export class Doctor {
     this.collecting = false;
     // лист передачи ещё открыт — часы держит он
     if (this.hud.sheet !== undefined) this.sheetBefore = back;
-    else this.g.speed = back;
+    // через `setSpeed`: после конца смены врача или приёма больного дня часы так и стоят
+    else this.g.setSpeed(back);
   }
 
   /** Лист передачи (spec docs/specs/2026-11-scenario-2.md, часть 2а): открыть — часы стоят, как у своей карты. */
@@ -427,7 +428,7 @@ export class Doctor {
     if (this.sheetBefore !== null) {
       const back = this.sheetBefore;
       this.sheetBefore = null;
-      this.g.speed = back;
+      this.g.setSpeed(back);
     }
     this.g.refresh();
     return true;

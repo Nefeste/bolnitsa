@@ -4,6 +4,9 @@ import type { Manage } from '../content/types';
 import type { ShiftStrings } from './shift.ru';
 
 const points = (p: number) => p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+/** The day of a case of the day from `2026-11-08`: «8 November». */
+const dayName = (iso: string) => `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]}`;
 
 export const shiftEn: ShiftStrings = {
   shift: {
@@ -43,5 +46,21 @@ export const shiftEn: ShiftStrings = {
     bestLine: (grade: string, p: number, iso: string) => `Best here: ${grade}, score ${points(p)} — ${iso}.`,
     again: 'New shift',
     menu: 'To the menu',
+  },
+  daily: {
+    start: 'Case of the day',
+    startHint: 'one hard patient a day, the same for everyone; any of the last 30 days, whenever you like',
+    lead: 'A hard patient: the complaints fit many illnesses, and questions and an examination are not enough. A city hospital, no other patients, only this one. The first try counts; you can play again.',
+    days: 'Days',
+    day: (iso: string, i: number) => (i === 0 ? `Today, ${dayName(iso)}` : i === 1 ? `Yesterday, ${dayName(iso)}` : dayName(iso)),
+    played: (grade: string, verdict: string) => `played: ${grade}, ${verdict}`,
+    notPlayed: 'not played',
+    verdict: { correct: 'right diagnosis', partly: 'nearly right', wrong: 'wrong' } as Record<string, string>,
+    title: (iso: string) => `Case of the day · ${dayName(iso)}`,
+    grade: (grade: string, verdict: string) => `Result: ${grade}, ${verdict}`,
+    first: 'Counted: the first try.',
+    counted: (grade: string, verdict: string) => `The first try counts: ${grade}, ${verdict}.`,
+    review: 'Review',
+    again: 'Play again',
   },
 };

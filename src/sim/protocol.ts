@@ -16,6 +16,7 @@ import type { CardView, DoctorState, ErrorList, Refusal, RouteMiss, SeenList, So
 import type { Leg } from './legs';
 import type { NameRow } from './pack';
 import type { SaveMeta } from './packing';
+import type { DailyEnd } from './daily';
 import type { ShiftEnd } from './shift';
 
 export type ToSim =
@@ -27,6 +28,11 @@ export type ToSim =
       manage?: Manage; soft?: boolean;
       /** смена врача (spec docs/specs/2026-11-doctor-shift.md): принимаете только вы, больница готовая, кассы нет */
       solo?: boolean;
+      /**
+       * случай дня (spec docs/specs/2026-11-doctor-shift.md, часть 3): день ГГГГ-ММ-ДД — поток подбирает больного дня и
+       * начинает смену без потока, только вы; время года — дня, а не `season`
+       */
+      daily?: string;
     }
   /** открыть сохранение — снимок состояния */
   | { kind: 'load'; state: ShiftState }
@@ -102,6 +108,8 @@ export type FromSim =
       moods?: MoodView[]; rides?: Ride[]; rounds?: Round[]; scenario?: ScenarioView; money?: RoomsMoney; legs?: Leg[];
       /** смена врача кончилась (spec docs/specs/2026-11-doctor-shift.md): итог — один раз, в 20:00 */
       shift?: ShiftEnd;
+      /** случай дня (часть 3): приём больного дня закрыт — итог, один раз */
+      daily?: DailyEnd;
     } & DoctorOut)
   | { kind: 'state'; state: ShiftState }
   /** файл сохранения: сжатые байты (без копии) и его шапка; не вышло — `packFailed` */

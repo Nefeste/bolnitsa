@@ -11,6 +11,7 @@ import type { Leg } from './legs';
 import type { NameRow } from './pack';
 import type { SaveMeta } from './packing';
 import type { DoctorAct, DoctorOut, FromSim, PathView, RoomsMoney, ToSim, World } from './protocol';
+import type { DailyEnd } from './daily';
 import type { ShiftEnd } from './shift';
 
 /** Срез и, если изменились, режим врача (spec docs/specs/2026-10-doctor-mode.md). */
@@ -42,6 +43,8 @@ export interface Slice extends DoctorOut {
   legs?: Leg[];
   /** смена врача кончилась (spec docs/specs/2026-11-doctor-shift.md): итог — один раз, в 20:00 */
   shift?: ShiftEnd;
+  /** случай дня (часть 3): приём больного дня закрыт — итог, один раз */
+  daily?: DailyEnd;
 }
 
 export class SimClient {

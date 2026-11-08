@@ -15,6 +15,8 @@ import { patientName } from './caseView';
 import { comingAt, DoctorDesk, officeOf, takeCommand } from './doctor';
 import { type Leg, legsOf } from './legs';
 import { Handles, packSlice } from './pack';
+import { dailyCaseSeed, type DailyEnd } from './daily';
+import { seasonOfDay } from './days';
 import { shiftEnd, type ShiftEnd, shiftEndOf } from './shift';
 import { type DoctorOut, type FromSim, LEGS_EVERY, type PathView, ROOMS_DAYS, type RoomsMoney, type ToSim, type World } from './protocol';
 
@@ -61,6 +63,7 @@ export function createSim(db: ContentDb): SimHost {
   let sentScenario = '';
   /** смена врача (spec docs/specs/2026-11-doctor-shift.md): итог уже ушёл окну */
   let sentShift = false;
+  let sentDaily = false;
   /** чей путь показывает окно и каким он был отправлен */
   let watch: string | null = null;
   let sentPath: string | undefined;
@@ -160,9 +163,18 @@ export function createSim(db: ContentDb): SimHost {
     }
     // смена врача (spec docs/specs/2026-11-doctor-shift.md): дошли до 20:00 — итог, один раз
     let shift: ShiftEnd | undefined;
-    if (s!.meta.solo && !sentShift && s!.until === undefined && s!.t >= shiftEndOf(db)) {
+    if (s!.meta.solo && s!.meta.daily === undefined && !sentShift && s!.until === undefined && s!.t >= shiftEndOf(db)) {
       sentShift = true;
       shift = shiftEnd(s!);
+    }
+    // случай дня (часть 3): приём больного дня закрыт — итог, один раз
+    let daily: DailyEnd | undefined;
+    if (s!.meta.daily !== undefined && !sentDaily) {
+      const p = Object.values(s!.patients).find(x => x.daily && x.closed && !x.closed.by);
+      if (p) {
+        sentDaily = true;
+        daily = { id: p.id, verdict: p.closed!.verdict, grade: p.closed!.grades.overall };
+      }
     }
     // деньги по помещениям (часть 2 слоя «Показатели»): сегодня — когда сдвинулись; прошедшие сутки — когда их прибавилось
     let money: RoomsMoney | undefined;
@@ -198,7 +210,7 @@ export function createSim(db: ContentDb): SimHost {
     }
     const lag = owed + (s!.until !== undefined ? s!.until - s!.t : 0);
     const { buf, names } = packSlice(s!, sliceOf(s!, officeOf(db, s!)), lag, handles, rooms, staff, patientName);
-    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...(late ? { late } : {}), ...(crew ? { crew } : {}), ...(moods ? { moods } : {}), ...(rides ? { rides } : {}), ...(rounds ? { rounds } : {}), ...(scenario ? { scenario } : {}), ...(money ? { money } : {}), ...(legs ? { legs } : {}), ...(shift ? { shift } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
+    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...(late ? { late } : {}), ...(crew ? { crew } : {}), ...(moods ? { moods } : {}), ...(rides ? { rides } : {}), ...(rounds ? { rounds } : {}), ...(scenario ? { scenario } : {}), ...(money ? { money } : {}), ...(legs ? { legs } : {}), ...(shift ? { shift } : {}), ...(daily ? { daily } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
   };
   const fresh = () => {
     owed = 0;
@@ -215,6 +227,7 @@ export function createSim(db: ContentDb): SimHost {
     scenarioAt = [];
     sentScenario = '';
     sentShift = false;
+    sentDaily = false;
     sentPath = undefined;
     legsAt = -Infinity;
     sentLegs = '';
@@ -239,6 +252,8 @@ export function createSim(db: ContentDb): SimHost {
               ...(msg.manage ? { manage: msg.manage } : {}),
               ...(msg.soft ? { soft: true } : {}),
               ...(msg.solo ? { solo: true } : {}),
+              // случай дня (spec docs/specs/2026-11-doctor-shift.md, часть 3): подбор — здесь, в потоке расчёта; принимаете только вы
+              ...(msg.daily ? { daily: dailyCaseSeed(db, msg.daily), solo: true, season: seasonOfDay(msg.daily) } : {}),
             });
             fresh();
             return slice([]);
@@ -280,7 +295,7 @@ export function createSim(db: ContentDb): SimHost {
             if (!s) return { kind: 'error', message: 'нет смены' };
             owed += msg.seconds;
             // смена врача (spec docs/specs/2026-11-doctor-shift.md): часы — не дальше 20:00; начатое действие доживает своё
-            if (s.meta.solo) owed = Math.max(0, Math.min(owed, shiftEndOf(db) - Math.max(s.t, s.until ?? s.t)));
+            if (s.meta.solo && s.meta.daily === undefined) owed = Math.max(0, Math.min(owed, shiftEndOf(db) - Math.max(s.t, s.until ?? s.t)));
             const more = budget(msg.budgetMs);
             const notices: Notice[] = [];
             if (s.until !== undefined) notices.push(...catchUp(db, s, more));
