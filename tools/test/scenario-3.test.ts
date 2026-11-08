@@ -130,7 +130,7 @@ describe('сценарий 3: запись — первые больные, по
     expect(sc.build).toEqual([...db.scenarios!['scenario.emergency'].build, 'room.or']);
     expect(sc.tutorialRoom).toEqual(['room.or']);
     expect(sc.tutorial.map(t => [t.condition, !!t.ambulance])).toEqual([['cond.appendicitis', true], ['cond.ankle_fracture', false], ['cond.strangulated_hernia', true]]);
-    // всем троим нужна операция: аппендициту — в сутки, ущемлённой грыже — за 2 часа, перелому со смещением — без срока
+    // всем троим нужна операция: аппендициту — в сутки, ущемлённой грыже — за 2 часа, нестабильному перелому лодыжек — без срока
     expect(sc.tutorial.map(t => db.conditions[t.condition].surgery?.window)).toEqual([24, undefined, 2]);
     expect(sc.tutorial[1].params).toEqual({ stability: 'unstable' });
     expect(sc.guide.map(g => [g.room, g.role, g.count])).toEqual([['room.or', undefined, undefined], ['room.ward', undefined, 3], ['room.or', 'role.orderly', undefined]]);
