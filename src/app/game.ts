@@ -1840,6 +1840,9 @@ export class Game {
     return !bays || !doctor;
   }
 
+  /** Где делают операции базы (`surgery.room` у лечений) — для подсказки `nightOr`; одно на игру. */
+  private orTypes?: ReadonlySet<Id>;
+
   /**
    * Вечер (16:00–20:00), операционная работает, а на ночь бригады в ней нет — хоть одного, без кого она не работает (spec
    * docs/specs/2026-11-scenario-3.md, часть 2, подсказка `nightOr`): в 20:00 дневная смена уйдёт, а срочного везут и ночью.
@@ -1849,7 +1852,7 @@ export class Game {
     const hour = Math.floor((this.t % 86400) / 3600);
     if (hour < 16 || hour >= 20) return false;
     const { db } = this;
-    const types = new Set(Object.values(db.treatments).flatMap(x => (x.surgery ? [x.surgery.room] : [])));
+    const types = (this.orTypes ??= new Set(Object.values(db.treatments).flatMap(x => (x.surgery ? [x.surgery.room] : []))));
     const ors = this.plan.rooms.filter(r => types.has(r.type) && this.working.has(r.id));
     if (ors.length === 0) return false;
     const night = this.staff.filter(m => m.shift === 'night');
