@@ -606,9 +606,15 @@ async function partTwo() {
   await until(() => !!document.getElementById('it-plant'));
   await page.click('#it-plant');
   const chair = (await items(waiting)).find(i => i.kind === 'chair');
-  const c0 = await at(chair.x, chair.y);
-  await page.mouse.move(c0.x, c0.y);
-  await page.waitForTimeout(150);
+  // камера доезжает за кадрами, а без видеокарты кадр — раз в четверть секунды: курсор — на клетку стула, пока стройка не
+  // увидит под ним её, и призрак — её словами
+  for (let i = 0; i < 8; i++) {
+    const c0 = await at(chair.x, chair.y);
+    await page.mouse.move(c0.x, c0.y);
+    const on = await until(([x, y]) => { const h = window.__game.builder.hover; return !!h && h[0] === x && h[1] === y; }, [chair.x, chair.y], 1000).then(() => true, () => false);
+    if (on) break;
+  }
+  await until(() => (document.getElementById('ghost')?.textContent ?? '').includes('здесь уже стул'), null, 3000).catch(() => {});
   const red = await page.$eval('#ghost', el => ({ bad: el.classList.contains('bad'), text: el.textContent }));
   if (red.bad && red.text.includes('здесь уже стул')) ok(`призрак на стуле: «${red.text}»`);
   else fail(`призрак на стуле: ${JSON.stringify(red)}`);
