@@ -6,7 +6,7 @@ import { extname, join, normalize } from 'node:path';
 
 const root = new URL('../../dist/', import.meta.url).pathname;
 const port = Number(process.env.PORT ?? 8080);
-const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.wasm': 'application/wasm', '.json': 'application/json', '.glb': 'model/gltf-binary', '.png': 'image/png', '.md': 'text/markdown; charset=utf-8', '.wav': 'audio/wav' };
+const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.wasm': 'application/wasm', '.json': 'application/json', '.glb': 'model/gltf-binary', '.png': 'image/png', '.md': 'text/markdown; charset=utf-8', '.wav': 'audio/wav', '.webm': 'audio/webm' };
 
 export function serve(p = port) {
   const server = createServer(async (req, res) => {

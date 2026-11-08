@@ -195,6 +195,11 @@ npm run dist:win                   # build + Windows x64 zips → release/ (from
 npm run assets -- <sources dir>    # rebuild assets/models/*.glb from the CC0 packs (byte-identical; see assets/LICENSES.md)
 npm run sound                      # the sounds from formulas (docs/specs/2026-11-sound.md): assets/audio/*.wav and its registry
                                    # assets/audio/LICENSES.md (tools/sound/gen.ts, a copy of Skazy's; byte-identical)
+npm run music                      # the music (docs/specs/2026-11-sound.md, part 3): the pieces of assets/audio/music.yaml — the
+                                   # owner's choice, #214 — downloaded and checked by SHA-256 (cache tools/sound/.cache, not in
+                                   # git), trimmed, levelled, stereo Opus → assets/audio/music/*.webm, src/app/music.gen.ts and the
+                                   # registry (tools/sound/music.ts, a copy of Uzory's; needs ffmpeg with libopus; byte-identical
+                                   # with the same ffmpeg; `-- --only <id>` — one piece)
 node tools/app/people.mjs --fetch <dir>   # Rocketbox people (MIT): download the pinned sources, check SHA-256
 node tools/app/people.mjs <dir>    # then rebuild assets/models/rocketbox/ (glb + mask, byte-identical; docs/specs/2026-10-people.md)
 bun tools/app/people-licenses.ts   # then the Rocketbox tables of assets/LICENSES.md from sources.json and cast.ts
@@ -536,7 +541,14 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   with the `bench` and `shot` keys. A sound only answers the player's action or an event they wait for (studio ADR 0023, rule
   6): a window button (`bindInput`), a site result and an urgent notice (`onSlice`, `notice` in `game.ts`), a scenario letter
   but the morning's, the meeting or a done goal (`show` in `money.ts`). The files are made by `tools/sound/gen.ts` from formulas
-  (a copy of Skazy's generator; never edit them by hand), each with its line in `assets/audio/LICENSES.md`.
+  (a copy of Skazy's generator; never edit them by hand), each with its line in `assets/audio/LICENSES.md`. Part 3, the music
+  (owner's decisions #208, #214): `src/app/music.ts` — `Music` plays the pieces of `TRACKS` (`music.gen.ts`, written by
+  `tools/sound/music.ts` from `assets/audio/music.yaml`; never edit it by hand) in a shuffled round (`shuffleOrder`), with
+  `PAUSE_S` of silence between them and at `MUSIC_GAIN` of «Музыка» (`musicOf`, `Settings.music`); it starts on the same first
+  press as the sound, loads a piece whole (`fetch`, then a `blob:` URL — `media-src` of the page's policy allows it) into an
+  `<audio>` element, pauses in a hidden window and is off where the sound is; `Game.music.onChange` puts the piece playing into
+  `Hud.track`, and «Настройки» show it and the pieces' credits (`MusicNow` in `src/ui/App.tsx`; a CC BY piece shows its credit
+  line). The music section of `assets/audio/LICENSES.md` comes from the same list (`musicLicenses` in `tools/sound/tracks.ts`).
 - `src/app/` — the game in the window: loads the database and models, starts with the empty building or the preset,
   frame loop, clock, input, build tools (`build.ts`), room labels (`labels.ts`: build mode and the «Отделения» layer, DOM), room
   names at a middle zoom (`tags.ts`: one canvas over the 3D view at the screen's resolution — `fadeOf` by zoom, `placeTags`

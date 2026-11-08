@@ -13,3 +13,4 @@ __pycache__/
 
 # сборка моделей Blender до сжатия (blender/build.py → tools/app/blender-pack.mjs)
 blender/.out/
+tools/sound/.cache/

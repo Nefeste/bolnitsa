@@ -2,6 +2,8 @@
 // нажатия звука нет, первое нажатие — файлы загружены; «Звук» в «Настройках» — 70 % по умолчанию; кнопка окна — щелчок;
 // снять скамью у двери — снос, поставить на её место — стук, на занятое место — отказ; найм в резерв — колокольчики;
 // громкость 0 — тишина и после нажатий; снова 70 % — «До утра», планёрка звуком. Громкость запоминается после перезагрузки.
+// Часть 3 — музыка: с первым нажатием — первая пьеса; в «Настройках» — «Музыка» 50 %, что звучит и восемь авторов пьес, у
+// четырёх — CC BY; «Музыка» 0 — пьеса смолкла, громкость записана; снова 50 % — новая пьеса.
 
 /** @param {{ page: import('playwright-core').Page, port: number, out: string, ok: (m: string) => void, fail: (m: string) => void, q: string }} x */
 export async function soundPart({ page, port, ok, fail, q }) {
@@ -22,6 +24,12 @@ export async function soundPart({ page, port, ok, fail, q }) {
   const loaded = await until(() => window.__game.sound.ready, null, 15000).then(() => true, () => false);
   if (!before && loaded) ok('до первого нажатия звука нет; первое нажатие — файлы звуков загружены');
   else fail(`звук до и после первого нажатия: ${JSON.stringify({ before, loaded })}`);
+  // музыка (spec docs/specs/2026-11-sound.md, часть 3): с тем же нажатием — первая пьеса
+  const tune = () => page.evaluate(() => ({ started: window.__game.music.started, now: window.__game.music.now?.id ?? null, track: window.__game.store.get().track ?? null }));
+  const music = await until(() => window.__game.music.started > 0 && !!window.__game.music.now, null, 30000).then(() => true, () => false);
+  const m0 = await tune();
+  if (music && m0.track !== null) ok(`с первым нажатием — музыка: «${m0.now}»`);
+  else fail(`музыка после первого нажатия: ${JSON.stringify(m0)}`);
 
   // ---------------------------------------------------------------- «Звук» в «Настройках»; кнопка — щелчок
   await page.click('#settings-open');
@@ -29,6 +37,13 @@ export async function soundPart({ page, port, ok, fail, q }) {
   const vol = await page.evaluate(() => ({ value: document.getElementById('volume')?.value, text: document.getElementById('volume-value')?.textContent }));
   if (vol.value === '70' && vol.text === '70 %') ok('«Настройки»: «Звук» — 70 % по умолчанию');
   else fail(`«Звук» в «Настройках»: ${JSON.stringify(vol)}`);
+  const mus = await page.evaluate(() => {
+    const items = [...document.querySelectorAll('#music-authors li')].map(li => li.textContent ?? '');
+    return { value: document.getElementById('music')?.value, text: document.getElementById('music-value')?.textContent, now: document.getElementById('music-now')?.textContent ?? '', items: items.length, by: items.filter(x => x.includes('CC BY')).length };
+  });
+  if (mus.value === '50' && mus.text === '50 %' && /^Сейчас: «.+» — .+/.test(mus.now) && mus.items === 8 && mus.by === 4) {
+    ok(`«Музыка» — 50 % по умолчанию; «${mus.now}»; «Авторы музыки» — восемь пьес, у четырёх — CC BY`);
+  } else fail(`«Музыка» в «Настройках»: ${JSON.stringify(mus)}`);
   const p0 = await played();
   await page.click('#settings-close');
   if (await heard('click', p0.click)) ok('кнопка окна — щелчок');
@@ -66,6 +81,23 @@ export async function soundPart({ page, port, ok, fail, q }) {
   const p3 = await played();
   if (zero.text === 'без звука' && zero.saved === 0 && p3.click === p2.click) ok('«Звук» — «без звука»: нажатия кнопок тихие, громкость записана');
   else fail(`громкость 0: ${JSON.stringify({ zero, p2: p2.click, p3: p3.click })}`);
+  // «Музыка» 0 — пьеса смолкла; снова 50 % — новая пьеса
+  await page.click('#game-menu-open');
+  await page.click('#settings-open');
+  await page.waitForSelector('#settings #music', { timeout: 5000 });
+  const m1 = await tune();
+  await page.$eval('#music', el => {
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    set.call(el, '0');
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const hush = await until(() => !window.__game.music.now && window.__game.store.get().track === undefined, null, 5000).then(() => true, () => false);
+  const quiet = await page.evaluate(() => ({ text: document.getElementById('music-value')?.textContent, saved: JSON.parse(localStorage.getItem('bolnitsa.settings') ?? '{}').music, now: !!document.getElementById('music-now') }));
+  await page.evaluate(() => window.__game.actions.setMusic(0.5));
+  const again = await until(n => window.__game.music.started > n && !!window.__game.music.now, m1.started, 30000).then(() => true, () => false);
+  await page.click('#settings-close');
+  if (hush && quiet.text === 'без музыки' && quiet.saved === 0 && !quiet.now && again) ok('«Музыка» — «без музыки»: пьеса смолкла, громкость записана; снова 50 % — новая пьеса');
+  else fail(`«Музыка» 0 и снова: ${JSON.stringify({ hush, quiet, again, m: await tune() })}`);
 
   // ---------------------------------------------------------------- громкость запоминается; «До утра» — планёрка звуком
   await page.evaluate(() => window.__game.actions.setVolume(0.7));

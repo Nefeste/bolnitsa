@@ -289,6 +289,15 @@ export const ru = {
     volume: 'Звук',
     volumeHint: 'Кнопки, стройка, найм, срочные извещения, письма и планёрка. 0 — без звука',
     volumeValue: (pct: number) => (pct === 0 ? 'без звука' : `${pct} %`),
+    /** музыка (spec docs/specs/2026-11-sound.md, часть 3) */
+    music: 'Музыка',
+    musicHint: 'Спокойные пьесы по кругу, с тишиной между ними, тише звуков. 0 — без музыки',
+    musicValue: (pct: number) => (pct === 0 ? 'без музыки' : `${pct} %`),
+    nowPlaying: (title: string, author: string) => `Сейчас: «${title}» — ${author}`,
+    musicSilent: 'Сейчас — тишина между пьесами',
+    musicAuthors: 'Авторы музыки',
+    musicCredit: (title: string, author: string, license: string) => `«${title}» — ${author}, ${license}`,
+    musicChanged: 'Пьесы в игре изменены: тишина по краям убрана, громкость выровнена, файл пересжат.',
   },
   /** «Настройки» (spec docs/specs/2026-10-settings.md; решение владельца #70): вид и качество, запоминаются */
   settings: {

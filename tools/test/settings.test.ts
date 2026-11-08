@@ -12,21 +12,26 @@ const memory = () => {
 
 describe('настройки', () => {
   test('по умолчанию — вид владельца: стены вниз, перспектива, качество «авто» (#70)', () => {
-    expect(DEFAULT_SETTINGS).toEqual({ walls: 'down', projection: 'persp', quality: 'auto', debug: false, metric: null, text: 1, names: true, still: null, volume: 0.7 });
+    expect(DEFAULT_SETTINGS).toEqual({ walls: 'down', projection: 'persp', quality: 'auto', debug: false, metric: null, text: 1, names: true, still: null, volume: 0.7, music: 0.5 });
     expect(parseSettings(null)).toEqual(DEFAULT_SETTINGS);
     expect(readSettings(memory())).toEqual(DEFAULT_SETTINGS);
   });
 
   test('записанное — читается; чужое и испорченное — по умолчанию, поле за полем', () => {
     const store = memory();
-    writeSettings({ walls: 'cut', projection: 'ortho', quality: 'low', debug: true, metric: 'wait', text: 1.3, names: false, still: true, volume: 0.3 }, store);
-    expect(readSettings(store)).toEqual({ walls: 'cut', projection: 'ortho', quality: 'low', debug: true, metric: 'wait', text: 1.3, names: false, still: true, volume: 0.3 });
+    writeSettings({ walls: 'cut', projection: 'ortho', quality: 'low', debug: true, metric: 'wait', text: 1.3, names: false, still: true, volume: 0.3, music: 0.2 }, store);
+    expect(readSettings(store)).toEqual({ walls: 'cut', projection: 'ortho', quality: 'low', debug: true, metric: 'wait', text: 1.3, names: false, still: true, volume: 0.3, music: 0.2 });
     // громкость (spec docs/specs/2026-11-sound.md, часть 1): ступень 0,1; не было — 0,7, как у настроек до звука; 0 — без звука
     expect(parseSettings('{"volume":0.34}').volume).toBe(0.3);
     expect(parseSettings('{"volume":0}').volume).toBe(0);
     expect(parseSettings('{"volume":7}').volume).toBe(1);
     expect(parseSettings('{"volume":"loud"}').volume).toBe(0.7);
     expect(parseSettings('{"walls":"cut"}').volume).toBe(0.7);
+    // громкость музыки (spec docs/specs/2026-11-sound.md, часть 3): так же ступенями; не было — 0,5, как у настроек до музыки
+    expect(parseSettings('{"music":0.26}').music).toBe(0.3);
+    expect(parseSettings('{"music":0}').music).toBe(0);
+    expect(parseSettings('{"music":"loud"}').music).toBe(0.5);
+    expect(parseSettings('{"volume":0.2}').music).toBe(0.5);
     // размер текста — один из трёх, как в «Анамнезе»; другой — обычный
     expect(TEXT_SCALES).toEqual([1, 1.15, 1.3]);
     expect(parseSettings('{"text":1.15}').text).toBe(1.15);

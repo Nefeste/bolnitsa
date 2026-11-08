@@ -65,6 +65,8 @@ import { columnOf, type Metric, METRICS, METRICS_READY, MONEY_METRICS, moneyColu
 import { ColumnLabels } from './collabels';
 import { applyStill, applyText, AutoQuality, type QualityMode, readSettings, type Settings, stillOf, systemStill, type TextScale, writeSettings } from './settings';
 import { DEFAULT_VOLUME, siteCue, Sound, volumeOf } from './sound';
+import { DEFAULT_MUSIC, Music, musicOf } from './music';
+import { TRACKS } from './music.gen';
 import { HoverLabel } from './hover';
 import { Labels } from './labels';
 import { fadeOf, RoomTags, TAG_GAP } from './tags';
@@ -426,6 +428,8 @@ export class Game {
    * сцене экрана начала и в «Авто-бенче» — без звука
    */
   sound = new Sound(DEFAULT_VOLUME, false);
+  /** музыка (spec docs/specs/2026-11-sound.md, часть 3): пьесы по кругу, тише звуков; там же, где звук */
+  music = new Music(TRACKS, DEFAULT_MUSIC, false);
   /**
    * демо (spec docs/specs/2026-11-demo.md): игра открыта ключом `demo` — после первой планёрки сценария окно «Итог»
    * (`demoShown` — уже было) со снимком больницы (`demoShot` — PNG адресом `data:`)
@@ -465,6 +469,11 @@ export class Game {
     g.demoMode = !g.backdrop && new URLSearchParams(location.search).get('demo') === '1';
     const keys = new URLSearchParams(location.search);
     g.sound = new Sound(g.prefs.volume, !g.backdrop && !keys.has('bench') && !keys.has('shot'));
+    g.music = new Music(TRACKS, g.prefs.music, !g.backdrop && !keys.has('bench') && !keys.has('shot'));
+    g.music.onChange = () => {
+      const now = g.music.now;
+      store.set({ track: now ? TRACKS.indexOf(now) : undefined });
+    };
     g.start = start;
     g.role = role;
     // названия сценариев — строкам сохранений в меню игры (spec docs/specs/2026-10-scenario-1.md)
@@ -602,7 +611,7 @@ export class Game {
     // «меньше движения» (ADR 0023 устава, правило 6): выбор игрока или как в системе
     const still = stillOf(p, systemStill());
     this.showStill(still);
-    store.set({ ready: true, status: '', progress: undefined, demoMode: this.demoMode, quality, qualityMode: p.quality, debug: p.debug, names: p.names, still, volume: p.volume, speed: this.speed, layers: { ...store.get().layers, metric } });
+    store.set({ ready: true, status: '', progress: undefined, demoMode: this.demoMode, quality, qualityMode: p.quality, debug: p.debug, names: p.names, still, volume: p.volume, music: p.music, speed: this.speed, layers: { ...store.get().layers, metric } });
     requestAnimationFrame(this.loop);
   }
 
@@ -1985,6 +1994,12 @@ export class Game {
       this.store.set({ volume });
       this.remember({ volume });
     },
+    setMusic: v => {
+      const music = musicOf(v);
+      this.music.setVolume(music);
+      this.store.set({ music });
+      this.remember({ music });
+    },
     bench: uncapped => {
       if (uncapped && window.shell) window.shell.relaunch(['--bench', '--uncapped']);
       else void import('./bench').then(m => m.runBench(this, {}));
@@ -2315,8 +2330,12 @@ export class Game {
 
   private bindInput() {
     const el = this.stage.renderer.domElement;
-    // звук (spec docs/specs/2026-11-sound.md, часть 1): браузер даёт его после первого нажатия игрока; кнопка окна — щелчок
-    const unlock = () => this.sound.unlock();
+    // звук (spec docs/specs/2026-11-sound.md, часть 1): браузер даёт его после первого нажатия игрока; кнопка окна — щелчок;
+    // с тем же нажатием — и музыка (часть 3)
+    const unlock = () => {
+      this.sound.unlock();
+      this.music.unlock();
+    };
     window.addEventListener('pointerdown', unlock, { capture: true });
     window.addEventListener('keydown', unlock, { capture: true });
     document.addEventListener(

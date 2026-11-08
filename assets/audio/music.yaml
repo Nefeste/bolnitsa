@@ -1,0 +1,79 @@
+# Музыка «Больницы» (docs/specs/2026-11-sound.md, часть 3; геймдизайн §13): спокойная музыка CC0 и CC BY с OpenGameArt.org
+# и Free Music Archive, без NC, ND и SA (решение владельца #208, вариант 2). Кандидатов подобрал агент (#214: десять пьес от
+# десяти авторов), выбрал владелец 08.11.2026: «Убираем 5 и 8, остальные можно оставить все» — здесь восемь, кроме
+# Viewpoint (Serat) и ACOUSTIC MEDITATION (Jason Shaw).
+#
+# У каждой пьесы: страница `page` — где сказана лицензия; `download` — откуда файл (тот, что на странице; у Free Music
+# Archive — файл проигрывателя страницы: кнопка «Download» просит войти), `sha256` — его хеш; у CC BY — `credit`, строка
+# атрибуции, как просит страница; `note` — где и когда выложена и что она не из генератора (AGENTS.md: музыка — никогда из
+# генераторов). Файл — assets/audio/music/<id>.webm: `npm run music` (tools/sound/music.ts, нужен ffmpeg). Генератор
+# пишет и src/app/music.gen.ts, и раздел «Музыка» в assets/audio/LICENSES.md.
+tracks:
+  - id: bluebonnet
+    title: Bluebonnet
+    author: Kistol
+    license: CC0
+    page: https://opengameart.org/content/bluebonnet
+    download: https://opengameart.org/sites/default/files/bluebonnet_in_b_major_0.wav
+    sha256: 78efdda0a68fd7cf7029cb991a2a82c1d20dbc5bb821f9cbc2306f92eade33d9
+    note: "OpenGameArt, 23.04.2021; на странице: «Music by Kistol»; WAV без петли"
+  - id: another-august
+    title: Another August
+    author: The Cynic Project
+    license: CC0
+    page: https://opengameart.org/content/another-august
+    download: https://opengameart.org/sites/default/files/013_Another_August_0.mp3
+    sha256: 6de6e4f770cda4d34db433e4df982deccb6877a8fcc5e32b48eeb57f770dec3b
+    note: "OpenGameArt, 25.05.2017; на странице: «The Cynic Project / cynicmusic.com / pixelsphere.org»"
+  - id: piano-iix
+    title: Piano IIX
+    author: Hardmoon (Arjen Schumacher)
+    license: CC0
+    page: https://opengameart.org/content/piano-iix
+    download: https://opengameart.org/sites/default/files/Hardmoon_-_Piano_IIX.mp3
+    sha256: 6af9b2daec8047eb08dfdf77697b50157378fbeaae3420b1dbb5defdac8ca44f
+    note: "OpenGameArt, 27.11.2017; на странице три лицензии — CC0, GPL и OGA-BY, берём CC0; пьеса 2011 года"
+  - id: little-lullaby
+    title: Little Lullaby
+    author: Alex_089
+    license: CC BY 4.0
+    page: https://opengameart.org/content/little-lullaby
+    download: https://opengameart.org/sites/default/files/little_lullaby_wav.wav
+    sha256: 59bbc4fba06ca52cc933cdff0136895ecd5f9aa3c43898d10ed7376fb6d3948f
+    credit: "«Little Lullaby» — Alex_089, OpenGameArt.org, CC BY 4.0"
+    note: "OpenGameArt, 23.06.2022; WAV"
+  - id: the-woods
+    title: The Woods (Remastered)
+    author: Axletree
+    license: CC BY 4.0
+    page: https://freemusicarchive.org/music/Axletree/erthe/the-woods-remastered/
+    download: https://files.freemusicarchive.org/storage-freemusicarchive-org/tracks/Du8y1nIhCZ5ryvI4xgb4Cqp8l9NhwKiLrCe0MVQw.mp3
+    sha256: 6d2d30dc323939a1fa41f9cfdef2565643c0ac04ac36a9e91809ef42b72ad8ea
+    credit: "«The Woods (Remastered)» — Axletree, Free Music Archive, CC BY 4.0"
+    note: "Free Music Archive, альбом «Erthe»; «AI generated? No»"
+  - id: ambient-breath
+    title: (Ambient) Breath
+    author: Kirk Osamayo
+    license: CC BY 4.0
+    page: https://freemusicarchive.org/music/kirk-osamayo/season-one/ambient-breath/
+    download: https://files.freemusicarchive.org/storage-freemusicarchive-org/tracks/NLyxlCXQ1W125vDy2o5EsJ920h0vwwYZgPsxrQC2.mp3
+    sha256: 8fcc541238eb1cd93229bc9dce0f2b706a9d2a3b104ab4e083e6c4912d38b68d
+    credit: "«(Ambient) Breath» — Kirk Osamayo, Free Music Archive, CC BY 4.0"
+    note: "Free Music Archive, альбом «Season One»; «AI generated? No»"
+  - id: celosia
+    title: Celosia
+    author: sawsquarenoise
+    license: CC BY 4.0
+    page: https://freemusicarchive.org/music/sawsquarenoise/piano-works/celosia/
+    download: https://files.freemusicarchive.org/storage-freemusicarchive-org/tracks/lu13jxYPlgvF1a79Swy2QpHBuCLxSw2CdRvBs2AC.mp3
+    sha256: 019288d03074d6f1491cd14acd3f91db9a1cf94b0d33396e51cec975b8296dbd
+    credit: "«Celosia» — sawsquarenoise, Free Music Archive, CC BY 4.0"
+    note: "Free Music Archive, альбом «Piano Works»; «AI generated? No»"
+  - id: tokyo-sunset
+    title: Tokyo Sunset
+    author: HoliznaCC0
+    license: CC0
+    page: https://freemusicarchive.org/music/holiznacc0/public-domain-lofi/tokyo-sunset-lofi-peaceful-soft/
+    download: https://files.freemusicarchive.org/storage-freemusicarchive-org/tracks/Xnd9Hr5AVzB68IlWcImKtXPlwCePD2G2m8ZFSVj4.mp3
+    sha256: 83b9208ab781af9b2da86e6885c4ec0fc1270457848609a1f96267539518fb9b
+    note: "Free Music Archive, альбом «Public Domain Lofi»; «AI generated? No»"

@@ -2,13 +2,15 @@
 // наушников ПК, комната больницы вместо горницы.
 // npm run sound — звуки «Больницы» из формул (spec docs/specs/2026-11-sound.md, часть 1): колокольчики — частотной
 // модуляцией, стук — затухающим тоном с шумом, шорох — шумом в скользящей полосе; всё — в небольшой комнате (реверберация
-// Шрёдера — Мурера). Пишет assets/audio/*.wav и assets/audio/LICENSES.md с параметрами: звук наш, и его можно пересобрать.
+// Шрёдера — Мурера). Пишет assets/audio/*.wav и assets/audio/LICENSES.md с параметрами: звук наш, и его можно пересобрать;
+// в реестре — и раздел «Музыка» из списка пьес (часть 3, tools/sound/tracks.ts).
 //
 // Детерминирован: шум — из генератора игры с постоянным зерном, у каждого звука своя ветвь. Звуки тихие и короткие, без
 // резких верхов (срез 9 кГц): больница спокойная, а не сирена (ADR 0023 устава, правило 6).
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Rng } from '../../src/engine/core/rng';
+import { musicLicenses, readTracks } from './tracks';
 
 export const RATE = 44100;
 const OUT = join(import.meta.dir, '../../assets/audio');
@@ -322,7 +324,8 @@ export function licenses(): string {
 | Файл | Что | Параметры |
 |---|---|---|
 ${rows}
-`;
+
+${musicLicenses(readTracks())}`;
 }
 
 if (import.meta.main) {

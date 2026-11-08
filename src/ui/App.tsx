@@ -15,6 +15,7 @@ import { Handover } from './doctor/Handover';
 import { ROLES } from '../app/roles';
 import { toastsOf } from '../app/toasts';
 import { type QualityMode, TEXT_SCALES } from '../app/settings';
+import { TRACKS } from '../app/music.gen';
 import { Meeting, Reports, signed } from './Meeting';
 import { DeptLegend, Layers, PathSection, PathsPanel, PatientsTab, ProblemsPanel } from './flow';
 import { byGuide, GoalsTab, GuideToggle, LetterCard, ScenarioDone, StepMark } from './Scenario';
@@ -159,6 +160,36 @@ function Money({ hud }: { hud: Hud }) {
  * «вниз» и перспектива; качество — «авто» по первым секундам игры или своё; «Отладка». Запоминаются на этом компьютере.
  * Открываются из меню «Игра»; кнопки вида на экране больше нет — камера клавишами.
  */
+/**
+ * Что звучит и авторы пьес (spec docs/specs/2026-11-sound.md, часть 3): у CC BY — строка атрибуции, как просит страница
+ * пьесы, у всех — страница; и что пьесы в игре изменены — так велит CC BY.
+ */
+function MusicNow({ hud }: { hud: Hud }) {
+  const now = hud.track !== undefined ? TRACKS[hud.track] : undefined;
+  return (
+    <>
+      {hud.music > 0 ? (
+        <p className="muted small" id="music-now">
+          {now ? T.view.nowPlaying(now.title, now.author) : T.view.musicSilent}
+        </p>
+      ) : null}
+      <details id="music-authors">
+        <summary>{T.view.musicAuthors}</summary>
+        <ul className="small">
+          {TRACKS.map(t => (
+            <li key={t.id} id={`music-${t.id}`}>
+              {t.credit ?? T.view.musicCredit(t.title, t.author, t.license)}
+              <br />
+              <span className="muted">{t.page}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="muted small">{T.view.musicChanged}</p>
+      </details>
+    </>
+  );
+}
+
 function SettingsPanel({ hud, actions }: P) {
   if (!hud.settingsOpen) return null;
   const t = T.settings;
@@ -210,6 +241,13 @@ function SettingsPanel({ hud, actions }: P) {
         <input type="range" id="volume" min={0} max={100} step={10} value={Math.round(hud.volume * 100)} onChange={e => actions.setVolume(Number(e.target.value) / 100)} />
         <span id="volume-value">{T.view.volumeValue(Math.round(hud.volume * 100))}</span>
       </label>
+      {/* музыка (spec docs/specs/2026-11-sound.md, часть 3): ступени по 10 %, 0 — без музыки; что звучит и авторы пьес */}
+      <label className="range" title={T.view.musicHint}>
+        {T.view.music}
+        <input type="range" id="music" min={0} max={100} step={10} value={Math.round(hud.music * 100)} onChange={e => actions.setMusic(Number(e.target.value) / 100)} />
+        <span id="music-value">{T.view.musicValue(Math.round(hud.music * 100))}</span>
+      </label>
+      <MusicNow hud={hud} />
       <div className="label">{T.view.quality}</div>
       <div className="row">
         {q.map(([m, s]) => (

@@ -65,6 +65,7 @@ const actions: Actions = {
   toggleNames: later('toggleNames'),
   toggleStill: later('toggleStill'),
   setVolume: later('setVolume'),
+  setMusic: later('setMusic'),
   bench: later('bench'),
   setLang: later('setLang'),
   toggleBuild: later('toggleBuild'),
