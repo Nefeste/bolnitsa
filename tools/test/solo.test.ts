@@ -8,12 +8,12 @@ import { siteOfPlan } from '../../src/engine/hospital/site-plan';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { presetStaff, withNightShift } from '../../src/engine/hospital/staff';
 import { apply, capacityOf, colleaguesOf, current, newFlowShift } from '../../src/engine/shift/engine';
-import type { ShiftPatient, ShiftState } from '../../src/engine/shift/types';
+import type { Flow, ShiftPatient, ShiftState } from '../../src/engine/shift/types';
 import { ownCases, SHIFT_CATEGORIES, shiftResult, SPEED_MINUTES } from '../../src/sim/shift';
 import { playOwn } from '../sim/doctor-player';
 import { hash, liveTo } from './site-kit';
 
-const AUTO = { perHour: 0, auto: true };
+const AUTO: Flow = { perHour: 0, auto: true };
 const H = 3600;
 const rec = db.presets['preset.city'];
 
