@@ -229,7 +229,9 @@ bun tools/bench/surgery.ts                     # scenario 3 (spec): ready hospit
                                                # the incision, complications, the wait for the table (`--hospital district,city`, `--days`)
 bun tools/bench/solo.ts                        # the doctor's shift (spec docs/specs/2026-11-doctor-shift.md): a day shift 08:00–20:00 in
                                                # the ready city and polyclinic with one doctor receiving — who came, how many he saw,
-                                               # who left, minutes per case, the wait (`--hospital city,poly`, `--manage calm,normal,hard`)
+                                               # who left, minutes per case, the wait (`--hospital city,poly`, `--manage calm,normal,hard`;
+                                               # `--play rational,patient,lazy,shotgun,one` — the virtual doctor plays your cases on the
+                                               # shift, `meta.solo`, and the shift result by strategy)
 bun tools/bench/rounds.ts                      # the morning round (staff motion spec, part 2): each hired doctor's lying patients at
                                                # 08:30, how many need a decision, then the engine's rounds of the morning — when, beds,
                                                # game minutes (`--days 7`, `--seed`, `--hospital poly`, `--clinical` — a clinical nurse
@@ -483,6 +485,13 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   run, not only the demo) counts real steps: the database, each furniture model, each of the 59 looks, the world, the start
   (`Game.step`). With the build open the doctor hint says «Готово» first (`leave` in `hints.ts`), and «Свои больные» shows
   only with a hired doctor on duty or systems chosen.
+- The doctor's shift (`docs/specs/2026-11-doctor-shift.md`, part 1): `meta.solo` (`newFlowShift(…, { solo })`, a copy of
+  Anamnez's «Только вы») — `colleaguesOf` is empty, so hired office doctors take nobody, nobody books a specialist and the
+  flow from the hospital is your one office's (`capacityOf`); `siteCommand` refuses all but `done` with `shift` (a ready
+  hospital: no building or hiring); the shift has no `economy`. Waiting for results in your own office is visit time in every
+  PC game: `waitResults` sets `ShiftPatient.waitIn`, the next visit action adds it to `spent` (`resumeVisit`). The result —
+  `src/sim/shift.ts` (a copy of Anamnez's `single.ts`: five categories, their weights and thresholds); the virtual doctor that
+  plays your cases with card commands — `tools/sim/doctor-player.ts` (`tools/bench/solo.ts --play`, `tools/test/solo.test.ts`).
 - `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`), Web Worker
   (`worker.ts`) and its client in the window (`client.ts`: a slice reaches the window whole, every field the sim sent but
   `kind`). The window never runs the engine. The doctor mode

@@ -247,10 +247,13 @@ export function newSingle(
  */
 export function newFlowShift(
   db: ContentDb,
-  opts: { seed: number; season: Season; difficulty?: Difficulty; hospital: HospitalState; staff: StaffMember[]; flow: Flow; economy?: { cash: number }; scenario?: Id; manage?: Manage; soft?: boolean; sorts?: boolean } & Variety,
+  opts: { seed: number; season: Season; difficulty?: Difficulty; hospital: HospitalState; staff: StaffMember[]; flow: Flow; economy?: { cash: number }; scenario?: Id; manage?: Manage; soft?: boolean; sorts?: boolean; solo?: boolean } & Variety,
 ): ShiftState {
   // рост (spec 2026-10-staff-mood, раздел 3): у людей со сменой — разный стаж, растут не в одно утро
   const s = singleBase(db, { ...opts, staff: tenure(db, opts.seed, opts.staff), venue: SANDBOX_VENUE });
+  // смена врача (spec docs/specs/2026-11-doctor-shift.md; из anamnez: `newSingle` @ bed1996): принимаете только вы — до того,
+  // как поток посчитан: он от кабинетов, где принимают
+  if (opts.solo) s.meta.solo = true;
   s.flow = { ...opts.flow };
   // уровень «Управления» и мягкий режим (spec 2026-10-difficulty) — с начала: по ним поток, терпение и касса
   if (opts.manage && opts.manage !== 'normal') s.meta.manage = opts.manage;
@@ -482,12 +485,25 @@ export function apply(db: ContentDb, s: ShiftState, cmd: Command, more?: () => b
   }
 }
 
+/**
+ * Поток для ПК (spec docs/specs/2026-11-doctor-shift.md): вы ждали результаты у себя в кабинете с `waitIn` — это время приёма,
+ * как в «Анамнезе», где «Ждать» проживает его разом; в `spent` — когда приём продолжился.
+ */
+function resumeVisit(s: ShiftState) {
+  const p = current(s);
+  if (p?.waitIn === undefined) return;
+  p.spent.seconds += Math.max(0, s.t - p.waitIn);
+  delete p.waitIn;
+}
+
 /** Действия приёма: идут, только когда вы с пациентом. */
 const VISIT = new Set<Command['kind']>(['exam', 'waitResults', 'sendAway', 'diagnose', 'hypothesis', 'toggleTreatment', 'setting', 'finish', 'refer']);
 
 function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
   // поток для ПК (spec 2026-10-owner-play-2): пациент ещё идёт к вам — приём не начат
   if (s.meet !== undefined && s.meet > s.t && VISIT.has(cmd.kind)) return [];
+  // ждали результаты у себя в кабинете (spec docs/specs/2026-11-doctor-shift.md) — это время приёма
+  if (s.flow && VISIT.has(cmd.kind)) resumeVisit(s);
   switch (cmd.kind) {
     case 'advance':
       return s.dayOpen ? later(db, s, undefined, cmd.seconds) : [];
@@ -500,8 +516,11 @@ function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       if (!p || (p.pending.length === 0 && !isOut(s, p))) return [];
       p.step++;
       // поток для ПК (spec 2026-10-owner-play-2): ждут часами игры — время не проживается разом; вернётся или будет готово
-      // — извещение
-      if (s.flow) return [];
+      // — извещение. Ожидание — в счёт приёма со следующим действием (spec docs/specs/2026-11-doctor-shift.md)
+      if (s.flow) {
+        p.waitIn = s.t;
+        return [];
+      }
       // и пока он не вернётся с обследования (0.5.12): что делают при нём — тогда
       const target = Math.min(...p.pending.map(x => x.readyAt), ...(isOut(s, p) ? [p.out!.back] : []));
       // привезла скорая, пока ждали, — ожидание кончается с её приездом: врачу пора в смотровую
@@ -4015,7 +4034,8 @@ function leaving(db: ContentDb, s: ShiftState, p: ShiftPatient): { why: LeftWhy;
  * кабинета, затем человека.
  */
 export function colleaguesOf(db: ContentDb, s: ShiftState, at = s.t): StaffMember[] {
-  if (!s.hospital || !s.staff) return [];
+  // смена врача (spec docs/specs/2026-11-doctor-shift.md; из anamnez @ bed1996, «Только вы»): никто
+  if (!s.hospital || !s.staff || s.meta.solo) return [];
   const ctx = hospitalCtx(db, s, at);
   const mine = doctorRoom(ctx.plan);
   return ctx.staff
@@ -4181,7 +4201,8 @@ export function forPlayer(db: ContentDb, s: ShiftState, p: ShiftPatient): boolea
  * который сегодня принимает, тот возьмёт сам, а повторных, срочных и со скорой нанятые врачи и так не берут.
  */
 export function leftForPlayer(db: ContentDb, s: ShiftState, p: ShiftPatient): boolean {
-  return newcomer(p) && forPlayer(db, s, p) && !bookedHere(p, colleaguesOf(db, s));
+  // смена врача (из anamnez @ bed1996, «Только вы»): оставлять некому — «ждёт вас» не нужно
+  return !s.meta.solo && newcomer(p) && forPlayer(db, s, p) && !bookedHere(p, colleaguesOf(db, s));
 }
 
 /**

@@ -147,6 +147,7 @@ export const en: Strings = {
     leaving: 'is already leaving',
     dayOnly: 'day shift only',
     scenario: 'not built in this scenario',
+    shift: 'the doctor’s shift is in a ready hospital — no building or hiring',
     mode: 'building works only in the PC game',
     unknown: 'not possible',
   },
