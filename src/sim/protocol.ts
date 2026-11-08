@@ -16,6 +16,7 @@ import type { CardView, DoctorState, ErrorList, Refusal, RouteMiss, SeenList, So
 import type { Leg } from './legs';
 import type { NameRow } from './pack';
 import type { SaveMeta } from './packing';
+import type { ShiftEnd } from './shift';
 
 export type ToSim =
   /** новая смена с потоком для ПК; `economy` — касса начала (spec docs/specs/2026-10-economy.md), нет — без кассы */
@@ -24,6 +25,8 @@ export type ToSim =
       kind: 'start'; seed: number; season: Season; hospital: HospitalState; staff: StaffMember[]; flow: Flow; economy?: { cash: number }; scenario?: Id;
       /** уровень «Управления» и мягкий режим (spec docs/specs/2026-10-difficulty.md); нет — «Обычно», без мягкого режима */
       manage?: Manage; soft?: boolean;
+      /** смена врача (spec docs/specs/2026-11-doctor-shift.md): принимаете только вы, больница готовая, кассы нет */
+      solo?: boolean;
     }
   /** открыть сохранение — снимок состояния */
   | { kind: 'load'; state: ShiftState }
@@ -97,6 +100,8 @@ export type FromSim =
   | ({
       kind: 'slice'; buf: Int32Array; names: NameRow[]; notices: Notice[]; lag: number; world?: World; path?: PathView; broken?: string[]; late?: number[]; crew?: CrewView[];
       moods?: MoodView[]; rides?: Ride[]; rounds?: Round[]; scenario?: ScenarioView; money?: RoomsMoney; legs?: Leg[];
+      /** смена врача кончилась (spec docs/specs/2026-11-doctor-shift.md): итог — один раз, в 20:00 */
+      shift?: ShiftEnd;
     } & DoctorOut)
   | { kind: 'state'; state: ShiftState }
   /** файл сохранения: сжатые байты (без копии) и его шапка; не вышло — `packFailed` */

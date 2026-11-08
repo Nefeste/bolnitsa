@@ -32,6 +32,7 @@ import { listSlots, readSlot } from './saves';
 import { scenarioTitle } from './scenario';
 import { DEFAULT_ROLE, type Role, roleOf } from './roles';
 import { applyStill, applyText, readSettings, stillOf, systemStill } from './settings';
+import { readRecords } from './records';
 
 declare const __VERSION__: string;
 
@@ -102,6 +103,7 @@ const actions: Actions = {
   dismissHint: later('dismissHint'),
   scenario: later('scenario'),
   demo: later('demo'),
+  shiftAgain: later('shiftAgain'),
   toggleSettings: later('toggleSettings'),
   setQualityMode: later('setQualityMode'),
   toggleMenu: later('toggleMenu'),
@@ -112,7 +114,15 @@ const actions: Actions = {
   // выбор на экране начала — та же страница с его ключами (`go`); сценарий (spec docs/specs/2026-10-scenario-1.md) учит
   // режиму врача — «Врач», роль меняют в окне врача; сложность — ключами `manage` и `soft` (spec 2026-10-difficulty)
   startGame: (kind, role, level) =>
-    go(typeof kind === 'string' ? { hospital: kind, role: role ?? DEFAULT_ROLE, ...levelKeys(level) } : 'scenario' in kind ? { ...kind, ...levelKeys(level) } : kind),
+    go(
+      typeof kind === 'string'
+        ? { hospital: kind, role: role ?? DEFAULT_ROLE, ...levelKeys(level) }
+        : 'scenario' in kind
+          ? { ...kind, ...levelKeys(level) }
+          : 'solo' in kind
+            ? { hospital: kind.solo, solo: '1', ...shiftSeed(), ...levelKeys(level) }
+            : kind,
+    ),
   setManage: later('setManage'),
   setSoft: later('setSoft'),
 };
@@ -120,7 +130,15 @@ const actions: Actions = {
  * С чего начать: новая больница и кто вы (spec docs/specs/2026-10-two-ways.md, F4), сложность (spec
  * docs/specs/2026-10-difficulty.md, часть 2) — или сохранение (ячейка).
  */
-type Begin = { start: Start; role: Role; scenario?: string; manage?: Manage; soft?: boolean } | { load: string };
+type Begin = { start: Start; role: Role; scenario?: string; manage?: Manage; soft?: boolean; solo?: boolean } | { load: string };
+
+/**
+ * Смена врача (spec docs/specs/2026-11-doctor-shift.md): каждая новая смена — свои больные, зерно — новое; задано в адресе
+ * (сценарий в браузере, `?seed=`) — то.
+ */
+function shiftSeed(): Record<string, string> {
+  return q.get('seed') ? {} : { seed: String(Math.floor(Math.random() * 2 ** 31)) };
+}
 
 /** Сложность — в ключи адреса: «Обычно» и выключенный мягкий режим — без ключей, как играли до сложности. */
 function levelKeys(level?: Level): Record<string, string> {
@@ -157,6 +175,8 @@ async function startOf(): Promise<Begin> {
   const level = { ...(manage ? { manage } : {}), ...(has('soft') ? { soft: true } : {}) };
   const scenario = arg('scenario');
   if (scenario) return { start: 'empty', role: roleOf(arg('role')) ?? DEFAULT_ROLE, scenario, ...level };
+  // смена врача (spec docs/specs/2026-11-doctor-shift.md): готовая больница, вы — «Врач»
+  if ((val === 'preset' || val === 'poly') && has('solo')) return { start: val, role: DEFAULT_ROLE, ...level, solo: true };
   if (val === 'empty' || val === 'preset' || val === 'poly') return { start: val, role: roleOf(arg('role')) ?? DEFAULT_ROLE, ...level };
   return choose();
 }
@@ -177,6 +197,8 @@ async function choose(problem?: string): Promise<never> {
     startScenarios: scenarios.map(sc => ({ id: sc.id, title: scenarioTitle(sc), about: named(sc.about) })),
     scenarioNames: Object.fromEntries(scenarios.map(sc => [sc.id, scenarioTitle(sc)])),
     ...(db ? { startLevels: levelsOf(db) } : {}),
+    // смена врача (spec docs/specs/2026-11-doctor-shift.md, часть 2): лучшие итоги — карточкам больниц второго шага
+    startRecords: readRecords(),
   });
   backdrop();
   return new Promise<never>(() => {});
@@ -202,7 +224,7 @@ function levelsOf(db: ContentDb): Record<Manage, LevelRow> {
 function go(extra: Record<string, string>) {
   leaving = true;
   const p = new URLSearchParams(location.search);
-  for (const k of ['load', 'hospital', 'role', 'scenario', 'manage', 'soft']) p.delete(k);
+  for (const k of ['load', 'hospital', 'role', 'scenario', 'manage', 'soft', 'solo']) p.delete(k);
   for (const [k, v] of Object.entries(extra)) p.set(k, v);
   location.search = p.toString();
 }
@@ -274,7 +296,7 @@ function fly(g: Game) {
  * Что открыть: новая больница — как есть; сохранение — прочитать и пройти миграции. Не открылось — снова экран начала,
  * со словом почему.
  */
-async function begin(): Promise<{ start: Start; role: Role; scenario?: string; manage?: Manage; soft?: boolean; loaded?: SaveFile }> {
+async function begin(): Promise<{ start: Start; role: Role; scenario?: string; manage?: Manage; soft?: boolean; solo?: boolean; loaded?: SaveFile }> {
   let b = await startOf();
   for (;;) {
     if ('start' in b) return b;
@@ -313,8 +335,8 @@ async function flowOf(): Promise<Flow> {
 }
 
 begin()
-  .then(async ({ start, role, scenario, manage, soft, loaded }) =>
-    Game.create(document.getElementById('view')!, store, __VERSION__, quality, start, await flowOf(), loaded, role, scenario, { manage, soft }),
+  .then(async ({ start, role, scenario, manage, soft, solo, loaded }) =>
+    Game.create(document.getElementById('view')!, store, __VERSION__, quality, start, await flowOf(), loaded, role, scenario, { manage, soft, solo }),
   )
   .then(async g => {
     game = g;

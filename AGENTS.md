@@ -170,8 +170,10 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # on the doctor post, a walk-in routed to surgery, «регистратор направил: хирургия» in the path, the
                                    # routing line at the meeting with an example of a wrong route; then sound: the files after the first
                                    # press, «Звук» in «Настройки», a button's click, build, demolish, refuse, hire, silence at 0, the
-                                   # meeting;
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|38` for one part, `-- --only 7,10,11` —
+                                   # meeting; then the doctor's shift: «Для врача» on the start screen, its second step, a shift
+                                   # with no building, cash or roles, your case, «До конца смены» — «Итог смены» at 20:00, the record,
+                                   # «Новая смена», the best result on the start screen, the city on «Трудно»;
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|39` for one part, `-- --only 7,10,11` —
                                    # several in a row on one page, as in the full run
 node tools/app/soak.mjs --days 3   # after build: a long run in headless Chromium — the ready city at ×12 for three game days,
                                    # the meeting closed each morning; window memory after GC, DOM nodes, people, sim lag and
@@ -492,6 +494,16 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   PC game: `waitResults` sets `ShiftPatient.waitIn`, the next visit action adds it to `spent` (`resumeVisit`). The result —
   `src/sim/shift.ts` (a copy of Anamnez's `single.ts`: five categories, their weights and thresholds); the virtual doctor that
   plays your cases with card commands — `tools/sim/doctor-player.ts` (`tools/bench/solo.ts --play`, `tools/test/solo.test.ts`).
+  Part 2, the window: «Для врача» on the start screen and its second step (`ShiftStart` in `src/ui/App.tsx`: the polyclinic or
+  the city, the level with flow and patience only — `Difficulty` with `solo`), the URL keys `hospital` and `solo=1` with a new
+  `seed` (`main.tsx`; `go` and `reopen` drop `solo`), `Game.solo` from the key or the save, the `start` message with `solo`
+  and no `economy`; in solo the window hides the build button and keys, the cash, «Сложность» in «Настройки», the role row, the
+  room card's hiring, dismissal, furnishing, demolition and «Мой кабинет», the person card's pay, study and shift, «Нанять в
+  резерв»; «Ждут вас» lists every waiting patient (`src/sim/doctor.ts`). 20:00 is `shiftEndOf` (`src/sim/shift.ts`, the day
+  shift's end): the window and the sim host both hold the clock there, the host sends `shiftEnd` with the slice once,
+  `Game.onShiftEnd` stops the clock for good, writes the record (`src/app/records.ts`: `bolnitsa.records` in page storage, per
+  hospital and level, best by score then by patients seen) and opens «Итог смены» (`src/ui/Shift.tsx`: «Новая смена» — the
+  same hospital and level with a new seed, `shiftAgain`; «В меню»).
 - `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`), Web Worker
   (`worker.ts`) and its client in the window (`client.ts`: a slice reaches the window whole, every field the sim sent but
   `kind`). The window never runs the engine. The doctor mode

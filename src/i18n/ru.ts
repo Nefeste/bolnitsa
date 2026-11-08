@@ -3,6 +3,7 @@ import { doctorRu } from './doctor.ru';
 import { economyRu } from './economy.ru';
 import { scenarioRu } from './scenario.ru';
 import { demoRu } from './demo.ru';
+import { shiftRu } from './shift.ru';
 import { encyclopediaRu } from './encyclopedia.ru';
 import { pluralRu } from './plural';
 import type { Manage } from '../content/types';
@@ -13,6 +14,8 @@ export const ru = {
   // сценарий кампании (spec docs/specs/2026-10-scenario-1.md, часть 2): письма, «Цели», «Сценарий пройден»
   ...scenarioRu,
   ...demoRu,
+  // смена врача (spec docs/specs/2026-11-doctor-shift.md, часть 2)
+  ...shiftRu,
   app: {
     title: 'Больница',
     loading: 'Загрузка…',

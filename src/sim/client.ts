@@ -11,6 +11,7 @@ import type { Leg } from './legs';
 import type { NameRow } from './pack';
 import type { SaveMeta } from './packing';
 import type { DoctorAct, DoctorOut, FromSim, PathView, RoomsMoney, ToSim, World } from './protocol';
+import type { ShiftEnd } from './shift';
 
 /** Срез и, если изменились, режим врача (spec docs/specs/2026-10-doctor-mode.md). */
 export interface Slice extends DoctorOut {
@@ -39,6 +40,8 @@ export interface Slice extends DoctorOut {
   money?: RoomsMoney;
   /** слой «Пути пациентов» (spec docs/specs/2026-10-layers.md, часть 2): переходы за сутки, пока слой включён */
   legs?: Leg[];
+  /** смена врача кончилась (spec docs/specs/2026-11-doctor-shift.md): итог — один раз, в 20:00 */
+  shift?: ShiftEnd;
 }
 
 export class SimClient {
