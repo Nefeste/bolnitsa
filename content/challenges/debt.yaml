@@ -1,20 +1,21 @@
-# Испытание «В долг» (spec docs/specs/2026-11-challenges.md; геймдизайн §9): готовая районная больница с кассой −500 000 ₽ на
-# неделю; банк кредита не даёт, а строить можно и в долг — до −1 500 000 ₽. Без игрока она из долга не выходит: доходы —
-# 60–88 тысяч в сутки, зарплаты — 80 тысяч (проба `bun tools/bench/challenges.ts --only debt`). Итог — касса в конце седьмых
-# суток. Числа — игровые, слова — предложение агента на одобрение владельца.
+# Испытание «В долг» (spec docs/specs/2026-11-challenges.md; геймдизайн §9): готовая городская больница с кассой −1 000 000 ₽
+# на неделю; банк кредита не даёт, а строить можно и в долг — до −1 500 000 ₽: на свободной земле востока. Без игрока к концу
+# недели касса — около −300…−430 тысяч (проба `bun tools/bench/challenges.ts --only engine`); у районной больницы свободной земли
+# нет — игрок мог бы только увольнять. Итог — касса в конце седьмых суток. Числа — игровые, слова — предложение агента на
+# одобрение владельца.
 id: challenge.debt
 order: 4
 name: { ru: "В долг", en: "In Debt" }
 about:
-  ru: "Районная больница в минусе на полмиллиона, банк кредита не даст. Выведите кассу в плюс за неделю."
-  en: "A district hospital half a million in the red, and the bank won't lend. Bring the cash back above zero within a week."
+  ru: "Городская больница в минусе на миллион, банк кредита не даст. Выведите кассу в плюс за неделю."
+  en: "A city hospital a million in the red, and the bank won't lend. Bring the cash back above zero within a week."
 kind: chief
-start: preset.district
+start: preset.city
 season: winter
 from: 8
 to: 176
 flow: auto
-cash: -500000
+cash: -1000000
 loan: false
 overdraft: 1500000
 grade: { by: cash, a: 300000, b: 0, c: -250000 }

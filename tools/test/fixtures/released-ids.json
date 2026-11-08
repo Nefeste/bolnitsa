@@ -1,5 +1,5 @@
 {
-  "version": "0.77.0",
+  "version": "0.78.0",
   "base": 78,
   "ids": {
     "achievements": [
@@ -27,6 +27,13 @@
       "ach.thrift_25",
       "ach.vascular",
       "ach.xray"
+    ],
+    "challenges": [
+      "challenge.debt",
+      "challenge.flu",
+      "challenge.hundred",
+      "challenge.indicated",
+      "challenge.night"
     ],
     "chapters": [
       "chapter.city",

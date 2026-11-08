@@ -123,9 +123,9 @@ describe('«Одна ночь»: с 20:00, вы один, сортируете �
 });
 
 describe('«В долг»: касса в минусе, кредита нет, строить можно', () => {
-  test('касса начала −500 000 ₽; банк кредита не предлагает, а стройка — до −1 500 000 ₽', () => {
+  test('касса начала −1 000 000 ₽; банк кредита не предлагает, а стройка — до −1 500 000 ₽', () => {
     const s = start('debt');
-    expect(s.economy!.cash).toBe(-500_000);
+    expect(s.economy!.cash).toBe(-1_000_000);
     expect(s.flow?.auto).toBe(true);
     run(s, 32 * H);
     expect(s.economy!.cash).toBeLessThan(-300_000);
@@ -136,7 +136,7 @@ describe('«В долг»: касса в минусе, кредита нет, с
 
   test('без испытания с той же кассой — банк предлагает кредит, а стройка ждёт денег', () => {
     const h = challengeStart(db, ch('debt'));
-    const s = newFlowShift(db, { seed: 1, season: 'winter', hospital: hospitalOf(db, h.site), staff: h.staff, flow: { perHour: 0, auto: true }, economy: { cash: -500_000 } });
+    const s = newFlowShift(db, { seed: 1, season: 'winter', hospital: hospitalOf(db, h.site), staff: h.staff, flow: { perHour: 0, auto: true }, economy: { cash: -1_000_000 } });
     apply(db, s, { kind: 'site', cmd: { kind: 'done' } });
     run(s, 32 * H);
     expect(offerOf(db, s)).toBeGreaterThan(0);
@@ -183,7 +183,7 @@ describe('испытания: загрузчик', () => {
       edit('flu', 'cash: 300000\n', '');
       edit('night', 'reds: 15\n', 'reds: 15\ncash: 1000\n');
       edit('hundred', 'grade: { by: seen, a: 97, b: 90, c: 75 }', 'grade: { by: seen, a: 90, b: 97, c: 75 }');
-      edit('debt', 'cash: -500000\n', 'cash: -500000\nwave: { condition: cond.influenza, share: 40 }\n');
+      edit('debt', 'cash: -1000000\n', 'cash: -1000000\nwave: { condition: cond.influenza, share: 40 }\n');
       const errors = buildDb(dir).errors.filter(e => e.startsWith('challenge.'));
       expect(errors).toEqual([
         'challenge.flu: у испытания главврача нужна касса начала',

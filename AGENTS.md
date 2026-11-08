@@ -248,7 +248,10 @@ bun tools/bench/vascular.ts                    # scenario 4 (spec): ready hospit
 bun tools/bench/challenges.ts                  # challenges (spec docs/specs/2026-11-challenges.md): the six of the game design on ready
                                                # hospitals, nobody playing or the virtual doctor on your cases — a flu wave (`--x`, `--flu`),
                                                # a hundred walk-ins (`--per`), one night alone (`--amb`), debt (`--debt`), exams by
-                                               # indication (rational, careful, one by one, lazy), the X-ray broken all day (`--only …`)
+                                               # indication (rational, careful, one by one, lazy), the X-ray broken all day (`--only …`);
+                                               # `--only engine` — the records of content/challenges/ through the engine and their result
+                                               # (`--plan` — the reasonable chief: two offices and a staff room at 08:00; `--play
+                                               # rational,careful,urgent`; `--why` — the night's reds and who the doctor was with)
 bun tools/bench/solo.ts                        # the doctor's shift (spec docs/specs/2026-11-doctor-shift.md): a day shift 08:00–20:00 in
                                                # the ready city and polyclinic with one doctor receiving — who came, how many he saw,
                                                # who left, minutes per case, the wait (`--hospital city,poly`, `--manage calm,normal,hard`;
@@ -550,6 +553,16 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   `Game.daily` (no saves, no fast-forward), «Итог дня» (`DailySummary`: «Разбор», «Сыграть снова» — `dailyAgain`), the first
   try in `bolnitsa.daily` (`src/app/daily.ts`); after the end the clock never starts again — `Game.setSpeed` refuses and the
   card's release goes through it.
+- Challenges (`docs/specs/2026-11-challenges.md`, part 1): a record of `content/challenges/` — the start hospital, the hours
+  `from`/`to` from 00:00 of day 1, the flow, `walkIns`, the flu `wave`, cash, `loan: false`, its own `overdraft`, `sorts`,
+  `unindicated` and the `grade` thresholds; `meta.challenge`, `src/engine/shift/challenge.ts`. `newFlowShift(…, { challenge })`
+  takes the season, flow, cash, solo and sorting from the record; `planFlow` starts day 1's streams at `from` (the night at
+  20:00); `flowArrive` stops the walk-ins at `walkIns` and gives a wave share of walk-ins the wave's disease through the
+  generator's `only` (the copied generator untouched); `offerOf` offers no loan and `limitOf` (money.ts) is the record's limit;
+  indications are tracked without cash. Without a challenge — byte for byte as before. The result — `src/sim/challenge.ts`
+  (`challengeEnd`: A–D by the doctor's shift result or the record's measure, «Пройдено» — B or better and at most `unindicated`
+  exams without indications as the OMS audit cuts them; `challengeEndAt` — `to`, a second before the 08:00 meeting;
+  `challengeStart` — the start hospital, the role before the night shift). The window (part 2) is not there yet.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`), Web Worker
   (`worker.ts`) and its client in the window (`client.ts`: a slice reaches the window whole, every field the sim sent but
   `kind`). The window never runs the engine. The doctor mode

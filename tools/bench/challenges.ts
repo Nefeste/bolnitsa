@@ -24,14 +24,15 @@
 //   engine    — испытания по записям `content/challenges/` (часть 1): больница начала (`challengeStart`), условие — движок;
 //               испытания главврача — никто не играет (в вашем кабинете — нанятый терапевт, как у «Управляющего»),
 //               испытания врача — «виртуальный врач» (`--play rational,careful,urgent`: «срочного — сразу» отпускает текущего
-//               ждать и зовёт красного); итог (`challengeEnd`): оценка, число,
+//               ждать и зовёт красного); `--plan` — разумный главврач: в 08:00 два кабинета «С персоналом» на свободной площади
+//               (`PLANS`); итог (`challengeEnd`): оценка, число,
 //               пройдено ли, красные в срок, обследования без показаний.
 //
 // bun tools/bench/challenges.ts [--only flu,xray,night,debt,indicated,hundred,engine] [--seeds 1,2,3]
 import type { ContentDb, Id, Manage } from '../../src/content/types';
 import { db as bundle } from '../../src/content';
 import { slotKey } from '../../src/engine/hospital/requirements';
-import { hospitalOf, type Site } from '../../src/engine/hospital/site';
+import { hospitalOf, type Site, type SiteCommand } from '../../src/engine/hospital/site';
 import { siteOfPlan } from '../../src/engine/hospital/site-plan';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { presetStaff, type StaffMember, withNightShift } from '../../src/engine/hospital/staff';
@@ -59,6 +60,29 @@ const AMBS = arg('amb', '1,1.5,2').split(',').map(Number);
 const PER = Number(arg('per', '8.5'));
 const PLAYS = arg('play', 'rational,careful,urgent').split(',');
 const WHY = process.argv.includes('--why');
+const PLAN = process.argv.includes('--plan');
+/**
+ * `--plan`: разумный главврач в 08:00 первых суток — два кабинета «С персоналом» (терапевт на дневную смену) там, где у больницы
+ * начала свободная площадь: у поликлиники — восточнее ЭКГ и у регистратуры, у амбулатории — в свободном крыле, у городской —
+ * на свободной земле востока; и ординаторскую: кабинет работает, только если его врачам есть место отдыхать.
+ */
+const PLANS: Record<string, SiteCommand[]> = {
+  'challenge.flu': [
+    { kind: 'ready', type: 'room.office', size: 'M', x: 45, y: 16, rot: 2, staff: true },
+    { kind: 'ready', type: 'room.office', size: 'M', x: 43, y: 23, rot: 0, staff: true },
+    { kind: 'ready', type: 'room.staff', size: 'S', x: 27, y: 16, rot: 2, staff: false },
+  ],
+  'challenge.hundred': [
+    { kind: 'ready', type: 'room.office', size: 'M', x: 30, y: 6, rot: 0, staff: true },
+    { kind: 'ready', type: 'room.office', size: 'M', x: 38, y: 6, rot: 0, staff: true },
+    { kind: 'ready', type: 'room.staff', size: 'S', x: 46, y: 6, rot: 0, staff: false },
+  ],
+  'challenge.debt': [
+    { kind: 'ready', type: 'room.office', size: 'M', x: 54, y: 6, rot: 0, staff: true },
+    { kind: 'ready', type: 'room.office', size: 'M', x: 62, y: 6, rot: 0, staff: true },
+    { kind: 'ready', type: 'room.staff', size: 'S', x: 70, y: 6, rot: 0, staff: false },
+  ],
+};
 const db: ContentDb = bundle;
 const H = 3600;
 const START = 8 * H;
@@ -375,10 +399,16 @@ if (ONLY.includes('hundred')) {
 if (ONLY.includes('engine')) {
   for (const c of Object.values(db.challenges ?? {})) {
     for (const play of c.kind === 'doctor' ? PLAYS : ['никто']) {
-      console.log(`\n## ${c.id} — ${c.name.ru}: ${c.start}, с ${c.from} до ${c.to} ч, ${c.kind === 'doctor' ? `играет ${play}` : 'никто не играет'}; зёрна ${SEEDS.join(', ')}`);
+      console.log(`\n## ${c.id} — ${c.name.ru}: ${c.start}, с ${c.from} до ${c.to} ч, ${c.kind === 'doctor' ? `играет ${play}` : PLAN ? 'разумный главврач (`--plan`), дальше никто' : 'никто не играет'}; зёрна ${SEEDS.join(', ')}`);
       for (const seed of SEEDS) {
         const h = challengeStart(db, c, c.kind === 'chief' ? (site, staff) => startFor(db, site, staff, 'manager') : undefined);
         const s = newFlowShift(db, { seed, season: c.season, hospital: hospitalOf(db, h.site), staff: h.staff, flow: { perHour: 0 }, challenge: c.id });
+        const built: string[] = [];
+        for (const cmd of PLAN ? (PLANS[c.id] ?? []) : []) {
+          const n = apply(db, s, { kind: 'site', cmd }).find(x => x.kind === 'site');
+          built.push(n && n.kind === 'site' && n.ok ? `${cmd.kind === 'ready' ? cmd.type.slice(5) : cmd.kind} ✓` : `${cmd.kind === 'ready' ? cmd.type.slice(5) : cmd.kind} ✗ ${JSON.stringify(n)}`);
+        }
+        if (built.length > 0 && seed === SEEDS[0]) console.log(`    план: ${built.join(', ')}; касса после стройки ${rub(s.economy?.cash ?? 0)} ₽`);
         apply(db, s, { kind: 'site', cmd: { kind: 'done' } });
         const end = challengeEndAt(c);
         const t0 = performance.now();
