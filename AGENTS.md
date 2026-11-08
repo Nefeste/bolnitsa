@@ -179,8 +179,10 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # with no night team, the meeting's «Операции» line; then the case of the day: «Случай дня» and 30
                                    # days, the city with no flow, building, cash, fast-forward or «Сохранить», the day's patient at
                                    # 08:00, your case — «Итог дня», «Разбор», «Сыграть снова» — the same patient, the day's grade in
-                                   # the list;
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|41` for one part, `-- --only 7,10,11` —
+                                   # the list; then the challenges: «Испытания» and the five, «Сто пациентов» as «Главврач» — the
+                                   # record's flow and cash, no «Сложность», «До утра» to 20:00 — «Итог испытания» and the record,
+                                   # «Ещё раз», the best result in the list, «Одна ночь» at 20:00 alone, «Без показаний: 0 из 2»;
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|42` for one part, `-- --only 7,10,11` —
                                    # several in a row on one page, as in the full run
 node tools/app/soak.mjs --days 3   # after build: a long run in headless Chromium — the ready city at ×12 for three game days,
                                    # the meeting closed each morning; window memory after GC, DOM nodes, people, sim lag and
@@ -562,7 +564,15 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   indications are tracked without cash. Without a challenge — byte for byte as before. The result — `src/sim/challenge.ts`
   (`challengeEnd`: A–D by the doctor's shift result or the record's measure, «Пройдено» — B or better and at most `unindicated`
   exams without indications as the OMS audit cuts them; `challengeEndAt` — `to`, a second before the 08:00 meeting;
-  `challengeStart` — the start hospital, the role before the night shift). The window (part 2) is not there yet.
+  `challengeStart` — the start hospital, the role before the night shift). The window (part 2): «Испытания» on the start
+  screen and its step (`ChallengeStart` in `src/ui/Challenges.tsx`: the five with the record line, «Кто вы» for the chief
+  challenges), the keys `challenge` and `role` with a new `seed` (`main.tsx`), `Game.challenge` from the key or the save,
+  `hospitalAt` builds the record's hospital; the host starts «Одна ночь» at `from` (advancing to 20:00 at once), holds the clock
+  at the end (`endOfIn` in `src/sim/host.ts`, `endAt` in the window; «До утра» stops there) and sends `challenge` once and
+  `audit` («Без показаний: N из 2», shown in the top bar instead of the cash) when it changes; `onChallengeEnd` stops the clock
+  for good, writes the record (`src/app/challenges.ts`: `bolnitsa.challenges` in page storage, best by grade then by the
+  measure, «пройдено» kept) and opens «Итог испытания» (`ChallengeSummary`: «Ещё раз» — `challengeAgain`, «В меню»); no
+  «Сложность» in «Настройки» during a challenge.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`), Web Worker
   (`worker.ts`) and its client in the window (`client.ts`: a slice reaches the window whole, every field the sim sent but
   `kind`). The window never runs the engine. The doctor mode

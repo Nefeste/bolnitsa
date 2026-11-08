@@ -22,6 +22,8 @@ import type { DemoHud } from './Demo';
 import type { Records, ShiftRecord } from '../app/records';
 import type { DailyRecord, DailyRow } from '../app/daily';
 import type { DailyEnd } from '../sim/daily';
+import type { ChallengeRecord } from '../app/challenges';
+import type { ChallengeEnd } from '../sim/challenge';
 import type { ShiftEnd } from '../sim/shift';
 
 /** Скорость игры (spec docs/specs/2026-10-walk.md): ×1, ×3, ×12; 0 — пауза. */
@@ -256,7 +258,39 @@ export interface Hud {
   daily?: string;
   startDaily?: DailyRow[];
   dailyEnd?: DailyHud;
+  /**
+   * испытания (spec docs/specs/2026-11-challenges.md, часть 2): на экране начала — список испытаний с рекордами; какое
+   * играется — его имя и чьё оно; окно «Итог испытания» — дошли до его конца; «Без показаний» — в окне врача
+   */
+  startChallenges?: ChallengeRow[];
+  challenge?: { id: Id; name: string; kind: 'chief' | 'doctor' };
+  challengeEnd?: ChallengeHud;
+  audit?: { n: number; max: number };
   progress?: { done: number; total: number; text: string };
+}
+
+/** Строка испытания на экране начала: имя и условие — из записи, рекорд — из хранилища страницы. */
+export interface ChallengeRow {
+  id: Id;
+  name: string;
+  about: string;
+  kind: 'chief' | 'doctor';
+  /** по чему итог — для строки рекорда */
+  by: 'unseen' | 'seen' | 'cash' | 'shift';
+  record?: ChallengeRecord;
+}
+
+/** «Итог испытания»: итог, по чему он, правило и рекорд — новый ли он и прежний лучший. */
+export interface ChallengeHud {
+  id: Id;
+  name: string;
+  by: ChallengeRow['by'];
+  end: ChallengeEnd;
+  /** минут у красных «Одной ночи» и сколько можно без показаний — из записи */
+  reds?: number;
+  unindicated?: number;
+  record: ChallengeRecord;
+  best: boolean;
 }
 
 /** Уровень «Управления» на экране начала: множители, %; предел минуса, ₽ (нет — без предела); касса начала по началу, ₽. */
@@ -425,7 +459,7 @@ export interface Actions {
    * начало игры: пустое здание, готовая больница или поликлиника и роль (spec docs/specs/2026-10-two-ways.md, F4); `{ load }`
    * — сохранение (spec 2026-10-saves); `level` — сложность новой игры (spec docs/specs/2026-10-difficulty.md, часть 2)
    */
-  startGame(kind: 'empty' | 'preset' | 'poly' | { load: string } | { scenario: Id } | { solo: 'preset' | 'poly' } | { daily: string }, role?: Role, level?: Level): void;
+  startGame(kind: 'empty' | 'preset' | 'poly' | { load: string } | { scenario: Id } | { solo: 'preset' | 'poly' } | { daily: string } | { challenge: Id }, role?: Role, level?: Level): void;
   /** сложность в игре (spec docs/specs/2026-10-difficulty.md, часть 2; решение владельца #136): в любой момент — с этой минуты */
   setManage(level: Manage): void;
   setSoft(on: boolean): void;
@@ -464,6 +498,8 @@ export interface Actions {
   /** случай дня: тот же день заново; разбор приёма больного дня */
   dailyAgain(): void;
   dailyReview(): void;
+  /** «Итог испытания» (spec docs/specs/2026-11-challenges.md, часть 2): то же испытание с новым зерном */
+  challengeAgain(): void;
   /** «Настройки» (spec docs/specs/2026-10-settings.md): окно из меню игры */
   toggleSettings(): void;
   /** меню игры (spec docs/specs/2026-10-saves.md): раскрыть, сохранить, загрузить ячейку, удалить, новая игра */

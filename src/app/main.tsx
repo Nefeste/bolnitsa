@@ -34,6 +34,7 @@ import { DEFAULT_ROLE, type Role, roleOf } from './roles';
 import { applyStill, applyText, readSettings, stillOf, systemStill } from './settings';
 import { readRecords } from './records';
 import { dailyRows, readDaily } from './daily';
+import { readChallenges } from './challenges';
 import { isDay } from '../sim/days';
 
 declare const __VERSION__: string;
@@ -109,6 +110,7 @@ const actions: Actions = {
   shiftAgain: later('shiftAgain'),
   dailyAgain: later('dailyAgain'),
   dailyReview: later('dailyReview'),
+  challengeAgain: later('challengeAgain'),
   toggleSettings: later('toggleSettings'),
   setQualityMode: later('setQualityMode'),
   toggleMenu: later('toggleMenu'),
@@ -129,7 +131,10 @@ const actions: Actions = {
             : 'daily' in kind
               ? // случай дня (spec docs/specs/2026-11-doctor-shift.md, часть 3): городская больница без потока, только вы
                 { hospital: 'preset', daily: kind.daily, ...shiftSeed() }
-              : kind,
+              : 'challenge' in kind
+                ? // испытание (spec docs/specs/2026-11-challenges.md, часть 2): больница, поток и касса — из записи; зерно — новое
+                  { challenge: kind.challenge, ...(role ? { role } : {}), ...shiftSeed() }
+                : kind,
     ),
   setManage: later('setManage'),
   setSoft: later('setSoft'),
@@ -138,7 +143,7 @@ const actions: Actions = {
  * С чего начать: новая больница и кто вы (spec docs/specs/2026-10-two-ways.md, F4), сложность (spec
  * docs/specs/2026-10-difficulty.md, часть 2) — или сохранение (ячейка).
  */
-type Begin = { start: Start; role: Role; scenario?: string; manage?: Manage; soft?: boolean; solo?: boolean; daily?: string } | { load: string };
+type Begin = { start: Start; role: Role; scenario?: string; manage?: Manage; soft?: boolean; solo?: boolean; daily?: string; challenge?: string } | { load: string };
 
 /**
  * Смена врача (spec docs/specs/2026-11-doctor-shift.md): каждая новая смена — свои больные, зерно — новое; задано в адресе
@@ -183,6 +188,9 @@ async function startOf(): Promise<Begin> {
   const level = { ...(manage ? { manage } : {}), ...(has('soft') ? { soft: true } : {}) };
   const scenario = arg('scenario');
   if (scenario) return { start: 'empty', role: roleOf(arg('role')) ?? DEFAULT_ROLE, scenario, ...level };
+  // испытание (spec docs/specs/2026-11-challenges.md, часть 2): больница — из записи; уровень — «Обычно», без выбора
+  const challenge = arg('challenge');
+  if (challenge) return { start: 'preset', role: roleOf(arg('role')) ?? DEFAULT_ROLE, challenge };
   // случай дня (spec docs/specs/2026-11-doctor-shift.md, часть 3): городская больница, вы — единственный врач
   const daily = arg('daily');
   if (isDay(daily)) return { start: 'preset', role: DEFAULT_ROLE, solo: true, daily };
@@ -201,6 +209,7 @@ async function choose(problem?: string): Promise<never> {
   // «Кампания» (spec docs/specs/2026-10-scenario-1.md): сценарии базы по порядку; база не прочиталась — карточек нет
   const db = await loadContent().catch(() => undefined);
   const scenarios = Object.values(db?.scenarios ?? {}).sort((a, b) => a.order - b.order);
+  const challengeRecords = readChallenges();
   store.set({
     // демо (spec docs/specs/2026-11-demo.md): на экране начала — только «Кампания»
     demoMode: q.get('demo') === '1',
@@ -212,6 +221,10 @@ async function choose(problem?: string): Promise<never> {
     startRecords: readRecords(),
     // случай дня (часть 3): последние дни с итогами — по часам компьютера
     startDaily: dailyRows(new Date(), readDaily()),
+    // испытания (spec docs/specs/2026-11-challenges.md, часть 2): по порядку записей, с рекордами
+    startChallenges: Object.values(db?.challenges ?? {}).map(c => ({
+      id: c.id, name: named(c.name), about: named(c.about), kind: c.kind, by: c.grade.by, ...(challengeRecords[c.id] ? { record: challengeRecords[c.id] } : {}),
+    })),
   });
   backdrop();
   return new Promise<never>(() => {});
@@ -237,7 +250,7 @@ function levelsOf(db: ContentDb): Record<Manage, LevelRow> {
 function go(extra: Record<string, string>) {
   leaving = true;
   const p = new URLSearchParams(location.search);
-  for (const k of ['load', 'hospital', 'role', 'scenario', 'manage', 'soft', 'solo', 'daily']) p.delete(k);
+  for (const k of ['load', 'hospital', 'role', 'scenario', 'manage', 'soft', 'solo', 'daily', 'challenge']) p.delete(k);
   for (const [k, v] of Object.entries(extra)) p.set(k, v);
   location.search = p.toString();
 }
@@ -309,7 +322,7 @@ function fly(g: Game) {
  * Что открыть: новая больница — как есть; сохранение — прочитать и пройти миграции. Не открылось — снова экран начала,
  * со словом почему.
  */
-async function begin(): Promise<{ start: Start; role: Role; scenario?: string; manage?: Manage; soft?: boolean; solo?: boolean; daily?: string; loaded?: SaveFile }> {
+async function begin(): Promise<{ start: Start; role: Role; scenario?: string; manage?: Manage; soft?: boolean; solo?: boolean; daily?: string; challenge?: string; loaded?: SaveFile }> {
   let b = await startOf();
   for (;;) {
     if ('start' in b) return b;
@@ -348,9 +361,9 @@ async function flowOf(): Promise<Flow> {
 }
 
 begin()
-  .then(async ({ start, role, scenario, manage, soft, solo, daily, loaded }) =>
-    // случай дня — без потока: больной дня один (spec docs/specs/2026-11-doctor-shift.md, часть 3)
-    Game.create(document.getElementById('view')!, store, __VERSION__, quality, start, daily ? { perHour: 0 } : await flowOf(), loaded, role, scenario, { manage, soft, solo, daily }),
+  .then(async ({ start, role, scenario, manage, soft, solo, daily, challenge, loaded }) =>
+    // случай дня — без потока: больной дня один (spec docs/specs/2026-11-doctor-shift.md, часть 3); у испытания поток — его
+    Game.create(document.getElementById('view')!, store, __VERSION__, quality, start, daily ? { perHour: 0 } : await flowOf(), loaded, role, scenario, { manage, soft, solo, daily, challenge }),
   )
   .then(async g => {
     game = g;

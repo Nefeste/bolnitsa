@@ -16,6 +16,7 @@ import type { CardView, DoctorState, ErrorList, Refusal, RouteMiss, SeenList, So
 import type { Leg } from './legs';
 import type { NameRow } from './pack';
 import type { SaveMeta } from './packing';
+import type { ChallengeEnd } from './challenge';
 import type { DailyEnd } from './daily';
 import type { ShiftEnd } from './shift';
 
@@ -33,6 +34,11 @@ export type ToSim =
        * начинает смену без потока, только вы; время года — дня, а не `season`
        */
       daily?: string;
+      /**
+       * испытание (spec docs/specs/2026-11-challenges.md, часть 2): запись базы — её поток, касса, «вы один» и сортировка
+       * (`newFlowShift`); переданные `flow` и `economy` — не в счёт. Начало позже 08:00 — часы сразу идут до него
+       */
+      challenge?: Id;
     }
   /** открыть сохранение — снимок состояния */
   | { kind: 'load'; state: ShiftState }
@@ -110,6 +116,10 @@ export type FromSim =
       shift?: ShiftEnd;
       /** случай дня (часть 3): приём больного дня закрыт — итог, один раз */
       daily?: DailyEnd;
+      /** испытание (spec docs/specs/2026-11-challenges.md, часть 2): дошли до его конца — итог, один раз */
+      challenge?: ChallengeEnd;
+      /** «Только по показаниям»: обследований без показаний у ваших приёмов и сколько можно — когда изменилось */
+      audit?: { n: number; max: number };
     } & DoctorOut)
   | { kind: 'state'; state: ShiftState }
   /** файл сохранения: сжатые байты (без копии) и его шапка; не вышло — `packFailed` */

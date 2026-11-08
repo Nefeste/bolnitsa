@@ -12,6 +12,7 @@ import type { NameRow } from './pack';
 import type { SaveMeta } from './packing';
 import type { DoctorAct, DoctorOut, FromSim, PathView, RoomsMoney, ToSim, World } from './protocol';
 import type { DailyEnd } from './daily';
+import type { ChallengeEnd } from './challenge';
 import type { ShiftEnd } from './shift';
 
 /** Срез и, если изменились, режим врача (spec docs/specs/2026-10-doctor-mode.md). */
@@ -45,6 +46,10 @@ export interface Slice extends DoctorOut {
   shift?: ShiftEnd;
   /** случай дня (часть 3): приём больного дня закрыт — итог, один раз */
   daily?: DailyEnd;
+  /** испытание (spec docs/specs/2026-11-challenges.md, часть 2): дошли до его конца — итог, один раз */
+  challenge?: ChallengeEnd;
+  /** «Только по показаниям»: обследований без показаний у ваших приёмов и сколько можно — когда изменилось */
+  audit?: { n: number; max: number };
 }
 
 export class SimClient {

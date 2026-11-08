@@ -22,6 +22,7 @@ import { byGuide, GoalsTab, GuideToggle, LetterCard, ScenarioDone, StepMark } fr
 import { DemoSummary } from './Demo';
 import { ShiftSummary } from './Shift';
 import { DailyStart, DailySummary } from './Daily';
+import { ChallengeStart, ChallengeSummary } from './Challenges';
 import { recordKey, type ShiftHospital } from '../app/records';
 import { type Actions, type Hud, type Level, type LevelRow, type RoomCard, type Speed, type Store, type Tab, type Tool, useHud } from './store';
 import { Icon, type IconName } from './icons';
@@ -74,13 +75,21 @@ function TopBar({ hud, actions }: P) {
         {/* смена врача (spec docs/specs/2026-11-doctor-shift.md): до конца смены, а не до утра; у случая дня (часть 3) конца нет —
         больной один и ждёт вас */}
         {hud.daily ? null : (
-          <Btn id="speed-ff" on={hud.ff} onClick={actions.untilMorning} title={`4 — ${hud.solo ? T.shift.untilEndSoon : T.top.morningSoon}`}>
-            <Icon name="morning" /> {hud.solo ? T.shift.untilEnd : T.top.morning}
+          <Btn id="speed-ff" on={hud.ff} onClick={actions.untilMorning} title={`4 — ${hud.challenge && hud.solo ? T.challenges.untilEndSoon : hud.solo ? T.shift.untilEndSoon : T.top.morningSoon}`}>
+            <Icon name="morning" /> {hud.challenge && hud.solo ? T.challenges.untilEnd : hud.solo ? T.shift.untilEnd : T.top.morning}
           </Btn>
         )}
       </span>
-      {/* кассы в смене врача нет */}
-      {hud.solo ? null : <Money hud={hud} />}
+      {/* кассы в смене врача нет; у «Только по показаниям» (spec docs/specs/2026-11-challenges.md) на её месте — обследования без показаний */}
+      {hud.solo ? (
+        hud.audit ? (
+          <span className={hud.audit.n > hud.audit.max ? 'stat warn' : 'stat'} id="audit" title={T.challenges.auditHint}>
+            {T.challenges.audit(hud.audit.n, hud.audit.max)}
+          </span>
+        ) : null
+      ) : (
+        <Money hud={hud} />
+      )}
       {/* крупный текст на узком экране — с многоточием; целиком — в подсказке */}
       <span className="stat" id="counts" title={`${T.top.arrived} ${hud.arrived} · ${T.top.seen} ${hud.seen} · ${T.top.left} ${hud.left} · ${T.top.queue} ${hud.queue}`}>
         {T.top.arrived} <b>{hud.arrived}</b> · {T.top.seen} <b>{hud.seen}</b> · {T.top.left} <b>{hud.left}</b> · {T.top.queue} <b>{hud.queue}</b>
@@ -275,7 +284,8 @@ function SettingsPanel({ hud, actions }: P) {
       <p className="muted small">{t.where}</p>
       {/* сложность этой игры (spec docs/specs/2026-10-difficulty.md, часть 2; решение владельца #136): в любой момент; в смене
           врача — нет: рекорд — по больнице и уровню (spec docs/specs/2026-11-doctor-shift.md) */}
-      {hud.solo ? null : (
+      {/* испытание (spec docs/specs/2026-11-challenges.md, часть 2): уровень — «Обычно», без выбора */}
+      {hud.solo || hud.challenge ? null : (
         <>
           <h3 className="sub">{T.manage.title}</h3>
           <Difficulty level={{ manage: hud.manage, soft: hud.soft }} set={l => (l.manage !== hud.manage ? actions.setManage(l.manage) : actions.setSoft(l.soft))} />
@@ -1295,8 +1305,11 @@ function StartChooser({ hud, actions }: P) {
   // смена врача (spec docs/specs/2026-11-doctor-shift.md, часть 2) и случай дня (часть 3) — свои вторые шаги
   const [shift, setShift] = useState(false);
   const [daily, setDaily] = useState(false);
+  // испытания (spec docs/specs/2026-11-challenges.md, часть 2) — свой второй шаг
+  const [challenges, setChallenges] = useState(false);
   if (shift) return <ShiftStart hud={hud} actions={actions} back={() => setShift(false)} />;
   if (daily) return <DailyStart hud={hud} actions={actions} back={() => setDaily(false)} />;
+  if (challenges) return <ChallengeStart hud={hud} actions={actions} back={() => setChallenges(false)} />;
   if (pick) return <RoleChooser start={pick} hud={hud} actions={actions} back={() => setPick(null)} />;
   if (scenario) return <ScenarioStart sc={scenario} hud={hud} actions={actions} back={() => setScenario(null)} />;
   return (
@@ -1343,6 +1356,16 @@ function StartChooser({ hud, actions }: P) {
           <button type="button" id="start-preset" onClick={() => setPick('preset')}>
             <b>{T.start.preset}</b>
             <span>{T.start.presetHint}</span>
+          </button>
+        </>
+      )}
+      {/* «Испытания» (spec docs/specs/2026-11-challenges.md, часть 2): в демо их нет, как и песочницы */}
+      {hud.demoMode || (hud.startChallenges ?? []).length === 0 ? null : (
+        <>
+          <h2>{T.challenges.start}</h2>
+          <button type="button" id="start-challenges" onClick={() => setChallenges(true)}>
+            <b>{T.challenges.pick}</b>
+            <span>{T.challenges.startHint}</span>
           </button>
         </>
       )}
@@ -1431,6 +1454,8 @@ export function App({ store, actions, names }: { store: Store; actions: Actions;
       {!hud.doctor?.card ? <ShiftSummary s={hud.shiftEnd} actions={actions} /> : null}
       {/* случай дня (spec docs/specs/2026-11-doctor-shift.md, часть 3): «Итог дня» — под открытой картой разбора не видно */}
       {!hud.doctor?.card ? <DailySummary s={hud.dailyEnd} actions={actions} /> : null}
+      {/* испытание (spec docs/specs/2026-11-challenges.md, часть 2): «Итог испытания» — когда карта закрыта */}
+      {!hud.doctor?.card ? <ChallengeSummary s={hud.challengeEnd} actions={actions} /> : null}
       {hud.debug ? <DebugMenu {...p} /> : null}
       {/* энциклопедия (spec docs/specs/2026-10-encyclopedia.md) — поверх всего, и карты пациента */}
       <Encyclopedia />
