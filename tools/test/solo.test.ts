@@ -2,6 +2,7 @@
 // больница готовая — стройки и найма нет, ожидание результатов в кабинете — время приёма, итог смены по категориям
 // (`src/sim/shift.ts`, копия `single.ts` «Анамнеза») и «виртуальный врач» на нём.
 import { describe, expect, test } from 'bun:test';
+import { whyText } from '../../src/app/build';
 import { db } from '../../src/content';
 import { hospitalOf } from '../../src/engine/hospital/site';
 import { siteOfPlan } from '../../src/engine/hospital/site-plan';
@@ -9,6 +10,7 @@ import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { presetStaff, withNightShift } from '../../src/engine/hospital/staff';
 import { apply, capacityOf, colleaguesOf, current, newFlowShift } from '../../src/engine/shift/engine';
 import type { Flow, ShiftPatient, ShiftState } from '../../src/engine/shift/types';
+import { T } from '../../src/i18n';
 import { ownCases, SHIFT_CATEGORIES, shiftResult, SPEED_MINUTES } from '../../src/sim/shift';
 import { playOwn } from '../sim/doctor-player';
 import { hash, liveTo } from './site-kit';
@@ -73,6 +75,9 @@ describe('смена врача: принимаете только вы', () => 
       expect(out).toEqual([{ kind: 'site', cmd: cmd.kind, ok: false, error: { kind: 'shift' } }]);
     }
     expect(apply(db, s, { kind: 'site', cmd: { kind: 'done' } })).toEqual([]);
+    // отказ — своими словами, а не «нельзя»
+    expect(whyText(db, s.hospital!.site, { kind: 'shift' })).toBe(T.site.shift);
+    expect(T.site.shift).not.toBe(T.site.unknown);
   });
 });
 
