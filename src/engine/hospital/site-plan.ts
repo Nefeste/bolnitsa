@@ -5,14 +5,15 @@
 // больнице (`presetStaff`): навык 3, зарплата каталога, облик по номеру.
 import type { ContentDb, SitePlan } from '../../content/types';
 import { DOCTOR, standInOf } from './requirements';
-import { addBench, addReady, emptySite, setOffice, type Site, type SiteError } from './site';
+import { addBench, addReady, emptySite, setOffice, type Site, type SiteError, widerLot } from './site';
 import { salaryOf, type StaffMember } from './staff';
 
 /** Больница по плану и её люди; не построилась — номер помещения (или скамьи) в плане и причина. */
 export type Planned = { ok: true; site: Site; staff: StaffMember[] } | { ok: false; room: number; bench?: number; error: SiteError };
 
 export function siteOfPlan(db: ContentDb, p: SitePlan): Planned {
-  let site = emptySite();
+  // свободная земля (spec docs/specs/2026-11-scenario-3.md): корпус шире к востоку
+  let site = p.wider ? emptySite(widerLot(p.wider)) : emptySite();
   const ids: string[] = [];
   for (const [i, r] of p.rooms.entries()) {
     const out = addReady(db, site, r.type, r.size, r.x, r.y, r.rot);
@@ -35,8 +36,8 @@ export function siteOfPlan(db: ContentDb, p: SitePlan): Planned {
   for (const [i, r] of p.rooms.entries()) {
     for (const post of db.rooms[r.type].staff) {
       if (post === DOCTOR && i === mine) continue;
-      // нанятый врач встаёт на место врача
-      const role = post === DOCTOR ? standInOf(db, DOCTOR) : post;
+      // нанятый врач встаёт на место врача; `as` — кто именно (spec docs/specs/2026-11-scenario-3.md: амбулаторный хирург)
+      const role = post === DOCTOR ? (r.as ?? standInOf(db, DOCTOR)) : post;
       if (!role) continue;
       const n = staff.length + 1;
       staff.push({ id: `p${n}`, role, sex: n % 2 === 1 ? 'f' : 'm', seed: n, skill: 3, salary: salaryOf(db, role, 3), room: ids[i], days: 0 });

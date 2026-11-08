@@ -361,10 +361,22 @@ export function demolishRefund(db: ContentDb, room: SiteRoom): number {
 /** Участок пустого начала и здание на нём (spec «Участок и здание»). */
 export const EMPTY_LOT = { w: 60, h: 40, building: { x: 6, y: 6, w: 48, h: 28 } as Rect };
 
-/** Пустое здание: стены корпуса, главный вход посередине южной стены, вход скорой — в восточной, ближе к югу. */
-export function emptySite(): Site {
-  const { w, h, building: b } = EMPTY_LOT;
-  const mid = b.x + Math.floor(b.w / 2) - 1;
+/**
+ * Участок пустого здания с корпусом шире на `cells` клеток к востоку (spec docs/specs/2026-11-scenario-3.md): свободная земля
+ * готовой больницы; главный вход — посередине прежнего корпуса, как был.
+ */
+export function widerLot(cells: number): typeof EMPTY_LOT {
+  const b = EMPTY_LOT.building;
+  return { w: EMPTY_LOT.w + cells, h: EMPTY_LOT.h, building: { ...b, w: b.w + cells } };
+}
+
+/**
+ * Пустое здание: стены корпуса, главный вход посередине южной стены, вход скорой — в восточной, ближе к югу. Корпус шире
+ * (`widerLot`) — главный вход там же, где у пустого здания, вход скорой — в новой восточной стене.
+ */
+export function emptySite(lot = EMPTY_LOT): Site {
+  const { w, h, building: b } = lot;
+  const mid = b.x + Math.floor(EMPTY_LOT.building.w / 2) - 1;
   const east = b.x + b.w - 1;
   const south = b.y + b.h - 1;
   return {

@@ -14,7 +14,7 @@ import {
 import { type CampaignProgress, campaignEvening, chapterOf, nextChapterOf, plotOf, scenarioOf, startChapter, tutorialDayOf } from '../campaign/campaign';
 import { build, emptyPlot, type HospitalState, type PlacedRoom, type Plan, planOf, presetHospital, sizeOf, UNDO_DEPTH, widenPlot } from '../hospital/build';
 import { bedsideIn, DOCTOR, doctorRoom, examWhere, NONE_BROKEN, openBlocks, type Problem, problemsOf, slotKey, type Staffing, workingRooms } from '../hospital/requirements';
-import { applicantsOf, doctorOf, dutyOf, grow, memberAt, onDuty, ORDERLY, presetStaff, readingOf, type StaffMember, speedOf, staffingOf, wageOf } from '../hospital/staff';
+import { applicantsOf, doctorOf, dutyOf, grow, memberAt, onDuty, ORDERLY, presetStaff, readingOf, shiftAt, type StaffMember, speedOf, staffingOf, wageOf } from '../hospital/staff';
 import { routeDept } from '../hospital/departments';
 import { metersBetween, WALK_SPEED, walkSeconds } from '../hospital/walk';
 import { log2 } from '../core/math';
@@ -3137,6 +3137,8 @@ function finishOperation(db: ContentDb, s: ShiftState, p: ShiftPatient | undefin
       const onTime = rounded <= window;
       if (onTime) day.onTime++;
       else day.late++;
+      // ночная бригада (spec docs/specs/2026-11-scenario-3.md): в срок и начата в ночную смену — только поток для ПК
+      if (onTime && s.flow && shiftAt(db, op.start) === 'night') day.night = (day.night ?? 0) + 1;
       p.closed!.notes.push({
         code: onTime ? 'op.onTime' : 'op.late', tx: op.tx, hours: rounded, window,
         ...(fromOnset ? { onset: true as const } : {}), ...(observed ? { observed: true as const } : {}),

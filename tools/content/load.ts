@@ -6,7 +6,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import { parse } from 'yaml';
 import type { z } from 'zod';
-import { type AttrSpec, beyond, byParams, type Cell, type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Link, membersOf, type Preset, type Profession, type Risk, type RoomType, type RulePoints, type StaffRole, type Treatment } from '../../src/content/types';
+import { type AttrSpec, beyond, byParams, type Cell, type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Link, membersOf, type Preset, type Profession, type Risk, type RoomType, type RulePoints, type SitePlan, type StaffRole, type Treatment } from '../../src/content/types';
 import { planOf, presetHospital } from '../../src/engine/hospital/build';
 import { presetStaff, staffingOf } from '../../src/engine/hospital/staff';
 import { openBlocks, problemsOf, workingRooms } from '../../src/engine/hospital/requirements';
@@ -1012,8 +1012,9 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     ...(departments ? { departments: Object.fromEntries(departments.departments.map(d => [d.id, { id: d.id, name: d.name, paint: d.paint, ...(d.takes ? { takes: d.takes } : {}) }])) } : {}),
     // ось «Управление» (spec 2026-10-difficulty): без файла — ошибка сборки выше
     ...(difficulty ? { manage: difficulty } : {}),
-    // готовые больницы из готовых помещений (spec 2026-10-real-hospital); проверка — checkSites ниже
-    ...(Object.keys(sites).length ? { sites: Object.fromEntries(Object.values(sites).sort((a, b) => (a.id < b.id ? -1 : 1)).map(p => [p.id, { id: p.id, rooms: p.rooms.map(r => ({ ...r })), ...(p.benches.length ? { benches: p.benches.map(([x, y]) => [x, y] as [number, number]) } : {}) }])) } : {}),
+    // готовые больницы из готовых помещений (spec 2026-10-real-hospital); проверка — checkSites ниже. Основа (`base`, spec
+    // docs/specs/2026-11-scenario-3.md) — её помещения и скамьи первыми, без вложения: у основы своей основы нет
+    ...(Object.keys(sites).length ? { sites: Object.fromEntries(Object.values(sites).sort((a, b) => (a.id < b.id ? -1 : 1)).map(p => [p.id, sitePlanOf(p, sites)])) } : {}),
     revealedBy,
   };
   for (const c of Object.values(conditions).sort((a, b) => (a.id < b.id ? -1 : 1))) {
@@ -1221,6 +1222,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     };
     db.presets[p.id] = out;
   }
+  checkSiteBases(sites, errors);
   if (errors.length === 0) {
     checkPresets(db, errors);
     checkSites(db, errors);
@@ -1508,12 +1510,36 @@ function checkPresets(db: ContentDb, errors: string[]) {
  * что игрок не поставил бы, в базу не попадёт. Ваш кабинет — один, и это кабинет врача; работает каждое помещение, и
  * больница открыта.
  */
+/** Запись готовой больницы — в план базы: помещения и скамьи основы первыми, свои — за ними; `wider` — свой. */
+function sitePlanOf(p: SiteSrc, sites: Record<string, SiteSrc>): SitePlan {
+  const base = p.base ? sites[p.base] : undefined;
+  const rooms = [...(base?.rooms ?? []), ...p.rooms].map(r => ({ ...r }));
+  const benches = [...(base?.benches ?? []), ...p.benches].map(([x, y]) => [x, y] as [number, number]);
+  return { id: p.id, rooms, ...(benches.length ? { benches } : {}), ...(p.wider !== undefined ? { wider: p.wider } : {}) };
+}
+
+/** Основа записи готовой больницы: есть и сама без основы. */
+function checkSiteBases(sites: Record<string, SiteSrc>, errors: string[]) {
+  for (const p of Object.values(sites)) {
+    if (!p.base) continue;
+    if (!sites[p.base]) errors.push(`${p.id}: основы ${p.base} нет`);
+    else if (sites[p.base].base) errors.push(`${p.id}: у основы ${p.base} своя основа — так нельзя`);
+  }
+}
+
 function checkSites(db: ContentDb, errors: string[]) {
   for (const p of Object.values(db.sites ?? {})) {
     const bad = p.rooms.flatMap((r, i) => (!db.rooms[r.type] ? [`${p.id}: помещение ${i} — ${r.type} не найдено`] : !db.rooms[r.type].sizes.some(z => z.id === r.size) ? [`${p.id}: у ${r.type} нет образца ${r.size}`] : []));
     if (bad.length) { errors.push(...bad); continue; }
     const mine = p.rooms.filter(r => r.mine);
     if (mine.length > 1 || mine.some(r => r.type !== 'room.office')) errors.push(`${p.id}: ваш кабинет — один, и это кабинет врача`);
+    // кто встаёт на место врача (spec docs/specs/2026-11-scenario-3.md): врач, что стоит на месте врача и работает в этом помещении
+    for (const [i, r] of p.rooms.entries()) {
+      if (!r.as) continue;
+      const role = db.roles[r.as];
+      if (!role) errors.push(`${p.id}: помещение ${i} — должности ${r.as} нет`);
+      else if (r.mine || role.stands !== 'role.doctor' || !db.rooms[r.type].staff.includes('role.doctor') || !role.rooms.includes(r.type)) errors.push(`${p.id}: помещение ${i} — ${r.as} не встаёт на место врача в ${r.type}`);
+    }
     const built = siteOfPlan(db, p);
     if (!built.ok) {
       if (built.bench !== undefined) errors.push(`${p.id}: скамья ${built.bench} (${p.benches![built.bench].join(', ')}) не ставится: ${built.error.kind}`);
@@ -1781,7 +1807,9 @@ function checkScenarios(db: ContentDb, errors: string[]) {
       missions.add(m.id);
       if (m.kind === 'roomWorks' && !c.build.includes(m.room)) at(`задание ${m.id}: ${m.room} нельзя построить в сценарии`);
       if (m.kind === 'roomWorks' && m.role !== undefined && !standsIn(m.role, m.room)) at(`задание ${m.id}: ${m.role} не встаёт на место в ${m.room}`);
-      if (!['seen', 'roomWorks', 'streak', 'days', 'stay', 'sorting', 'nights', 'routing'].includes(m.kind)) at(`задание ${m.id}: вид ${m.kind} в сценарии ПК не считается`);
+      if (!['seen', 'roomWorks', 'streak', 'days', 'stay', 'sorting', 'nights', 'routing', 'operations', 'onTime', 'nightOps'].includes(m.kind)) at(`задание ${m.id}: вид ${m.kind} в сценарии ПК не считается`);
+      // операции (spec docs/specs/2026-11-scenario-3.md) — где можно построить операционную или она уже есть
+      if ((m.kind === 'operations' || m.kind === 'onTime' || m.kind === 'nightOps') && !c.build.includes('room.or')) at(`задание ${m.id}: в сценарии не построить операционную`);
       // направление по жалобе (spec docs/specs/2026-10-departments.md, часть 4) — где можно нанять врача, который берёт
       // пришедших сами своего отделения: без него регистратор не направляет
       if (m.kind === 'routing' && !Object.values(db.roles).some(r => r.walkIns && c.build.some(room => standsIn(r.id, room)))) at(`задание ${m.id}: в сценарии регистратору не к кому направить`);
