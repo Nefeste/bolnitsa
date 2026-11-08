@@ -551,7 +551,9 @@ export type SiteError =
   /** только днём (`day`, клиническая медсестра, spec docs/specs/2026-10-staff-motion.md, часть 2б): ни нанять в ночную смену, ни перевести */
   | { kind: 'dayOnly' }
   /** сценарий ПК (spec docs/specs/2026-10-scenario-1.md): такого помещения в списке сценария нет */
-  | { kind: 'scenario' };
+  | { kind: 'scenario' }
+  /** смена врача (spec docs/specs/2026-11-doctor-shift.md): больница готовая — стройки и найма нет */
+  | { kind: 'shift' };
 
 export type Check = { ok: true; cost: number } | { ok: false; error: SiteError };
 const fail = (error: SiteError): { ok: false; error: SiteError } => ({ ok: false, error });

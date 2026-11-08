@@ -84,6 +84,9 @@ export function whyText(db: ContentDb, site: Site | undefined, e: SiteError): st
     // сценарий (spec docs/specs/2026-10-scenario-1.md): помещения нет в его списке
     case 'scenario':
       return T.site.scenario;
+    // смена врача (spec docs/specs/2026-11-doctor-shift.md): больница готовая — стройки и найма нет
+    case 'shift':
+      return T.site.shift;
     case 'mode':
       return T.site.mode;
     // касса (spec docs/specs/2026-10-economy.md): трата увела бы кассу ниже предела минуса

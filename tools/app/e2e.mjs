@@ -558,6 +558,8 @@ async function partTwo() {
     // «Обставить» в карточке нового помещения; новое помещение выбрано — рамка по полу (spec 2026-10-aaa-polish)
     await until(() => !!document.getElementById('card-furnish'));
     if (i === 0) {
+      // рамку ставит цикл кадров (`Stage` → `Highlight.update`), а без видеокарты кадр — раз в четверть секунды: ждём кадр
+      await until(() => window.__game.stage.highlight.dump().sel, undefined, 5000).catch(() => {});
       const sel = await page.evaluate(() => window.__game.stage.highlight.dump());
       if (sel.sel) ok('построенное помещение выбрано: рамка по полу');
       else fail(`рамки выбранного помещения нет: ${JSON.stringify(sel)}`);

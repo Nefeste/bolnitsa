@@ -174,6 +174,8 @@ export function siteCommand(db: ContentDb, s: ShiftState, cmd: SiteCommand): Not
 function siteCommandOf(db: ContentDb, s: ShiftState, cmd: SiteCommand): Notice[] {
   const site = s.hospital?.site;
   if (!s.flow || !site) return no(cmd.kind, { kind: 'mode' });
+  // смена врача (spec docs/specs/2026-11-doctor-shift.md): больница готовая — закрыть стройку можно, остальное нет
+  if (s.meta.solo && cmd.kind !== 'done') return no(cmd.kind, { kind: 'shift' });
   const works = (s.works ??= { spent: 0, undo: [] });
   switch (cmd.kind) {
     case 'done': {
