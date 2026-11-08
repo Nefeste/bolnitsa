@@ -925,9 +925,15 @@ export interface Preset {
  */
 export interface SitePlan {
   id: Id;
-  rooms: { type: Id; size: RoomSizeId; x: number; y: number; rot: Rot; mine?: true }[];
+  /**
+   * помещения в порядке постройки; `as` — кто встаёт на место врача (spec docs/specs/2026-11-scenario-3.md), нет — нанятый
+   * терапевт. Больница-основа (`base` записи) — уже здесь: загрузчик ставит её помещения и скамьи первыми
+   */
+  rooms: { type: Id; size: RoomSizeId; x: number; y: number; rot: Rot; mine?: true; as?: Id }[];
   /** скамьи коридора (spec 2026-10-door-benches): клетки (x, y), ставятся после помещений, как ставит игрок */
   benches?: [number, number][];
+  /** корпус шире на столько клеток к востоку — свободная земля; вход скорой — в новой восточной стене */
+  wider?: number;
 }
 
 /** Баланс своей больницы (content/hospital/economy.yaml); числа — игровые. */
@@ -1103,6 +1109,13 @@ export type Mission = { id: string; main: boolean; text: Text } & (
    * когда регистратор направил по жалобам не меньше `count` пришедших сами и ни одного — не туда
    */
   | { kind: 'routing'; count: number }
+  /**
+   * сценарий 3 ПК (spec docs/specs/2026-11-scenario-3.md): `count` срочных операций в срок за сценарий — без «подряд», как
+   * владелец решил 15.10.2026 о заданиях-сроках «Анамнеза» (вопрос 35): опоздание счёт не обнуляет; `count` срочных
+   * операций в срок, начатых ночью, — ночная бригада
+   */
+  | { kind: 'onTime'; count: number }
+  | { kind: 'nightOps'; count: number }
 );
 
 /**

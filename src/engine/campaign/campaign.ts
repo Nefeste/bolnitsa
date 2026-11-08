@@ -271,6 +271,13 @@ export function missionProgress(db: ContentDb, v: CampaignView, m: Mission): Mis
       const best = Math.max(0, ...days.map(h => (h.routing && h.routing.wrong === 0 ? h.routing.routed : 0)));
       return { value: Math.min(best, m.count), target: m.count, done: was || best >= m.count };
     }
+    // сценарий 3 ПК (spec docs/specs/2026-11-scenario-3.md): срочные операции в срок за сценарий — без «подряд» (решение
+    // владельца 15.10.2026, вопрос 35 «Анамнеза»): опоздание видно в разборе и счёт не обнуляет; из них — начатые ночью
+    case 'onTime':
+    case 'nightOps': {
+      const n = days.reduce((a, h) => a + ((m.kind === 'onTime' ? h.surgery?.onTime : h.surgery?.night) ?? 0), 0);
+      return { value: Math.min(n, m.count), target: m.count, done: was || n >= m.count };
+    }
     // окно — дни главы подряд; выполнено, если хоть в одном окне тяжёлых было не меньше порога, а умерло и выписано раньше
     // срока не больше доли; ход — последнее окно
     case 'mortality': {

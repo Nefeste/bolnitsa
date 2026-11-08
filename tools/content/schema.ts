@@ -796,11 +796,16 @@ export const presetSchema = z.strictObject({
 /**
  * Готовая больница из готовых помещений (spec 2026-10-real-hospital) — своё «Больницы»: помещения в пустом здании игры в
  * порядке постройки; каждое ставится, как готовое помещение стройки, — тип, образец, левый верхний угол, поворот (дверная
- * сторона, как у готовой больницы). `mine` — ваш кабинет, он один. Люди — на всех должностях, кроме вашей. `benches` —
- * скамьи коридора, клетки (x, y): ставятся, как ставит игрок (spec 2026-10-door-benches).
+ * сторона, как у готовой больницы). `mine` — ваш кабинет, он один. Люди — на всех должностях, кроме вашей; `as` — кто встаёт
+ * на место врача (spec docs/specs/2026-11-scenario-3.md: амбулаторный хирург в кабинете хирурга), нет — нанятый терапевт.
+ * `benches` — скамьи коридора, клетки (x, y): ставятся, как ставит игрок (spec 2026-10-door-benches). `base` — сначала
+ * помещения и скамьи этой больницы, потом свои (сценарий 3 — больница сценария 2); `wider` — корпус шире на столько клеток
+ * к востоку, свободная земля, а вход скорой — в новой восточной стене.
  */
 export const siteSchema = z.strictObject({
   id: z.string().regex(/^site\.[a-z0-9_]+$/),
+  base: z.string().regex(/^site\.[a-z0-9_]+$/).optional(),
+  wider: z.number().int().min(1).max(40).optional(),
   rooms: z.array(z.strictObject({
     type: roomId,
     size: z.enum(['S', 'M', 'L']),
@@ -808,6 +813,7 @@ export const siteSchema = z.strictObject({
     y: int,
     rot: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]),
     mine: z.literal(true).optional(),
+    as: z.string().regex(/^role\.[a-z0-9_]+$/).optional(),
   })).min(1),
   benches: z.array(z.tuple([int, int])).default([]),
 });
@@ -1095,6 +1101,9 @@ const missionSchema = z.discriminatedUnion('kind', [
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('nights'), count, minutes: count, text }),
   // часть 3: сутки, когда регистратор направил столько пришедших сами и ни одного не туда
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('routing'), count, text }),
+  // сценарий 3 ПК (spec docs/specs/2026-11-scenario-3.md): срочных операций в срок за сценарий — без «подряд»; из них ночью
+  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('onTime'), count, text }),
+  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('nightOps'), count, text }),
 ]);
 
 /** Письмо: от кого, когда — в начале главы, после дня N, при задании, в конце главы. */

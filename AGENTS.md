@@ -478,6 +478,14 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   is the one check for goals and steps and counts each shift apart (staff-room places of those on that shift, like the shift
   itself); goal kind `routing` — a day with the registrar routing at least `count` and none wrongly. The simulator builds the
   surgeon's office with a second staff room and two door benches on the morning of day 2.
+  Scenario 3 «Хирургия» (`docs/specs/2026-11-scenario-3.md`; owner's decision #209, variant 1), part 1: the start site
+  `site.emergency` — scenario 2's hospital with free land. A site record may take a `base` (its rooms and benches first, one
+  level deep; the loader flattens it), widen the building to the east (`wider` → `widerLot` in `hospital/site.ts`: the ambulance
+  entrance moves to the new east wall, the main entrance stays) and name who stands at a doctor post (`as`); without them the
+  empty building and every site are the same. Goal kinds `onTime` (urgent operations on time over the scenario, no streak —
+  the owner's decision of 15.10.2026 on deadline goals) and `nightOps`; a PC scenario may count `operations` too, and these
+  three need the operating room in its build list. `SurgeryDay.night` counts on-time urgent operations started in the night
+  shift — PC flow only.
 - The demo for Next Fest (`docs/specs/2026-11-demo.md`, #176): the key `?demo=1` (Electron `--demo`, `main.tsx`) — only
   «Кампания» on the start screen, and after the first meeting closes the «Итог» window (`Game.afterMeeting`): what was built
   in the build order, the day's patients and how many left waiting for you, your receptions, cash, real time played, the
