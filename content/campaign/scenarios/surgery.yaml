@@ -1,0 +1,217 @@
+# Сценарий 3 «Хирургия» (spec docs/specs/2026-11-scenario-3.md; геймдизайн §9): ваша больница из сценария 2 и свободная
+# земля к востоку под хирургию (решение владельца #209, вариант 1) — готовая больница `site.emergency`. Касса — на
+# операционную с бригадой на день и на ночь и на палату для оперированных: две палаты приёмного заняты с первых суток. Её и
+# числа целей подобрал симулятор экономики (`bun tools/sim/economy.ts --only surgery`, «Часть 2: как сделано»
+# спецификации). Привезённых сортирует медсестра приёмного, как вне сценария 2: сортировке учил он, а галочка «Пусть
+# сортирует медсестра» — в окне врача, как всегда (решение агента). Первые больные — ваши, и всем нужна операционная:
+# приходят, когда она работает (`tutorialRoom`), — аппендицит у молодого по скорой (срок — сутки), нестабильный перелом
+# лодыжек (операция без срока), ущемлённая грыжа по скорой (срок — 2 часа). Письма — наставница, Ян Новак и новая
+# заведующая хирургией Амара Оби (char.head_surgeon); о медицине в них — только то, что в базе: сроки операций — из записей
+# болезней и их рекомендаций. Слова, порядок стройки и числа целей — предложение агента на одобрение владельца.
+id: scenario.surgery
+order: 3
+name: { ru: "Хирургия", en: "Surgery" }
+about:
+  ru: "Своя операционная вместо перевода: постройте её, наберите бригаду и успейте со сроками — и днём, и ночью."
+  en: "An operating room of your own instead of transfers: build it, hire the team and keep to the deadlines, day and night."
+start: site.emergency
+budget: 700000
+department: dept.therapy
+build:
+  - room.reception
+  - room.waiting
+  - room.office
+  - room.triage
+  - room.procedure
+  - room.lab
+  - room.ecg
+  - room.toilet
+  - room.staff
+  - room.emergency
+  - room.ward
+  - room.xray
+  - room.or
+# заданные больные приходят, когда операционная работает: всем троим нужна операция
+tutorialRoom: room.or
+tutorial:
+  - { condition: cond.appendicitis, ambulance: true, age: [18, 40] }
+  - { condition: cond.ankle_fracture, params: { stability: unstable } }
+  - { condition: cond.strangulated_hernia, ambulance: true }
+# Порядок стройки (решение владельца #114): операционная, третья палата — две палаты приёмного заняты с первых суток
+# (симулятор экономики), — и санитар в операционной, на стол и со стола (решение агента 4).
+guide:
+  - room: room.or
+    why:
+      ru: "своя операция вместо перевода: стол, наркозный аппарат, бригада — хирург, анестезиолог, операционная сестра — и двойная дверь для каталки"
+      en: "your own operation instead of a transfer: a table, an anaesthesia machine, a team (a surgeon, an anaesthetist, a scrub nurse) and a double door for the gurney"
+  - room: room.ward
+    count: 3
+    name: { ru: "Палата для оперированных", en: "A ward for the operated" }
+    why:
+      ru: "оперированному нужна койка, а палаты приёмного заняты: без свободной койки оперировать нельзя — только перевод"
+      en: "an operated patient needs a bed, and the emergency wards are full: without a free bed there is no operation, only a transfer"
+  - room: room.or
+    role: role.orderly
+    name: { ru: "Санитар в операционной", en: "An orderly in the operating room" }
+    why:
+      ru: "на стол и со стола — на каталке; без санитара везёт медсестра палаты, и палата ждёт"
+      en: "onto the table and off it on a gurney; without an orderly the ward's nurse wheels them, and the ward waits"
+missions:
+  - id: or
+    main: true
+    kind: roomWorks
+    room: room.or
+    text:
+      ru: "Открыть операционную: построить, поставить стол и наркозный аппарат, нанять бригаду"
+      en: "Open an operating room: build it, install the table and the anaesthesia machine, hire the team"
+  - id: operations
+    main: true
+    kind: operations
+    count: 4
+    text: { ru: "Четыре операции без осложнения", en: "Four operations without a complication" }
+  - id: ontime
+    main: true
+    kind: onTime
+    count: 5
+    text: { ru: "Пять срочных операций в срок", en: "Five urgent operations on time" }
+  - id: wait
+    main: false
+    kind: days
+    days: 3
+    day: noWaitComplication
+    text: { ru: "Трое суток с операциями без осложнений из-за ожидания", en: "Three days with operations and no complications from waiting" }
+  - id: night
+    main: false
+    kind: nightOps
+    count: 1
+    text: { ru: "Ночная бригада: срочного оперировали ночью в срок", en: "A night team: an urgent patient operated on in time at night" }
+letters:
+  - id: hello
+    from: char.tutor
+    when: start
+    text:
+      ru: >-
+        Коллега, приёмное работает, но всех, кому нужна операция, мы пока переводим. Корпус расширили: к востоку — свободная
+        земля под операционную. Начнём с неё: стол, наркозный аппарат, бригада и двойная дверь — для каталки.
+      en: >-
+        Colleague, the emergency department works, but everyone who needs an operation we still transfer. The building has
+        been extended: to the east there is free land for an operating room. Let's start with it: a table, an anaesthesia
+        machine, a team and a double door for the gurney.
+  - id: budget
+    from: char.official
+    when: start
+    text:
+      ru: >-
+        Деньги на хирургию — в кассе: на операционную с бригадой на день и на ночь и на палату для оперированных. Срочному
+        операция бывает нужна в любое время суток.
+      en: >-
+        The money for surgery is in the till: for an operating room with a day and a night team, and for a ward for the
+        operated. An urgent patient may need an operation at any hour.
+  - id: surgeon
+    from: char.head_surgeon
+    when: start
+    text:
+      ru: >-
+        Здравствуйте. До сих пор ваших больных оперировали у нас — теперь вы сможете сами. Нужна ли операция и как скоро,
+        решает врач, оперирует бригада: хирург, анестезиолог и операционная сестра. У каждой срочной операции свой срок:
+        неосложнённый аппендицит — в первые сутки после поступления, ущемлённую грыжу — в первые два часа. Опоздание с
+        операцией лекарствами не исправить.
+      en: >-
+        Hello. Until now your patients were operated on here; now you can do it yourselves. Whether an operation is needed
+        and how soon is the doctor's decision; the team operates: a surgeon, an anaesthetist and a scrub nurse. Every urgent
+        operation has its own deadline: uncomplicated appendicitis within the first day after admission, a strangulated
+        hernia within the first two hours. Lateness with an operation cannot be made good with medicines.
+  - id: night
+    from: char.head_surgeon
+    when: { hint: nightOr }
+    text:
+      ru: >-
+        Вечер. В 20:00 бригада уйдёт, а скорая едет и ночью. Без ночной бригады срочный ночью ждёт утра или едет к нам — а
+        у ущемлённой грыжи срок два часа.
+      en: >-
+        Evening. At 20:00 the team leaves, and the ambulance comes at night too. Without a night team an urgent patient waits
+        for the morning or is driven to us, and a strangulated hernia has two hours.
+  - id: firstDay
+    from: char.tutor
+    when: { afterDay: 1 }
+    text:
+      ru: >-
+        Первые сутки с операционной позади. На планёрке — операции: сколько сделано, сколько в срок и сколько поздно,
+        сколько осложнений после них. А в разборе оперированного видно, сколько часов прошло до операции и каков был срок.
+      en: >-
+        The first day with the operating room is behind us. At the meeting: the operations, how many were done, how many on
+        time and how many late, how many complications after them. And the review of an operated patient shows how many
+        hours passed before the operation and what the deadline was.
+  - id: orDone
+    from: char.head_surgeon
+    when: { mission: or }
+    text:
+      ru: >-
+        Операционная работает. Решили оперировать — больной ложится на койку и ждёт стола, бригада берёт следующего, когда
+        стол свободен. Свободной койки нет — оперировать нельзя, только перевод.
+      en: >-
+        The operating room works. Once you decide to operate, the patient takes a bed and waits for the table, and the team
+        takes the next one when the table is free. No free bed, no operation: only a transfer.
+  - id: ontimeDone
+    from: char.head_surgeon
+    when: { mission: ontime }
+    text:
+      ru: >-
+        Пять срочных операций в срок. Раньше этих больных везли к нам, теперь их срок — ваш. Спасибо, коллега.
+      en: >-
+        Five urgent operations on time. These patients used to be driven to us; now their deadline is yours. Thank you,
+        colleague.
+  - id: nightDone
+    from: char.official
+    when: { mission: night }
+    text:
+      ru: >-
+        Срочного оперировали ночью — и в срок. Ночная бригада стоит денег, но болезнь утра не ждёт.
+      en: >-
+        An urgent patient was operated on at night, and in time. A night team costs money, but an illness does not wait for
+        the morning.
+  - id: end
+    from: char.tutor
+    when: end
+    text:
+      ru: >-
+        Хирургия работает: операции в срок и без осложнений, бригада есть и днём, и ночью. Дальше — сердце и мозг: боль в
+        груди и подозрение на инсульт, где сроки — минуты, томограф, неврология и палата интенсивной терапии.
+      en: >-
+        Surgery works: operations on time and without complications, a team by day and by night. Next come the heart and
+        the brain: chest pain and a suspected stroke, where deadlines are minutes, a CT scanner, neurology and an intensive
+        care unit.
+# Подсказки наставницы (как в сценарии 2): в карте — у заданного больного с аппендицитом (подсказка главы 2 «Анамнеза» в
+# нейтральном сеттинге, медицина та же, со своей операционной — без перевода), в блоке обхода — к первому вашему лежащему.
+tips:
+  - id: appendicitis
+    from: char.head_surgeon
+    when: { condition: cond.appendicitis }
+    name: { ru: "Аппендицит и время", en: "Appendicitis and time" }
+    text:
+      ru: >-
+        При подозрении на аппендицит решает время. Боль, что началась у пупка и ушла вправо вниз, тошнота, отказ от еды,
+        болезненность справа внизу живота, лейкоциты в анализе крови — чем больше этого, тем вероятнее аппендицит.
+        Неосложнённый аппендицит оперируют в первые сутки после поступления: пока человек ждёт, растёт риск перфорации.
+        Решили оперировать — больному нужна свободная койка: на ней он ждёт стола.
+      en: >-
+        When appendicitis is suspected, time decides. Pain that began around the navel and moved to the lower right, nausea,
+        no appetite, tenderness in the lower right abdomen, white cells in the blood test: the more of these, the likelier
+        appendicitis. Uncomplicated appendicitis is operated on within the first day after admission: while the person
+        waits, the risk of perforation grows. Once you decide to operate, the patient needs a free bed: there they wait for
+        the table.
+    see: [cond.appendicitis, tx.appendectomy]
+  - id: rounds
+    from: char.tutor
+    when: rounds
+    name: { ru: "Обход", en: "The round" }
+    text:
+      ru: >-
+        На обходе смотрите не на число суток, а на показатели по суткам: температура, пульс, дыхание. Лучше — лечение
+        действует; хуже — лечение не помогает, его пора сменить. Выписывают, когда болезнь прошла: раньше — человек
+        вернётся хуже, позже — койка занята зря.
+      en: >-
+        On the round, look not at the number of days but at the readings day by day: temperature, pulse, breathing. Better
+        means the treatment works; worse means it does not help and it is time to change it. Discharge when the illness has
+        passed: earlier and the person comes back worse, later and the bed is taken for nothing.
+    see: [room.ward]

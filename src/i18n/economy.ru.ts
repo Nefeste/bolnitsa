@@ -84,6 +84,10 @@ export const economyRu = {
     night: (arrived: number, wait: number, unseen: number) =>
       `ночь: скорая привезла ${arrived}, дольше всех ждал врача — ${dur(wait)}${unseen > 0 ? `; врач не позвал до утра — ${unseen}` : ''}`,
     nightHint: 'Привезённые скорой с 20:00 до планёрки: от приезда до того, как врач позвал',
+    /** операции суток (spec docs/specs/2026-11-scenario-3.md, часть 2) */
+    surgery: (done: number, onTime: number, late: number, complications: number, night: number) =>
+      `операции: ${done}${onTime + late > 0 ? `, срочные — в срок ${onTime}, поздно ${late}` : ''}${night > 0 ? ` (в срок ночью — ${night})` : ''}${complications > 0 ? `; осложнения после операции — ${complications}` : ''}`,
+    surgeryHint: 'Операции суток. У срочной операции свой срок: в срок — успели, поздно — опоздали. Ночью — начатые в ночную смену',
     /** направление по жалобе (spec docs/specs/2026-10-departments.md, часть 4) */
     routing: (wrong: number, routed: number, sent: number) =>
       `регистратор направил ${routed}, не туда — ${wrong}${sent > 0 ? `; врачи передали в отделение болезни — ${sent}` : ''}`,

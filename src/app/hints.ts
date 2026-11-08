@@ -9,11 +9,12 @@ import type { Role } from './roles';
 
 export type HintKey =
   | 'build' | 'draw' | 'furnish' | 'door' | 'hire' | 'machine' | 'fix' | 'run' | 'look' | 'asks' | 'call' | 'leave' | 'decisions' | 'manage'
-  | 'sheet' | 'bays' | 'night';
+  | 'sheet' | 'bays' | 'night' | 'nightOr';
 
 /** Порядок подсказок — для проверок: все ключи, какие бывают. */
 export const HINT_KEYS: readonly HintKey[] = [
   'build', 'draw', 'furnish', 'door', 'hire', 'machine', 'fix', 'run', 'look', 'asks', 'call', 'leave', 'decisions', 'manage', 'sheet', 'bays', 'night',
+  'nightOr',
 ];
 
 export interface HintInput {
@@ -48,6 +49,8 @@ export interface HintInput {
   handover?: number;
   door?: number;
   night?: boolean;
+  /** хирургия (spec docs/specs/2026-11-scenario-3.md, часть 2): вечер, операционная работает, а на ночь бригады в ней нет */
+  nightOr?: boolean;
 }
 
 /**
@@ -77,9 +80,11 @@ export function hintOf(s: HintInput, seen: ReadonlySet<HintKey>): HintKey | unde
     return pick('fix');
   }
   if (s.paused && s.arrived === 0 && !seen.has('run')) return 'run';
-  // приёмное: мест в смотровой нет; вечер, а на ночь никого (spec docs/specs/2026-11-scenario-2.md, часть 2б)
+  // приёмное: мест в смотровой нет; вечер, а на ночь никого (spec docs/specs/2026-11-scenario-2.md, часть 2б); вечер, а в
+  // операционной на ночь нет бригады (spec docs/specs/2026-11-scenario-3.md, часть 2)
   if ((s.door ?? 0) > 0 && !seen.has('bays')) return 'bays';
   if (s.night && !seen.has('night')) return 'night';
+  if (s.nightOr && !seen.has('nightOr')) return 'nightOr';
   // по роли (spec 2026-10-two-ways, F4): «Врачу» — как позвать первого; «Главврачу» — где решения; «Управляющему» — что делать
   const role = s.role ?? 'doctor';
   // стройка открыта — её панель закрывает окно врача (spec docs/specs/2026-11-demo.md, проход по снимкам 1): сначала «Готово»

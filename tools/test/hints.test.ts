@@ -91,6 +91,16 @@ describe('подсказки первых минут', () => {
     expect(hintOf({ ...open, door: 0, night: false }, none)).toBe('look');
   });
 
+  // хирургия (spec docs/specs/2026-11-scenario-3.md, часть 2): вечер, а в операционной на ночь нет бригады — после «ночи»
+  // приёмного, раньше подсказок по роли
+  test('хирургия: «ночь без бригады» — после «ночи» приёмного; закрытая не возвращается', () => {
+    const open = { ...base, paused: false };
+    expect(hintOf({ ...open, night: true, nightOr: true, callable: true }, none)).toBe('night');
+    expect(hintOf({ ...open, night: true, nightOr: true, callable: true }, new Set<HintKey>(['night']))).toBe('nightOr');
+    expect(hintOf({ ...open, nightOr: true, callable: true }, new Set<HintKey>(['nightOr']))).toBe('call');
+    expect(hintOf({ ...base, nightOr: true }, none)).toBe('run');
+  });
+
   test('каждый ключ достижим и записан в списке', () => {
     const reached = new Set<HintKey>();
     const states: HintInput[] = [
@@ -111,6 +121,7 @@ describe('подсказки первых минут', () => {
       { ...base, paused: false, handover: 1 },
       { ...base, paused: false, door: 1 },
       { ...base, paused: false, night: true },
+      { ...base, paused: false, nightOr: true },
     ];
     for (const s of states) {
       const k = hintOf(s, none);

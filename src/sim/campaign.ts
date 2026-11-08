@@ -61,7 +61,7 @@ export function scenarioView(db: ContentDb, s: ShiftState): ScenarioView | undef
 /** Шаги порядка стройки: помещение того типа работает (с должностью шага на месте, если она есть) — шаг сделан. */
 function guideOf(db: ContentDb, s: ShiftState, guide: readonly GuideStep[]): { room: Id; done: boolean }[] {
   const v = { hospital: s.hospital, staff: s.staff };
-  return guide.map(g => ({ room: g.room, done: roomWorks(db, v, g.room, g.role) }));
+  return guide.map(g => ({ room: g.room, done: roomWorks(db, v, g.room, g.role, g.count) }));
 }
 
 /**

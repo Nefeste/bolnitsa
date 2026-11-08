@@ -294,6 +294,12 @@ export function MeetingBody({ m, e, actions, screen = false }: { m: MeetingView;
             {t.night(d.night.arrived, d.night.wait, d.night.unseen ?? 0)}
           </p>
         ) : null}
+        {/* операции суток (spec docs/specs/2026-11-scenario-3.md, часть 2): сделано, срочные в срок и поздно, в срок ночью, осложнения */}
+        {d.surgery && d.surgery.done > 0 ? (
+          <p id="meet-surgery" title={t.surgeryHint}>
+            {t.surgery(d.surgery.done, d.surgery.onTime, d.surgery.late, d.surgery.complications, d.surgery.night ?? 0)}
+          </p>
+        ) : null}
       </Section>
       {m.doctors.length > 0 || d.seen > 0 ? (
         <Section title={t.hired} id="meet-doctors">

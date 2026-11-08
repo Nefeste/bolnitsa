@@ -172,8 +172,12 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # press, «Звук» in «Настройки», a button's click, build, demolish, refuse, hire, silence at 0, the
                                    # meeting; then the doctor's shift: «Для врача» on the start screen, its second step, a shift
                                    # with no building, cash or roles, your case, «До конца смены» — «Итог смены» at 20:00, the record,
-                                   # «Новая смена», the best result on the start screen, the city on «Трудно»;
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|39` for one part, `-- --only 7,10,11` —
+                                   # «Новая смена», the best result on the start screen, the city on «Трудно»; then scenario 3: its
+                                   # card third in «Кампания», scenario 2's hospital with free land and 700 000 ₽, the letters, three
+                                   # build steps, an operating room with a day team and a third ward, the first tutorial patient —
+                                   # yours, «Аппендицит и время» in the card, «В операционную», the «night» letter in the evening
+                                   # with no night team, the meeting's «Операции» line;
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|40` for one part, `-- --only 7,10,11` —
                                    # several in a row on one page, as in the full run
 node tools/app/soak.mjs --days 3   # after build: a long run in headless Chromium — the ready city at ×12 for three game days,
                                    # the meeting closed each morning; window memory after GC, DOM nodes, people, sim lag and
@@ -485,7 +489,15 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   empty building and every site are the same. Goal kinds `onTime` (urgent operations on time over the scenario, no streak —
   the owner's decision of 15.10.2026 on deadline goals) and `nightOps`; a PC scenario may count `operations` too, and these
   three need the operating room in its build list. `SurgeryDay.night` counts on-time urgent operations started in the night
-  shift — PC flow only.
+  shift — PC flow only. Part 2 (0.75.0): the record `content/campaign/scenarios/surgery.yaml` (`scenario.surgery`, start
+  `site.emergency`, the nurse sorts) and its new character `char.head_surgeon`; a scenario's `tutorialRoom` (a meaning of its
+  own, not the chapter's day) — its tutorial patients come only while those rooms work (`tutorialNext`), and when they start
+  working the stream of the next tutorial patient restarts (`reflow` with `flowWas`, the snapshot before the change); a guide
+  step may take `count` (that many rooms of its type work — `roomWorks(…, count)`: the third ward), steps of one room differ
+  by role or count, and the build catalog shows such a room once, with its first step not done (`byGuide`); the hint state
+  `nightOr` (16:00–20:00, an operating room works and someone it needs has no night post — `orNight` in `src/app/game.ts`);
+  the meeting's `#meet-surgery` line from `DaySummary.surgery`; the economy simulator's `--only surgery` (the operating room and
+  a third ward with staff at 08:00, the main goals by day 8).
 - The demo for Next Fest (`docs/specs/2026-11-demo.md`, #176): the key `?demo=1` (Electron `--demo`, `main.tsx`) — only
   «Кампания» on the start screen, and after the first meeting closes the «Итог» window (`Game.afterMeeting`): what was built
   in the build order, the day's patients and how many left waiting for you, your receptions, cash, real time played, the
