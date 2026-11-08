@@ -21,8 +21,13 @@
 //               ленивый — обследований и из них без показаний на приём, итог смены;
 //   hundred   — амбулатория сценария 1 (`site.ambulatory`), поликлиника и городская: сами — `--per 8.5` человек в час приёма
 //               в среднем (около ста за 08:00–20:00), без записи и скорой; приняты, ушли, не дождавшись, ждут в 20:00.
+//   engine    — испытания по записям `content/challenges/` (часть 1): больница начала (`challengeStart`), условие — движок;
+//               испытания главврача — никто не играет (в вашем кабинете — нанятый терапевт, как у «Управляющего»),
+//               испытания врача — «виртуальный врач» (`--play rational,careful,urgent`: «срочного — сразу» отпускает текущего
+//               ждать и зовёт красного); итог (`challengeEnd`): оценка, число,
+//               пройдено ли, красные в срок, обследования без показаний.
 //
-// bun tools/bench/challenges.ts [--only flu,xray,night,debt,indicated,hundred] [--seeds 1,2,3]
+// bun tools/bench/challenges.ts [--only flu,xray,night,debt,indicated,hundred,engine] [--seeds 1,2,3]
 import type { ContentDb, Id, Manage } from '../../src/content/types';
 import { db as bundle } from '../../src/content';
 import { slotKey } from '../../src/engine/hospital/requirements';
@@ -37,6 +42,7 @@ import type { Command, Flow, ShiftPatient, ShiftState } from '../../src/engine/s
 import { Rng } from '../../src/engine/core/rng';
 import { type DoctorResult, indicated, runDoctor } from '../../src/engine/med/policy';
 import { startFor } from '../../src/app/roles';
+import { challengeEnd, challengeEndAt, challengeStart } from '../../src/sim/challenge';
 import { shiftResult } from '../../src/sim/shift';
 import { type Player, playOwn } from '../sim/doctor-player';
 
@@ -51,6 +57,8 @@ const FLUS = arg('flu', '1,4').split(',').map(Number);
 const DEBT = Number(arg('debt', '-500000'));
 const AMBS = arg('amb', '1,1.5,2').split(',').map(Number);
 const PER = Number(arg('per', '8.5'));
+const PLAYS = arg('play', 'rational,careful,urgent').split(',');
+const WHY = process.argv.includes('--why');
 const db: ContentDb = bundle;
 const H = 3600;
 const START = 8 * H;
@@ -247,10 +255,12 @@ if (ONLY.includes('debt')) {
  * «По одному»: обследования разумного врача — по одному, следующее — когда пришёл результат прошлого (ждёт у себя): так
  * каждое назначают по тому, что уже известно, — как проверяет страховая (`indicated`). Остальное — как `playOwn`.
  */
-function playStepwise(x: ContentDb, s: ShiftState, end: number, careful = false) {
+function playStepwise(x: ContentDb, s: ShiftState, end: number, careful = false, urgent = false) {
   const exams = Object.keys(x.exams).sort();
   const plans = new Map<string, DoctorResult>();
   const tried = new Map<string, Set<Id>>();
+  // текущего отпустить подождать нельзя — его приём доводят до конца, а красный ждёт
+  const stuck = new Set<string>();
   const step = (cmd: Command) => apply(x, s, cmd);
   const busy = (p: ShiftPatient) => p.pending.length > 0 || (p.out !== undefined && p.out.back > s.t);
   for (let guard = 0; guard < 100_000 && s.t < end; guard++) {
@@ -259,8 +269,16 @@ function playStepwise(x: ContentDb, s: ShiftState, end: number, careful = false)
       continue;
     }
     const p = current(s);
+    const callable = (y: string) => s.patients[y]?.status === 'waiting' && !s.patients[y].by && (s.patients[y].kind !== 'ambulance' || s.patients[y].sorted);
+    // «красного — сразу»: ждёт красный — текущего отпускает подождать (ради того, кто срочнее, можно всегда) и зовёт красного
+    const red = urgent ? s.queue.find(y => callable(y) && s.patients[y].triage === 'red') : undefined;
+    if (p && red && p.triage !== 'red' && !stuck.has(p.id)) {
+      step({ kind: 'sendAway' });
+      if (current(s)?.id === p.id) stuck.add(p.id);
+      continue;
+    }
     if (!p) {
-      const id = s.queue.find(y => s.patients[y]?.status === 'waiting' && !s.patients[y].by && (s.patients[y].kind !== 'ambulance' || s.patients[y].sorted));
+      const id = red ?? s.queue.find(callable);
       step(id ? { kind: 'call', id } : { kind: 'advance', seconds: 60 });
       continue;
     }
@@ -271,7 +289,8 @@ function playStepwise(x: ContentDb, s: ShiftState, end: number, careful = false)
         continue;
       }
       step({ kind: 'waitResults' });
-      while (busy(p) && s.t < end) step({ kind: 'advance', seconds: 60 });
+      // «красного — сразу»: ждёт у себя результаты — но привезли красного, и он к нему
+      while (busy(p) && s.t < end && !(urgent && !stuck.has(p.id) && p.triage !== 'red' && s.queue.some(y => callable(y) && s.patients[y].triage === 'red'))) step({ kind: 'advance', seconds: 60 });
       continue;
     }
     let plan = plans.get(p.id);
@@ -289,6 +308,8 @@ function playStepwise(x: ContentDb, s: ShiftState, end: number, careful = false)
       const now = left.filter(e => (x.exams[e]?.cost ?? 0) === 0 || indicated(x, p.patient, observationsOf(p), cands, e, minutes));
       if (now.length > 0) {
         for (const e of now) {
+          // «красного — сразу»: между вопросами и обследованиями — не привезли ли красного
+          if (urgent && !stuck.has(p.id) && p.triage !== 'red' && s.queue.some(y => callable(y) && s.patients[y].triage === 'red')) break;
           done.add(e);
           step({ kind: 'exam', exam: e });
         }
@@ -346,6 +367,49 @@ if (ONLY.includes('hundred')) {
       const d = s.history[0];
       const offices = s.hospital!.site!.rooms.filter(r => r.type === 'room.office').length;
       console.log(`  зерно ${seed}: кабинетов ${offices}; пришли ${d.arrived}, закрыты за сутки ${closedDay1(seen).length}, верных ${share(closedDay1(seen))} %, ушли ${d.left} (${pct(d.left, d.arrived)} %), ждут врача в 20:00 ${at20}`);
+    }
+  }
+}
+
+// ---------------------------------------------------------------- испытания по записям — движок (часть 1)
+if (ONLY.includes('engine')) {
+  for (const c of Object.values(db.challenges ?? {})) {
+    for (const play of c.kind === 'doctor' ? PLAYS : ['никто']) {
+      console.log(`\n## ${c.id} — ${c.name.ru}: ${c.start}, с ${c.from} до ${c.to} ч, ${c.kind === 'doctor' ? `играет ${play}` : 'никто не играет'}; зёрна ${SEEDS.join(', ')}`);
+      for (const seed of SEEDS) {
+        const h = challengeStart(db, c, c.kind === 'chief' ? (site, staff) => startFor(db, site, staff, 'manager') : undefined);
+        const s = newFlowShift(db, { seed, season: c.season, hospital: hospitalOf(db, h.site), staff: h.staff, flow: { perHour: 0 }, challenge: c.id });
+        apply(db, s, { kind: 'site', cmd: { kind: 'done' } });
+        const end = challengeEndAt(c);
+        const t0 = performance.now();
+        if (c.kind === 'doctor') {
+          // сортирует игрок — здесь медсестра по шкале: так же, как отсортировал бы «виртуальный врач», и сразу
+          delete s.meta.sorts;
+          // ночь: до 20:00 никого — часы идут без врача
+          while (s.t < c.from * H) apply(db, s, { kind: 'advance', seconds: Math.min(600, c.from * H - s.t) });
+          if (play === 'careful' || play === 'urgent') playStepwise(db, s, end, true, play === 'urgent');
+          else playOwn(db, s, play as Player, end);
+          if (s.t < end) apply(db, s, { kind: 'advance', seconds: end - s.t });
+        } else runTo(db, s, end, new Map());
+        const r = challengeEnd(db, s)!;
+        // `--why`: красные по шкале — когда привезли, через сколько минут позвал врач и сколько красных ждали тогда
+        const reds = WHY && c.reds !== undefined ? [...Object.values(s.patients), ...(s.past ?? []).map(x => x.p)].filter(p => p.kind === 'ambulance' && p.scale?.triage === 'red').sort((a, b) => a.arriveT - b.arriveT) : [];
+        const at = (t: number) => `${String(Math.floor(t / H) % 24).padStart(2, '0')}:${String(Math.floor((t % H) / 60)).padStart(2, '0')}`;
+        // с кем был врач, когда у красного вышел срок: его приём шёл в ту минуту — красный ли он и был ли у него свой срок
+        const mine = [...Object.values(s.patients), ...(s.past ?? []).map(x => x.p)].filter(p => p.calledT !== undefined && !p.closed?.by);
+        const withAt = (t: number) => mine.find(q => q.calledT! <= t && (q.closed?.at ?? Infinity) >= t);
+        const late = (p: ShiftPatient) => (p.calledT ?? Infinity) - p.arriveT > (c.reds ?? 0) * 60;
+        const busyNote = (p: ShiftPatient) => {
+          const q = late(p) ? withAt(p.arriveT + (c.reds ?? 0) * 60) : undefined;
+          return q && q !== p ? ` [врач у ${q.id}: ${q.triage}${(q.closed?.targets ?? []).length > 0 ? ', свой срок' : ''}]` : '';
+        };
+        if (reds.length > 0) console.log(`    красные: ${reds.map(p => `${at(p.arriveT)} → ${p.calledT === undefined ? 'не позван' : `${Math.round((p.calledT - p.arriveT) / 60)} мин`}${busyNote(p)}`).join('; ')}`);
+        console.log(
+          `  зерно ${seed}: итог ${r.grade}, число ${typeof r.value === 'number' ? (c.grade.by === 'cash' ? `${rub(r.value)} ₽` : r.value) : r.value}; ${r.passed ? 'пройдено' : 'не пройдено'}; пришли ${r.arrived}, приняты ${r.seen}` +
+            `${r.reds ? `; красных в срок ${r.reds.inTime} из ${r.reds.total}` : ''}${r.unindicated !== undefined ? `; без показаний ${r.unindicated}` : ''}` +
+            `${r.shift ? `; смена ${r.shift.overall} (точность ${r.shift.correct} %, ${r.shift.minutes} мин, приёмов ${r.shift.seen})` : ''} — ${((performance.now() - t0) / 1000).toFixed(1)} с`,
+        );
+      }
     }
   }
 }

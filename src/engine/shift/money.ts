@@ -11,6 +11,7 @@ import { wagesOf } from '../hospital/staff';
 import { roomUpkeep, type Site } from '../hospital/site';
 import { accrueRooms, COMMON, roomExpense } from './rooms';
 import { levelOf, manageOf } from './manage';
+import { challengeOf } from './challenge';
 import { DAY, type ShiftState, SHIFT_START } from './types';
 
 type Economy = NonNullable<ShiftState['economy']>;
@@ -106,9 +107,17 @@ export function accrue(db: ContentDb, s: ShiftState) {
  */
 export function shortOf(db: ContentDb, s: ShiftState, cost: number): number {
   const now = cashNow(s);
-  const limit = manageOf(db, s).overdraft;
+  const limit = limitOf(db, s);
   if (now === undefined || limit === undefined || cost <= 0) return 0;
   return Math.max(0, cost - (now + limit));
+}
+
+/**
+ * Предел минуса, ₽: уровня «Управления» — или свой у испытания, где строят в долг («В долг», spec
+ * docs/specs/2026-11-challenges.md: касса начала ниже предела уровня).
+ */
+export function limitOf(db: ContentDb, s: ShiftState): number | undefined {
+  return challengeOf(db, s)?.overdraft ?? manageOf(db, s).overdraft;
 }
 
 /** Стройка оплачена: в кассу суток (снос и отмена — минус). */
@@ -169,7 +178,8 @@ export function repay(s: ShiftState) {
 export function offerOf(db: ContentDb, s: ShiftState): number | undefined {
   const e = s.economy;
   const m = db.money;
-  if (!e || !m || e.loan || e.cash >= -(manageOf(db, s).overdraft ?? m.overdraft)) return undefined;
+  // испытание «В долг» (spec docs/specs/2026-11-challenges.md): банк кредита не даёт — итог по кассе без долга банку
+  if (!e || !m || e.loan || e.cash >= -(limitOf(db, s) ?? m.overdraft) || challengeOf(db, s)?.loan === false) return undefined;
   return Math.ceil(-e.cash / m.loan.step) * m.loan.step;
 }
 

@@ -1,0 +1,19 @@
+# Испытание «Только по показаниям» (spec docs/specs/2026-11-challenges.md; геймдизайн §9): смена врача в поликлинике, 08:00–20:00;
+# страховая проверяет каждый ваш приём — обследование, назначенное без показаний и не подтверждающее диагноз, не оплачивает
+# (экспертиза ОМС, `caseIncome`). Назначать не запрещено; больше двух таких за смену — не пройдено. Разумный врач, что
+# назначает весь план сразу, набирает их 3–12, а назначающий только показанное сейчас — 0–2 (проба `bun
+# tools/bench/challenges.ts --only indicated`). Итог — итог смены врача. Слова — предложение агента на одобрение владельца.
+id: challenge.indicated
+order: 5
+name: { ru: "Только по показаниям", en: "Only When Indicated" }
+about:
+  ru: "Страховая проверяет каждый ваш приём: обследование без показаний не оплатят. Больше двух за смену — не пройдено."
+  en: "The insurer checks every visit of yours: an exam without an indication goes unpaid. More than two in a shift fails."
+kind: doctor
+start: site.polyclinic
+season: winter
+from: 8
+to: 20
+flow: auto
+unindicated: 2
+grade: { by: shift }
