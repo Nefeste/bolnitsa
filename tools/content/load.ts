@@ -1024,7 +1024,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     // ось «Управление» (spec 2026-10-difficulty): без файла — ошибка сборки выше
     ...(difficulty ? { manage: difficulty } : {}),
     // готовые больницы из готовых помещений (spec 2026-10-real-hospital); проверка — checkSites ниже. Основа (`base`, spec
-    // docs/specs/2026-11-scenario-3.md) — её помещения и скамьи первыми, без вложения: у основы своей основы нет
+    // docs/specs/2026-11-scenario-3.md) — её помещения и скамьи первыми; у основы может быть своя (сценарий 4 строится на
+    // больнице сценария 3, та — на сценарии 2) — тогда её ещё раньше
     ...(Object.keys(sites).length ? { sites: Object.fromEntries(Object.values(sites).sort((a, b) => (a.id < b.id ? -1 : 1)).map(p => [p.id, sitePlanOf(p, sites)])) } : {}),
     revealedBy,
   };
@@ -1523,20 +1524,34 @@ function checkPresets(db: ContentDb, errors: string[]) {
  * что игрок не поставил бы, в базу не попадёт. Ваш кабинет — один, и это кабинет врача; работает каждое помещение, и
  * больница открыта.
  */
-/** Запись готовой больницы — в план базы: помещения и скамьи основы первыми, свои — за ними; `wider` — свой. */
+/** Запись готовой больницы — в план базы: помещения и скамьи основ первыми (основа основы — раньше), свои — за ними; `wider` — свой. */
 function sitePlanOf(p: SiteSrc, sites: Record<string, SiteSrc>): SitePlan {
-  const base = p.base ? sites[p.base] : undefined;
-  const rooms = [...(base?.rooms ?? []), ...p.rooms].map(r => ({ ...r }));
-  const benches = [...(base?.benches ?? []), ...p.benches].map(([x, y]) => [x, y] as [number, number]);
+  const chain = baseChain(p, sites);
+  const rooms = chain.flatMap(x => x.rooms).map(r => ({ ...r }));
+  const benches = chain.flatMap(x => x.benches).map(([x, y]) => [x, y] as [number, number]);
   return { id: p.id, rooms, ...(benches.length ? { benches } : {}), ...(p.wider !== undefined ? { wider: p.wider } : {}) };
 }
 
-/** Основа записи готовой больницы: есть и сама без основы. */
+/** Основы записи по порядку стройки: самая первая — первой, сама запись — последней; по кругу — до повтора. */
+function baseChain(p: SiteSrc, sites: Record<string, SiteSrc>): SiteSrc[] {
+  const out: SiteSrc[] = [];
+  for (let x: SiteSrc | undefined = p; x && !out.includes(x); x = x.base ? sites[x.base] : undefined) out.unshift(x);
+  return out;
+}
+
+/** Основа записи готовой больницы: есть, не по кругу, и корпус записи не уже, чем у основы, — иначе её помещения не встанут. */
 function checkSiteBases(sites: Record<string, SiteSrc>, errors: string[]) {
   for (const p of Object.values(sites)) {
     if (!p.base) continue;
-    if (!sites[p.base]) errors.push(`${p.id}: основы ${p.base} нет`);
-    else if (sites[p.base].base) errors.push(`${p.id}: у основы ${p.base} своя основа — так нельзя`);
+    const base = sites[p.base];
+    if (!base) {
+      errors.push(`${p.id}: основы ${p.base} нет`);
+      continue;
+    }
+    const chain = baseChain(p, sites);
+    const last = chain[0];
+    if (last.base && sites[last.base]) errors.push(`${p.id}: основы по кругу — ${chain.map(x => x.id).join(' → ')}`);
+    if ((base.wider ?? 0) > (p.wider ?? 0)) errors.push(`${p.id}: корпус уже, чем у основы ${p.base} (шире на ${p.wider ?? 0}, а у основы — на ${base.wider})`);
   }
 }
 

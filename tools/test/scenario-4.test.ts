@@ -1,15 +1,21 @@
 // Сценарий 4 «Сердце и мозг» (spec docs/specs/2026-11-scenario-4.md, часть 1; решение владельца #219, вариант 1): сроки и
 // тромболизисы по всей больнице — в итогах суток потока для ПК, у ваших приёмов и у нанятых врачей; цели сценария ПК
-// «срок у N больных» и «тромболизис вовремя» считают их, а глава «Анамнеза» — по-прежнему только ваши.
+// «срок у N больных» и «тромболизис вовремя» считают их, а глава «Анамнеза» — по-прежнему только ваши; маршруты для срочного
+// в смотровой приёмного; начало — ваша больница из сценария 3 со свободной землёй у входа скорой.
 import { describe, expect, test } from 'bun:test';
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { db } from '../../src/content';
 import type { Mission } from '../../src/content/types';
 import { missionProgress } from '../../src/engine/campaign/campaign';
-import { hospitalOf } from '../../src/engine/hospital/site';
+import { addReady, hospitalOf, widerLot } from '../../src/engine/hospital/site';
+import { siteOfPlan } from '../../src/engine/hospital/site-plan';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { presetStaff, withNightShift } from '../../src/engine/hospital/staff';
-import { apply, isOut, newFlowShift } from '../../src/engine/shift/engine';
+import { apply, hospitalCtx, isOut, newFlowShift } from '../../src/engine/shift/engine';
 import type { DaySummary, Flow, ShiftState } from '../../src/engine/shift/types';
+import { buildDb, CONTENT_DIR } from '../content/load';
 
 const AUTO: Flow = { perHour: 0, auto: true };
 const H = 3600;
@@ -128,5 +134,71 @@ describe('маршруты для срочного (решение владел�
     run(s, 32 * H + 60);
     expect(cards(s).some(p => p.routed !== undefined)).toBe(false);
     expect(s.history[0].routes).toBeUndefined();
+  }, 120_000);
+});
+
+describe('сценарий 4: начало — ваша больница из сценария 3 со свободной землёй у входа скорой', () => {
+  const built = (() => {
+    const p = siteOfPlan(db, db.sites!['site.surgery']);
+    if (!p.ok) throw new Error(`site.surgery: ${p.error.kind}`);
+    return p;
+  })();
+
+  test('больница начала сценария 3 — первой (с её основой, амбулаторией сценария 2); операционная и палата для оперированных — на местах симулятора экономики', () => {
+    const em = db.sites!['site.emergency'];
+    const p = db.sites!['site.surgery'];
+    expect(p.rooms.slice(0, em.rooms.length)).toEqual(em.rooms);
+    expect(p.rooms.slice(0, db.sites!['site.ambulatory'].rooms.length)).toEqual(db.sites!['site.ambulatory'].rooms);
+    expect(p.benches).toEqual(em.benches);
+    expect(p.rooms.slice(em.rooms.length).map(r => [r.type, r.size, r.x, r.y, r.rot])).toEqual([
+      ['room.or', 'M', 55, 6, 0],
+      ['room.ward', 'M', 64, 6, 0],
+    ]);
+    const lot = widerLot(20);
+    expect([built.site.w, built.site.h]).toEqual([lot.w, lot.h]);
+    // в операционной — бригада и санитар, как в конце сценария 3
+    const or = built.site.rooms.find(r => r.type === 'room.or')!;
+    expect(built.staff.filter(m => m.room === or.id).map(m => m.role).sort()).toEqual(['role.anesthetist', 'role.or_nurse', 'role.orderly', 'role.surgeon']);
+  });
+
+  test('свободная земля у входа скорой: кабинет КТ рядом со смотровой приёмного и палата интенсивной терапии встают', () => {
+    const ct = addReady(db, built.site, 'room.ct', 'M', 52, 26, 2);
+    expect(ct.ok).toBe(true);
+    if (!ct.ok) return;
+    expect(addReady(db, ct.site, 'room.icu', 'M', 62, 26, 2).ok).toBe(true);
+  });
+
+  test('в игре — как готовая больница: ночная смена и у операционной; все помещения работают', () => {
+    const staff = withNightShift(db, built.site.rooms, built.staff);
+    const or = built.site.rooms.find(r => r.type === 'room.or')!;
+    expect(staff.some(m => m.room === or.id && m.shift === 'night' && m.role === 'role.surgeon')).toBe(true);
+    const s = newFlowShift(db, { seed: 4, season: 'winter', hospital: hospitalOf(db, built.site), staff, flow: AUTO, economy: { cash: 300_000 } });
+    expect(hospitalCtx(db, s, 10 * H).working.size).toBe(built.site.rooms.length);
+  });
+
+  test('сборка базы: основы по кругу и корпус уже, чем у основы, — ошибки', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bolnitsa-content-'));
+    try {
+      cpSync(CONTENT_DIR, dir, { recursive: true });
+      const amb = join(dir, 'hospital/sites/ambulatory.yaml');
+      const text = readFileSync(amb, 'utf8');
+      if (!text.includes('id: site.ambulatory\n')) throw new Error('в записи нет id');
+      writeFileSync(amb, text.replace('id: site.ambulatory\n', 'id: site.ambulatory\nbase: site.surgery\n'));
+      const sur = join(dir, 'hospital/sites/surgery.yaml');
+      writeFileSync(sur, readFileSync(sur, 'utf8').replace('wider: 20\n', 'wider: 10\n'));
+      const errors = buildDb(dir).errors;
+      expect(errors.filter(e => e.includes('основы по кругу')).sort()).toEqual([
+        'site.ambulatory: основы по кругу — site.emergency → site.surgery → site.ambulatory',
+        'site.emergency: основы по кругу — site.surgery → site.ambulatory → site.emergency',
+        'site.surgery: основы по кругу — site.ambulatory → site.emergency → site.surgery',
+      ]);
+      // у амбулатории своего расширения нет, а у её новой основы — есть
+      expect(errors.filter(e => e.includes('корпус уже')).sort()).toEqual([
+        'site.ambulatory: корпус уже, чем у основы site.surgery (шире на 0, а у основы — на 10)',
+        'site.surgery: корпус уже, чем у основы site.emergency (шире на 10, а у основы — на 20)',
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   }, 120_000);
 });

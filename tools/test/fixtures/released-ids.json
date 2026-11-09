@@ -1286,6 +1286,10 @@
       "room.ward/S",
       "room.xray/M"
     ],
+    "routes": [
+      "route.ecg_chest_pain",
+      "route.stroke_ct"
+    ],
     "rules": [
       "rule.abcd2",
       "rule.acs_invasive",
@@ -1370,7 +1374,8 @@
     "sites": [
       "site.ambulatory",
       "site.emergency",
-      "site.polyclinic"
+      "site.polyclinic",
+      "site.surgery"
     ],
     "skills": [
       "skill.infectious_history",
