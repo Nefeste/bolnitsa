@@ -99,6 +99,7 @@ import { dailyPart } from './e2e-daily.mjs';
 import { challengesPart } from './e2e-challenges.mjs';
 import { techniciansPart } from './e2e-technicians.mjs';
 import { routesPart } from './e2e-routes.mjs';
+import { vascularPart } from './e2e-vascular.mjs';
 import { serve } from './serve.mjs';
 
 const arg = (k, d) => {
@@ -242,6 +243,8 @@ try {
   if (run(43)) await techniciansPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   // часть 44 — маршруты для срочного (spec docs/specs/2026-11-scenario-4.md, часть 2а): tools/app/e2e-routes.mjs
   if (run(44)) await routesPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  // часть 45 — сценарий 4 «Сердце и мозг» (spec docs/specs/2026-11-scenario-4.md, части 2б и 3): tools/app/e2e-vascular.mjs
+  if (run(45)) await vascularPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);

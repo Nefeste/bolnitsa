@@ -188,8 +188,13 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # technician standing at the machine, fixed by his hour, «Поломки» at the next meeting;
                                    # then routes for the urgent: «Маршруты для срочного» in the emergency room card, both ticked,
                                    # at ×12 the nurse's request — an ECG by the route shows ST elevation, first in «Ждут вас»
-                                   # with the lysis deadline, the urgent line; the meeting's «Сроки» and «по маршрутам»;
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|44` for one part, `-- --only 7,10,11` —
+                                   # with the lysis deadline, the urgent line; the meeting's «Сроки» and «по маршрутам»; then
+                                   # scenario 4: its card fourth in «Кампания», scenario 3's hospital and 2 500 000 ₽, the
+                                   # letters, the CT and the ICU by the ambulance entrance, the first tutorial patient lying with
+                                   # routes off — the «маршруты» hint and letter, both routes ticked — the nurse's ECG shows ST
+                                   # elevation: the urgent line, the autopause, the «alert» letter, first in «Ждут вас»;
+                                   # «Позвать» — the ECG already in the card and «Инфаркт и минуты», the meeting's «Сроки»;
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|45` for one part, `-- --only 7,10,11` —
                                    # several in a row on one page, as in the full run
 node tools/app/soak.mjs --days 3   # after build: a long run in headless Chromium — the ready city at ×12 for three game days,
                                    # the meeting closed each morning; window memory after GC, DOM nodes, people, sim lag and
