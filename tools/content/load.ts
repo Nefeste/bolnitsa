@@ -1857,7 +1857,8 @@ function checkScenarios(db: ContentDb, errors: string[]) {
       missions.add(m.id);
       if (m.kind === 'roomWorks' && !c.build.includes(m.room)) at(`задание ${m.id}: ${m.room} нельзя построить в сценарии`);
       if (m.kind === 'roomWorks' && m.role !== undefined && !standsIn(m.role, m.room)) at(`задание ${m.id}: ${m.role} не встаёт на место в ${m.room}`);
-      if (!['seen', 'roomWorks', 'streak', 'days', 'stay', 'sorting', 'nights', 'routing', 'operations', 'onTime', 'nightOps'].includes(m.kind)) at(`задание ${m.id}: вид ${m.kind} в сценарии ПК не считается`);
+      // сроки и тромболизисы — по всей больнице (spec docs/specs/2026-11-scenario-4.md, часть 1)
+      if (!['seen', 'roomWorks', 'streak', 'days', 'stay', 'sorting', 'nights', 'routing', 'operations', 'onTime', 'nightOps', 'deadline', 'thrombolysis'].includes(m.kind)) at(`задание ${m.id}: вид ${m.kind} в сценарии ПК не считается`);
       // операции (spec docs/specs/2026-11-scenario-3.md) — где можно построить операционную или она уже есть
       if ((m.kind === 'operations' || m.kind === 'onTime' || m.kind === 'nightOps') && !c.build.includes('room.or')) at(`задание ${m.id}: в сценарии не построить операционную`);
       // направление по жалобе (spec docs/specs/2026-10-departments.md, часть 4) — где можно нанять врача, который берёт

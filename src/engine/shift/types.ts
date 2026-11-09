@@ -684,6 +684,14 @@ export interface DaySummary {
   targetSeq?: Record<Id, string>;
   /** тромболизисы ваших приёмов (часть 45а): в окне и без противопоказаний — и остальные */
   lysis?: { good: number; bad: number };
+  /**
+   * сроки и тромболизисы у всех приёмов больницы, ваших и нанятых врачей (spec docs/specs/2026-11-scenario-4.md, часть 1;
+   * решение владельца #219): на ПК минуты решают маршрут, стройка и смена. Как `targets`, `targetSeq` и `lysis`, только
+   * поток для ПК — для целей сценария ПК и строки планёрки
+   */
+  allTargets?: Record<Id, { onTime: number; total: number }>;
+  allSeq?: Record<Id, string>;
+  allLysis?: { good: number; bad: number };
   /** ОКС у ваших приёмов (часть 45а): сколько было и у скольких он пропущен — диагноз не тот */
   acs?: { seen: number; missed: number };
   /**

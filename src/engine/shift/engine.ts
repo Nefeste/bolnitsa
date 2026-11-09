@@ -440,19 +440,23 @@ const ACS = 'cond.acs';
 /** Замечания разбора, с которыми тромболизис не в счёт: вредно, не показан (в том числе поздно), противопоказание нарушено. */
 const LYSIS_BAD: readonly string[] = ['tx.harmful', 'tx.notIndicated', 'safety.knownViolation', 'safety.unaskedViolation'];
 
+/** Тромболизисы закрытого приёма — в счёт `day()`: в окне и без противопоказаний (`good`) или нет (`bad`). */
+function lysisOf(db: ContentDb, closed: ClosedCase, day: () => { good: number; bad: number }) {
+  for (const tx of closed.plan.treatments.filter(id => db.treatments[id]?.class === 'thrombolytic')) {
+    const contra = new Set(db.treatments[tx].contraindications.map(k => k.id));
+    const bad = closed.notes.some(n => ('tx' in n && n.tx === tx && LYSIS_BAD.includes(n.code)) || (n.code === 'safety.notAsked' && contra.has(n.by)));
+    if (bad) day().bad++;
+    else day().good++;
+  }
+}
+
 /**
  * Итоги дня для заданий главы 3 (spec 2026-10-chapter-3, часть 45а), ваш приём: тромболизис — в окне и
  * без противопоказаний (не «вредно» и не «не показан», противопоказания спрошены и не нарушены) или нет;
  * ОКС — был ли и пропущен ли (диагноз не тот).
  */
 function campaignCase(db: ContentDb, sum: DaySummary, p: ShiftPatient, closed: ClosedCase) {
-  for (const tx of closed.plan.treatments.filter(id => db.treatments[id]?.class === 'thrombolytic')) {
-    const contra = new Set(db.treatments[tx].contraindications.map(k => k.id));
-    const bad = closed.notes.some(n => ('tx' in n && n.tx === tx && LYSIS_BAD.includes(n.code)) || (n.code === 'safety.notAsked' && contra.has(n.by)));
-    const day = (sum.lysis ??= { good: 0, bad: 0 });
-    if (bad) day.bad++;
-    else day.good++;
-  }
+  lysisOf(db, closed, () => (sum.lysis ??= { good: 0, bad: 0 }));
   if (primaryOf(p.patient).id === ACS) {
     const day = (sum.acs ??= { seen: 0, missed: 0 });
     day.seen++;
@@ -2472,6 +2476,18 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient, at = s.t): 
       const seq = (s.summary.targetSeq ??= {});
       for (const key of [t.id, db.targets[t.id]?.series]) if (key) seq[key] = (seq[key] ?? '') + t.grade;
     }
+  }
+  // сроки и тромболизисы по всей больнице (spec docs/specs/2026-11-scenario-4.md, часть 1; решение владельца #219): на ПК
+  // минуты решают маршрут, стройка и смена — у ваших приёмов и у нанятых врачей
+  if (s.flow) {
+    for (const t of closed.targets ?? []) {
+      const day = ((s.summary.allTargets ??= {})[t.id] ??= { onTime: 0, total: 0 });
+      day.total++;
+      if (t.grade === 'A') day.onTime++;
+      const seq = (s.summary.allSeq ??= {});
+      for (const key of [t.id, db.targets[t.id]?.series]) if (key) seq[key] = (seq[key] ?? '') + t.grade;
+    }
+    lysisOf(db, closed, () => (s.summary.allLysis ??= { good: 0, bad: 0 }));
   }
   // каталка (spec docs/specs/2026-10-orderlies.md): кого кладут в стационар, лежит в смотровой, пока его не увезут
   const keepBay = p.bay !== undefined && gurneyOf(db, s) !== undefined && STAYS.includes(closed.plan.setting);
