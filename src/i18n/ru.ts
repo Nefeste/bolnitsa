@@ -4,6 +4,7 @@ import { economyRu } from './economy.ru';
 import { scenarioRu } from './scenario.ru';
 import { demoRu } from './demo.ru';
 import { shiftRu } from './shift.ru';
+import { challengeRu } from './challenge.ru';
 import { encyclopediaRu } from './encyclopedia.ru';
 import { pluralRu } from './plural';
 import type { Manage } from '../content/types';
@@ -16,6 +17,8 @@ export const ru = {
   ...demoRu,
   // смена врача (spec docs/specs/2026-11-doctor-shift.md, часть 2)
   ...shiftRu,
+  // испытания (spec docs/specs/2026-11-challenges.md, часть 2)
+  ...challengeRu,
   app: {
     title: 'Больница',
     loading: 'Загрузка…',

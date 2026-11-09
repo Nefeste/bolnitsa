@@ -47,10 +47,13 @@
 // «В операционную», к вечеру — «ночь без бригады», планёрка со строкой «Операции», tools/app/e2e-surgery.mjs.
 // Часть 41 — случай дня: «Для врача» → «Случай дня», 30 дней, день — городская больница без потока, только вы, без
 // сохранений; больной дня в 08:00, ваш приём — «Итог дня», «Разбор», «Сыграть снова», итог дня в списке, tools/app/e2e-daily.mjs.
+// Часть 42 — испытания: «Испытания» → пять, «Главврач»; «Сто пациентов» — в движке `meta.challenge`, поток и касса записи, без
+// «Сложности»; «До утра» — до 20:00, «Итог испытания» и рекорд; «Ещё раз»; лучший итог в списке; «Одна ночь» — сразу 20:00, вы
+// один; «Только по показаниям» — «Без показаний: 0 из 2», tools/app/e2e-challenges.mjs.
 // Ошибок в консоли и запросов наружу нет.
 // Снимки — tools/app/out/e2e.png, e2e-build-*.png и e2e-flow-*.png; `--shots high` — снимки частей 2 и 3 в этом качестве
 // (на время снимка).
-//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|…|41 или 7,10,11] [--shots low|medium|high] [--port 8093]
+//   node tools/app/e2e.mjs [--q low|medium|high] [--headed] [--only 1|2|…|42 или 7,10,11] [--shots low|medium|high] [--port 8093]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -93,6 +96,7 @@ import { soundPart } from './e2e-sound.mjs';
 import { shiftPart } from './e2e-shift.mjs';
 import { surgeryPart } from './e2e-surgery.mjs';
 import { dailyPart } from './e2e-daily.mjs';
+import { challengesPart } from './e2e-challenges.mjs';
 import { serve } from './serve.mjs';
 
 const arg = (k, d) => {
@@ -230,6 +234,8 @@ try {
   if (run(40)) await surgeryPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   // часть 41 — случай дня (spec docs/specs/2026-11-doctor-shift.md, часть 3): tools/app/e2e-daily.mjs
   if (run(41)) await dailyPart({ page, port, out, ok, fail, q: arg('q', 'low') });
+  // часть 42 — испытания (spec docs/specs/2026-11-challenges.md, часть 2): tools/app/e2e-challenges.mjs
+  if (run(42)) await challengesPart({ page, port, out, ok, fail, q: arg('q', 'low') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);

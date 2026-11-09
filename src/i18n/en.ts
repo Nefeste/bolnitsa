@@ -4,6 +4,7 @@ import { economyEn } from './economy.en';
 import { scenarioEn } from './scenario.en';
 import { demoEn } from './demo.en';
 import { shiftEn } from './shift.en';
+import { challengeEn } from './challenge.en';
 import { encyclopediaEn } from './encyclopedia.en';
 import type { Strings } from './ru';
 
@@ -15,6 +16,8 @@ export const en: Strings = {
   ...demoEn,
   // смена врача (spec docs/specs/2026-11-doctor-shift.md, часть 2)
   ...shiftEn,
+  // испытания (spec docs/specs/2026-11-challenges.md, часть 2)
+  ...challengeEn,
   app: {
     title: 'Hospital',
     loading: 'Loading…',

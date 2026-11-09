@@ -15,6 +15,7 @@ import { patientName } from './caseView';
 import { comingAt, DoctorDesk, officeOf, takeCommand } from './doctor';
 import { type Leg, legsOf } from './legs';
 import { Handles, packSlice } from './pack';
+import { challengeEnd, type ChallengeEnd, challengeEndAt, unindicatedOf } from './challenge';
 import { dailyCaseSeed, type DailyEnd } from './daily';
 import { seasonOfDay } from './days';
 import { shiftEnd, type ShiftEnd, shiftEndOf } from './shift';
@@ -35,6 +36,16 @@ function budget(ms: number): () => boolean {
 
 export interface SimHost {
   handle(msg: ToSim): FromSim;
+}
+
+/**
+ * До какой минуты идут часы игры: у испытания — до его конца (spec docs/specs/2026-11-challenges.md, `challengeEndAt`), у смены
+ * врача — до 20:00 (spec docs/specs/2026-11-doctor-shift.md, `shiftEndOf`); у случая дня и всех прочих — без конца.
+ */
+function endOfIn(db: ContentDb, s: ShiftState): number | undefined {
+  const c = s.meta.challenge ? db.challenges?.[s.meta.challenge] : undefined;
+  if (c) return challengeEndAt(c);
+  return s.meta.solo && s.meta.daily === undefined ? shiftEndOf(db) : undefined;
 }
 
 export function createSim(db: ContentDb): SimHost {
@@ -64,6 +75,10 @@ export function createSim(db: ContentDb): SimHost {
   /** смена врача (spec docs/specs/2026-11-doctor-shift.md): итог уже ушёл окну */
   let sentShift = false;
   let sentDaily = false;
+  /** испытание (spec docs/specs/2026-11-challenges.md, часть 2): итог уже ушёл окну; «Без показаний» — по чему посчитано и каким ушло */
+  let sentChallenge = false;
+  let auditAt = -1;
+  let sentAudit = -1;
   /** чей путь показывает окно и каким он был отправлен */
   let watch: string | null = null;
   let sentPath: string | undefined;
@@ -75,6 +90,7 @@ export function createSim(db: ContentDb): SimHost {
   let staff = new Map<string, number>();
   // режим врача (spec docs/specs/2026-10-doctor-mode.md): что окно уже получило — состояние врача и вид карты
   const desk = new DoctorDesk(db);
+  const endOf = (x: ShiftState) => endOfIn(db, x);
   const slice = (notices: Notice[], refused?: DoctorOut['refused']): FromSim => {
     let world: World | undefined;
     if (s!.hospital !== shown.hospital || s!.staff !== shown.staff) {
@@ -161,11 +177,31 @@ export function createSim(db: ContentDb): SimHost {
         scenario = now;
       }
     }
-    // смена врача (spec docs/specs/2026-11-doctor-shift.md): дошли до 20:00 — итог, один раз
+    // смена врача (spec docs/specs/2026-11-doctor-shift.md): дошли до 20:00 — итог, один раз; у испытания врача — свой конец
     let shift: ShiftEnd | undefined;
-    if (s!.meta.solo && s!.meta.daily === undefined && !sentShift && s!.until === undefined && s!.t >= shiftEndOf(db)) {
+    if (s!.meta.solo && s!.meta.daily === undefined && s!.meta.challenge === undefined && !sentShift && s!.until === undefined && s!.t >= shiftEndOf(db)) {
       sentShift = true;
       shift = shiftEnd(s!);
+    }
+    // испытание (spec docs/specs/2026-11-challenges.md, часть 2): дошли до его конца — итог, один раз
+    let challenge: ChallengeEnd | undefined;
+    const ch = s!.meta.challenge ? db.challenges?.[s!.meta.challenge] : undefined;
+    if (ch && !sentChallenge && s!.until === undefined && s!.t >= challengeEndAt(ch)) {
+      sentChallenge = true;
+      challenge = challengeEnd(db, s!);
+    }
+    // «Только по показаниям»: обследований без показаний у ваших закрытых приёмов — когда закрытых стало больше
+    let audit: { n: number; max: number } | undefined;
+    if (ch?.unindicated !== undefined) {
+      const closed = Object.values(s!.patients).filter(p => p.closed && !p.closed.by).length + (s!.past?.length ?? 0);
+      if (closed !== auditAt) {
+        auditAt = closed;
+        const n = unindicatedOf(db, s!);
+        if (n !== sentAudit) {
+          sentAudit = n;
+          audit = { n, max: ch.unindicated };
+        }
+      }
     }
     // случай дня (часть 3): приём больного дня закрыт — итог, один раз
     let daily: DailyEnd | undefined;
@@ -210,7 +246,7 @@ export function createSim(db: ContentDb): SimHost {
     }
     const lag = owed + (s!.until !== undefined ? s!.until - s!.t : 0);
     const { buf, names } = packSlice(s!, sliceOf(s!, officeOf(db, s!)), lag, handles, rooms, staff, patientName);
-    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...(late ? { late } : {}), ...(crew ? { crew } : {}), ...(moods ? { moods } : {}), ...(rides ? { rides } : {}), ...(rounds ? { rounds } : {}), ...(scenario ? { scenario } : {}), ...(money ? { money } : {}), ...(legs ? { legs } : {}), ...(shift ? { shift } : {}), ...(daily ? { daily } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
+    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...(late ? { late } : {}), ...(crew ? { crew } : {}), ...(moods ? { moods } : {}), ...(rides ? { rides } : {}), ...(rounds ? { rounds } : {}), ...(scenario ? { scenario } : {}), ...(money ? { money } : {}), ...(legs ? { legs } : {}), ...(shift ? { shift } : {}), ...(daily ? { daily } : {}), ...(challenge ? { challenge } : {}), ...(audit ? { audit } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
   };
   const fresh = () => {
     owed = 0;
@@ -228,6 +264,9 @@ export function createSim(db: ContentDb): SimHost {
     sentScenario = '';
     sentShift = false;
     sentDaily = false;
+    sentChallenge = false;
+    auditAt = -1;
+    sentAudit = -1;
     sentPath = undefined;
     legsAt = -Infinity;
     sentLegs = '';
@@ -254,8 +293,15 @@ export function createSim(db: ContentDb): SimHost {
               ...(msg.solo ? { solo: true } : {}),
               // случай дня (spec docs/specs/2026-11-doctor-shift.md, часть 3): подбор — здесь, в потоке расчёта; принимаете только вы
               ...(msg.daily ? { daily: dailyCaseSeed(db, msg.daily), solo: true, season: seasonOfDay(msg.daily) } : {}),
+              // испытание (spec docs/specs/2026-11-challenges.md, часть 2): поток, касса и «вы один» — из записи
+              ...(msg.challenge ? { challenge: msg.challenge } : {}),
             });
             fresh();
+            // начало испытания позже 08:00 — «Одна ночь» с 20:00: часы сразу идут до него, больных до него нет
+            {
+              const c = s.meta.challenge ? db.challenges?.[s.meta.challenge] : undefined;
+              if (c && c.from * 3600 > s.t) apply(db, s, { kind: 'advance', seconds: c.from * 3600 - s.t });
+            }
             return slice([]);
           case 'load':
             s = msg.state;
@@ -294,8 +340,12 @@ export function createSim(db: ContentDb): SimHost {
           case 'tick': {
             if (!s) return { kind: 'error', message: 'нет смены' };
             owed += msg.seconds;
-            // смена врача (spec docs/specs/2026-11-doctor-shift.md): часы — не дальше 20:00; начатое действие доживает своё
-            if (s.meta.solo && s.meta.daily === undefined) owed = Math.max(0, Math.min(owed, shiftEndOf(db) - Math.max(s.t, s.until ?? s.t)));
+            // смена врача (spec docs/specs/2026-11-doctor-shift.md) и испытание (spec docs/specs/2026-11-challenges.md): часы —
+            // не дальше их конца; начатое действие доживает своё
+            {
+              const end = endOf(s);
+              if (end !== undefined) owed = Math.max(0, Math.min(owed, end - Math.max(s.t, s.until ?? s.t)));
+            }
             const more = budget(msg.budgetMs);
             const notices: Notice[] = [];
             if (s.until !== undefined) notices.push(...catchUp(db, s, more));

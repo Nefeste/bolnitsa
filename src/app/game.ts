@@ -59,6 +59,8 @@ import { type ShiftEnd, shiftEndOf } from '../sim/shift';
 import { readRecords, recordKey, recordShift, type ShiftRecord, today, writeRecords } from './records';
 import { readDaily, recordDaily, writeDaily } from './daily';
 import type { DailyEnd } from '../sim/daily';
+import { type ChallengeEnd, challengeEndAt, challengeStart } from '../sim/challenge';
+import { readChallenges, recordChallenge, writeChallenges } from './challenges';
 import { DEFAULT_ROLE, firstOffice, type Role, ROLE_SETS, startFor } from './roles';
 import { type NoticeRow, type Tone } from './toasts';
 import { ScenarioDesk, scenarioTitle } from './scenario';
@@ -105,7 +107,10 @@ export type Start = 'empty' | 'preset' | 'poly';
  * Больница начала и её люди: поликлиника — по записи базы, той же функцией, что команда стройки `ready`. Со сменами (spec
  * docs/specs/2026-10-staff-shifts.md): все — дневная смена; городская работает и ночью — и с ночной сменой.
  */
-function hospitalAt(db: ContentDb, start: Start, role: Role, scenario?: Id): { site: Site; staff: StaffMember[] } {
+function hospitalAt(db: ContentDb, start: Start, role: Role, scenario?: Id, challenge?: Id): { site: Site; staff: StaffMember[] } {
+  // испытание (spec docs/specs/2026-11-challenges.md, часть 2): готовая больница его записи; у испытания врача кабинет — ваш
+  const c = challenge ? db.challenges?.[challenge] : undefined;
+  if (c) return challengeStart(db, c, (site, staff) => startFor(db, site, staff, c.kind === 'doctor' ? DEFAULT_ROLE : role));
   // сценарий кампании (spec docs/specs/2026-10-scenario-1.md): пустое здание или готовая больница его записи
   const from = scenario ? db.scenarios?.[scenario]?.start : undefined;
   if (start === 'empty' && (!from || from === 'empty')) return { site: emptySite(), staff: [] };
@@ -333,6 +338,11 @@ export class Game {
    * без сохранений; приём больного дня закрыт — «Итог дня»
    */
   daily?: string;
+  /**
+   * испытание (spec docs/specs/2026-11-challenges.md, часть 2): какое играется — из адреса или сохранения; часы — до его конца
+   * (`challengeEndAt`), там — «Итог испытания»
+   */
+  challenge?: Id;
   /** настройки игрока (spec docs/specs/2026-10-settings.md; решение владельца #70): вид и качество — с этого компьютера */
   private prefs: Settings = readSettings();
   /** качество «авто»: по первым секундам игры — ступенью ниже, пока кадр медленный */
@@ -469,7 +479,7 @@ export class Game {
   /** `loaded` — открыть сохранение (spec docs/specs/2026-10-saves.md): больница, поток и вид — из него, часы на паузе. */
   static async create(
     host: HTMLElement, store: Store, version: string, quality: Quality, start: Start = 'preset', flow: Flow = AUTO, loaded?: SaveFile, role: Role = DEFAULT_ROLE,
-    scenario?: Id, opts: { backdrop?: boolean; manage?: Manage; soft?: boolean; solo?: boolean; daily?: string } = {},
+    scenario?: Id, opts: { backdrop?: boolean; manage?: Manage; soft?: boolean; solo?: boolean; daily?: string; challenge?: string } = {},
   ): Promise<Game> {
     const t0 = performance.now();
     store.set({ status: T.app.loading, version });
@@ -494,11 +504,19 @@ export class Game {
     // сложность (spec docs/specs/2026-10-difficulty.md, часть 2): у сохранения — его, у новой игры — выбранная на экране начала
     g.manage = (loaded ? loaded.state.meta.manage : opts.manage) ?? 'normal';
     g.soft = loaded ? loaded.state.meta.soft === true : opts.soft === true;
-    // смена врача (spec docs/specs/2026-11-doctor-shift.md): у сохранения — из его состояния
-    g.solo = loaded ? loaded.state.meta.solo === true : opts.solo === true && start !== 'empty';
+    // испытание (spec docs/specs/2026-11-challenges.md, часть 2): у сохранения — из его состояния, у новой игры — из адреса;
+    // только из базы
+    const ch = (loaded ? loaded.state.meta.challenge : opts.challenge) ?? undefined;
+    const challenge = ch ? db.challenges?.[ch] : undefined;
+    if (challenge) g.challenge = challenge.id;
+    // смена врача (spec docs/specs/2026-11-doctor-shift.md): у сохранения — из его состояния; испытание врача — тоже «вы один»
+    g.solo = loaded ? loaded.state.meta.solo === true : (opts.solo === true && start !== 'empty') || challenge?.kind === 'doctor';
     // случай дня (часть 3): сохранений у него нет — только из адреса
     if (!loaded && opts.daily) g.daily = opts.daily;
-    store.set({ manage: g.manage, soft: g.soft, solo: g.solo, ...(g.daily ? { daily: g.daily } : {}) });
+    store.set({
+      manage: g.manage, soft: g.soft, solo: g.solo, ...(g.daily ? { daily: g.daily } : {}),
+      ...(challenge ? { challenge: { id: challenge.id, name: named(challenge.name), kind: challenge.kind } } : {}),
+    });
     g.loaded = loaded;
     g.load.content = Math.round(performance.now() - t0);
     await g.build(quality);
@@ -566,7 +584,7 @@ export class Game {
       this.staff = saved.staff ?? [];
       this.hospital = saved.hospital;
     } else {
-      const { site, staff } = hospitalAt(db, this.start, this.role, this.scenarioId);
+      const { site, staff } = hospitalAt(db, this.start, this.role, this.scenarioId, this.challenge);
       // свой кабинет «Врачу» сценария — первый построенный: в готовой больнице он уже отмечен
       this.officeAuto = site.mine !== undefined;
       this.staff = staff;
@@ -591,6 +609,7 @@ export class Game {
         kind: 'start', seed, season: SCENE.season, hospital: this.hospital, staff: this.staff, flow: this.flow,
         ...(this.solo ? { solo: true } : { economy: { cash: startCash(this.db, this.start, this.manage) } }),
         ...(this.daily ? { daily: this.daily } : {}),
+        ...(this.challenge ? { challenge: this.challenge } : {}),
         ...(this.scenarioId ? { scenario: this.scenarioId } : {}),
         ...(this.manage !== 'normal' ? { manage: this.manage } : {}),
         ...(this.soft ? { soft: true } : {}),
@@ -712,6 +731,37 @@ export class Game {
     const { records, first } = recordDaily(readDaily(), this.daily, { verdict: end.verdict, grade: end.grade, base: this.db.contentVersion });
     if (first) writeDaily(records);
     this.store.set({ dailyEnd: { day: this.daily, end, record: records[this.daily], first } });
+    this.sound.play('meeting');
+    this.hud();
+  }
+
+  /**
+   * До какой минуты идут часы: у испытания — до его конца (spec docs/specs/2026-11-challenges.md, `challengeEndAt`), у смены
+   * врача — до 20:00, у случая дня и всех прочих — без конца. Так же считает поток расчёта (`endOfIn` в src/sim/host.ts).
+   */
+  private endAt(): number | undefined {
+    const c = this.challenge ? this.db.challenges?.[this.challenge] : undefined;
+    if (c) return challengeEndAt(c);
+    return this.solo && !this.daily ? shiftEndOf(this.db) : undefined;
+  }
+
+  /**
+   * Испытание кончилось (spec docs/specs/2026-11-challenges.md, часть 2): часы стоят, итог — в рекорд испытания (день — по
+   * часам компьютера), окно «Итог испытания».
+   */
+  private onChallengeEnd(end: ChallengeEnd) {
+    const c = this.challenge ? this.db.challenges?.[this.challenge] : undefined;
+    if (!c || this.shiftOver) return;
+    this.shiftOver = true;
+    this.setSpeed(0);
+    const out = recordChallenge(readChallenges(), c, { grade: end.grade, value: end.value, passed: end.passed, day: today() });
+    writeChallenges(out.records);
+    this.store.set({
+      challengeEnd: {
+        id: c.id, name: named(c.name), by: c.grade.by, end, record: out.records[c.id], best: out.best,
+        ...(c.reds !== undefined ? { reds: c.reds } : {}), ...(c.unindicated !== undefined ? { unindicated: c.unindicated } : {}),
+      },
+    });
     this.sound.play('meeting');
     this.hud();
   }
@@ -1258,6 +1308,9 @@ export class Game {
     if (s.shift) this.onShiftEnd(s.shift);
     // случай дня (часть 3): приём больного дня закрыт — итог дня
     if (s.daily) this.onDaily(s.daily);
+    // испытание (spec docs/specs/2026-11-challenges.md, часть 2): дошли до его конца — итог и рекорд; «Без показаний» — в окно врача
+    if (s.challenge) this.onChallengeEnd(s.challenge);
+    if (s.audit && JSON.stringify(s.audit) !== JSON.stringify(this.store.get().audit)) this.store.set({ audit: s.audit });
     // первый пришедший (spec docs/specs/2026-10-scenario-1.md): письмо о его пути — когда он пришёл
     if (this.scenario.view && s.buf[H.arrived] > 0) this.scenario.reach('look');
     if (s.world || s.scenario) this.scenarioOffice();
@@ -1455,7 +1508,8 @@ export class Game {
       const lag = this.lastSlice?.lag ?? 0;
       const game = this.ff ? (!this.client.busy && lag < 300 ? Math.max(0, Math.min(600, this.ffUntil - this.t - lag)) : 0) : this.speed * GAME_PER_REAL * dt;
       // смена врача (spec docs/specs/2026-11-doctor-shift.md): не дальше 20:00 — расчётный поток держит то же
-      this.client.frame(this.solo && !this.daily ? Math.max(0, Math.min(game, shiftEndOf(this.db) - this.t - lag)) : game, this.ff ? 14 : 10);
+      const end = this.endAt();
+      this.client.frame(end !== undefined ? Math.max(0, Math.min(game, end - this.t - lag)) : game, this.ff ? 14 : 10);
     }
     this.edgePan(dt);
     // стройка: клетка под курсором — и когда камера едет, а мышь стоит
@@ -1959,8 +2013,11 @@ export class Game {
       this.doctor.manualSpeed();
       // до планёрки в 08:00 (геймдизайн §2, «До утра»; spec 2026-10-economy) — как можно быстрее, до первого события автопаузы;
       // в смене врача — до её конца в 20:00 (spec docs/specs/2026-11-doctor-shift.md)
+      // испытание (spec docs/specs/2026-11-challenges.md, часть 2): не дальше его конца
       const day = Math.floor(this.t / 86400) * 86400;
-      this.ffUntil = this.solo && !this.daily ? shiftEndOf(this.db) : this.t % 86400 < 8 * 3600 ? day + 8 * 3600 : day + 86400 + 8 * 3600;
+      const morning = this.t % 86400 < 8 * 3600 ? day + 8 * 3600 : day + 86400 + 8 * 3600;
+      const end = this.endAt();
+      this.ffUntil = end !== undefined ? (this.solo ? end : Math.min(end, morning)) : morning;
       this.ff = true;
       this.hud();
     },
@@ -2212,6 +2269,10 @@ export class Game {
     // «Новая смена» (spec docs/specs/2026-11-doctor-shift.md): та же больница и уровень, больные — новые
     shiftAgain: () =>
       reopen({ hospital: this.start, solo: '1', seed: String(Math.floor(Math.random() * 2 ** 31)), ...(this.manage !== 'normal' ? { manage: this.manage } : {}), ...(this.soft ? { soft: '1' } : {}) }),
+    // «Ещё раз» (spec docs/specs/2026-11-challenges.md, часть 2): то же испытание и та же роль, больные — новые
+    challengeAgain: () => {
+      if (this.challenge) reopen({ challenge: this.challenge, role: this.role, seed: String(Math.floor(Math.random() * 2 ** 31)) });
+    },
     // случай дня (spec docs/specs/2026-11-doctor-shift.md, часть 3): тот же день заново; разбор — карта больного дня
     dailyAgain: () => {
       if (this.daily) reopen({ hospital: 'preset', daily: this.daily, seed: String(Math.floor(Math.random() * 2 ** 31)) });
