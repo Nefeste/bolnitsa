@@ -1,5 +1,5 @@
 {
-  "version": "0.79.0",
+  "version": "0.80.0",
   "base": 78,
   "ids": {
     "achievements": [
@@ -1229,6 +1229,7 @@
       "role.sonographer",
       "role.surgeon",
       "role.surgeon_clinic",
+      "role.technician",
       "role.therapist"
     ],
     "rooms": [

@@ -395,6 +395,8 @@ export const doctorEn: DoctorStrings = {
       none: (gen: string) => `no ${gen}`,
       down: (name: string, why: string) => `${name} is not working: ${why}`,
       broken: (name: string) => `${name} is under repair — fixed by tomorrow`,
+      brokenTech: (name: string, at: string) => `${name} is under repair — the technician will have it ready by ${at}`,
+      brokenService: (name: string) => `${name} is under repair — the service will fix it by morning`,
     },
     when: WHEN,
     whenList,

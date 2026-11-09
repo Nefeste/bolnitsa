@@ -856,6 +856,8 @@ export interface StaffRole {
    * нанимают на место
    */
   optional?: true;
+  /** в готовой больнице его места нет — нанимает только игрок (техник, spec docs/specs/2026-11-technicians.md) */
+  ready?: false;
   /**
    * специалист (spec 2026-10-chapter-4, часть 59): с какими болезнями к нему записываются — своя запись у его кабинета
    * из них, и принимает он только записанных к нему
@@ -985,6 +987,11 @@ export interface Economy {
     gurney?: { load: number; unload: number };
     /** утренний обход (spec 2026-10-staff-motion, часть 2): минут у койки, очков усталости за койку; нет — обход мгновенный */
     round?: { bed: number; fatigue: number };
+    /**
+     * техник и поломки в работе (spec docs/specs/2026-11-technicians.md): минут ремонта по навыку 1–5, детали — % цены,
+     * минут обхода у аппарата, суток износа до +100 %, предел износа, %; нет — поломки с утра на сутки, как в «Анамнезе»
+     */
+    repair?: { minutes: [number, number, number, number, number]; parts: number; maintain: number; wear: number; max: number };
     /** рост, наставник, учёба, болезнь нанятых в смене (spec 2026-10-staff-mood, разделы 3–5); нет — ничего этого нет */
     growth?: { mentor: number; studyDays: number; studyCost: number; studyMood: number; sick: number };
     /** настроение нанятых в смене (spec 2026-10-staff-mood); нет — настроения нет */

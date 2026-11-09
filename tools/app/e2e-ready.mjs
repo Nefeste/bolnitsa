@@ -91,6 +91,9 @@ export async function readyPart({ page, port, out, ok, fail, q, shots }) {
     const r = await roomOf(id);
     if (r && r.items > 0 && r.door.length > 0 && JSON.stringify(r.staff) === JSON.stringify(roles)) ok(`${type}${size ? ` ${size}` : ''}: щелчок — ${r.w} × ${r.h}, дверь в ${r.door.length} кл., ${r.items} предм., люди: ${r.staff.length}`);
     else fail(`${type}: ${JSON.stringify(r)}`);
+    // карточка нового помещения открывается сама; у ординаторской с местом техника она выше и закрыла бы соседнюю клетку
+    const close = await page.$('#card .cardhead .close');
+    if (close) await close.click();
   }
   // появление мебели (spec docs/specs/2026-10-aaa-polish.md, «Появление мебели»): вещи последнего помещения выросли из пола,
   // рост кончился меньше чем за секунду; стены, двери и люди — не мебель

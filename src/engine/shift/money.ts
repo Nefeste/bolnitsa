@@ -129,6 +129,15 @@ export function payWorks(s: ShiftState, cost: number) {
   roomExpense(s, COMMON, cost);
 }
 
+/** Детали ремонта техника (spec docs/specs/2026-11-technicians.md) — в кассу суток строкой ремонта и помещению аппарата. */
+export function payRepair(s: ShiftState, room: string, rub: number) {
+  const e = s.economy;
+  if (!e || rub === 0) return;
+  const l = ledgerOf(e);
+  l.expenses.repairs = (l.expenses.repairs ?? 0) + rub;
+  roomExpense(s, room, rub);
+}
+
 /** Выплата уволенному (spec docs/specs/2026-10-staff-mood.md) — в кассу суток отдельной статьёй; отмена увольнения — минус. */
 export function paySeverance(s: ShiftState, amount: number) {
   const e = s.economy;
