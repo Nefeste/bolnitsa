@@ -245,6 +245,10 @@ bun tools/bench/vascular.ts                    # scenario 4 (spec): ready hospit
                                                # and stroke arrivals by day and the deadlines (ECG in 10 minutes, the stroke exam and CT,
                                                # lysis and transfer for ST elevation) over every closed case, not only yours; ICU, consults
                                                # (`--hospital vascular,city`, `--days`)
+bun tools/bench/challenges.ts                  # challenges (spec docs/specs/2026-11-challenges.md): the six of the game design on ready
+                                               # hospitals, nobody playing or the virtual doctor on your cases — a flu wave (`--x`, `--flu`),
+                                               # a hundred walk-ins (`--per`), one night alone (`--amb`), debt (`--debt`), exams by
+                                               # indication (rational, careful, one by one, lazy), the X-ray broken all day (`--only …`)
 bun tools/bench/solo.ts                        # the doctor's shift (spec docs/specs/2026-11-doctor-shift.md): a day shift 08:00–20:00 in
                                                # the ready city and polyclinic with one doctor receiving — who came, how many he saw,
                                                # who left, minutes per case, the wait (`--hospital city,poly`, `--manage calm,normal,hard`;
