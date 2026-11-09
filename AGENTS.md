@@ -250,7 +250,8 @@ bun tools/bench/surgery.ts                     # scenario 3 (spec): ready hospit
 bun tools/bench/vascular.ts                    # scenario 4 (spec): ready hospitals with a CT and an ICU, nobody playing — chest pain
                                                # and stroke arrivals by day and the deadlines (ECG in 10 minutes, the stroke exam and CT,
                                                # lysis and transfer for ST elevation) over every closed case, not only yours; ICU, consults
-                                               # (`--hospital vascular,city`, `--days`)
+                                               # (`--hospital vascular,city`, `--days`; `--routes` — both routes for the urgent on from
+                                               # the first minute, how many went by each and their consumables)
 bun tools/bench/challenges.ts                  # challenges (spec docs/specs/2026-11-challenges.md): the six of the game design on ready
                                                # hospitals, nobody playing or the virtual doctor on your cases — a flu wave (`--x`, `--flu`),
                                                # a hundred walk-ins (`--per`), one night alone (`--amb`), debt (`--debt`), exams by
@@ -513,8 +514,8 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   itself); goal kind `routing` — a day with the registrar routing at least `count` and none wrongly. The simulator builds the
   surgeon's office with a second staff room and two door benches on the morning of day 2.
   Scenario 3 «Хирургия» (`docs/specs/2026-11-scenario-3.md`; owner's decision #209, variant 1), part 1: the start site
-  `site.emergency` — scenario 2's hospital with free land. A site record may take a `base` (its rooms and benches first, one
-  level deep; the loader flattens it), widen the building to the east (`wider` → `widerLot` in `hospital/site.ts`: the ambulance
+  `site.emergency` — scenario 2's hospital with free land. A site record may take a `base` (its rooms and benches first; a base
+  may have its own base — the loader flattens the chain, the first base first, and refuses a circle or a narrower building), widen the building to the east (`wider` → `widerLot` in `hospital/site.ts`: the ambulance
   entrance moves to the new east wall, the main entrance stays) and name who stands at a doctor post (`as`); without them the
   empty building and every site are the same. Goal kinds `onTime` (urgent operations on time over the scenario, no streak —
   the owner's decision of 15.10.2026 on deadline goals) and `nightOps`; a PC scenario may count `operations` too, and these
@@ -528,6 +529,16 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   `nightOr` (16:00–20:00, an operating room works and someone it needs has no night post — `orNight` in `src/app/game.ts`);
   the meeting's `#meet-surgery` line from `DaySummary.surgery`; the economy simulator's `--only surgery` (the operating room and
   a third ward with staff at 08:00, the main goals by day 8).
+  Scenario 4 «Сердце и мозг» (`docs/specs/2026-11-scenario-4.md`; owner's decision #219, variant 1), part 1 (0.83.0): the PC
+  flow's day totals count the deadlines and thrombolyses of every closed case, yours and hired doctors' (`DaySummary.allTargets`,
+  `allSeq`, `allLysis`), and a PC scenario's `deadline` and `thrombolysis` goals read them (`pcOf` in `campaign.ts`; a chapter —
+  yours only, as before). Routes for the urgent: `content/hospital/routes.yaml` (a route names a deadline and an exam), the
+  `routes` command (`meta.routes`, PC flow): an arrival lying in an emergency bay whom no doctor has called yet gets the exam of
+  each route whose deadline's complaint he came with, from the room's nurse on duty (`routeExams` in `engine.ts`: the bedside
+  ECG, the CT on a gurney — `orderExam(…, route)`: without your skills, not in your totals; `ShiftPatient.routed`,
+  `DaySummary.routes` — how many and the consumables); a patient out on the CT is called by nobody until he is back (`isOut` in
+  `call` and `colleagueTakes`, a `free` event at his return). The start site `site.surgery` — `site.emergency` with the
+  operating room and the post-op ward of the simulator's plan; free land for the CT and the ICU by the ambulance entrance.
 - The demo for Next Fest (`docs/specs/2026-11-demo.md`, #176): the key `?demo=1` (Electron `--demo`, `main.tsx`) — only
   «Кампания» on the start screen, and after the first meeting closes the «Итог» window (`Game.afterMeeting`): what was built
   in the build order, the day's patients and how many left waiting for you, your receptions, cash, real time played, the
