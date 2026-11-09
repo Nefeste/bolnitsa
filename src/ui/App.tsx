@@ -622,6 +622,25 @@ function SiteCard({ r, actions, hud }: { r: RoomCard; actions: Actions; hud: Hud
             </dd>
           </div>
         ) : null}
+        {r.routes ? (
+          <div>
+            <dt title={T.card.routesHint}>{T.card.routes}</dt>
+            <dd id="card-routes">
+              {r.routes.map(x => (
+                <label key={x.id} className="route" title={T.card.routesHint}>
+                  <input
+                    type="checkbox" data-route={x.id} checked={x.on}
+                    onChange={e => {
+                      const on = e.currentTarget.checked;
+                      actions.routes(r.routes!.filter(y => (y.id === x.id ? on : y.on)).map(y => y.id));
+                    }}
+                  />{' '}
+                  {x.name}
+                </label>
+              ))}
+            </dd>
+          </div>
+        ) : null}
         <div className="posts">
           <dt>{T.card.posts}</dt>
           <dd>

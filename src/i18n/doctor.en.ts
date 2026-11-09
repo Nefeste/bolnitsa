@@ -468,7 +468,8 @@ export const doctorEn: DoctorStrings = {
     },
     nobody: 'nobody',
     more: (n: number) => `and ${patients(n)} more`,
-    why: { taken: 'taken from a doctor', own: 'your group', back: 'with results', yours: 'yours' } as Record<string, string>,
+    why: { taken: 'taken from a doctor', own: 'your group', back: 'with results', yours: 'yours', alert: 'the nurse asks you to look' } as Record<string, string>,
+    alertRow: (finding: string, target: string, until: string) => `nurse: ${finding.toLowerCase()} — ${target.toLowerCase()} by ${until}`,
     ready: (at: string) => `by ${at}`,
     comingAt: (at: string) => `in at ${at}`,
     backAt: (at: string) => `at a test, back at ${at}`,
@@ -624,6 +625,7 @@ export const doctorEn: DoctorStrings = {
       referred: (name: string, who: string, _f: boolean) => `${name} is referred to ${who}`,
       reached: (name: string) => `${name} is in your office`,
       reachedSomeone: 'Your patient is in your office',
+      alert: (finding: string, target: string, until: string) => `Emergency room nurse: ${finding.toLowerCase()}; ${target.toLowerCase()} by ${until}. Call them from «Waiting for you»`,
     },
   },
 };

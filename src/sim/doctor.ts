@@ -15,7 +15,7 @@ import { routeDept } from '../engine/hospital/departments';
 import { type Block, doctorRoom, examWhere, type Problem } from '../engine/hospital/requirements';
 import {
   atDoctor, atDoorOf, bedsideEquipment, bedsideOf, boxBeds, brokenOf, colleaguesOf, forPlayer, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, type HospitalCtx,
-  hospitalCtx, icuBeds, isOut, moreUrgent, observationsOf, operationOf, type OrBlock, orBlock, reviewedCase, reviewFor, ricuBeds, targetPlace, wardBeds,
+  hospitalCtx, icuBeds, isOut, moreUrgent, observationsOf, operationOf, type OrBlock, orBlock, reviewedCase, reviewFor, ricuBeds, routeFinding, targetPlace, wardBeds,
 } from '../engine/shift/engine';
 import { inBox, inIcu, inRicu, orQueueOf, stayEquipment } from '../engine/shift/engine';
 import { asksOf } from '../engine/shift/approve';
@@ -49,8 +49,13 @@ export interface PatientRow {
   /** главная жалоба словами пациента */
   complaint: string;
   triage: Triage;
-  /** почему ваш: взят у врача, свой больной (группы «Свои больные»), вернулся с результатами */
-  why?: 'taken' | 'own' | 'back' | 'yours';
+  /**
+   * почему ваш: взят у врача, свой больной (группы «Свои больные»), вернулся с результатами; `alert` — просьба медсестры
+   * смотровой (spec docs/specs/2026-11-scenario-4.md, часть 2а): обследование по маршруту показало находку срока
+   */
+  why?: 'taken' | 'own' | 'back' | 'yours' | 'alert';
+  /** просьба медсестры: какая находка, какой срок от неё и до какого часа он (игровые секунды) */
+  alert?: RouteAlert;
   /** ждёт результатов: к какому часу всё будет готово (игровые секунды) */
   ready?: number;
   /** ваш, идёт к вам (spec 2026-10-owner-play-2): когда встретитесь, игровые секунды */
@@ -189,6 +194,8 @@ export interface DoctorState {
   er?: true;
   sorts?: true;
   handover: HandoverRow[];
+  /** маршруты для срочного (spec docs/specs/2026-11-scenario-4.md, часть 2а): какие включены — галочки в карточке смотровой */
+  routes?: Id[];
   /** привезённых ждут у входа — мест в смотровой нет (spec docs/specs/2026-11-scenario-2.md, часть 2б) */
   door?: number;
 }
@@ -346,6 +353,26 @@ function complaintOf(db: ContentDb, p: ShiftPatient): string {
   return first ? complaintText(db, first, p.patient.sex, p.patient.seed) : T.case.patient.checkup(female(p));
 }
 
+/** Находка срока по маршруту (spec docs/specs/2026-11-scenario-4.md, часть 2а): названия — словами, срок — игровые секунды. */
+export interface RouteAlert {
+  /** находка: «Подъём сегмента ST на ЭКГ» */
+  finding: string;
+  /** срок: «Тромболизис при подъёме ST» */
+  target: string;
+  /** когда пришёл результат и до какого часа срок */
+  at: number;
+  until: number;
+}
+
+/**
+ * Просьба медсестры смотровой (spec docs/specs/2026-11-scenario-4.md, часть 2а; разбор части 1): находка срока по маршруту
+ * (`routeFinding` движка) — словами. Больной лежит и ждёт, врач его не звал — он в «Ждут вас» первым, с ближайшим сроком.
+ */
+export function routeAlertOf(db: ContentDb, s: ShiftState, p: ShiftPatient): RouteAlert | undefined {
+  const f = routeFinding(db, s, p);
+  return f ? { finding: named(db.findings[f.finding]?.name, f.finding), target: named(db.targets[f.target]?.name, f.target), at: f.at, until: f.until } : undefined;
+}
+
 function rowOf(db: ContentDb, p: ShiftPatient, why?: PatientRow['why']): PatientRow {
   const pt = p.patient;
   return {
@@ -392,7 +419,10 @@ export function doctorState(db: ContentDb, s: ShiftState, level: Difficulty = DE
     if (p.status === 'away') away.push(rowOf(db, p));
     else if (p.status === 'waiting') {
       const i = order.get(p.id) ?? Number.MAX_SAFE_INTEGER;
+      const alert = s.meta.routes ? routeAlertOf(db, s, p) : undefined;
       if (p.calledT !== undefined) yours.push({ row: rowOf(db, p, p.from ? 'taken' : 'back'), order: i });
+      // просьба медсестры по маршруту (spec docs/specs/2026-11-scenario-4.md, часть 2а) — первым, ближайший срок раньше
+      else if (alert) yours.push({ row: { ...rowOf(db, p, 'alert'), alert }, order: Number.MIN_SAFE_INTEGER + alert.until });
       else if (forPlayer(db, s, p)) yours.push({ row: rowOf(db, p, 'own'), order: i });
       // заданный больной сценария (spec docs/specs/2026-11-scenario-2.md, часть 2б): нанятые врачи его не зовут — он ваш
       else if (p.taught && order.has(p.id)) yours.push({ row: rowOf(db, p, 'yours'), order: i });
@@ -452,6 +482,7 @@ export function doctorState(db: ContentDb, s: ShiftState, level: Difficulty = DE
     ...(s.flow && ctx.plan.rooms.some(r => db.rooms[r.type]?.emergency) ? { er: true as const } : {}),
     ...(s.meta.sorts ? { sorts: true as const } : {}),
     handover: handoverRows(db, s, level),
+    ...(s.flow && s.meta.routes ? { routes: [...s.meta.routes] } : {}),
     // мест в смотровой нет — сколько привезённых ждут у входа (часть 2б, подсказка «мест нет»)
     ...(s.flow && atDoorOf(s).length > 0 ? { door: atDoorOf(s).length } : {}),
   };

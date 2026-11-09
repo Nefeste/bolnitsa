@@ -3112,6 +3112,29 @@ function setRoutes(db: ContentDb, s: ShiftState, on: readonly Id[]): Notice[] {
 }
 
 /**
+ * Находка срока по маршруту (spec docs/specs/2026-11-scenario-4.md, часть 2а; решение агента 8): у лежащего в смотровой, кого
+ * врач ещё не звал, результат обследования по маршруту показал находку срока «от находки» (`from: finding`) помещения, где он
+ * лежит, — подъём ST на ЭКГ: тромболизис в первые 10 минут от неё. Ближайший срок; нет такой находки или его позвали — undefined.
+ */
+export function routeFinding(db: ContentDb, s: ShiftState, p: ShiftPatient): { target: Id; finding: Id; at: number; until: number } | undefined {
+  if (!s.flow || !p.routed || !p.bay || p.status !== 'waiting' || p.calledT !== undefined || p.by !== undefined || p.closed) return undefined;
+  const exams = new Set(p.routed.flatMap(id => (db.routes?.[id] ? [db.routes[id].exam] : [])));
+  const room = hospitalCtx(db, s).plan.rooms.find(r => r.id === p.bay!.room)?.type;
+  let best: { target: Id; finding: Id; at: number; until: number } | undefined;
+  for (const t of Object.values(db.targets)) {
+    if (t.from !== 'finding' || (t.room !== undefined && t.room !== room)) continue;
+    for (const r of p.results) {
+      if (!exams.has(r.exam) || r.at > s.t) continue;
+      const o = r.obs.find(x => x.shown && t.findings.includes(x.f));
+      if (!o) continue;
+      const until = r.at + t.minutes * MIN;
+      if (!best || until < best.until) best = { target: t.id, finding: o.f, at: r.at, until };
+    }
+  }
+  return best;
+}
+
+/**
  * Привезённый лёг в смотровую, врач его ещё не звал (там же): медсестра смотровой в смене делает обследование каждого
  * включённого маршрута, если у него при поступлении жалоба срока маршрута, — ЭКГ у постели, на КТ — на каталке; сделать нельзя
  * (нет кабинета, некому везти) — нет. Обследование — как его назначил бы врач, только без ваших умений и не в ваших итогах.
@@ -3128,6 +3151,10 @@ function routeExams(db: ContentDb, s: ShiftState, p: ShiftPatient) {
     if (orderExam(db, s, p, r.exam, 100, true) === null) continue;
     // повезли на КТ: врачи позовут, когда привезут назад, — тогда и посмотрят, кого звать (результат мог прийти раньше)
     if (isOut(s, p)) schedule(s, p.out!.back, { kind: 'free', by: '' });
+    // результат придёт — показал ли он находку срока (часть 2а, решение агента 8): у постели — сразу в результатах, со своим
+    // часом; снимок — в ожидании, к своему часу (событие результата — раньше этого: у них один час, а его поставили первым)
+    const ready = p.pending.find(x => x.exam === r.exam)?.readyAt ?? p.results.find(x => x.exam === r.exam)?.at;
+    if (ready !== undefined) schedule(s, Math.max(s.t, ready), { kind: 'routed', id: p.id });
     (p.routed ??= []).push(id);
     const day = ((s.summary.routes ??= {})[id] ??= { n: 0, rub: 0 });
     day.n++;
@@ -3957,6 +3984,13 @@ function handle(db: ContentDb, s: ShiftState, ev: ShiftEvent, notices: Notice[])
       return breakdown(db, s, ev.key);
     case 'fixed':
       return fixed(db, s, ev);
+    case 'routed': {
+      // результат по маршруту (spec docs/specs/2026-11-scenario-4.md, часть 2а): находка срока — медсестра просит посмотреть
+      const p = s.patients[ev.id];
+      const f = p ? routeFinding(db, s, p) : undefined;
+      if (f) notices.push({ kind: 'alert', id: ev.id, ...f });
+      return;
+    }
     case 'reach': {
       // поток для ПК (spec 2026-10-owner-play-2): ваш пациент дошёл — если он ещё ваш и не ушёл на другое обследование
       const p = s.patients[ev.id];

@@ -306,6 +306,18 @@ export function MeetingBody({ m, e, actions, screen = false }: { m: MeetingView;
             {t.repairs(d.repairs.broke, d.repairs.tech, d.repairs.service, money(d.economy?.ledger.expenses.repairs ?? 0))}
           </p>
         ) : null}
+        {/* сроки по всей больнице и маршруты для срочного (spec docs/specs/2026-11-scenario-4.md, часть 2а) */}
+        {m.deadlines || m.routes ? (
+          <p id="meet-deadlines" title={t.deadlinesHint}>
+            {m.deadlines ? t.deadlines(m.deadlines.map(x => t.deadline(x.name, x.onTime, x.total)).join('; ')) : null}
+            {m.routes ? (
+              <span className="muted" id="meet-routes">
+                {m.deadlines ? ' · ' : ''}
+                {t.routes(m.routes.rows.map(x => t.route(x.name, x.n)).join(', '), money(m.routes.rub))}
+              </span>
+            ) : null}
+          </p>
+        ) : null}
       </Section>
       {m.doctors.length > 0 || d.seen > 0 ? (
         <Section title={t.hired} id="meet-doctors">

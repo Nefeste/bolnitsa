@@ -80,6 +80,12 @@ export interface MeetingView {
   routeMiss?: RouteMiss;
   /** сценарий (spec docs/specs/2026-10-scenario-1.md): письма, пришедшие утром, и выполненные цели — словами */
   scenario?: { letters: LetterRow[]; goals: string[] };
+  /**
+   * сроки за сутки по всей больнице (spec docs/specs/2026-11-scenario-4.md, часть 2а): у скольких закрытых был срок и у скольких
+   * выполнен — по порядку записей сроков; маршруты — сколько больных по каждому (названием обследования) и расходники
+   */
+  deadlines?: { name: string; onTime: number; total: number }[];
+  routes?: { rows: { name: string; n: number }[]; rub: number };
 }
 
 /** «Поднять зарплату» прямо в строке планёрки: с какой и до какой, ₽ за смену. */
@@ -239,9 +245,14 @@ export class Money {
     const route = this.g.routeMiss?.day === summary.day ? this.g.routeMiss : undefined;
     // сценарий (spec docs/specs/2026-10-scenario-1.md): письма утра и выполненные цели — разделом планёрки
     const scenario = this.g.scenario.meetingOf(summary.campaign);
+    // сроки и маршруты (spec docs/specs/2026-11-scenario-4.md, часть 2а): по порядку записей
+    const deadlines = Object.keys(db.targets).flatMap(id => (summary.allTargets?.[id] ? [{ name: named(db.targets[id].name, id), ...summary.allTargets[id] }] : []));
+    const routed = Object.values(db.routes ?? {}).flatMap(r => (summary.routes?.[r.id] ? [{ name: named(db.exams[r.exam]?.name, r.exam), n: summary.routes[r.id].n, rub: summary.routes[r.id].rub }] : []));
     return {
       summary, doctors, rooms, broken: out, worse, tip: tipOf(summary, rooms, worse.length > 0, doctors.some(d => d.idle), this.hud.limit),
       ...(people ? { staff: people } : {}), ...(errors.total > 0 ? { errors } : {}), ...(miss ? { sortMiss: miss } : {}), ...(route ? { routeMiss: route } : {}), ...(scenario ? { scenario } : {}),
+      ...(deadlines.length ? { deadlines } : {}),
+      ...(routed.length ? { routes: { rows: routed.map(({ name, n }) => ({ name, n })), rub: routed.reduce((a, r) => a + r.rub, 0) } } : {}),
     };
   }
 

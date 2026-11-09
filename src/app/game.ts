@@ -1408,6 +1408,7 @@ export class Game {
       : n.kind === 'resultsReady' ? this.doctor.resultsText(n.id)
       : n.kind === 'arrest' ? T.notices.arrest
       : n.kind === 'consult' ? this.doctor.consultText(n)
+      : n.kind === 'alert' ? this.doctor.alertText(n)
       : n.kind === 'approve' ? this.doctor.approveText(n)
       : n.kind === 'morning' ? T.notices.morning
       : n.kind === 'worse' ? this.doctor.worseText(n.id)
@@ -1415,8 +1416,8 @@ export class Game {
       : T.notices.shiftEnd;
     // всплывающие строки (spec 2026-10-aaa-polish, «Извещения»): срочное — красной полосой и дольше, к больному — щелчком
     const tone: Tone | undefined =
-      (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'arrest' || n.kind === 'worse' ? 'urgent' : n.kind === 'left' ? 'warn' : undefined;
-    const who = n.kind === 'arrived' || n.kind === 'left' || n.kind === 'ambulance' || n.kind === 'arrest' || n.kind === 'worse' || n.kind === 'reached' ? n.id : undefined;
+      (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'arrest' || n.kind === 'worse' || n.kind === 'alert' ? 'urgent' : n.kind === 'left' ? 'warn' : undefined;
+    const who = n.kind === 'arrived' || n.kind === 'left' || n.kind === 'ambulance' || n.kind === 'arrest' || n.kind === 'worse' || n.kind === 'reached' || n.kind === 'alert' ? n.id : undefined;
     // срочное — звуком (spec docs/specs/2026-11-sound.md, часть 1): событие, которого игрок ждёт, — «пришёл срочный больной»
     if (tone === 'urgent') this.sound.play('urgent');
     this.notices.unshift({ t: this.t, text, at: this.stamp(), ...(tone ? { tone } : {}), ...(who ? { who } : {}) });
@@ -1509,7 +1510,8 @@ export class Game {
    */
   private ffStop(notices: Notice[]): boolean {
     if (this.t >= this.ffUntil) return true;
-    return notices.some(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'consult' || n.kind === 'morning' || n.kind === 'worse' || n.kind === 'reached');
+    // просьба медсестры по маршруту (spec docs/specs/2026-11-scenario-4.md, часть 2а) — срок минутный: «До утра» встаёт
+    return notices.some(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'consult' || n.kind === 'morning' || n.kind === 'worse' || n.kind === 'reached' || n.kind === 'alert');
   }
 
   // ---------------------------------------------------------------- кадр
@@ -2171,6 +2173,8 @@ export class Game {
       this.hud();
     },
     markDept: (room, dept) => this.command({ kind: 'dept', room, ...(dept ? { dept } : {}) }),
+    // маршруты для срочного (spec docs/specs/2026-11-scenario-4.md, часть 2а): галочки карточки смотровой — командой движка
+    routes: on => this.client.command({ kind: 'routes', on }),
     undo: () => this.command({ kind: 'undo' }),
     done: () => {
       if (this.builder.on) this.builder.toggle();
@@ -2424,10 +2428,15 @@ export class Game {
     // каталка ночью (spec docs/specs/2026-10-orderlies.md, «Что видно»): у помещения с санитаром, когда в ночной смене есть
     // люди, а санитара — ни одного во всей больнице: лежачих повезут медсёстры
     const night = t.staff.includes(ORDERLY) && this.staff.some(m => m.shift === 'night') && !this.staff.some(m => m.role === ORDERLY && m.shift !== 'day');
+    // маршруты для срочного (spec docs/specs/2026-11-scenario-4.md, часть 2а; решение владельца #219): в карточке смотровой
+    // приёмного — что медсестра делает до врача; у смены врача больницей не управляют
+    const on = this.doctor.hud.state?.routes ?? [];
+    const routes = t.emergency && db.routes && !this.solo ? Object.values(db.routes).map(x => ({ id: x.id, name: named(x.name, x.id), on: on.includes(x.id) })) : undefined;
     return {
       // сломан аппарат, без которого помещение не работает (FR-EQ-3 и поломки в работе) — как на значке над картой
       ...base, size: `${r.w} × ${r.h}`, ok: why.length === 0 && !broke, state: why.length ? T.problem.down(this.problemText(why[0])) : broke ? T.problem.down(T.flow.room.broken) : T.problem.works,
       problems: why.map(p => this.problemText(p)), needs, posts, ...(night ? { note: T.card.nightCarrier } : {}), ...(dept ? { dept } : {}), ...(devices.length ? { devices } : {}),
+      ...(routes?.length ? { routes } : {}),
       // деньги по суткам (spec docs/specs/2026-10-metrics-layer.md, часть 2): прошедшие и сегодня — графиком
       money: [...this.roomsMoney.days.map(d => ({ day: d.day as number | null, r: d.rooms[id] })), { day: null, r: this.roomsMoney.now[id] }].map(x => ({
         day: x.day, income: x.r?.income ?? 0, expenses: x.r?.expenses ?? 0,

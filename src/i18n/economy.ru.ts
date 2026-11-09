@@ -168,6 +168,12 @@ export const economyRu = {
     // поломки в работе за сутки (spec docs/specs/2026-11-technicians.md, часть 2): сколько, кем починено и что стоил ремонт
     repairs: (n: number, tech: number, service: number, rub: string) => `Поломки: ${n} — починено техником ${tech}, сервисом ${service}; ремонт — ${rub}`,
     repairsHint: 'Аппарат ломается в работе, и тем чаще, чем дольше его не обслуживали. Техник чинит за часы, детали — 1 % цены; без него сервис чинит к утру за 2 %.',
+    // сроки по всей больнице и маршруты для срочного (spec docs/specs/2026-11-scenario-4.md, часть 2а)
+    deadlines: (rows: string) => `Сроки: ${rows}`,
+    deadline: (name: string, onTime: number, total: number) => `${lowerFirst(name)} — ${onTime} из ${total} в срок`,
+    deadlinesHint: 'У скольких закрытых за сутки был срок по рекомендациям и у скольких он выполнен — у ваших больных и у нанятых врачей.',
+    routes: (rows: string, rub: string) => `по маршрутам: ${rows}; расходники — ${rub}`,
+    route: (name: string, n: number) => `${name} — ${n}`,
     brokenRow: (eq: string, room: string, rub: string) => `${eq} (${lowerFirst(room)}) — до завтра, ремонт ${rub}`,
     worse: 'Обход: стало хуже',
     worseRow: (who: string, state: string) => `${who} — ${lowerFirst(state)}`,
