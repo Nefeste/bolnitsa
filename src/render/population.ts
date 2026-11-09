@@ -11,6 +11,8 @@ import type { CrewView } from '../engine/shift/crew';
 import type { Doing } from '../engine/shift/slice';
 import type { Rest, Ride, Round, RoundStop, Triage } from '../engine/shift/types';
 import { DOINGS, H, HEADER, kindOf, type NameRow, NO_TIME, P, REFERRED, SLOW, STATUSES, STRIDE, TRIAGES } from '../sim/pack';
+import type { DeviceView } from '../sim/repairs';
+import { TECHNICIAN } from '../engine/shift/repair';
 import type { Look } from './bake';
 import { COAT, OLD_AGE, PARAMEDIC, roleColor, toneOf, WORKWEAR } from './cast';
 import { type Crowd, GURNEY_AHEAD, type Walker } from './crowd';
@@ -52,6 +54,11 @@ export type PersonInfo =
       fatigue?: number; worn?: 'slow' | 'blur'; rest?: { kind: Rest['kind']; until: number; phase: 'go' | 'there' | 'back' };
       /** на утреннем обходе (spec docs/specs/2026-10-staff-motion.md, часть 2): сколько коек обошёл, из скольких, когда вернётся */
       round?: { done: number; of: number; until: number };
+      /**
+       * техник у аппарата (spec docs/specs/2026-11-technicians.md, часть 2): чинит или обходит, какой аппарат и в каком помещении,
+       * когда кончит; `go` — ещё идёт к нему
+       */
+      fix?: { kind: 'repair' | 'maintain'; eq: Id; room: string; until: number; go: boolean };
       /**
        * настроение и действия с человеком (spec docs/specs/2026-10-staff-mood.md) — дописывает окно (`staffCard` в
        * src/app/game.ts): имя из словаря игры; настроение, на сколько и почему изменилось, «собирается уйти» до каких суток,
@@ -198,6 +205,10 @@ export class Population {
   private rounds = new Map<string, string>();
   /** утренние обходы из движка (spec docs/specs/2026-10-staff-motion.md, часть 2) и куда сейчас идёт каждый, кто обходит */
   private wardRounds: Round[] = [];
+  /** аппараты, что ломаются, и работа техников (spec docs/specs/2026-11-technicians.md, часть 2) — как прислал поток расчёта */
+  private repairs: DeviceView[] = [];
+  /** техник в работе: номер человека → работа («помещение:место@вышел»), к которой он идёт или у которой стоит */
+  private fixing = new Map<string, string>();
   private onRound = new Map<string, string>();
   /** помещения, где сейчас идёт обход из движка: медсестра палаты свой обход там не начинает */
   private roundRooms = new Set<string>();
@@ -273,6 +284,21 @@ export class Population {
   /** Утренние обходы (spec docs/specs/2026-10-staff-motion.md, часть 2) — как прислал поток расчёта. */
   setRounds(rows: readonly Round[]) {
     this.wardRounds = [...rows];
+  }
+
+  /** Поломки и работа техников (spec docs/specs/2026-11-technicians.md, часть 2) — как прислал поток расчёта. */
+  setRepairs(rows: readonly DeviceView[]) {
+    this.repairs = [...rows];
+  }
+
+  /** Аппарат, у которого техник `id` сейчас работает или к которому идёт, по часам окна; нет — undefined. */
+  fixNow(id: string): DeviceView | undefined {
+    return this.repairs.find(d => d.job?.by === id && this.t >= d.job.since && this.t < d.job.done);
+  }
+
+  /** Кто из техников сейчас в работе — строкой: «Персонал» заново, когда она другая. */
+  get fixingNow(): string {
+    return this.repairs.filter(d => d.job && this.t >= d.job.since && this.t < d.job.done).map(d => `${d.job!.by}:${d.key}`).join(',');
   }
 
   /** Обход, на котором человек штата `id` сейчас, по часам окна; нет — undefined. */
@@ -389,7 +415,7 @@ export class Population {
       if (w) {
         // на перерыве (spec 2026-10-staff-shifts, часть 2), везёт каталку (spec 2026-10-orderlies) или на обходе (spec
         // 2026-10-staff-motion) — не на посту: место за ним, назад приведут `rests`, `ridesStep` и `roundsStep`
-        if (!w.leaving && (this.going.get(m.id) || this.riding.has(m.id) || this.rounds.has(m.id))) continue;
+        if (!w.leaving && (this.going.get(m.id) || this.riding.has(m.id) || this.rounds.has(m.id) || this.fixing.has(m.id))) continue;
         if (w.leaving) this.crowd.stay(w, spot);
         else if (w.at?.key !== spot.key && !(shift && w.goals.some(g => g.key === spot.key))) this.crowd.settle(w, spot);
         continue;
@@ -452,6 +478,8 @@ export class Population {
     this.legs.clear();
     for (const k of this.riding.keys()) this.riding.set(k, '');
     this.rounds.clear();
+    // техник — к аппарату по новым клеткам
+    this.fixing.clear();
     this.placeStaff();
     this.dirty = true;
   }
@@ -549,6 +577,7 @@ export class Population {
     this.medicsStep(taken);
     this.wardRoundsStep(taken);
     this.roundsStep(taken);
+    this.techStep(taken);
     for (const [key, w] of this.crowd.walkers) {
       if (w.staff || present.has(key)) continue;
       if (!w.leaving) this.crowd.leave(w);
@@ -684,6 +713,49 @@ export class Population {
       const home = m && w && !w.leaving ? this.postOf(m, taken) : undefined;
       if (home && w) this.crowd.retarget(w, home, true, NaN);
     }
+  }
+
+  /**
+   * Техники (spec docs/specs/2026-11-technicians.md, часть 2): к аппарату своей работы — по часам движка, дойти к `reach`; стоит у
+   * него, пока работа не кончится, — и на своё место в ординаторской.
+   */
+  private techStep(taken: ReadonlySet<number>) {
+    if (this.repairs.length === 0 && this.fixing.size === 0) return;
+    for (const m of this.staff) {
+      if (m.role !== TECHNICIAN) continue;
+      const w = this.crowd.walkers.get(`s:${m.id}`);
+      if (!w || w.leaving) {
+        this.fixing.delete(m.id);
+        continue;
+      }
+      const d = this.fixNow(m.id);
+      const was = this.fixing.get(m.id);
+      if (d?.job) {
+        const k = `${d.key}@${d.job.since}`;
+        if (was === k) continue;
+        const goal = this.deviceStop(d.key, taken);
+        if (goal) this.crowd.retarget(w, goal, true, d.job.reach);
+        this.fixing.set(m.id, k);
+      } else if (was !== undefined) {
+        this.fixing.delete(m.id);
+        const home = this.postOf(m, taken);
+        if (home) this.crowd.retarget(w, home, true, NaN);
+      }
+    }
+  }
+
+  /** Где встать технику у аппарата «помещение:место»: на ближнем к нему полу; аппарата нет на плане — у двери изнутри. */
+  private deviceStop(key: string, taken: ReadonlySet<number>): Spot | undefined {
+    const i = key.lastIndexOf(':');
+    const roomId = key.slice(0, i);
+    const slot = Number(key.slice(i + 1));
+    const room = this.layout.plan.rooms.findIndex(x => x.id === roomId);
+    if (room < 0) return undefined;
+    // места аппаратов помещения — по номеру предмета, как их считает движок (`hospitalOf`)
+    const machines = this.layout.things.filter(t => t.room === room && t.equipment !== undefined && !t.leaving).sort((a, b) => (a.item ?? 0) - (b.item ?? 0));
+    const th = machines[slot];
+    if (!th) return this.doorOf(roomId);
+    return standAt(this.layout, nearestWalk(this.layout, th.cell[1] * this.layout.w + th.cell[0], taken), 'go', 0);
   }
 
   /** Где встать на обходе у больного остановки: у изголовья, пока он лежит на своей кровати; нет его там — у двери помещения. */
@@ -918,12 +990,14 @@ export class Population {
       const ride = this.phases.get(m.id);
       const free = !ride && !r && m.role === ORDERLY && this.present(m) && !m.away;
       const round = this.roundNow(m.id);
+      const fix = m.role === TECHNICIAN ? this.fixNow(m.id) : undefined;
       return {
         kind: 'staff', role: m.role, ...(m.room ? { room: m.room } : {}), sex: m.sex, id: m.id,
         ...(m.shift && hours ? { shift: m.shift, hours } : {}), ...(this.present(m) ? {} : { home: true as const }),
         ...(c ? { fatigue: c.f } : {}), ...(worn ? { worn } : {}),
         ...(r ? { rest: { kind: r.kind, until: r.until, phase: this.t >= r.back ? 'back' : this.t < r.at ? 'go' : 'there' } } : {}),
         ...(round ? { round: { done: round.stops.filter(st => st.end <= this.t).length, of: round.stops.length, until: round.until } } : {}),
+        ...(fix?.job ? { fix: { kind: fix.job.kind, eq: fix.eq, room: fix.room, until: fix.job.done, go: this.t < fix.job.reach } } : {}),
         ...(ride ? { ride: { phase: ride.ph, ...(this.rows.get(ride.r.id)?.name ? { who: this.rows.get(ride.r.id)!.name } : {}), from: ride.r.from, to: ride.r.to } } : {}),
         ...(free ? { free: true as const } : {}),
       };

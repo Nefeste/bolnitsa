@@ -165,6 +165,9 @@ export const economyRu = {
         ? `каталку ждут дольше ${over} мин: ${now} — везти некому; дольше всех — ${dur(wait)}`
         : `каталку ждали дольше ${over} мин: ${n} ${pluralRu(n, 'раз', 'раза', 'раз')}${now > 0 ? `, ждут и сейчас — ${now}, везти некому;` : ','} дольше всех — ${dur(wait)}`,
     broken: 'Сломалось с утра',
+    // поломки в работе за сутки (spec docs/specs/2026-11-technicians.md, часть 2): сколько, кем починено и что стоил ремонт
+    repairs: (n: number, tech: number, service: number, rub: string) => `Поломки: ${n} — починено техником ${tech}, сервисом ${service}; ремонт — ${rub}`,
+    repairsHint: 'Аппарат ломается в работе, и тем чаще, чем дольше его не обслуживали. Техник чинит за часы, детали — 1 % цены; без него сервис чинит к утру за 2 %.',
     brokenRow: (eq: string, room: string, rub: string) => `${eq} (${lowerFirst(room)}) — до завтра, ремонт ${rub}`,
     worse: 'Обход: стало хуже',
     worseRow: (who: string, state: string) => `${who} — ${lowerFirst(state)}`,

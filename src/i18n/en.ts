@@ -369,6 +369,15 @@ export const en: Strings = {
     worn: { slow: 'works slower', blur: 'diagnoses with less certainty' } as Record<string, string>,
     restShort: (until: string) => `break until ${until}`,
     roundShort: (until: string) => `on the round until ${until}`,
+    fix: (kind: 'repair' | 'maintain', eq: string, room: string, until: string, go: boolean) =>
+      kind === 'repair' ? `${go ? 'on the way to repair' : 'repairing'} the ${eq} (${room}), done by ${until}` : `${go ? 'on the way to service' : 'servicing'} the ${eq} (${room}), until ${until}`,
+    fixShort: (until: string) => `repairing until ${until}`,
+    maintainShort: (until: string) => `servicing until ${until}`,
+    devices: 'Machines',
+    deviceOk: (wear?: number) => (wear === undefined ? 'working' : wear === 0 ? 'working · serviced today' : `working · not serviced for ${wear} ${wear === 1 ? 'day' : 'days'}`),
+    deviceMaintain: (until: string) => `working · the technician is servicing it, until ${until}`,
+    deviceTech: (since: string | undefined, until: string) => `broke down ${since ? `at ${since}` : 'this morning'} — the technician is repairing it, done by ${until}`,
+    deviceService: (since: string | undefined) => `broke down ${since ? `at ${since}` : 'this morning'} — waiting for the service, fixed by morning`,
     wcShort: 'in the toilet',
     fatigueShort: (n: number) => `fatigue ${n}`,
     ride: {
@@ -664,6 +673,7 @@ export const en: Strings = {
       tired: (f: number) => `tired — makes more mistakes (fatigue ${f})`,
       lying: 'Lying patients',
       gurney: (n: number, d: string) => `${n} waiting for a gurney · longest ${d}`,
+      device: (eq: string, until: string | undefined) => (until ? `${eq}: broken — the technician will fix it by ${until}` : `${eq}: broken — the service will fix it by morning`),
       cash: 'Cash',
       minus: (sum: string, left: string) => `in the red: ${sum} · can still build for ${left}`,
       minusNoLimit: (sum: string) => `in the red: ${sum}`,

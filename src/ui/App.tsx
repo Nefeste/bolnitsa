@@ -36,6 +36,8 @@ export interface Names {
   finding(id: string | undefined): string;
   /** к кому — должность в дательном падеже («гастроэнтерологу»); по-английски — название */
   dat(id: string | undefined): string;
+  /** аппарат — в родительном падеже («ремонт рентгеновского аппарата», spec docs/specs/2026-11-technicians.md, часть 2) */
+  eqGen(id: string | undefined): string;
 }
 
 interface P {
@@ -608,6 +610,18 @@ function SiteCard({ r, actions, hud }: { r: RoomCard; actions: Actions; hud: Hud
             </dd>
           </div>
         ) : null}
+        {r.devices?.length ? (
+          <div>
+            <dt>{T.card.devices}</dt>
+            <dd id="card-devices">
+              {r.devices.map((d, i) => (
+                <div key={i} className={d.bad ? 'device bad' : 'device'} data-device={d.key}>
+                  <Icon name={d.bad ? 'wrong' : 'done'} /> {d.name}: <span className="muted">{d.state}</span>
+                </div>
+              ))}
+            </dd>
+          </div>
+        ) : null}
         <div className="posts">
           <dt>{T.card.posts}</dt>
           <dd>
@@ -874,6 +888,8 @@ function personLines(info: PersonInfo, names: Names): [string, string][] {
       ...(info.rest ? [[T.card.doing, restLine(info.rest)] as [string, string]] : []),
       // утренний обход (spec docs/specs/2026-10-staff-motion.md, часть 2)
       ...(info.round ? [[T.card.doing, T.card.round(info.round.done, info.round.of, clock(info.round.until))] as [string, string]] : []),
+      // техник у аппарата (spec docs/specs/2026-11-technicians.md, часть 2): чинит или обходит, идёт или уже на месте
+      ...(info.fix ? [[T.card.doing, T.card.fix(info.fix.kind, lowerFirst(names.eqGen(info.fix.eq)), lowerFirst(names.room(info.fix.room)), clock(info.fix.until), info.fix.go)] as [string, string]] : []),
       // везёт каталку или свободен у каталки (spec docs/specs/2026-10-orderlies.md, «Что видно»)
       ...(info.ride ? [[T.card.doing, rideLine(info.ride, id => lowerFirst(names.room(id)))] as [string, string]] : []),
       ...(info.free ? [[T.card.doing, T.card.ride.free(info.sex === 'f')] as [string, string]] : []),

@@ -19,6 +19,7 @@ import type { SaveMeta } from './packing';
 import type { ChallengeEnd } from './challenge';
 import type { DailyEnd } from './daily';
 import type { ShiftEnd } from './shift';
+import type { DeviceView } from './repairs';
 
 export type ToSim =
   /** новая смена с потоком для ПК; `economy` — касса начала (spec docs/specs/2026-10-economy.md), нет — без кассы */
@@ -112,6 +113,8 @@ export type FromSim =
   | ({
       kind: 'slice'; buf: Int32Array; names: NameRow[]; notices: Notice[]; lag: number; world?: World; path?: PathView; broken?: string[]; late?: number[]; crew?: CrewView[];
       moods?: MoodView[]; rides?: Ride[]; rounds?: Round[]; scenario?: ScenarioView; money?: RoomsMoney; legs?: Leg[];
+      /** аппараты, что ломаются (spec docs/specs/2026-11-technicians.md, часть 2): поломки и техники — когда изменились */
+      repairs?: DeviceView[];
       /** смена врача кончилась (spec docs/specs/2026-11-doctor-shift.md): итог — один раз, в 20:00 */
       shift?: ShiftEnd;
       /** случай дня (часть 3): приём больного дня закрыт — итог, один раз */

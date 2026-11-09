@@ -240,6 +240,9 @@
     .card .need { display: inline-block; margin-right: 8px; }
     .card .need.ok { color: var(--ok-text); }
     .card .need.bad { color: var(--bad-text); }
+    /* аппараты помещения (spec docs/specs/2026-11-technicians.md, часть 2): строка на аппарат, сломанный — красным */
+    .card .device { display: block; }
+    .card .device.bad { color: var(--bad-text); }
     .card .post { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: center; margin: 1px 0; }
     .card dl > .posts { grid-column: 1 / -1; }
     .card .post .prole { min-width: 9em; color: var(--muted); }

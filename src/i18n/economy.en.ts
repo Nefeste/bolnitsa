@@ -149,6 +149,8 @@ export const economyEn: EconomyStrings = {
         ? `waiting for a gurney over ${over} min: ${now} — nobody to wheel them; the longest — ${dur(wait)}`
         : `waits for a gurney over ${over} min: ${n} ${pl(n, 'time', 'times')}${now > 0 ? `, still waiting — ${now}, nobody to wheel them;` : ','} the longest — ${dur(wait)}`,
     broken: 'Broke down this morning',
+    repairs: (n: number, tech: number, service: number, rub: string) => `Breakdowns: ${n} — fixed by the technician ${tech}, by the service ${service}; repairs — ${rub}`,
+    repairsHint: 'A machine breaks down at work, and the more often the longer it goes without servicing. A technician repairs it in hours for parts at 1 % of its price; without one, the service fixes it by morning for 2 %.',
     brokenRow: (eq: string, room: string, rub: string) => `${eq} (${lowerFirst(room)}) — until tomorrow, repair ${rub}`,
     worse: 'Round: worse',
     worseRow: (who: string, state: string) => `${who} — ${lowerFirst(state)}`,

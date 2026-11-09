@@ -165,6 +165,7 @@ const names: Names = {
   role: id => game?.names().role(id) ?? id ?? '—',
   finding: id => game?.names().finding(id) ?? id ?? '—',
   dat: id => game?.names().dat(id) ?? id ?? '—',
+  eqGen: id => game?.names().eqGen(id) ?? id ?? '—',
 };
 // энциклопедия (spec docs/specs/2026-10-encyclopedia.md): F1 и Esc окна — раньше клавиш игры, и на экране начала
 installEncyclopediaKeys();

@@ -82,10 +82,15 @@ export interface RoomCard {
     role: Id; name: string; who?: string; staffId?: string; salary: string; you?: boolean; shift?: 'day' | 'night' | 'both';
     /** «Уволить» — подсказка с выплатой за три смены (spec docs/specs/2026-10-staff-mood.md) */
     fire?: string;
-    /** должность, без которой помещение работает (санитар, spec docs/specs/2026-10-orderlies.md): что без неё будет */
+    /** должность, без которой помещение работает (санитар, spec docs/specs/2026-10-orderlies.md; техник, 2026-11-technicians): что без неё будет */
     optional?: string;
     options?: { role: Id; name: string; salary: string; hint: string }[];
   }[];
+  /**
+   * аппараты, что ломаются (spec docs/specs/2026-11-technicians.md, часть 2): название, поломка — кто чинит и к какому часу, или
+   * сколько без обслуживания; `bad` — сломан
+   */
+  devices?: { key: string; name: string; state: string; bad?: true }[];
   furnish?: { ok: boolean; text: string };
   demolish?: string;
   /**

@@ -10,6 +10,7 @@ import { presetStaff, withNightShift } from '../../src/engine/hospital/staff';
 import { apply, breakAt, brokenOf, hospitalCtx, newFlowShift } from '../../src/engine/shift/engine';
 import { devicesOf, repairMinutes, repairOf, TECHNICIAN, wearPct } from '../../src/engine/shift/repair';
 import type { ShiftState } from '../../src/engine/shift/types';
+import { repairsView } from '../../src/sim/repairs';
 
 const H = 3600;
 const rec = db.presets['preset.city'];
@@ -86,7 +87,7 @@ describe('техник', () => {
     breakAt(db, s, x.key, 10 * H);
     run(s, 10 * H + 1);
     const f = s.fixing?.[x.key];
-    expect(f).toEqual({ by: tech.id, kind: 'repair', done: expect.any(Number) });
+    expect(f).toEqual({ by: tech.id, kind: 'repair', since: 10 * H, reach: expect.any(Number), done: expect.any(Number) });
     expect(f!.done - 10 * H).toBeGreaterThanOrEqual(repairMinutes(r, tech.skill) * 60);
     const before = s.economy!.ledger?.expenses.repairs ?? 0;
     run(s, f!.done + 1);
@@ -102,6 +103,44 @@ describe('техник', () => {
     run(s, 44 * H);
     const fresh = devices.filter(d => (s.wear?.[d.key] ?? 0) === 0).length;
     expect(fresh).toBeGreaterThanOrEqual(devices.length - 1);
+  });
+});
+
+describe('для окна (часть 2)', () => {
+  test('час поломки, путь техника и счёт суток: сломалось, починил техник, ждало сервиса', () => {
+    const s = city();
+    const staffRoom = s.hospital!.site!.rooms.find(x => x.type === 'room.staff')!.id;
+    apply(db, s, { kind: 'site', cmd: { kind: 'hire', room: staffRoom, role: TECHNICIAN, shift: 'day' } });
+    apply(db, s, { kind: 'site', cmd: { kind: 'done' } });
+    const tech = s.staff!.find(m => m.role === TECHNICIAN)!;
+    const devices = devicesOf(db, hospitalCtx(db, s).plan);
+    const x = xrayOf(s);
+    const other = devices.find(d => d.key !== x.key && d.room !== x.room)!;
+    breakAt(db, s, x.key, 10 * H);
+    breakAt(db, s, other.key, 10 * H + 60);
+    run(s, 10 * H + 120);
+    expect(s.brokeAt).toEqual({ [x.key]: 10 * H, [other.key]: 10 * H + 60 });
+    const f = s.fixing![x.key];
+    expect(f.by).toBe(tech.id);
+    expect(f.since).toBe(10 * H);
+    expect(f.reach! >= f.since! && f.reach! < f.done).toBe(true);
+    // вид для окна: сломан с часа, техник у первого, второй ждёт
+    const v = repairsView(db, s)!;
+    expect(v.find(d => d.key === x.key)).toMatchObject({ broken: { since: 10 * H }, job: { by: tech.id, kind: 'repair', since: 10 * H, reach: f.reach, done: f.done } });
+    expect(v.find(d => d.key === other.key)).toMatchObject({ broken: { since: 10 * H + 60 } });
+    // техник чинит первый, потом второй — если успеет до утра; что не успел — сервис к утру
+    run(s, 32 * H + 1);
+    const day = s.history[0].repairs!;
+    expect(day.broke).toBe(2);
+    expect(day.tech + day.service).toBe(2);
+    expect(day.tech).toBeGreaterThanOrEqual(1);
+    expect(s.brokeAt?.[x.key]).toBeUndefined();
+  });
+
+  test('без поломок в работе (без смен) окну аппаратов не шлют', () => {
+    const s = city(false);
+    apply(db, s, { kind: 'site', cmd: { kind: 'done' } });
+    expect(repairsView(db, s)).toBeUndefined();
   });
 });
 

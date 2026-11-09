@@ -1427,6 +1427,11 @@ function morning(db: ContentDb, s: ShiftState, notices: Notice[]) {
   // ночь суток (spec docs/specs/2026-11-scenario-2.md): привезённые с конца дневной смены и сколько ждали врача
   const night = nightOf(db, s);
   if (night) s.summary.night = night;
+  // поломки суток (spec docs/specs/2026-11-technicians.md, часть 2): что ждало сервиса к утру — сломанное, что не чинит техник
+  if (repairOf(db, s)) {
+    const service = (s.broken ?? []).filter(k => s.fixing?.[k]?.kind !== 'repair').length;
+    if (service > 0) (s.summary.repairs ??= { broke: 0, tech: 0, service: 0 }).service = service;
+  }
   const summary: DaySummary = { ...s.summary, grades: { ...s.summary.grades } };
   s.history.push(summary);
   // сценарий ПК (spec 2026-10-scenario-1): цели и письма по поводам — по закрытым суткам, тем же счётом, что вечер главы
@@ -1766,6 +1771,12 @@ function planRepairs(db: ContentDb, s: ShiftState, r: NonNullable<ReturnType<typ
   const keys = new Set(devices.map(d => d.key));
   const fixing = s.fixing ?? {};
   s.broken = (s.broken ?? []).filter(k => keys.has(k) && fixing[k]?.kind === 'repair');
+  // час поломки — у тех, что ещё чинит техник; починенное сервисом к утру — без него
+  if (s.brokeAt) {
+    const at = Object.fromEntries(Object.entries(s.brokeAt).filter(([k]) => s.broken!.includes(k)));
+    if (Object.keys(at).length > 0) s.brokeAt = at;
+    else delete s.brokeAt;
+  }
   const wear: Record<string, number> = {};
   for (const d of devices) wear[d.key] = (s.wear?.[d.key] ?? 0) + 1;
   s.wear = wear;
@@ -1797,6 +1808,9 @@ function breakdown(db: ContentDb, s: ShiftState, key: string) {
   if (!repairOf(db, s) || s.broken?.includes(key) || !devicesOf(db, hospitalCtx(db, s).plan).some(d => d.key === key)) return;
   // новым списком: окно узнаёт о поломке по тому, что список другой (`sentBroken` в src/sim/host.ts)
   s.broken = [...(s.broken ?? []), key];
+  // с какого часа и сколько за сутки (часть 2: карточка, «Проблемы», планёрка)
+  (s.brokeAt ??= {})[key] = s.t;
+  (s.summary.repairs ??= { broke: 0, tech: 0, service: 0 }).broke++;
   const f = s.fixing?.[key];
   if (f?.kind === 'maintain') {
     delete s.fixing![key];
@@ -1816,6 +1830,11 @@ function fixed(db: ContentDb, s: ShiftState, ev: Extract<ShiftEvent, { kind: 'fi
   if (ev.job === 'repair') {
     s.broken = (s.broken ?? []).filter(k => k !== ev.key);
     if (s.broken.length === 0) delete s.broken;
+    if (s.brokeAt) {
+      delete s.brokeAt[ev.key];
+      if (Object.keys(s.brokeAt).length === 0) delete s.brokeAt;
+    }
+    (s.summary.repairs ??= { broke: 0, tech: 0, service: 0 }).tech++;
     const [room, slot] = ev.key.split(':');
     const id = hospitalCtx(db, s).plan.rooms.find(x => x.id === room)?.equipment[Number(slot)];
     if (id && r) payRepair(s, room, Math.round((db.equipment[id].price * r.parts) / 100));
@@ -1858,7 +1877,7 @@ function techDispatch(db: ContentDb, s: ShiftState) {
     if (t && t.free > s.t) continue;
     const job = nextJob(ctx.plan, s, m, t?.at ?? m.room!, devices, r);
     if (!job) continue;
-    (s.fixing ??= {})[job.key] = { by: m.id, done: job.done, kind: job.kind };
+    (s.fixing ??= {})[job.key] = { by: m.id, done: job.done, kind: job.kind, since: s.t, reach: job.reach };
     (s.techs ??= {})[m.id] = { free: job.done, at: job.room };
     schedule(s, job.done, { kind: 'fixed', key: job.key, by: m.id, job: job.kind });
   }
