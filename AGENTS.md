@@ -272,6 +272,10 @@ bun tools/bench/repairs.ts                     # technicians (spec docs/specs/20
                                                # engine's breakdowns in work for `--days` (14) without a technician and with one on the
                                                # day shift — who repaired them, hours of the working day the devices stood, the repair
                                                # and the technician's wages (`--tech 0,1`, `--hospital poly,district,city`, `--seeds`)
+bun tools/bench/comfort.ts                     # comfort and cleanliness (spec docs/specs/2026-11-comfort.md): ready hospitals, nobody
+                                               # playing — visits per room per day by the engine's paths (the doctor, exams, the hall
+                                               # sat in, the reception, lying in a bed), staff rests and toilet visits, minutes the
+                                               # orderlies spend on gurneys (`--hospital poly,city,surgery`, `--days`, `--seeds`)
 bun tools/bench/solo.ts                        # the doctor's shift (spec docs/specs/2026-11-doctor-shift.md): a day shift 08:00–20:00 in
                                                # the ready city and polyclinic with one doctor receiving — who came, how many he saw,
                                                # who left, minutes per case, the wait (`--hospital city,poly`, `--manage calm,normal,hard`;
