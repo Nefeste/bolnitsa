@@ -1,0 +1,20 @@
+# Испытание «Зимний грипп» (spec docs/specs/2026-11-challenges.md; геймдизайн §9): готовая поликлиника, дневная смена, пришедших
+# сами — вдвое больше её обычного потока (около 20 в час приёма против 10), и двое из пяти — с гриппом: волна. Итог — по доле
+# не принятых до 20:00: без игрока — 23–26 %, у разумного главврача (в 08:00 два кабинета с терапевтами и ординаторская) —
+# 4–8 % (проба `bun tools/bench/challenges.ts --only engine --plan`). Числа — игровые; медицина гриппа — та же запись базы.
+# Слова — предложение агента на одобрение владельца.
+id: challenge.flu
+order: 1
+name: { ru: "Зимний грипп", en: "Winter Flu" }
+about:
+  ru: "Волна гриппа в поликлинике: пришедших вдвое больше обычного, двое из пяти — с гриппом. Не дайте им уйти, не дождавшись."
+  en: "A flu wave at the polyclinic: twice the usual walk-ins, two in five with flu. Don't let them leave unseen."
+kind: chief
+start: site.polyclinic
+season: winter
+from: 8
+to: 20
+flow: { walk: 20 }
+wave: { condition: cond.influenza, share: 40 }
+cash: 300000
+grade: { by: unseen, a: 3, b: 10, c: 20 }

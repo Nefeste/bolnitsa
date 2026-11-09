@@ -1228,6 +1228,49 @@ export const scenarioSchema = z.strictObject({
 });
 
 /**
+ * Испытание ПК (spec docs/specs/2026-11-challenges.md): готовая больница, часы, поток, одно условие и итог от A до D. Числа
+ * испытания — игровые: их подбирает проба `tools/bench/challenges.ts`.
+ */
+export const challengeSchema = z.strictObject({
+  id: z.string().regex(/^challenge\.[a-z0-9_]+$/),
+  order: count,
+  name: text,
+  /** условие одной строкой — на втором шаге экрана начала */
+  about: text,
+  /** главврача — стройка, найм и касса; врача — смена врача: вы один, кассы нет */
+  kind: z.enum(['chief', 'doctor']),
+  /** готовая больница начала: запись `sites/` или `presets/` */
+  start: z.string().regex(/^(site|preset)\.[a-z0-9_]+$/),
+  season: z.enum(['winter', 'spring', 'summer', 'autumn']),
+  /** с какого и до какого часа, от 00:00 первых суток: смена — 8 и 20, ночь — 20 и 32, неделя — 8 и 176 */
+  from: z.number().int().min(8).max(23),
+  to: z.number().int().min(9).max(24 * 30 + 8),
+  /** поток от больницы — или свой: сами в час приёма в среднем, машин скорой в час в среднем за сутки */
+  flow: z.union([z.literal('auto'), z.strictObject({ walk: z.number().min(0), ambulance: z.number().min(0).default(0) })]),
+  /** пришедших сами — не больше стольких за испытание */
+  walkIns: z.number().int().min(1).optional(),
+  /** волна: доля пришедших сами с этой болезнью, % (игровое число испытания) */
+  wave: z.strictObject({ condition: z.string().regex(/^cond\.[a-z0-9_]+$/), share: z.number().int().min(1).max(100) }).optional(),
+  /** касса начала, ₽ — у испытания главврача; бывает и минус */
+  cash: z.number().int().optional(),
+  /** банк кредита не даёт */
+  loan: z.literal(false).optional(),
+  /** предел минуса, ₽, — свой: строить можно и в долг */
+  overdraft: z.number().int().min(0).optional(),
+  /** привезённых сортирует игрок, по листу передачи */
+  sorts: z.literal(true).optional(),
+  /** пройдено — не больше стольких обследований без показаний у ваших приёмов */
+  unindicated: z.number().int().min(0).optional(),
+  /** красных по шкале, позванных врачом за столько минут, — в итоге, для сведения */
+  reds: z.number().int().min(1).optional(),
+  /** итог от A до D: итог смены врача — или число испытания и пороги A, B, C */
+  grade: z.union([
+    z.strictObject({ by: z.literal('shift') }),
+    z.strictObject({ by: z.enum(['unseen', 'seen', 'cash']), a: z.number(), b: z.number(), c: z.number() }),
+  ]),
+});
+
+/**
  * Подсказка наставника в первую смену главы: когда показать — открылась карта пациента, после
  * первых вопросов, у пациента с болезнью, на «Решении», на разборе.
  */
@@ -1451,6 +1494,7 @@ export type DifficultySrc = z.infer<typeof difficultySchema>;
 export type CharacterSrc = z.infer<typeof characterSchema>;
 export type ChapterSrc = z.infer<typeof chapterSchema>;
 export type ScenarioSrc = z.infer<typeof scenarioSchema>;
+export type ChallengeSrc = z.infer<typeof challengeSchema>;
 export type TipSrc = z.infer<typeof tipSchema>;
 export type AchievementSrc = z.infer<typeof achievementSchema>;
 export type ScoreSrc = z.infer<typeof scoreSchema>;

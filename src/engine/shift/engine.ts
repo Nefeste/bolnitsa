@@ -53,6 +53,7 @@ import { backMorning, growMorning, sickMorning, tenure } from './growth';
 import { caseIncomeRooms, caseRoom, COMMON as ROOMS_COMMON, roomExpense, roomIncome } from './rooms';
 import { cover } from './reserve';
 import { manageOf, scaled, scaledInt } from './manage';
+import { challengeFlow, challengeOf, walkInsOf, waveOf } from './challenge';
 import { priorOf, referTo } from './refer';
 import { book, carriersOf, gurneyOf, lying, planRide, rideHome, ridesUntil } from './gurney';
 import { CLINICAL, roundLeft, roundMinutes, roundOf, roundsDue } from './rounds';
@@ -249,9 +250,17 @@ export function newFlowShift(
   db: ContentDb,
   opts: {
     seed: number; season: Season; difficulty?: Difficulty; hospital: HospitalState; staff: StaffMember[]; flow: Flow; economy?: { cash: number }; scenario?: Id; manage?: Manage;
-    soft?: boolean; sorts?: boolean; solo?: boolean; daily?: number;
+    soft?: boolean; sorts?: boolean; solo?: boolean; daily?: number; challenge?: Id;
   } & Variety,
 ): ShiftState {
+  // испытание (spec docs/specs/2026-11-challenges.md, часть 1): сезон, поток, касса, «вы один» и сортировка — из его записи
+  const ch = opts.challenge ? db.challenges?.[opts.challenge] : undefined;
+  if (ch) {
+    opts = {
+      ...opts, season: ch.season, flow: challengeFlow(ch), economy: ch.cash !== undefined ? { cash: ch.cash } : undefined,
+      ...(ch.kind === 'doctor' ? { solo: true } : {}), ...(ch.sorts ? { sorts: true } : {}),
+    };
+  }
   // рост (spec 2026-10-staff-mood, раздел 3): у людей со сменой — разный стаж, растут не в одно утро
   const s = singleBase(db, { ...opts, staff: tenure(db, opts.seed, opts.staff), venue: SANDBOX_VENUE });
   // смена врача (spec docs/specs/2026-11-doctor-shift.md; из anamnez: `newSingle` @ bed1996): принимаете только вы — до того,
@@ -259,6 +268,7 @@ export function newFlowShift(
   if (opts.solo) s.meta.solo = true;
   // случай дня (spec docs/specs/2026-11-doctor-shift.md, часть 3): больной дня — первым пришедшим сам, с первой минуты
   if (opts.daily !== undefined) s.meta.daily = opts.daily;
+  if (ch) s.meta.challenge = ch.id;
   s.flow = { ...opts.flow };
   // уровень «Управления» и мягкий режим (spec 2026-10-difficulty) — с начала: по ним поток, терпение и касса
   if (opts.manage && opts.manage !== 'normal') s.meta.manage = opts.manage;
@@ -923,11 +933,14 @@ function planFlow(db: ContentDb, s: ShiftState) {
     if (as && !admits.includes(as.department)) continue;
     schedule(s, base + back.from + r.fork(`return:${ret.of}`).range(0, back.minutes) * MIN, { kind: 'flow', stream: 'ret', n: 0, of: ret.of });
   }
-  scheduleFlow(db, s, 'walk', 0, base + SHIFT_START);
+  // испытание (spec docs/specs/2026-11-challenges.md): в первые сутки потоки — с его часа: ночь одному — с 20:00
+  const ch = d === 1 ? challengeOf(db, s) : undefined;
+  const from = base + (ch ? ch.from * HOUR : SHIFT_START);
+  scheduleFlow(db, s, 'walk', 0, from);
   // больница ПК (spec 2026-10-build): смотровую могут построить днём — машины едут, а принимает их `flowArrive`
-  if (emergencyBays(db, s).length > 0 || s.hospital?.site) scheduleFlow(db, s, 'amb', 0, base + SHIFT_START);
+  if (emergencyBays(db, s).length > 0 || s.hospital?.site) scheduleFlow(db, s, 'amb', 0, from);
   // по записи к специалисту (spec 2026-10-specialists): у каждого свой поток — только в потоке от больницы
-  if (s.flow?.auto) for (const to of capacityOf(db, s).booked) scheduleFlow(db, s, 'book', 0, base + SHIFT_START, to);
+  if (s.flow?.auto) for (const to of capacityOf(db, s).booked) scheduleFlow(db, s, 'book', 0, from, to);
 }
 
 /**
@@ -1028,6 +1041,9 @@ function flowArrive(db: ContentDb, s: ShiftState, ev: Extract<ShiftEvent, { kind
   // вернётся — заново (`rebook`)
   const to = ev.stream === 'book' ? colleaguesOf(db, s).find(m => m.id === ev.to && capacityOf(db, s).booked.includes(m.id)) : undefined;
   if (ev.stream === 'book' && !to) return;
+  // испытание (spec docs/specs/2026-11-challenges.md): пришедших сами — не больше стольких; дальше поток сами кончился
+  const ch = challengeOf(db, s);
+  if (ev.stream === 'walk' && ch?.walkIns !== undefined && walkInsOf(s) >= ch.walkIns) return;
   // больница ПК (spec 2026-10-build): в закрытую не приходят — следующий в свой час; скорая — если работает смотровая
   if (s.hospital?.site && !siteOpen(db, s, ev.stream === 'book' ? 'walk' : ev.stream)) {
     if (ev.stream !== 'ret') scheduleFlow(db, s, ev.stream, ev.n + 1, s.t, ev.to);
@@ -1049,12 +1065,14 @@ function flowArrive(db: ContentDb, s: ShiftState, ev: Extract<ShiftEvent, { kind
   // случай дня (spec docs/specs/2026-11-doctor-shift.md, часть 3): первый пришедший сам — больной дня, тем же вызовом
   // генератора, что в подборе дня
   const daily = ev.stream === 'walk' && s.meta.daily !== undefined && !Object.values(s.patients).some(p => p.daily) ? s.meta.daily : undefined;
+  // волна испытания (spec docs/specs/2026-11-challenges.md): у доли пришедших сами — болезнь волны, если она у них бывает
+  const wave = ev.stream === 'walk' ? waveOf(ch, x => branch(s, `wave:${d}:${ev.n}`).chance(x)) : undefined;
   // записанный к специалисту болен болезнью его профиля, которую больница принимает (как запись «Анамнеза», часть 59)
   const patient = ret ? returningPatient(db, s, ret)
     : daily !== undefined ? generatePatient(db, daily, { department: DAILY_DEPARTMENT, season: s.meta.season })
     : teach ? taughtPatient(db, s, d, key, teach, gen)
       : ev.stream === 'amb' ? ambulancePatient(db, s, d, key, admits, varied)
-        : generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${key}`), { ...gen, walkIn: true, ...(to ? { only: profileHere(db, to, admits) } : {}) });
+        : generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${key}`), { ...gen, walkIn: true, ...(to ? { only: profileHere(db, to, admits) } : wave ? { only: wave } : {}) });
   const own = ret ? [...new Set([...(s.patients[ret.of]?.departments ?? []), ...admits])] : admits;
   s.patients[id] = {
     id, patient, arriveT: s.t, kind, triage: 'green', status: 'coming', queuedT: 0, wait: 0, patience: 0,
@@ -1909,7 +1927,9 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
   const skill = p.by ? reading : examSkillWith(db, s.meta.skills, examId, reading);
 
   // песочница: показано ли — по тому, что известно сейчас; показанные оплачивают ОМС и ДМС
-  if (s.economy && e.cost > 0 && indicated(db, p.patient, observationsOf(p), candidatesOf(db, p.departments ?? s.meta.department), examId, Math.round((s.t - p.arriveT) / 60))) (p.indicated ??= []).push(examId);
+  // показания (страховая): с кассой — и у испытания «Только по показаниям», где кассы нет (spec docs/specs/2026-11-challenges.md)
+  const audits = s.economy !== undefined || challengeOf(db, s)?.unindicated !== undefined;
+  if (audits && e.cost > 0 && indicated(db, p.patient, observationsOf(p), candidatesOf(db, p.departments ?? s.meta.department), examId, Math.round((s.t - p.arriveT) / 60))) (p.indicated ??= []).push(examId);
   p.step++;
   p.done.push(examId);
   p.spent.money += e.cost;

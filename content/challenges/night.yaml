@@ -1,0 +1,21 @@
+# Испытание «Одна ночь» (spec docs/specs/2026-11-challenges.md; геймдизайн §9: «ночь в приёмном, врач — только вы»): больница
+# сценариев 2–3 с 20:00 до 08:00, вы один (`meta.solo`), сами не приходят, скорая — около 1,5 машины в час в среднем за сутки:
+# ночью — 11–27 привезённых (проба `bun tools/bench/challenges.ts --only engine`). Сортируете вы, по листу передачи; итог —
+# итог смены врача. Сколько красных по шкале вы позвали за 15 минут, — в итоге для сведения, а не правилом: к двум красным
+# сразу один врач не успеет, а больной со своим сроком важнее. Числа — игровые, слова — предложение агента на одобрение
+# владельца.
+id: challenge.night
+order: 3
+name: { ru: "Одна ночь", en: "One Night" }
+about:
+  ru: "Ночь в приёмном, врач — только вы: скорая привозит, вы сортируете и принимаете. Красных — первыми."
+  en: "A night in the emergency room and you are the only doctor: the ambulance brings them, you sort and see them. Reds first."
+kind: doctor
+start: site.emergency
+season: winter
+from: 20
+to: 32
+flow: { walk: 0, ambulance: 1.5 }
+sorts: true
+reds: 15
+grade: { by: shift }

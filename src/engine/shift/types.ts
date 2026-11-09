@@ -917,6 +917,11 @@ export interface ShiftState {
      */
     daily?: number;
     /**
+     * испытание (spec docs/specs/2026-11-challenges.md, часть 1): запись `content/challenges/` — её поток, волна, касса и
+     * правила (`src/engine/shift/challenge.ts`); нет — как прежде
+     */
+    challenge?: Id;
+    /**
      * о чём нанятые врачи спрашивают главврача (spec 2026-10-two-ways, F3, поток для ПК); нет поля — «не уверен» и «долгий
      * случай», как прежде (решение владельца 24.10.2026, #65)
      */

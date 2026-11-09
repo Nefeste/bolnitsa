@@ -1,0 +1,19 @@
+# Испытание «Сто пациентов» (spec docs/specs/2026-11-challenges.md; геймдизайн §9): амбулатория сценария 1 на два кабинета и
+# свободное крыло; за день придут сами ровно сто — поток останавливается на сотом. Без игрока она принимает 74–83 из ста
+# (проба `bun tools/bench/challenges.ts --only hundred`); итог — по принятым. Касса — на кабинеты и найм. Числа — игровые,
+# слова — предложение агента на одобрение владельца.
+id: challenge.hundred
+order: 2
+name: { ru: "Сто пациентов", en: "A Hundred Patients" }
+about:
+  ru: "Амбулатория на два кабинета, а за день придут сто человек. Стройте и нанимайте, чтобы принять всех."
+  en: "A two-office ambulatory, and a hundred people will come today. Build and hire to see them all."
+kind: chief
+start: site.ambulatory
+season: winter
+from: 8
+to: 20
+flow: { walk: 10 }
+walkIns: 100
+cash: 500000
+grade: { by: seen, a: 97, b: 90, c: 75 }

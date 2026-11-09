@@ -20,7 +20,7 @@ import { P_ONE } from '../../src/engine/core/rng';
 import { SETTING_ORDER } from '../../src/engine/med/plan';
 import { findBrand } from './brands';
 import {
-  BANDS, type ChapterSrc, chapterSchema, type ScenarioSrc, scenarioSchema, type CharacterSrc, characterSchema, type ConditionSrc, conditionSchema, type EconomySrc, economySchema, type EquipmentSrc, equipmentSchema, type ExamSrc, examSchema, type FindingSrc, findingSchema,
+  BANDS, type ChapterSrc, chapterSchema, type ScenarioSrc, scenarioSchema, type ChallengeSrc, challengeSchema, type CharacterSrc, characterSchema, type ConditionSrc, conditionSchema, type EconomySrc, economySchema, type EquipmentSrc, equipmentSchema, type ExamSrc, examSchema, type FindingSrc, findingSchema,
   type LinkSrc, PREVALENCE, type PresetSrc, presetSchema, type SiteSrc, siteSchema, type ProbabilitySrc, type ProfessionSrc, professionSchema, type RiskSrc, type RoleSrc, riskSchema, roleSchema, type RoomSrc, roomSchema,
   type TipSrc, tipSchema, type TreatmentSrc, treatmentSchema, versionSchema, type AchievementSrc, achievementSchema, type ScoreSrc, scoreSchema,
   type RuleSrc, ruleSchema, type TargetSrc, targetSchema, type SkillSrc, skillSchema,
@@ -223,6 +223,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   const characters: Record<string, CharacterSrc> = {};
   const chapters: Record<string, ChapterSrc> = {};
   const scenarios: Record<string, ScenarioSrc> = {};
+  const challenges: Record<string, ChallengeSrc> = {};
   const tips: Record<string, TipSrc> = {};
   const achievements: Record<string, AchievementSrc> = {};
   const scores: Record<string, ScoreSrc> = {};
@@ -321,6 +322,9 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     } else if (top === 'campaign' && rel.split('/')[1] === 'scenarios') {
       const c = check(scenarioSchema);
       if (c) { expectId(c.id, 'scenario'); put(scenarios, c); }
+    } else if (top === 'challenges') {
+      const c = check(challengeSchema);
+      if (c) { expectId(c.id, 'challenge'); put(challenges, c); }
     } else if (top === 'campaign' && rel.split('/')[1] === 'tips') {
       const t = check(tipSchema);
       if (t) { expectId(t.id, 'tip'); put(tips, t); }
@@ -340,7 +344,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       const x = check(skillSchema);
       if (x) { expectId(x.id, 'skill'); put(skills, x); }
     } else {
-      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, people/professions, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/sites, hospital/economy.yaml, hospital/consults.yaml, hospital/day.yaml, hospital/inflow.yaml, hospital/money.yaml, hospital/departments.yaml, hospital/difficulty.yaml, campaign/characters, campaign/chapters, campaign/scenarios, campaign/tips, achievements, scores, rules, targets, career/skills)`);
+      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, people/professions, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/sites, hospital/economy.yaml, hospital/consults.yaml, hospital/day.yaml, hospital/inflow.yaml, hospital/money.yaml, hospital/departments.yaml, hospital/difficulty.yaml, campaign/characters, campaign/chapters, campaign/scenarios, campaign/tips, challenges, achievements, scores, rules, targets, career/skills)`);
     }
   }
   if (!contentVersion) errors.push('version.yaml: нет contentVersion');
@@ -991,6 +995,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     scenarios: Object.fromEntries(Object.values(scenarios).sort((a, b) => a.order - b.order).map(({ tutorialRoom, ...c }) => [c.id, {
       ...c, tutorial: c.tutorial.map(t => (typeof t === 'string' ? { condition: t } : t)), ...(tutorialRoom ? { tutorialRoom: [tutorialRoom].flat() } : {}),
     }])),
+    // испытания ПК (spec docs/specs/2026-11-challenges.md) — по порядку экрана начала
+    challenges: Object.fromEntries(Object.values(challenges).sort((a, b) => a.order - b.order).map(c => [c.id, c])),
     tips: Object.fromEntries(Object.values(tips).sort((a, b) => a.order - b.order).map(t => [t.id, t])),
     achievements: Object.fromEntries(Object.values(achievements).sort((a, b) => a.order - b.order).map(a => [a.id, a])),
     scores: Object.fromEntries(Object.values(scores).sort((a, b) => (a.id < b.id ? -1 : 1)).map(x => [x.id, x])),
@@ -1228,6 +1234,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     checkSites(db, errors);
     checkCampaign(db, errors);
     checkScenarios(db, errors);
+    checkChallenges(db, errors);
     checkAchievements(db, errors);
     checkSkills(db, errors);
     checkDepartments(db, errors);
@@ -1767,6 +1774,38 @@ function checkHospital(c: {
     for (const id of cond.confirm) {
       const e = exams[id];
       if (e?.room && !rooms[e.room]) errors.push(`${cond.id}: подтверждающее ${id} недостижимо — нет помещения ${e.room}`);
+    }
+  }
+}
+
+/**
+ * Испытания ПК (spec docs/specs/2026-11-challenges.md): больница начала — в базе; конец позже начала; с болезнью волны приходят
+ * сами; волна и «не больше стольких сами» — у своего потока, а не от больницы; у испытания врача кассы нет, у испытания
+ * главврача она есть; сортировка игрока и красные по шкале — где есть смотровая приёмного; пороги итога — по порядку: у доли
+ * не принятых A меньше B и C, у принятых и кассы — больше.
+ */
+function checkChallenges(db: ContentDb, errors: string[]) {
+  const orders = new Set<number>();
+  for (const c of Object.values(db.challenges ?? {})) {
+    const at = (what: string) => errors.push(`${c.id}: ${what}`);
+    if (orders.has(c.order)) at(`порядок ${c.order} уже у другого испытания`);
+    orders.add(c.order);
+    const rooms = (c.start.startsWith('site.') ? db.sites?.[c.start]?.rooms : db.presets[c.start]?.rooms)?.map(r => r.type);
+    if (!rooms) at(`готовая больница ${c.start} не найдена`);
+    if (c.to <= c.from) at(`конец ${c.to} не позже начала ${c.from}`);
+    const wave = c.wave ? db.conditions[c.wave.condition] : undefined;
+    if (c.wave && (!wave || !wave.presenting || wave.arrival === 'ambulance')) at(`волна: с болезнью ${c.wave.condition} сами не приходят`);
+    if ((c.wave || c.walkIns !== undefined) && c.flow === 'auto') at('волна и «не больше стольких сами» — у своего потока, а поток — от больницы');
+    if (c.kind === 'doctor' && (c.cash !== undefined || c.loan !== undefined || c.overdraft !== undefined)) at('у испытания врача кассы нет');
+    if (c.kind === 'chief' && c.cash === undefined) at('у испытания главврача нужна касса начала');
+    if (c.kind === 'chief' && c.unindicated !== undefined) at('обследования без показаний считают у ваших приёмов — это испытание врача');
+    const er = !!rooms?.some(r => db.rooms[r]?.emergency);
+    if (c.sorts && !er) at('привезённых сортирует игрок, а смотровой приёмного нет');
+    if (c.reds !== undefined && !er) at('красные по шкале — у привезённых, а смотровой приёмного нет');
+    if (c.grade.by === 'shift' && c.kind !== 'doctor') at('итог смены врача — у испытания врача');
+    if (c.grade.by !== 'shift') {
+      const { a, b, c: low } = c.grade;
+      if (!(c.grade.by === 'unseen' ? a < b && b < low : a > b && b > low)) at(`пороги итога ${a}, ${b}, ${low} не по порядку`);
     }
   }
 }
