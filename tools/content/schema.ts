@@ -1276,10 +1276,15 @@ export const challengeSchema = z.strictObject({
   unindicated: z.number().int().min(0).optional(),
   /** красных по шкале, позванных врачом за столько минут, — в итоге, для сведения */
   reds: z.number().int().min(1).optional(),
-  /** итог от A до D: итог смены врача — или число испытания и пороги A, B, C */
+  /**
+   * поломки в работе (spec docs/specs/2026-11-technicians.md, часть 3): аппарат этого вида ломается в этот час от 00:00 первых
+   * суток — каждый такой в больнице; чинит техник, если он есть, иначе сервис к утру
+   */
+  breaks: z.array(z.strictObject({ eq: eqId, at: z.number().int().min(8) })).min(1).optional(),
+  /** итог от A до D: итог смены врача — или число испытания и пороги A, B, C; `xrays` — снимков за испытание */
   grade: z.union([
     z.strictObject({ by: z.literal('shift') }),
-    z.strictObject({ by: z.enum(['unseen', 'seen', 'cash']), a: z.number(), b: z.number(), c: z.number() }),
+    z.strictObject({ by: z.enum(['unseen', 'seen', 'cash', 'xrays']), a: z.number(), b: z.number(), c: z.number() }),
   ]),
 });
 

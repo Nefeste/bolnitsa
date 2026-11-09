@@ -73,6 +73,14 @@ export function unindicatedOf(db: ContentDb, s: ShiftState): number {
     .reduce((n, p) => n + caseIncome(db, 'oms', p.closed!.diagnosis, p.done, p.indicated ?? [], p.closed!.grades.defensibility).unindicated.length, 0);
 }
 
+/**
+ * Рентгеновских снимков за испытание (spec docs/specs/2026-11-technicians.md, часть 3): назначенных обследований кабинета рентгена у
+ * всех карт — и тех, кто в больнице, и ушедших.
+ */
+export function xraysOf(db: ContentDb, s: ShiftState): number {
+  return cards(s).reduce((n, p) => n + p.done.filter(e => db.exams[e]?.room === 'room.xray').length, 0);
+}
+
 /** Оценка по порогам: у доли не принятых — чем меньше, тем лучше, у остальных — чем больше. */
 function byThresholds(value: number, g: Extract<Challenge['grade'], { a: number }>): Grade {
   const ok = (x: number) => (g.by === 'unseen' ? value <= x : value >= x);
@@ -95,7 +103,11 @@ export function challengeEnd(db: ContentDb, s: ShiftState): ChallengeEnd | undef
       out.value = r.points;
     }
   } else {
-    out.value = c.grade.by === 'unseen' ? (all.length > 0 ? Math.round((1000 * (all.length - seen)) / all.length) / 10 : 0) : c.grade.by === 'seen' ? seen : (s.economy?.cash ?? 0);
+    out.value =
+      c.grade.by === 'unseen' ? (all.length > 0 ? Math.round((1000 * (all.length - seen)) / all.length) / 10 : 0)
+      : c.grade.by === 'seen' ? seen
+        : c.grade.by === 'xrays' ? xraysOf(db, s)
+          : (s.economy?.cash ?? 0);
     out.grade = byThresholds(out.value, c.grade);
   }
   let rules = true;

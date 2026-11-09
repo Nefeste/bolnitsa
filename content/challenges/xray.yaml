@@ -1,0 +1,22 @@
+# Испытание «Рентген сломался» (spec docs/specs/2026-11-challenges.md, docs/specs/2026-11-technicians.md, часть 3; геймдизайн §9):
+# готовая городская больница, смена 08:00–20:00; в 09:00 её рентген ломается в работе. Техника в готовой больнице нет: нанять его
+# — починит за часы, ждать сервиса — к утру, рентгена до конца смены не будет, поставить второй рентген на свободной земле — дорого.
+# Итог — сколько рентгеновских снимков сделали за смену: в обычный день — 7–10. Пороги — по пробе (`bun tools/bench/challenges.ts
+# --only engine`, `--plan`: техник в 08:00, `--plan --alt`: второй рентген). Числа — игровые, слова — предложение агента на
+# одобрение владельца.
+id: challenge.xray
+order: 6
+name: { ru: "Рентген сломался", en: "The X-Ray Broke Down" }
+about:
+  ru: "В 09:00 в городской больнице сломается рентген. Пусть за смену сделают как можно больше снимков: нанять техника, ждать сервиса или поставить второй рентген — решать вам."
+  en: "At 09:00 the city hospital's X-ray machine breaks down. Get as many X-rays taken this shift as you can: hire a technician, wait for the service or put in a second X-ray — your call."
+kind: chief
+start: preset.city
+season: winter
+from: 8
+to: 20
+flow: auto
+cash: 1000000
+breaks:
+  - { eq: eq.xray_digital, at: 9 }
+grade: { by: xrays, a: 7, b: 5, c: 3 }

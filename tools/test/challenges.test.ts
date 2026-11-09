@@ -9,10 +9,10 @@ import { db } from '../../src/content';
 import { hospitalOf } from '../../src/engine/hospital/site';
 import { POINTS } from '../../src/sim/shift';
 import { walkInsOf } from '../../src/engine/shift/challenge';
-import { apply, newFlowShift } from '../../src/engine/shift/engine';
+import { apply, brokenOf, newFlowShift } from '../../src/engine/shift/engine';
 import { offerOf, shortOf } from '../../src/engine/shift/money';
 import type { ShiftPatient, ShiftState } from '../../src/engine/shift/types';
-import { challengeEnd, challengeEndAt, challengeStart, unindicatedOf } from '../../src/sim/challenge';
+import { challengeEnd, challengeEndAt, challengeStart, unindicatedOf, xraysOf } from '../../src/sim/challenge';
 import { buildDb, CONTENT_DIR } from '../content/load';
 import { playOwn } from '../sim/doctor-player';
 
@@ -35,8 +35,8 @@ function run(s: ShiftState, until: number) {
 const cards = (s: ShiftState): ShiftPatient[] => [...Object.values(s.patients), ...(s.past ?? []).map(x => x.p)];
 
 describe('испытания: записи', () => {
-  test('пять испытаний по порядку экрана начала, у каждого — больница начала', () => {
-    expect(Object.keys(db.challenges ?? {})).toEqual(['challenge.flu', 'challenge.hundred', 'challenge.night', 'challenge.debt', 'challenge.indicated']);
+  test('шесть испытаний по порядку экрана начала, у каждого — больница начала', () => {
+    expect(Object.keys(db.challenges ?? {})).toEqual(['challenge.flu', 'challenge.hundred', 'challenge.night', 'challenge.debt', 'challenge.indicated', 'challenge.xray']);
     for (const c of Object.values(db.challenges!)) {
       expect(c.name.ru.length).toBeGreaterThan(0);
       expect(c.name.en?.length ?? 0).toBeGreaterThan(0);
@@ -169,6 +169,40 @@ describe('«Только по показаниям»: страховая про�
   });
 });
 
+describe('«Рентген сломался» (spec docs/specs/2026-11-technicians.md, часть 3): рентген ломается в 09:00', () => {
+  test('в 09:00 рентген встаёт; без техника — до конца смены, снимков после него нет; итог — снимков за смену', () => {
+    const s = start('xray');
+    run(s, 9 * H - 60);
+    expect(brokenOf(s).size).toBe(0);
+    run(s, 9 * H + 60);
+    const x = [...brokenOf(s)];
+    expect(x.length).toBe(1);
+    const before = xraysOf(db, s);
+    run(s, challengeEndAt(ch('xray')));
+    expect(brokenOf(s).has(x[0])).toBe(true);
+    // кого записали к аппарату до поломки, тех доделывают; новых снимков нет
+    expect(xraysOf(db, s) - before).toBeLessThanOrEqual(1);
+    const r = challengeEnd(db, s)!;
+    expect(r.value).toBe(xraysOf(db, s));
+    expect(r.grade).toBe('D');
+    expect(r.passed).toBe(false);
+  });
+
+  test('техник, нанятый в 08:00, чинит к полудню — снимки после поломки есть', () => {
+    const s = start('xray');
+    const staffRoom = s.hospital!.site!.rooms.find(r => r.type === 'room.staff')!.id;
+    apply(db, s, { kind: 'site', cmd: { kind: 'hire', room: staffRoom, role: 'role.technician', shift: 'day' } });
+    apply(db, s, { kind: 'site', cmd: { kind: 'done' } });
+    run(s, 9 * H + 60);
+    const [key] = [...brokenOf(s)];
+    const done = s.fixing?.[key]?.done;
+    expect(s.fixing?.[key]?.kind).toBe('repair');
+    expect(done! < 13 * H).toBe(true);
+    run(s, done! + 60);
+    expect(brokenOf(s).has(key)).toBe(false);
+  });
+});
+
 describe('испытания: загрузчик', () => {
   test('главврачу нужна касса, у врача её нет, пороги — по порядку, волна — у своего потока', () => {
     const dir = mkdtempSync(join(tmpdir(), 'bolnitsa-content-'));
@@ -184,12 +218,14 @@ describe('испытания: загрузчик', () => {
       edit('night', 'reds: 15\n', 'reds: 15\ncash: 1000\n');
       edit('hundred', 'grade: { by: seen, a: 97, b: 90, c: 75 }', 'grade: { by: seen, a: 90, b: 97, c: 75 }');
       edit('debt', 'cash: -1000000\n', 'cash: -1000000\nwave: { condition: cond.influenza, share: 40 }\n');
+      edit('xray', '  - { eq: eq.xray_digital, at: 9 }', '  - { eq: eq.mri_15, at: 21 }');
       const errors = buildDb(dir).errors.filter(e => e.startsWith('challenge.'));
       expect(errors).toEqual([
         'challenge.flu: у испытания главврача нужна касса начала',
         'challenge.hundred: пороги итога 90, 97, 75 не по порядку',
         'challenge.night: у испытания врача кассы нет',
         'challenge.debt: волна и «не больше стольких сами» — у своего потока, а поток — от больницы',
+        'challenge.xray: поломка в 21 — не во время испытания',
       ]);
     } finally {
       rmSync(dir, { recursive: true, force: true });

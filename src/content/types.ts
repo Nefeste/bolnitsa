@@ -1291,8 +1291,10 @@ export interface Challenge {
   unindicated?: number;
   /** красных по шкале, позванных врачом за столько минут, — в итоге, для сведения */
   reds?: number;
-  /** итог от A до D: итог смены врача — или число испытания и пороги A, B, C */
-  grade: { by: 'shift' } | { by: 'unseen' | 'seen' | 'cash'; a: number; b: number; c: number };
+  /** поломки в работе (spec docs/specs/2026-11-technicians.md, часть 3): аппарат этого вида ломается в этот час, от 00:00 первых суток */
+  breaks?: { eq: Id; at: number }[];
+  /** итог от A до D: итог смены врача — или число испытания и пороги A, B, C; `xrays` — снимков за испытание */
+  grade: { by: 'shift' } | { by: 'unseen' | 'seen' | 'cash' | 'xrays'; a: number; b: number; c: number };
 }
 
 /**

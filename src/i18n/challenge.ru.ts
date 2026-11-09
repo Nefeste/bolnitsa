@@ -27,6 +27,8 @@ export const challengeRu = {
       unseen: (v: number) => `не приняты ${pct(v)}`,
       seen: (v: number) => `приняты ${v}`,
       cash: (v: number) => `касса ${rub(v)}`,
+      // «Рентген сломался» (spec docs/specs/2026-11-technicians.md, часть 3): снимков за испытание
+      xrays: (v: number) => `снимков ${v}`,
       shift: (v: number) => `балл ${points(v)}`,
     },
     /** окно «Итог испытания» */
@@ -36,6 +38,7 @@ export const challengeRu = {
       unseen: (v: number, seen: number, arrived: number) => `Не приняты до конца: ${pct(v)} — врач позвал ${seen} из ${arrived}`,
       seen: (v: number, arrived: number) => `Приняты — врач позвал до конца: ${v} из ${arrived}`,
       cash: (v: number) => `Касса в конце: ${rub(v)}`,
+      xrays: (v: number) => `Рентгеновских снимков за смену: ${v}`,
       shift: (v: number) => `Итог смены врача — балл ${points(v)} из 3`,
     },
     nobody: 'Никого не приняли — итога смены нет.',

@@ -1,5 +1,5 @@
 // Сценарий в браузере, часть 42 — испытания (spec docs/specs/2026-11-challenges.md, часть 2). Экран начала: «Испытания» → второй
-// шаг — пять испытаний, у каждого «ещё не играли»; «Кто вы» — «Главврач». «Сто пациентов» — амбулатория сценария 1 с ключами
+// шаг — шесть испытаний, у каждого «ещё не играли»; «Кто вы» — «Главврач». «Сто пациентов» — амбулатория сценария 1 с ключами
 // `challenge` и `role`: в движке `meta.challenge`, поток сами 10 в час и касса 500 000 ₽; стройка есть, «Сложности» в «Настройках»
 // нет. «До утра» — не дальше 20:00: «Итог испытания» — оценка, «Приняты — врач позвал до конца: N из 100», «Пройдено» или нет,
 // лучший результат; рекорд
@@ -22,12 +22,12 @@ export async function challengesPart({ page, port, out, ok, fail, q }) {
   };
   const rowText = id => page.evaluate(x => (document.getElementById(x)?.textContent ?? '').replace(/\s+/g, ' ').trim(), id);
 
-  // ---------------------------------------------------------------- экран начала: «Испытания», пять, «ещё не играли»
+  // ---------------------------------------------------------------- экран начала: «Испытания», шесть, «ещё не играли»
   await step();
   const rows = await page.$$eval('#start-challenges-step button[id^="challenge-"]', els => els.map(e => ({ id: e.id, text: (e.textContent ?? '').replace(/\s+/g, ' ').trim() })));
   const ids = rows.map(r => r.id);
-  if (JSON.stringify(ids) === JSON.stringify(['challenge-flu', 'challenge-hundred', 'challenge-night', 'challenge-debt', 'challenge-indicated']) && rows.every(r => r.text.endsWith('ещё не играли')))
-    ok(`«Испытания» — пять, по порядку, у каждого «ещё не играли»: «${rows[0].text.slice(0, 60)}…» (снимок ${await shot('e2e-challenges-1-list.jpg')} КБ)`);
+  if (JSON.stringify(ids) === JSON.stringify(['challenge-flu', 'challenge-hundred', 'challenge-night', 'challenge-debt', 'challenge-indicated', 'challenge-xray']) && rows.every(r => r.text.endsWith('ещё не играли')))
+    ok(`«Испытания» — шесть, по порядку, у каждого «ещё не играли»: «${rows[0].text.slice(0, 60)}…» (снимок ${await shot('e2e-challenges-1-list.jpg')} КБ)`);
   else fail(`список испытаний: ${JSON.stringify(rows)}`);
 
   // ---------------------------------------------------------------- «Сто пациентов» за «Главврача»
@@ -104,4 +104,26 @@ export async function challengesPart({ page, port, out, ok, fail, q }) {
   const audit = await page.waitForSelector('#audit', { timeout: 30000 }).then(e => e.textContent(), () => '');
   if (audit === 'Без показаний: 0 из 2') ok(`«Только по показаниям» — вверху «${audit}» (снимок ${await shot('e2e-challenges-3-audit.jpg')} КБ)`);
   else fail(`строка «Без показаний»: «${audit}»`);
+
+  // ---------------------------------------------------------------- «Рентген сломался» (spec docs/specs/2026-11-technicians.md, часть 3)
+  // за «Главврача»: в 09:00 рентген встаёт; в 20:00 — «Итог испытания» со снимками за смену
+  await step();
+  await page.click('#start-challenge-role-chief');
+  await Promise.all([page.waitForURL(/challenge=challenge\.xray/, { timeout: 30000 }), page.click('#challenge-xray')]);
+  await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
+  await page.evaluate(() => window.__game.actions.doctor({ kind: 'autopause', on: false }));
+  await page.keyboard.press('Digit3');
+  await page.waitForFunction(() => window.__game.t >= 9 * 3600 + 120, null, { timeout: 60000 }).catch(() => {});
+  await page.evaluate(() => window.__game.setSpeed(0));
+  const x9 = await page.evaluate(() => window.__game.repairs.filter(d => d.eq.startsWith('eq.xray')).map(d => ({ broken: !!d.broken, since: d.broken?.since })));
+  if (x9.length > 0 && x9.every(d => d.broken && d.since === 9 * 3600)) ok(`«Рентген сломался»: в 09:00 рентген встал (${x9.length} апп.)`);
+  else fail(`«Рентген сломался» в 09:00: ${JSON.stringify(x9)}`);
+  for (let i = 0; i < 40 && !(await page.$('#challenge-summary')); i++) {
+    await page.evaluate(() => window.__game.actions.untilMorning());
+    await page.waitForTimeout(3000);
+  }
+  await page.waitForSelector('#challenge-summary', { timeout: 60000 }).catch(() => {});
+  const xv = await page.evaluate(() => ({ title: document.getElementById('challenge-title')?.textContent ?? '', value: document.getElementById('challenge-value')?.textContent ?? '' }));
+  if (xv.title === 'Итог испытания · Рентген сломался' && /^Рентгеновских снимков за смену: \d+$/.test(xv.value)) ok(`20:00 — «${xv.title}»: «${xv.value}»`);
+  else fail(`итог «Рентген сломался»: ${JSON.stringify(xv)}`);
 }

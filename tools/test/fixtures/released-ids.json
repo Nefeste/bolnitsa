@@ -1,5 +1,5 @@
 {
-  "version": "0.81.0",
+  "version": "0.82.0",
   "base": 78,
   "ids": {
     "achievements": [
@@ -33,7 +33,8 @@
       "challenge.flu",
       "challenge.hundred",
       "challenge.indicated",
-      "challenge.night"
+      "challenge.night",
+      "challenge.xray"
     ],
     "chapters": [
       "chapter.city",
