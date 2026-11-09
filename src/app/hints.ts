@@ -9,12 +9,12 @@ import type { Role } from './roles';
 
 export type HintKey =
   | 'build' | 'draw' | 'furnish' | 'door' | 'hire' | 'machine' | 'fix' | 'run' | 'look' | 'asks' | 'call' | 'leave' | 'decisions' | 'manage'
-  | 'sheet' | 'bays' | 'night' | 'nightOr';
+  | 'sheet' | 'bays' | 'night' | 'nightOr' | 'routes' | 'alert';
 
 /** Порядок подсказок — для проверок: все ключи, какие бывают. */
 export const HINT_KEYS: readonly HintKey[] = [
   'build', 'draw', 'furnish', 'door', 'hire', 'machine', 'fix', 'run', 'look', 'asks', 'call', 'leave', 'decisions', 'manage', 'sheet', 'bays', 'night',
-  'nightOr',
+  'nightOr', 'routes', 'alert',
 ];
 
 export interface HintInput {
@@ -51,6 +51,12 @@ export interface HintInput {
   night?: boolean;
   /** хирургия (spec docs/specs/2026-11-scenario-3.md, часть 2): вечер, операционная работает, а на ночь бригады в ней нет */
   nightOr?: boolean;
+  /**
+   * сердце и мозг (spec docs/specs/2026-11-scenario-4.md, часть 2б): сколько лежащих в смотровой ждут врача с жалобой срока
+   * маршрута, а маршруты выключены; сколько просьб медсестры по маршруту сейчас
+   */
+  routable?: number;
+  alert?: number;
 }
 
 /**
@@ -66,6 +72,8 @@ export function hintOf(s: HintInput, seen: ReadonlySet<HintKey>): HintKey | unde
   if ((s.decisions ?? 0) > 0 && !s.answered && !seen.has('decisions')) return 'decisions';
   // привезённый ждёт вашей сортировки — где лист передачи (spec docs/specs/2026-11-scenario-2.md, часть 2б)
   if ((s.handover ?? 0) > 0 && !seen.has('sheet')) return 'sheet';
+  // медсестра просит посмотреть: подъём ST по маршруту, счёт до тромболизиса идёт (spec docs/specs/2026-11-scenario-4.md, часть 2б)
+  if ((s.alert ?? 0) > 0 && !seen.has('alert')) return 'alert';
   const b = s.block;
   if (b) {
     if (b.kind === 'noRoom') return s.buildOn ? (s.drawing ? undefined : pick('draw')) : pick('build');
@@ -85,6 +93,8 @@ export function hintOf(s: HintInput, seen: ReadonlySet<HintKey>): HintKey | unde
   if ((s.door ?? 0) > 0 && !seen.has('bays')) return 'bays';
   if (s.night && !seen.has('night')) return 'night';
   if (s.nightOr && !seen.has('nightOr')) return 'nightOr';
+  // в смотровой лежит больной со сроком маршрута, а маршруты выключены (spec docs/specs/2026-11-scenario-4.md, часть 2б)
+  if ((s.routable ?? 0) > 0 && !seen.has('routes')) return 'routes';
   // по роли (spec 2026-10-two-ways, F4): «Врачу» — как позвать первого; «Главврачу» — где решения; «Управляющему» — что делать
   const role = s.role ?? 'doctor';
   // стройка открыта — её панель закрывает окно врача (spec docs/specs/2026-11-demo.md, проход по снимкам 1): сначала «Готово»

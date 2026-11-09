@@ -1,0 +1,234 @@
+# Сценарий 4 «Сердце и мозг» (spec docs/specs/2026-11-scenario-4.md; геймдизайн §9): ваша больница из сценария 3 и свободная
+# земля у входа скорой под кабинет КТ и палату интенсивной терапии (решение агента 1) — готовая больница `site.surgery`. Касса
+# — на кабинет КТ и палату интенсивной терапии с людьми на день и на ночь. Маршруты для срочного — галочки в карточке
+# смотровой приёмного (решение владельца #219, вариант 1); цели сроков — по всей больнице. Первые больные — ваши, как в главе
+# 3 «Анамнеза»: инфаркт с подъёмом ST нижней стенки по скорой, паралич лицевого нерва в первые 72 часа (лоб не морщится — не
+# инсульт), ишемический инсульт по скорой в окне тромболизиса; приходят, когда работает кабинет КТ (`tutorialRoom`). Письма —
+# наставница, Ян Новак и новая заведующая неврологией Ада Рейес (char.head_neurologist); о медицине в них — только то, что в
+# базе: сроки — записи `content/targets/` с их рекомендациями, остальное — из писем и подсказок главы 3 «Анамнеза». Слова,
+# порядок стройки и числа целей — предложение агента на одобрение владельца; кассу и числа целей подобрал симулятор экономики
+# (`bun tools/sim/economy.ts --only vascular`, «Часть 2б: как сделано» спецификации).
+id: scenario.vascular
+order: 4
+name: { ru: "Сердце и мозг", en: "Heart and brain" }
+about:
+  ru: "Минуты при боли в груди и инсульте: томограф у приёмного, палата интенсивной терапии и маршруты, что успевают до врача."
+  en: "Minutes in chest pain and stroke: a CT scanner by the emergency room, an intensive care unit and routes that act before the doctor comes."
+start: site.surgery
+budget: 2500000
+department: dept.therapy
+build:
+  - room.reception
+  - room.waiting
+  - room.office
+  - room.triage
+  - room.procedure
+  - room.lab
+  - room.ecg
+  - room.toilet
+  - room.staff
+  - room.emergency
+  - room.ward
+  - room.xray
+  - room.or
+  - room.ct
+  - room.icu
+# заданные больные приходят, когда работает кабинет КТ: без него неврологию не привозят
+tutorialRoom: room.ct
+tutorial:
+  - { condition: cond.acs, ambulance: true, params: { type: stemi, wall: inferior, killip: i, early: yes } }
+  - { condition: cond.bell_palsy, params: { severity: moderate, h72: yes } }
+  - { condition: cond.stroke_ischemic, ambulance: true, params: { deficit: motor, nihss: high, lvo: no, window: yes, lysis180: yes } }
+# Порядок стройки (решение владельца #114): кабинет КТ — у смотровой приёмного, потом палата интенсивной терапии.
+guide:
+  - room: room.ct
+    why:
+      ru: "при инсульте КТ с заключением нужна в первые 40 минут: 25 из них — снимок и заключение, остальное — дорога каталки; ставьте у смотровой приёмного"
+      en: "with a stroke the CT and its report are needed within 40 minutes: 25 of them go to the scan and the report, the rest to the gurney's way; put it by the emergency room"
+  - room: room.icu
+    why:
+      ru: "после тромболизиса за больным следят каждую минуту: инфаркт и инсульт лежат под мониторами, а не в общей палате"
+      en: "after thrombolysis the patient is watched every minute: a heart attack and a stroke lie under monitors, not in a general ward"
+missions:
+  - id: ctRoom
+    main: true
+    kind: roomWorks
+    room: room.ct
+    text:
+      ru: "Открыть кабинет КТ: построить, поставить томограф, нанять рентгенолаборанта и рентгенолога"
+      en: "Open a CT room: build it, install the scanner, hire a radiographer and a radiologist"
+  - id: icu
+    main: true
+    kind: roomWorks
+    room: room.icu
+    text:
+      ru: "Открыть палату интенсивной терапии: построить, поставить мониторы с дефибриллятором, нанять медсестру и анестезиолога-реаниматолога"
+      en: "Open an intensive care unit: build it, install the monitors with defibrillators, hire a nurse and an anaesthetist"
+  - id: ecg
+    main: true
+    kind: deadline
+    target: target.ecg_chest_pain
+    count: 3
+    text: { ru: "ЭКГ при боли в груди в первые 10 минут: трое больных", en: "An ECG within 10 minutes of chest pain: three patients" }
+  - id: ct
+    main: true
+    kind: deadline
+    target: target.stroke_ct
+    count: 3
+    text: { ru: "КТ при подозрении на инсульт в первые 40 минут: трое больных", en: "A CT within 40 minutes of a suspected stroke: three patients" }
+  - id: lysis
+    main: false
+    kind: thrombolysis
+    count: 1
+    text: { ru: "Тромболизис вовремя и без противопоказаний", en: "Thrombolysis on time and without contraindications" }
+  - id: swallow
+    main: false
+    kind: deadline
+    target: target.stroke_swallow
+    count: 2
+    text: { ru: "Тест глотания при инсульте в первые 3 часа: двое больных", en: "A swallow test within 3 hours of a stroke: two patients" }
+letters:
+  - id: hello
+    from: char.tutor
+    when: start
+    text:
+      ru: >-
+        Коллега, приёмное и операционная у нас свои, а больных с инфарктом и инсультом мы всё ещё переводим. У входа скорой —
+        свободная земля: под кабинет КТ и палату интенсивной терапии. Начнём с томографа и поставим его рядом со смотровой
+        приёмного: каждая минута дороги каталки — минута из сорока.
+      en: >-
+        Colleague, the emergency department and the operating room are our own, and patients with a heart attack or a stroke
+        we still transfer. By the ambulance entrance there is free land for a CT room and an intensive care unit. Let's start
+        with the scanner and put it next to the emergency room: every minute of the gurney's way is a minute out of forty.
+  - id: budget
+    from: char.official
+    when: start
+    text:
+      ru: >-
+        Деньги на сосудистое отделение — в кассе: на кабинет КТ и палату интенсивной терапии с людьми на день и на ночь.
+        Инфаркт и инсульт утра не ждут.
+      en: >-
+        The money for a vascular unit is in the till: for a CT room and an intensive care unit with people by day and by
+        night. A heart attack or a stroke does not wait for the morning.
+  - id: minutes
+    from: char.head_neurologist
+    when: start
+    text:
+      ru: >-
+        Здравствуйте. До сих пор ваших больных с инфарктом и инсультом лечили у нас — теперь сможете сами. Здесь решают минуты.
+        При боли в груди ЭКГ снимают и читают в первые 10 минут; подъём ST на ленте — и счёт до тромболизиса: 10 минут от неё.
+        При подозрении на инсульт КТ с заключением нужна в первые 40 минут: она исключает кровь в мозге, а без этого о
+        тромболизисе не решить.
+      en: >-
+        Hello. Until now your patients with a heart attack or a stroke were treated here; now you can do it yourselves. Here
+        minutes decide. With chest pain the ECG is taken and read within the first 10 minutes; ST elevation on the strip, and
+        the count to thrombolysis begins: 10 minutes from it. With a suspected stroke the CT and its report are needed within
+        the first 40 minutes: it rules out blood in the brain, and without that there is no deciding on thrombolysis.
+  - id: routes
+    from: char.head_neurologist
+    when: { hint: routes }
+    text:
+      ru: >-
+        В смотровой лежит больной с болью в груди или признаками инсульта, а врач занят другим, — так минуты и уходят. В
+        карточке смотровой приёмного — «Маршруты для срочного»: медсестра снимет ЭКГ у постели или повезёт на КТ, не
+        дожидаясь врача. Расходники — и на тех, кому врач обследование не назначил бы: это видно на планёрке.
+      en: >-
+        A patient with chest pain or stroke signs lies in the emergency room, and the doctor is busy with someone else: that
+        is how the minutes go. The emergency room card has «Routes for the urgent»: the nurse takes the ECG at the bedside or
+        wheels to the CT without waiting for the doctor. The consumables go on those a doctor would not order it for too: it
+        shows at the meeting.
+  - id: alert
+    from: char.head_neurologist
+    when: { hint: alert }
+    text:
+      ru: >-
+        Медсестра сняла ЭКГ по маршруту — подъём ST. Теперь счёт до тромболизиса: 10 минут от ленты. Позовите больного сами из
+        «Ждут вас» — или держите врача свободным: занятый подойдёт, когда освободится.
+      en: >-
+        The nurse took an ECG by the route: ST elevation. Now the count to thrombolysis is running: 10 minutes from the strip.
+        Call the patient yourself from «Waiting for you», or keep a doctor free: a busy one comes when he is done.
+  - id: firstDay
+    from: char.tutor
+    when: { afterDay: 1 }
+    text:
+      ru: >-
+        Первые сутки позади. На планёрке — строка «Сроки»: у скольких больных всей больницы ЭКГ, КТ и тромболизис сделаны
+        вовремя, и сколько прошло по маршрутам. А в разборе каждого видно, на какой минуте что сделано.
+      en: >-
+        The first day is behind us. At the meeting there is the «Deadlines» line: for how many patients of the whole hospital
+        the ECG, the CT and thrombolysis were on time, and how many went by the routes. And the review of each shows at which
+        minute what was done.
+  - id: ctRoomDone
+    from: char.head_neurologist
+    when: { mission: ctRoom }
+    text:
+      ru: >-
+        Кабинет КТ работает: томограф, рентгенолаборант и рентгенолог на месте. Теперь скорая везёт к вам и больных с
+        признаками инсульта. Ишемический инсульт в первые часы на КТ почти не виден: снимок делают, чтобы исключить кровь.
+      en: >-
+        The CT room works: the scanner, the radiographer and the radiologist are in place. Now the ambulance brings you
+        patients with stroke signs too. An ischaemic stroke in the first hours is barely seen on CT: the scan is done to rule
+        out blood.
+  - id: icuDone
+    from: char.official
+    when: { mission: icu }
+    text:
+      ru: >-
+        Палата интенсивной терапии открыта: койки под мониторами, медсестра и анестезиолог-реаниматолог на месте. За самыми
+        тяжёлыми теперь следят здесь, каждую минуту.
+      en: >-
+        The intensive care unit is open: beds under monitors, a nurse and an anaesthetist in place. The most severe are now
+        watched here, every minute.
+  - id: lysisDone
+    from: char.head_neurologist
+    when: { mission: lysis }
+    text:
+      ru: >-
+        Тромболизис — вовремя и без противопоказаний. Это и есть работа сосудистого отделения. Проверка противопоказаний — не
+        формальность: при крови в мозге тот же препарат убивает.
+      en: >-
+        Thrombolysis on time and without contraindications. That is the work of a vascular unit. Checking the
+        contraindications is no formality: with blood in the brain the same drug kills.
+  - id: end
+    from: char.tutor
+    when: end
+    text:
+      ru: >-
+        Сосудистое отделение работает: ЭКГ и КТ вовремя, тромболизис по показаниям, палата интенсивной терапии открыта.
+        Дальше — инфекции: инфекционное отделение и боксы, а зимой — волна, когда коек на всех не хватает.
+      en: >-
+        The vascular unit works: the ECG and the CT on time, thrombolysis when it is indicated, the intensive care unit open.
+        Next come infections: an infectious diseases ward and isolation boxes, and in winter a wave when there are not beds
+        for all.
+# Подсказки заведующей в карте — подсказки главы 3 «Анамнеза» в нейтральном сеттинге, медицина та же: у заданного больного с
+# инфарктом и у заданного с инсультом.
+tips:
+  - id: stemi
+    from: char.head_neurologist
+    when: { condition: cond.acs }
+    name: { ru: "Инфаркт и минуты", en: "A heart attack and minutes" }
+    text:
+      ru: >-
+        ЭКГ у постели — в первые 10 минут. Подъём ST в отведениях II, III и aVF — инфаркт нижней стенки. До сосудистого центра
+        два часа: если от начала боли прошло меньше 12 часов, тромб растворяем здесь. Сначала спросите о противопоказаниях,
+        потом — тромболизис с его спутниками и сразу перевод.
+      en: >-
+        A bedside ECG within the first 10 minutes. ST elevation in leads II, III and aVF means an inferior wall infarction.
+        The vascular centre is two hours away: if less than 12 hours have passed since the pain began, we dissolve the clot
+        here. First ask about contraindications, then thrombolysis with its companions, and transfer at once.
+    see: [cond.acs, tx.thrombolysis, exam.ecg]
+  - id: stroke
+    from: char.head_neurologist
+    when: { condition: cond.stroke_ischemic }
+    name: { ru: "Инсульт: счёт от начала", en: "A stroke: counting from the onset" }
+    text:
+      ru: >-
+        Внезапная слабость, перекошенное лицо, нарушенная речь — считаем от начала: тромболизис — в первые 4,5 часа. Сначала
+        глюкоза — гипогликемия бывает похожа на инсульт, — потом КТ с заключением в первые 40 минут: кровь на КТ — тромболизис
+        нельзя. Крови и противопоказаний нет — растворяем тромб, а до первой еды и таблеток — тест глотания.
+      en: >-
+        Sudden weakness, a drooping face, slurred speech: we count from the onset, thrombolysis within the first 4.5 hours.
+        First glucose, since hypoglycaemia can look like a stroke, then a CT with its report within the first 40 minutes: blood
+        on the CT, no thrombolysis. No blood and no contraindications: we dissolve the clot, and before the first food or
+        pill, a swallow test.
+    see: [cond.stroke_ischemic, exam.ct_head, tx.thrombolysis_stroke, exam.swallow_test]

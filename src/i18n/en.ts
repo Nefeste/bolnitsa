@@ -239,6 +239,8 @@ export const en: Strings = {
     bays: 'No free place in the emergency room: arrivals wait at the entrance on a gurney. More places — a bigger emergency room or a second one.',
     night: 'At 20:00 the day shift leaves, and the ambulance comes at night too: «Hire for nights» in the card of the emergency room and of a doctor’s office.',
     nightOr: 'At 20:00 the operating room’s team leaves, and urgent patients come at night too: «Hire for nights» in the operating room’s card.',
+    routes: 'A patient with chest pain or stroke signs waits for a doctor in the emergency room: «Routes for the urgent» in the emergency room card — the ECG and the CT before the doctor.',
+    alert: 'The nurse asks you to look: the ECG by the route shows ST elevation — call the patient from «Waiting for you», the count to thrombolysis is running.',
   },
   tabs: {
     patients: 'Patients',

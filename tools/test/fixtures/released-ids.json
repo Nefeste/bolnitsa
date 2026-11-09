@@ -1,5 +1,5 @@
 {
-  "version": "0.84.0",
+  "version": "0.85.0",
   "base": 78,
   "ids": {
     "achievements": [
@@ -118,6 +118,7 @@
     "characters": [
       "char.chief",
       "char.city_chief",
+      "char.head_neurologist",
       "char.head_surgeon",
       "char.icu_head",
       "char.mentor",
@@ -1313,7 +1314,8 @@
     "scenarios": [
       "scenario.ambulatory",
       "scenario.emergency",
-      "scenario.surgery"
+      "scenario.surgery",
+      "scenario.vascular"
     ],
     "scenarios.letters": [
       "scenario.ambulatory/asks",
@@ -1348,7 +1350,17 @@
       "scenario.surgery/nightDone",
       "scenario.surgery/ontimeDone",
       "scenario.surgery/orDone",
-      "scenario.surgery/surgeon"
+      "scenario.surgery/surgeon",
+      "scenario.vascular/alert",
+      "scenario.vascular/budget",
+      "scenario.vascular/ctRoomDone",
+      "scenario.vascular/end",
+      "scenario.vascular/firstDay",
+      "scenario.vascular/hello",
+      "scenario.vascular/icuDone",
+      "scenario.vascular/lysisDone",
+      "scenario.vascular/minutes",
+      "scenario.vascular/routes"
     ],
     "scenarios.missions": [
       "scenario.ambulatory/antibiotics",
@@ -1366,7 +1378,13 @@
       "scenario.surgery/ontime",
       "scenario.surgery/operations",
       "scenario.surgery/or",
-      "scenario.surgery/wait"
+      "scenario.surgery/wait",
+      "scenario.vascular/ct",
+      "scenario.vascular/ctRoom",
+      "scenario.vascular/ecg",
+      "scenario.vascular/icu",
+      "scenario.vascular/lysis",
+      "scenario.vascular/swallow"
     ],
     "scores": [
       "score.news2"

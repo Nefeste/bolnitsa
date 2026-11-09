@@ -196,6 +196,10 @@ export interface DoctorState {
   handover: HandoverRow[];
   /** маршруты для срочного (spec docs/specs/2026-11-scenario-4.md, часть 2а): какие включены — галочки в карточке смотровой */
   routes?: Id[];
+  /**
+   * маршруты выключены, а в смотровой ждут врача лежащие с жалобой срока маршрута — сколько (часть 2б, подсказка «маршруты»)
+   */
+  routable?: number;
   /** привезённых ждут у входа — мест в смотровой нет (spec docs/specs/2026-11-scenario-2.md, часть 2б) */
   door?: number;
 }
@@ -373,6 +377,20 @@ export function routeAlertOf(db: ContentDb, s: ShiftState, p: ShiftPatient): Rou
   return f ? { finding: named(db.findings[f.finding]?.name, f.finding), target: named(db.targets[f.target]?.name, f.target), at: f.at, until: f.until } : undefined;
 }
 
+/**
+ * Маршруты выключены, а в смотровой приёмного ждут врача лежащие с жалобой срока какого-нибудь маршрута (spec
+ * docs/specs/2026-11-scenario-4.md, часть 2б): сколько их — для подсказки «маршруты». Включены или маршрутов нет — 0.
+ */
+function routableOf(db: ContentDb, s: ShiftState): number {
+  if (!s.flow || s.meta.routes || !db.routes) return 0;
+  const complaints = new Set(Object.values(db.routes).flatMap(r => db.targets[r.target]?.complaints ?? []));
+  let n = 0;
+  for (const p of Object.values(s.patients)) {
+    if (p.bay && p.status === 'waiting' && p.calledT === undefined && p.by === undefined && !p.closed && p.patient.complaints.some(f => complaints.has(f))) n++;
+  }
+  return n;
+}
+
 function rowOf(db: ContentDb, p: ShiftPatient, why?: PatientRow['why']): PatientRow {
   const pt = p.patient;
   return {
@@ -461,6 +479,7 @@ export function doctorState(db: ContentDb, s: ShiftState, level: Difficulty = DE
       ...(!a.plan && p.closed && p.stay ? { discharge: T.doctor.asks.discharge(named(db.conditions[p.closed.diagnosis]?.name, p.closed.diagnosis), T.case.ward.days(daysIn(p.stay, s.day), stayNorm(db, p.closed.diagnosis))) } : {}),
     });
   }
+  const routable = routableOf(db, s);
   return {
     ...(office ? { office } : {}),
     ...(office || s.doctorAt ? { at: s.doctorAt ?? office } : {}),
@@ -483,6 +502,7 @@ export function doctorState(db: ContentDb, s: ShiftState, level: Difficulty = DE
     ...(s.meta.sorts ? { sorts: true as const } : {}),
     handover: handoverRows(db, s, level),
     ...(s.flow && s.meta.routes ? { routes: [...s.meta.routes] } : {}),
+    ...(routable > 0 ? { routable } : {}),
     // мест в смотровой нет — сколько привезённых ждут у входа (часть 2б, подсказка «мест нет»)
     ...(s.flow && atDoorOf(s).length > 0 ? { door: atDoorOf(s).length } : {}),
   };

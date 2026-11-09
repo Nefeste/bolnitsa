@@ -2011,6 +2011,9 @@ export class Game {
         handover: st?.handover.length ?? 0, door: st?.door ?? 0, night: this.nightUnstaffed(),
         // хирургия (spec docs/specs/2026-11-scenario-3.md, часть 2): вечер, а в операционной на ночь нет бригады
         nightOr: this.orNight(),
+        // сердце и мозг (spec docs/specs/2026-11-scenario-4.md, часть 2б): лежащий со сроком маршрута, а маршруты выключены;
+        // просьба медсестры по маршруту
+        routable: st?.routable ?? 0, alert: st?.yours.filter(r => r.why === 'alert').length ?? 0,
       },
       this.seenHints,
     );

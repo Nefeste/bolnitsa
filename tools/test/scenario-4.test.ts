@@ -8,8 +8,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { db } from '../../src/content';
 import type { Mission } from '../../src/content/types';
-import { missionProgress } from '../../src/engine/campaign/campaign';
-import { addReady, hospitalOf, widerLot } from '../../src/engine/hospital/site';
+import { missionProgress, roomWorks } from '../../src/engine/campaign/campaign';
+import { addReady, hospitalOf, type SiteCommand, widerLot } from '../../src/engine/hospital/site';
 import { siteOfPlan } from '../../src/engine/hospital/site-plan';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { presetStaff, withNightShift } from '../../src/engine/hospital/staff';
@@ -18,6 +18,7 @@ import type { DaySummary, Flow, ShiftState } from '../../src/engine/shift/types'
 import { buildDb, CONTENT_DIR } from '../content/load';
 
 const AUTO: Flow = { perHour: 0, auto: true };
+const ROUTES_ALL = ['route.ecg_chest_pain', 'route.stroke_ct'];
 const H = 3600;
 const rec = db.presets['preset.city'];
 
@@ -201,4 +202,81 @@ describe('сценарий 4: начало — ваша больница из с
       rmSync(dir, { recursive: true, force: true });
     }
   }, 120_000);
+});
+
+describe('сценарий 4: запись — начало, первые больные, порядок стройки, цели, письма', () => {
+  const sc = db.scenarios!['scenario.vascular'];
+  const built = (() => {
+    const p = siteOfPlan(db, db.sites!['site.surgery']);
+    if (!p.ok) throw new Error(`site.surgery: ${p.error.kind}`);
+    return p;
+  })();
+  const CT: SiteCommand = { kind: 'ready', type: 'room.ct', size: 'M', x: 52, y: 26, rot: 2, staff: true };
+  const ICU: SiteCommand = { kind: 'ready', type: 'room.icu', size: 'M', x: 62, y: 26, rot: 2, staff: true };
+  const start = (seed: number) =>
+    newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, built.site), staff: withNightShift(db, built.site.rooms, built.staff), flow: AUTO, scenario: sc.id });
+  const site = (s: ShiftState, cmd: SiteCommand) => {
+    const n = apply(db, s, { kind: 'site', cmd }).find(x => x.kind === 'site');
+    if (!n || n.kind !== 'site' || !n.ok) throw new Error(`стройка: ${JSON.stringify(cmd)} — ${JSON.stringify(n)}`);
+  };
+
+  test('четвёртый; начало — больница сценария 3; строят КТ и ПИТ; первые больные — как в главе 3 «Анамнеза», к работающему КТ', () => {
+    expect([sc.order, sc.start, sc.sorts]).toEqual([4, 'site.surgery', undefined]);
+    expect(sc.build).toEqual([...db.scenarios!['scenario.surgery'].build, 'room.ct', 'room.icu']);
+    expect(sc.tutorialRoom).toEqual(['room.ct']);
+    const chapter = db.chapters['chapter.vascular'];
+    expect(sc.tutorial.map(t => [t.condition, !!t.ambulance, t.params])).toEqual(chapter.tutorial.map(t => [t.condition, !!t.ambulance, t.params]));
+    expect(sc.guide.map(g => [g.room, g.role, g.count])).toEqual([['room.ct', undefined, undefined], ['room.icu', undefined, undefined]]);
+    // основные цели: кабинет КТ, ПИТ и два срока по всей больнице; тромболизис и тест глотания — нет
+    expect(sc.missions.filter(m => m.main).map(m => [m.kind, m.kind === 'deadline' ? m.target : m.kind === 'roomWorks' ? m.room : undefined])).toEqual([
+      ['roomWorks', 'room.ct'], ['roomWorks', 'room.icu'], ['deadline', 'target.ecg_chest_pain'], ['deadline', 'target.stroke_ct'],
+    ]);
+    expect(sc.missions.filter(m => !m.main).map(m => m.kind)).toEqual(['thrombolysis', 'deadline']);
+    // письма: заведующая неврологией — с начала; к подсказкам «маршруты» и «просьба медсестры»
+    expect(db.characters['char.head_neurologist'].name.en).toBe('Ada Reyes');
+    expect(sc.letters.find(l => l.from === 'char.head_neurologist' && l.when === 'start')).toBeDefined();
+    expect(sc.letters.flatMap(l => (typeof l.when === 'object' && 'hint' in l.when ? [l.when.hint] : []))).toEqual(['routes', 'alert']);
+    expect(sc.tips.map(t => t.when)).toEqual([{ condition: 'cond.acs' }, { condition: 'cond.stroke_ischemic' }]);
+  });
+
+  test('порядок стройки: КТ у смотровой и ПИТ на свободной земле — оба шага сделаны', () => {
+    const s = start(4);
+    const steps = () => sc.guide.map(g => roomWorks(db, s, g.room, g.role, g.count));
+    expect(steps()).toEqual([false, false]);
+    site(s, CT);
+    site(s, ICU);
+    apply(db, s, { kind: 'site', cmd: { kind: 'done' } });
+    expect(steps()).toEqual([true, true]);
+  }, 120_000);
+
+  test('первые больные ждут кабинет КТ: заработал — первый по скорой, с инфарктом', () => {
+    const s = start(5);
+    while (s.t < 12 * H && !Object.values(s.patients).some(p => p.kind === 'ambulance')) apply(db, s, { kind: 'advance', seconds: 60 });
+    expect(Object.values(s.patients).some(p => p.taught)).toBe(false);
+    const at = s.t;
+    site(s, CT);
+    apply(db, s, { kind: 'site', cmd: { kind: 'done' } });
+    while (s.t < at + 10 * 60 && !s.campaign!.taught) apply(db, s, { kind: 'advance', seconds: 60 });
+    const first = Object.values(s.patients).find(p => p.taught)!;
+    expect([first.kind, first.patient.truth.conditions[0].id]).toEqual(['ambulance', 'cond.acs']);
+  }, 120_000);
+
+  test('маршрут — раньше, чем позовёт свободный врач (решение агента 6): у привезённого с инсультом КТ по маршруту, каталку зовут сразу', () => {
+    const s = start(2);
+    site(s, CT);
+    site(s, ICU);
+    apply(db, s, { kind: 'site', cmd: { kind: 'done' } });
+    apply(db, s, { kind: 'routes', on: ROUTES_ALL });
+    const rides = new Map<string, { since: number; arrive: number }>();
+    while (s.t < 56 * H) {
+      apply(db, s, { kind: 'advance', seconds: 60 });
+      for (const r of s.rides ?? []) {
+        const p = s.patients[r.id];
+        if (r.why === 'exam' && p?.routed?.includes('route.stroke_ct') && !rides.has(r.id)) rides.set(r.id, { since: r.since, arrive: p.arriveT });
+      }
+    }
+    expect(rides.size).toBeGreaterThan(0);
+    // привезли — лёг — каталку зовут в ту же минуту: маршрут — уже назначенное, без минут на назначение
+    for (const x of rides.values()) expect(x.since - x.arrive).toBeLessThan(60);
+  }, 180_000);
 });

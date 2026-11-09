@@ -101,6 +101,17 @@ describe('подсказки первых минут', () => {
     expect(hintOf({ ...base, nightOr: true }, none)).toBe('run');
   });
 
+  test('сердце и мозг: просьба медсестры — сразу после листа передачи; «маршруты» — после ночных; закрытые не возвращаются', () => {
+    const open = { ...base, paused: false };
+    expect(hintOf({ ...open, alert: 1, routable: 1, night: true, callable: true }, none)).toBe('alert');
+    expect(hintOf({ ...open, alert: 1, handover: 1 }, none)).toBe('sheet');
+    expect(hintOf({ ...open, alert: 1, asks: 1 }, none)).toBe('asks');
+    expect(hintOf({ ...open, routable: 1, night: true, callable: true }, none)).toBe('night');
+    expect(hintOf({ ...open, routable: 1, callable: true }, none)).toBe('routes');
+    expect(hintOf({ ...open, routable: 1, callable: true }, new Set<HintKey>(['routes']))).toBe('call');
+    expect(hintOf({ ...open, alert: 1, callable: true }, new Set<HintKey>(['alert']))).toBe('call');
+  });
+
   test('каждый ключ достижим и записан в списке', () => {
     const reached = new Set<HintKey>();
     const states: HintInput[] = [
@@ -122,6 +133,8 @@ describe('подсказки первых минут', () => {
       { ...base, paused: false, door: 1 },
       { ...base, paused: false, night: true },
       { ...base, paused: false, nightOr: true },
+      { ...base, paused: false, routable: 1 },
+      { ...base, paused: false, alert: 1 },
     ];
     for (const s of states) {
       const k = hintOf(s, none);

@@ -2100,8 +2100,9 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
   }
   const after = (e.time.report ?? 0) + (e.time.turnaround ?? 0);
   if (queued && room && how.wheel) {
-    // лежачий (spec docs/specs/2026-10-orderlies.md): к аппарату везут на каталке, у аппарата ждут его и везут назад
-    const order = ORDER_MINUTES * MIN;
+    // лежачий (spec docs/specs/2026-10-orderlies.md): к аппарату везут на каталке, у аппарата ждут его и везут назад; по
+    // маршруту (spec docs/specs/2026-11-scenario-4.md, часть 2б) назначение уже есть — каталку зовут сразу
+    const order = route ? 0 : ORDER_MINUTES * MIN;
     const ride = examRide(db, s, ctx, p, room.id, Math.round((e.time.procedure * MIN * roomPct) / 100), s.t + order);
     if (ride?.exam) {
       startRide(db, s, ride);
@@ -2119,7 +2120,7 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
     }
   }
   if (queued && room) {
-    const order = ORDER_MINUTES * MIN;
+    const order = route ? 0 : ORDER_MINUTES * MIN;
     // к аппарату — назначить, и пациент идёт туда сразу (0.5.12): из кабинета или прямо с прошлого обследования
     const go = outFrom(ctx, s, p, room.id, s.t + order);
     const start = Math.max(go.at + go.walk, s.rooms[room.id] ?? 0);
@@ -4214,10 +4215,11 @@ function arriveByAmbulance(db: ContentDb, s: ShiftState, p: ShiftPatient, notice
   const vf = arrestAfter(db, s, p);
   if (vf !== undefined) schedule(s, Math.max(s.t, p.arriveT + vf), { kind: 'arrest', id: p.id });
   notices.push({ kind: 'ambulance', id: p.id });
+  // маршруты для срочного (spec docs/specs/2026-11-scenario-4.md; часть 2б, решение агента 6): лёг в смотровую — обследования
+  // маршрутов сразу, раньше, чем его позовёт свободный врач: «КТ сразу» — значит сразу
+  routeExams(db, s, p);
   // сортируете вы (spec docs/specs/2026-11-scenario-2.md) — ждёт вашей команды `sort`; иначе — медсестра по шкале
   if (s.flow && !s.meta.sorts) nurseSorts(db, s, p);
-  // маршруты для срочного (spec docs/specs/2026-11-scenario-4.md): лёг в смотровую — обследования маршрутов до врача
-  routeExams(db, s, p);
 }
 
 /**
