@@ -1050,6 +1050,23 @@ export const difficultySchema = z.strictObject({ calm: manageLevel, hard: manage
  * «Отделение» палату или кабинет, и чьих больных оно берёт ещё (`takes` — отделения болезней, у которых своего нет:
  * травму лечит хирургия, геймдизайн §4). Порядок — порядок в окне.
  */
+/**
+ * Маршруты для срочного (spec docs/specs/2026-11-scenario-4.md; решение владельца #219): что медсестра смотровой приёмного
+ * делает до врача — обследование срока тем, у кого его жалоба при поступлении
+ */
+export const routesSchema = z.strictObject({
+  routes: z
+    .array(
+      z.strictObject({
+        id: z.string().regex(/^route\.[a-z0-9_]+$/),
+        target: z.string().regex(/^target\.[a-z0-9_]+$/),
+        exam: z.string().regex(/^exam\.[a-z0-9_]+$/),
+        name: text,
+      }),
+    )
+    .min(1),
+});
+
 export const departmentsSchema = z.strictObject({
   departments: z.array(z.strictObject({ id: deptId, name: text, paint: z.boolean().default(false), takes: z.array(deptId).min(1).optional() })).min(1),
 });
@@ -1506,6 +1523,7 @@ export type EconomySrc = z.infer<typeof economySchema>;
 export type ConsultsSrc = z.infer<typeof consultsSchema>;
 export type DaySrc = z.infer<typeof daySchema>;
 export type DepartmentsSrc = z.infer<typeof departmentsSchema>;
+export type RoutesSrc = z.infer<typeof routesSchema>;
 export type InflowSrc = z.infer<typeof inflowSchema>;
 export type MoneySrc = z.infer<typeof moneySchema>;
 export type DifficultySrc = z.infer<typeof difficultySchema>;

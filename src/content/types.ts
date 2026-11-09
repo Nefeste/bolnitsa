@@ -889,6 +889,17 @@ export interface Department {
   takes?: Id[];
 }
 
+/**
+ * Маршрут для срочного (spec docs/specs/2026-11-scenario-4.md; решение владельца #219): медсестра смотровой приёмного делает
+ * обследование `exam` тем, у кого при поступлении жалоба срока `target`, — до врача, когда маршрут включён
+ */
+export interface Route {
+  id: Id;
+  target: Id;
+  exam: Id;
+  name: Text;
+}
+
 /** Поворот помещения по часовой: дверная сторона снизу (0), слева (1), сверху (2), справа (3). */
 export type Rot = 0 | 1 | 2 | 3;
 
@@ -1633,6 +1644,8 @@ export interface ContentDb {
   money?: Money;
   /** отделения ПК (spec docs/specs/2026-10-departments.md), по порядку записи; нет (база тестов) — отделений у помещений нет */
   departments?: Record<Id, Department>;
+  /** маршруты для срочного (spec docs/specs/2026-11-scenario-4.md) — по порядку записи, так их показывает окно */
+  routes?: Record<Id, Route>;
   /** ось «Управление» (spec 2026-10-difficulty): «Спокойно» и «Трудно»; «Обычно» — числа базы как есть; нет — только «Обычно» */
   manage?: Record<Exclude<Manage, 'normal'>, ManageLevel>;
   characters: Record<Id, Character>;

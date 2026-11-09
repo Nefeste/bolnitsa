@@ -673,6 +673,9 @@ function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       return sortAmbulance(db, s, cmd.id, cmd.triage);
     case 'sorts':
       return setSorts(db, s, cmd.on);
+    // маршруты для срочного (spec docs/specs/2026-11-scenario-4.md; решение владельца #219): включённые — все сразу
+    case 'routes':
+      return setRoutes(db, s, cmd.on);
     case 'operate':
       return operate(db, s, cmd.id);
     case 'soft':
@@ -1927,6 +1930,8 @@ function call(db: ContentDb, s: ShiftState, id: string): Notice[] {
   if (!s.dayOpen || s.current || !p || p.status !== 'waiting' || p.by) return [];
   // привезённого скорой сначала сортируют по листу передачи (часть 27)
   if (p.kind === 'ambulance' && !p.sorted) return [];
+  // на КТ по маршруту (spec docs/specs/2026-11-scenario-4.md) — позовёте, когда привезут назад
+  if (isOut(s, p)) return [];
   s.queue = s.queue.filter(x => x !== id);
   p.status = 'inRoom';
   p.calledT ??= s.t;
@@ -2058,13 +2063,14 @@ export function targetPlace(db: ContentDb, s: ShiftState, p: ShiftPatient): Targ
  * занят врач (сама процедура в кабинете, у нанятого — с поправкой `pct` его навыка), или null —
  * сделать нельзя, ничего не меняется.
  */
-function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pct = 100): number | null {
+function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pct = 100, route = false): number | null {
   const how = examSetup(db, s, p, examId);
   if (!how) return null;
   const { e, ctx, bed, queued, room, eqId, roomPct, walk, to } = how;
   const reading = room && e.kind === 'imaging' ? imagingSkill(db, ctx.staff, room, eqId) : NORMAL_SKILL;
-  // ваше обследование — с умениями дня (spec 2026-10-skills, часть 75); у нанятого врача — без них
-  const skill = p.by ? reading : examSkillWith(db, s.meta.skills, examId, reading);
+  // ваше обследование — с умениями дня (spec 2026-10-skills, часть 75); у нанятого врача и по маршруту медсестры (spec
+  // docs/specs/2026-11-scenario-4.md) — без них
+  const skill = p.by || route ? reading : examSkillWith(db, s.meta.skills, examId, reading);
 
   // песочница: показано ли — по тому, что известно сейчас; показанные оплачивают ОМС и ДМС
   // показания (страховая): с кассой — и у испытания «Только по показаниям», где кассы нет (spec docs/specs/2026-11-challenges.md)
@@ -2073,7 +2079,7 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
   p.step++;
   p.done.push(examId);
   p.spent.money += e.cost;
-  if (!p.by) s.summary.money += e.cost; // в итогах — ваши обследования
+  if (!p.by && !route) s.summary.money += e.cost; // в итогах — ваши обследования
   // деньги по помещениям (spec docs/specs/2026-10-metrics-layer.md, часть 2): где делают — у постели, в кабинете
   // обследований (анализ — в лаборатории), где берут (процедурный) или у врача; туда — и расходники, и доход, когда приём
   // закроют
@@ -3088,6 +3094,44 @@ function seatAtDoor(db: ContentDb, s: ShiftState) {
     const bay = freeBays(db, s)[0];
     if (!bay) return;
     p.bay = bay;
+    routeExams(db, s, p);
+  }
+}
+
+/**
+ * Маршруты для срочного (spec docs/specs/2026-11-scenario-4.md, решения агента 4–5; решение владельца #219): включить известные
+ * из базы, пусто — выключить все; кто уже лежит в смотровой и врача ещё не видел — тоже по маршруту. Поток для ПК.
+ */
+function setRoutes(db: ContentDb, s: ShiftState, on: readonly Id[]): Notice[] {
+  if (!s.flow) return [];
+  const known = Object.keys(db.routes ?? {}).filter(id => on.includes(id));
+  if (known.length > 0) s.meta.routes = known;
+  else delete s.meta.routes;
+  for (const p of Object.values(s.patients)) routeExams(db, s, p);
+  return [];
+}
+
+/**
+ * Привезённый лёг в смотровую, врач его ещё не звал (там же): медсестра смотровой в смене делает обследование каждого
+ * включённого маршрута, если у него при поступлении жалоба срока маршрута, — ЭКГ у постели, на КТ — на каталке; сделать нельзя
+ * (нет кабинета, некому везти) — нет. Обследование — как его назначил бы врач, только без ваших умений и не в ваших итогах.
+ */
+function routeExams(db: ContentDb, s: ShiftState, p: ShiftPatient) {
+  const on = s.flow ? s.meta.routes : undefined;
+  if (!on || !p.bay || p.status !== 'waiting' || p.calledT !== undefined || p.by !== undefined) return;
+  const ctx = hospitalCtx(db, s);
+  if (!ctx.staff.some(m => m.room === p.bay!.room && (db.roles[m.role]?.stands ?? m.role) === 'role.nurse')) return;
+  for (const id of on) {
+    const r = db.routes?.[id];
+    const t = r ? db.targets[r.target] : undefined;
+    if (!r || !t || p.routed?.includes(id) || p.done.includes(r.exam) || !t.complaints.some(f => p.patient.complaints.includes(f))) continue;
+    if (orderExam(db, s, p, r.exam, 100, true) === null) continue;
+    // повезли на КТ: врачи позовут, когда привезут назад, — тогда и посмотрят, кого звать (результат мог прийти раньше)
+    if (isOut(s, p)) schedule(s, p.out!.back, { kind: 'free', by: '' });
+    (p.routed ??= []).push(id);
+    const day = ((s.summary.routes ??= {})[id] ??= { n: 0, rub: 0 });
+    day.n++;
+    day.rub += consumablesOf(db, db.exams[r.exam]);
   }
 }
 
@@ -4138,6 +4182,8 @@ function arriveByAmbulance(db: ContentDb, s: ShiftState, p: ShiftPatient, notice
   notices.push({ kind: 'ambulance', id: p.id });
   // сортируете вы (spec docs/specs/2026-11-scenario-2.md) — ждёт вашей команды `sort`; иначе — медсестра по шкале
   if (s.flow && !s.meta.sorts) nurseSorts(db, s, p);
+  // маршруты для срочного (spec docs/specs/2026-11-scenario-4.md): лёг в смотровую — обследования маршрутов до врача
+  routeExams(db, s, p);
 }
 
 /**
@@ -4278,6 +4324,8 @@ function profileHere(db: ContentDb, m: StaffMember, admits: readonly Id[]): Id[]
  */
 function colleagueTakes(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffMember, list: readonly StaffMember[]): boolean {
   if (!newcomer(p, s.flow !== undefined)) return false;
+  // на КТ по маршруту (spec docs/specs/2026-11-scenario-4.md) — позовут, когда привезут назад
+  if (isOut(s, p)) return false;
   // направленный регистратором в отделение, где в смене есть его врач (spec docs/specs/2026-10-departments.md, часть 4), —
   // только к нему; остальных — как прежде
   const routed = p.dept !== undefined && routeTargets(db, list).has(p.dept) ? p.dept : undefined;

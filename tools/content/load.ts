@@ -25,7 +25,7 @@ import {
   type TipSrc, tipSchema, type TreatmentSrc, treatmentSchema, versionSchema, type AchievementSrc, achievementSchema, type ScoreSrc, scoreSchema,
   type RuleSrc, ruleSchema, type TargetSrc, targetSchema, type SkillSrc, skillSchema,
   type ConsultsSrc, consultsSchema, type DaySrc, daySchema, type InflowSrc, inflowSchema, type MoneySrc, moneySchema,
-  type DepartmentsSrc, departmentsSchema,
+  type DepartmentsSrc, departmentsSchema, type RoutesSrc, routesSchema,
   type DifficultySrc, difficultySchema,
 } from './schema';
 
@@ -236,6 +236,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   let inflow: InflowSrc | undefined;
   let money: MoneySrc | undefined;
   let departments: DepartmentsSrc | undefined;
+  let routes: RoutesSrc | undefined;
   let difficulty: DifficultySrc | undefined;
   let contentVersion = 0;
 
@@ -311,6 +312,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       money = check(moneySchema);
     } else if (rel === 'hospital/departments.yaml') {
       departments = check(departmentsSchema);
+    } else if (rel === 'hospital/routes.yaml') {
+      routes = check(routesSchema);
     } else if (rel === 'hospital/difficulty.yaml') {
       difficulty = check(difficultySchema);
     } else if (top === 'campaign' && rel.split('/')[1] === 'characters') {
@@ -344,7 +347,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       const x = check(skillSchema);
       if (x) { expectId(x.id, 'skill'); put(skills, x); }
     } else {
-      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, people/professions, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/sites, hospital/economy.yaml, hospital/consults.yaml, hospital/day.yaml, hospital/inflow.yaml, hospital/money.yaml, hospital/departments.yaml, hospital/difficulty.yaml, campaign/characters, campaign/chapters, campaign/scenarios, campaign/tips, challenges, achievements, scores, rules, targets, career/skills)`);
+      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, people/professions, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/sites, hospital/economy.yaml, hospital/consults.yaml, hospital/day.yaml, hospital/inflow.yaml, hospital/money.yaml, hospital/departments.yaml, hospital/routes.yaml, hospital/difficulty.yaml, campaign/characters, campaign/chapters, campaign/scenarios, campaign/tips, challenges, achievements, scores, rules, targets, career/skills)`);
     }
   }
   if (!contentVersion) errors.push('version.yaml: нет contentVersion');
@@ -1016,6 +1019,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     ...(money ? { money } : {}),
     // отделения ПК (spec docs/specs/2026-10-departments.md): по порядку записи — так их показывает окно
     ...(departments ? { departments: Object.fromEntries(departments.departments.map(d => [d.id, { id: d.id, name: d.name, paint: d.paint, ...(d.takes ? { takes: d.takes } : {}) }])) } : {}),
+    // маршруты для срочного (spec docs/specs/2026-11-scenario-4.md): по порядку записи
+    ...(routes ? { routes: Object.fromEntries(routes.routes.map(r => [r.id, { id: r.id, target: r.target, exam: r.exam, name: r.name }])) } : {}),
     // ось «Управление» (spec 2026-10-difficulty): без файла — ошибка сборки выше
     ...(difficulty ? { manage: difficulty } : {}),
     // готовые больницы из готовых помещений (spec 2026-10-real-hospital); проверка — checkSites ниже. Основа (`base`, spec
@@ -1235,6 +1240,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     checkCampaign(db, errors);
     checkScenarios(db, errors);
     checkChallenges(db, errors);
+    checkRoutes(db, errors);
     checkAchievements(db, errors);
     checkSkills(db, errors);
     checkDepartments(db, errors);
@@ -1784,6 +1790,22 @@ function checkHospital(c: {
  * главврача она есть; сортировка игрока и красные по шкале — где есть смотровая приёмного; пороги итога — по порядку: у доли
  * не принятых A меньше B и C, у принятых и кассы — больше.
  */
+/**
+ * Маршруты для срочного (spec docs/specs/2026-11-scenario-4.md): номер не повторяется; срок есть, у него есть жалобы при
+ * поступлении (кому маршрут) и среди его обследований — обследование маршрута, а оно бывает у постели в смотровой приёмного или
+ * в своём кабинете.
+ */
+function checkRoutes(db: ContentDb, errors: string[]) {
+  for (const r of Object.values(db.routes ?? {})) {
+    const at = (what: string) => errors.push(`${r.id}: ${what}`);
+    const t = db.targets[r.target];
+    if (!t) at(`срок ${r.target} не найден`);
+    else if (t.complaints.length === 0) at(`у срока ${r.target} нет жалоб при поступлении — кому маршрут, не узнать`);
+    else if (!t.exams.includes(r.exam)) at(`обследования ${r.exam} нет среди обследований срока ${r.target}`);
+    if (!db.exams[r.exam]) at(`обследование ${r.exam} не найдено`);
+  }
+}
+
 function checkChallenges(db: ContentDb, errors: string[]) {
   const orders = new Set<number>();
   for (const c of Object.values(db.challenges ?? {})) {
