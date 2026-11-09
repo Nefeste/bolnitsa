@@ -241,6 +241,10 @@ bun tools/bench/emergency.ts                   # scenario 2 (spec): a district h
 bun tools/bench/surgery.ts                     # scenario 3 (spec): ready hospitals with an operating room, nobody playing — surgery and
                                                # trauma arrivals by day, operations decided and done, on time and late, complicated at
                                                # the incision, complications, the wait for the table (`--hospital district,city`, `--days`)
+bun tools/bench/vascular.ts                    # scenario 4 (spec): ready hospitals with a CT and an ICU, nobody playing — chest pain
+                                               # and stroke arrivals by day and the deadlines (ECG in 10 minutes, the stroke exam and CT,
+                                               # lysis and transfer for ST elevation) over every closed case, not only yours; ICU, consults
+                                               # (`--hospital vascular,city`, `--days`)
 bun tools/bench/solo.ts                        # the doctor's shift (spec docs/specs/2026-11-doctor-shift.md): a day shift 08:00–20:00 in
                                                # the ready city and polyclinic with one doctor receiving — who came, how many he saw,
                                                # who left, minutes per case, the wait (`--hospital city,poly`, `--manage calm,normal,hard`;
