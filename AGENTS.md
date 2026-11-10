@@ -194,8 +194,10 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # routes off — the «маршруты» hint and letter, both routes ticked — the nurse's ECG shows ST
                                    # elevation: the urgent line, the autopause, the «alert» letter, first in «Ждут вас»;
                                    # «Позвать» — the ECG already in the card and «Инфаркт и минуты», the meeting's «Сроки»;
-                                   # then the sandbox: lot L on the start screen's second step, a wing by «Корпус» (its ghost,
-                                   # the cash, Ctrl+Z), a yard demolished, the ambulance entrance moved, none in a scenario;
+                                   # then the sandbox: met diseases from scenario 2 at ×12 into page storage, «Только
+                                   # встреченные» off without them and on with them, lot L on the start screen's second step,
+                                   # a wing by «Корпус» (its ghost, the cash, Ctrl+Z), a yard demolished, the ambulance entrance
+                                   # moved, none in a scenario;
                                    # screenshots in tools/app/out/; `-- --only 1|2|…|46` for one part, `-- --only 7,10,11` —
                                    # several in a row on one page, as in the full run
 node tools/app/soak.mjs --days 3   # after build: a long run in headless Chromium — the ready city at ×12 for three game days,
@@ -356,7 +358,13 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   the wall in; `remove` — an empty part, half back only for the cells bought, `Site.shell`) and `entrance` (main or ambulance on two
   outer wall cells); sandbox only — a scenario or a challenge refuses them (`scenario`); the window: the lot on the empty start's
   second step (`lot` key), «Корпус» and «Вход» in `build.ts`, and `onlyDeptsChanged` compares the building and the entrances, so
-  the scene is rebuilt. The whole 24-hour day of the PC flow is ours as well: `shift/day.ts` (outpatient hours,
+  the scene is rebuilt. «Только встреченные в кампании» (part 2б): `meta.only` (`newFlowShift(…, { only })`, known conditions,
+  sorted) — a walk-in, a booked patient (the profile's met ones) and an ambulance arrival get a met main disease (`metPatient`:
+  the generator's `only`, another person by `:met<k>` keys up to `MET_TRIES`, else nobody comes — the next in their hour); no
+  list — byte for byte as before. The met list is the main diseases of closed cases of a PC campaign scenario, yours and hired
+  doctors': the sim sends new ones with the slice (`met`, `src/sim/met.ts`), the window keeps them in page storage
+  (`bolnitsa.met`, `src/app/met.ts`); the empty start's second step offers «Только встреченные» when there are any (`met=1`,
+  `Game.met`, the `start` message's `only`). The whole 24-hour day of the PC flow is ours as well: `shift/day.ts` (outpatient hours,
   arrivals by hour of day), the 08:00 meeting and the morning round in `engine.ts`, shapes in `content/hospital/day.yaml`
   — `docs/specs/2026-10-day.md`. Who left the state (`evict`) keeps their card in `s.past` for a day, at most 600, like
   their path — read-only, for «Открыть карту» and «Приняты» (`docs/specs/2026-10-discharged-card.md`).
