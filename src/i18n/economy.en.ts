@@ -66,9 +66,18 @@ export const economyEn: EconomyStrings = {
       stood: (n: number) => `Stood at the office door — ${n}: half the patience. A waiting area closer to the office, or benches by the doors.`,
       gone: 'Who left',
       goneHint: '«Patients» → «Left»: each one’s path and why they left',
+      refusedHint: 'What they were refused with and what to do about it',
+      refused: 'Refused admission with:',
+      refusedRow: (name: string, n: number) => `${name} — ${n}`,
+      refusedFix: 'No beds free — another ward, intensive care unit, reanimation or isolation box of that kind; none of your own — build such a room. Discharging on time frees beds.',
     },
     ward: (admitted: number, discharged: number, transferred: number, died: number, lying: number) =>
       `inpatients: admitted ${admitted}, discharged ${discharged}, transferred ${transferred}${died > 0 ? `, died ${died}` : ''}, in beds ${lying}`,
+    refused: (n: number, full: string, none: string) =>
+      `refused admission: ${n} — ${[full ? `no beds free: ${full}` : '', none ? `none of your own: ${none}` : ''].filter(Boolean).join('; ')}`,
+    refusedPlace: (place: string, n: number) => `${place} ${n}`,
+    places: { ward: 'wards', icu: 'intensive care', ricu: 'reanimation', box: 'isolation boxes' } as Record<string, string>,
+    refusedHint: 'Sent to another hospital while the database says they need a bed: all of yours of that kind were taken — «no beds free», the hospital has none of that kind — «none of your own»',
     sorting: (right: number, mine: number) => `triage of ambulance arrivals: ${right} of ${mine} right`,
     sortMiss: (who: string, yours: string, scale: string, news2: number, flag?: string) =>
       `for example, ${who}: you — ${yours}, by the scale — ${scale} (NEWS2 ${news2} ${pl(news2, 'point', 'points')}${flag ? `, red flag «${lowerFirst(flag)}»` : ''})`,

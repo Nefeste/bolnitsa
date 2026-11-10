@@ -72,9 +72,23 @@ export const economyRu = {
       stood: (n: number) => `Стояли у кабинета — ${n}: терпения вдвое меньше. Зал ожидания ближе к кабинету или скамьи у дверей.`,
       gone: 'Кто ушёл',
       goneHint: '«Пациенты» → «Ушли»: путь каждого и почему ушёл',
+      /** отказы в госпитализации (spec docs/specs/2026-11-scenario-5.md, часть 1): с чем и что делать */
+      refusedHint: 'С чем отказали и что с этим делать',
+      refused: 'С чем отказали в госпитализации:',
+      refusedRow: (name: string, n: number) => `${name} — ${n}`,
+      refusedFix: 'Мест нет — ещё палата, ПИТ, реанимация или бокс того вида; своих нет — постройте такое помещение. Выписка в срок освобождает койки.',
     },
     ward: (admitted: number, discharged: number, transferred: number, died: number, lying: number) =>
       `стационар: поступили ${admitted}, выписаны ${discharged}, переведены ${transferred}${died > 0 ? `, умерли ${died}` : ''}, лежат ${lying}`,
+    /**
+     * отказы в госпитализации (spec docs/specs/2026-11-scenario-5.md, часть 1): отправлены в другую больницу, а по базе им нужна
+     * койка — своя такого вида была вся занята или таких нет
+     */
+    refused: (n: number, full: string, none: string) =>
+      `отказы в госпитализации: ${n} — ${[full ? `мест нет: ${full}` : '', none ? `своих нет: ${none}` : ''].filter(Boolean).join('; ')}`,
+    refusedPlace: (place: string, n: number) => `${place} ${n}`,
+    places: { ward: 'палаты', icu: 'ПИТ', ricu: 'реанимация', box: 'боксы' } as Record<string, string>,
+    refusedHint: 'Отправлены в другую больницу, а по месту из базы им нужна койка: своя такого вида была вся занята — «мест нет», таких у больницы нет — «своих нет»',
     /** ваша сортировка привезённых и ночь (spec docs/specs/2026-11-scenario-2.md, часть 2а) */
     sorting: (right: number, mine: number) => `сортировка привезённых: верно ${right} из ${mine}`,
     sortMiss: (who: string, yours: string, scale: string, news2: number, flag?: string) =>
