@@ -282,6 +282,10 @@ bun tools/bench/infections.ts                  # scenario 5 (spec docs/specs/202
                                                # was sent away because the beds were full and with what, the wave's and the infectious
                                                # department's patients needing a bed, pneumonia discharges on time; `--add` — ready
                                                # wards and boxes on the free land at 08:00 (`ward:M:48:16:0+box:S:68:16:0`)
+bun tools/bench/levels.ts                      # the sandbox (spec docs/specs/2026-11-sandbox.md): every ready hospital in winter, nobody
+                                               # playing — departments, beds, what works at 14:00 and 02:00, correct diagnoses, the
+                                               # left, refusals «мест нет», reputation by morning, and the hospital level by the
+                                               # proposed requirements (`LEVELS`; `--hospital poly,…,city`, `--days`, `--seeds`)
 bun tools/bench/solo.ts                        # the doctor's shift (spec docs/specs/2026-11-doctor-shift.md): a day shift 08:00–20:00 in
                                                # the ready city and polyclinic with one doctor receiving — who came, how many he saw,
                                                # who left, minutes per case, the wait (`--hospital city,poly`, `--manage calm,normal,hard`;
