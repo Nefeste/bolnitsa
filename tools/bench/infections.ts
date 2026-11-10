@@ -8,15 +8,17 @@
 // игру она не идёт. Никто не играет: кабинеты врача ведут нанятые терапевты днём и ночью.
 //
 // По суткам (с 08:00): пришли сами и по скорой; с гриппом и с пневмонией (по болезням пациента); где закрыли: дома, легли у нас
-// (палата, бокс, ПИТ, реанимация), отправлены в другую больницу — и из них потому, что свои места были заняты (`full` или
-// `wanted` в конце пути); ушли, не дождавшись; лежат в 08:00.
+// (палата, бокс, ПИТ, реанимация), отправлены в другую больницу — и из них отказы в госпитализации: по базе нужна койка
+// (`recommendedSetting`: палата, и после операции, если операционная работает; ПИТ, реанимация, бокс), а своя такого вида была
+// вся занята в минуту решения (`full` в конце пути) — «мест нет», или таких у больницы нет — «нет своих»; ушли, не дождавшись;
+// лежат в 08:00.
 //
 // `--cond` — болезнь волны (по умолчанию грипп; `cond.pneumonia_cap`, `cond.covid19` — те, кого кладут тяжёлыми).
 // `--add` — что пристроить к вашей больнице в 08:00 первых суток, готовыми помещениями «С персоналом»: варианты через запятую,
 // помещения варианта через «+», помещение — `тип:размер:x:y:поворот` (`-` — ничего), например
 // `--add -,ward:M:48:16:0,ward:M:48:16:0+ward:M:58:16:0+box:S:68:16:0` — места на свободной земле `site.surgery` у КТ и ПИТ.
-// Кого отправили, потому что мест нет, — и по тому, какие места были заняты: палаты, ПИТ и реанимация, боксы; с какими
-// болезнями (главная болезнь пациента, восемь чаще всех).
+// Отказы — по тому, какие места были заняты: палаты, ПИТ и реанимация, боксы; с какими болезнями (главная болезнь, восемь чаще
+// всех).
 //
 // bun tools/bench/infections.ts [--days 7] [--seeds 1,2,3] [--hospital start,city] [--wave 0,20,40] [--cond cond.influenza]
 //   [--add -,ward:M:48:16:0]
@@ -28,6 +30,7 @@ import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { primaryOf } from '../../src/engine/med/plan';
 import { presetStaff, type StaffMember, withNightShift } from '../../src/engine/hospital/staff';
 import { apply, newFlowShift } from '../../src/engine/shift/engine';
+import { refusalOf } from './refused';
 import type { ShiftPatient, ShiftState } from '../../src/engine/shift/types';
 
 const arg = (name: string, def: string) => {
@@ -100,24 +103,24 @@ function start(db: ContentDb, name: string, seed: number, add: Add, challenge?: 
 
 interface Row {
   walk: number; amb: number; flu: number; pneumonia: number;
-  home: number; ward: number; box: number; icu: number; away: number; full: number; left: number; lying: number;
-  /** отправлены, потому что мест нет: заняты палаты, ПИТ или реанимация, боксы */
+  home: number; ward: number; box: number; icu: number; away: number; full: number; none: number; left: number; lying: number;
+  /** отказы «мест нет»: заняты палаты, ПИТ или реанимация, боксы */
   fullWard: number; fullIcu: number; fullBox: number;
   /** пневмония: легли у нас, отправлены, дома; выписаны — в срок (не дольше обычного, не раньше) и раньше срока */
   pnStay: number; pnAway: number; pnHome: number; pnOut: number; pnOnTime: number; pnEarly: number;
-  /** главная болезнь — болезнь волны: пришли, нужна койка (легли или отправлены, потому что мест нет), из них отправлены; выписаны и их сутки */
+  /** главная болезнь — болезнь волны: пришли, нужна койка (легли или отказ), из них отказ; выписаны и их сутки */
   wvArr: number; wvBed: number; wvFull: number; wvOut: number; wvDays: number;
-  /** главная болезнь — инфекционного отделения: пришли, нужна койка, из них отправлены, потому что мест нет */
+  /** главная болезнь — инфекционного отделения: пришли, нужна койка (легли или отказ), из них отказ */
   infArr: number; infBed: number; infFull: number;
 }
 
 const has = (p: ShiftPatient, id: Id) => p.patient.truth.conditions.some(c => c.id === id);
-/** отправленные, потому что мест нет, — по главной болезни, за все прогоны варианта */
+/** отказы в госпитализации — по главной болезни, за все прогоны варианта */
 const refused = new Map<Id, number>();
 
 function run(db: ContentDb, name: string, seed: number, add: Add, challenge?: Id): Row[] {
   const s = start(db, name, seed, add, challenge);
-  const rows: Row[] = Array.from({ length: DAYS }, () => ({ walk: 0, amb: 0, flu: 0, pneumonia: 0, home: 0, ward: 0, box: 0, icu: 0, away: 0, full: 0, left: 0, lying: 0, fullWard: 0, fullIcu: 0, fullBox: 0, pnStay: 0, pnAway: 0, pnHome: 0, pnOut: 0, pnOnTime: 0, pnEarly: 0, wvArr: 0, wvBed: 0, wvFull: 0, wvOut: 0, wvDays: 0, infArr: 0, infBed: 0, infFull: 0 }));
+  const rows: Row[] = Array.from({ length: DAYS }, () => ({ walk: 0, amb: 0, flu: 0, pneumonia: 0, home: 0, ward: 0, box: 0, icu: 0, away: 0, full: 0, none: 0, left: 0, lying: 0, fullWard: 0, fullIcu: 0, fullBox: 0, pnStay: 0, pnAway: 0, pnHome: 0, pnOut: 0, pnOnTime: 0, pnEarly: 0, wvArr: 0, wvBed: 0, wvFull: 0, wvOut: 0, wvDays: 0, infArr: 0, infBed: 0, infFull: 0 }));
   const dayOf = (t: number) => Math.floor((t - 8 * H) / DAY);
   const arrived = new Set<string>();
   const ended = new Set<string>();
@@ -166,22 +169,25 @@ function run(db: ContentDb, name: string, seed: number, add: Add, challenge?: Id
       else if (e.how === 'left' || e.how === 'unseen') r.left++;
       else if (e.how === 'away') {
         r.away++;
-        if ((e.full?.length ?? 0) > 0 || e.wanted !== undefined) {
-          r.full++;
-          const place = e.full?.[0] ?? e.wanted;
+        const no = refusalOf(db, s, p, e);
+        if (no) {
           refused.set(main(p), (refused.get(main(p)) ?? 0) + 1);
           if (main(p) === COND) r.wvFull++;
           if (infectious(p)) r.infFull++;
-          if (place === 'box') r.fullBox++;
-          else if (place === 'icu' || place === 'ricu') r.fullIcu++;
-          else r.fullWard++;
+          if (!no.full) r.none++;
+          else {
+            r.full++;
+            if (no.place === 'box') r.fullBox++;
+            else if (no.place === 'icu' || no.place === 'ricu') r.fullIcu++;
+            else r.fullWard++;
+          }
         }
       } else if (e.how === 'stay') {
         if (e.setting === 'box') r.box++;
         else if (e.setting === 'icu' || e.setting === 'ricu') r.icu++;
         else r.ward++;
       }
-      const bed = e.how === 'stay' || (e.how === 'away' && ((e.full?.length ?? 0) > 0 || e.wanted !== undefined));
+      const bed = e.how === 'stay' || (e.how === 'away' && refusalOf(db, s, p, e) !== undefined);
       if (bed && main(p) === COND) r.wvBed++;
       if (bed && infectious(p)) r.infBed++;
       if (has(p, PNEUMONIA)) {
@@ -212,26 +218,26 @@ for (const name of HOSPITALS) {
       for (const seed of SEEDS) {
         const rows = run(db, name, seed, add, id);
         all.push(...rows);
-        console.log(`  зерно ${seed}: ${rows.map((r, i) => `с${i + 1} ${r.walk}+${r.amb} (грипп ${r.flu}, пневм. ${r.pneumonia}) → дома ${r.home}, легли ${r.ward}/${r.box}/${r.icu}, отправлены ${r.away} (мест нет ${r.full}), ушли ${r.left}, лежат ${r.lying}`).join('; ')}`);
+        console.log(`  зерно ${seed}: ${rows.map((r, i) => `с${i + 1} ${r.walk}+${r.amb} (грипп ${r.flu}, пневм. ${r.pneumonia}) → дома ${r.home}, легли ${r.ward}/${r.box}/${r.icu}, отправлены ${r.away} (мест нет ${r.full}, нет своих ${r.none}), ушли ${r.left}, лежат ${r.lying}`).join('; ')}`);
       }
       const n = all.length;
       const avg = (k: keyof Row) => (sum(all, k) / n).toFixed(1);
       console.log(
         `  в сутки в среднем: пришли ${avg('walk')} сами и ${avg('amb')} по скорой, с гриппом ${avg('flu')}, с пневмонией ${avg('pneumonia')}; ` +
           `дома ${avg('home')}, легли в палату ${avg('ward')}, в бокс ${avg('box')}, в ПИТ и реанимацию ${avg('icu')}; отправлены ${avg('away')}, из них мест нет ${avg('full')} ` +
-          `(палаты ${avg('fullWard')}, ПИТ и реанимация ${avg('fullIcu')}, боксы ${avg('fullBox')}); ушли ${avg('left')}; лежат в 08:00 ${avg('lying')}`,
+          `(палаты ${avg('fullWard')}, ПИТ и реанимация ${avg('fullIcu')}, боксы ${avg('fullBox')}), нет своих ${avg('none')}; ушли ${avg('left')}; лежат в 08:00 ${avg('lying')}`,
       );
       console.log(`  пневмония за ${n} суток: легли у нас ${sum(all, 'pnStay')}, отправлены ${sum(all, 'pnAway')}, дома ${sum(all, 'pnHome')}; выписаны ${sum(all, 'pnOut')}, из них в срок ${sum(all, 'pnOnTime')}, раньше срока ${sum(all, 'pnEarly')}`);
       const wvOut = sum(all, 'wvOut');
       console.log(
-        `  ${db.conditions[COND]?.name.ru ?? COND} главной болезнью: пришли ${avg('wvArr')} в сутки, нужна койка ${avg('wvBed')}, из них мест нет ${avg('wvFull')}; ` +
+        `  ${db.conditions[COND]?.name.ru ?? COND} главной болезнью: пришли ${avg('wvArr')} в сутки, нужна койка ${avg('wvBed')}, из них отказ ${avg('wvFull')}; ` +
           `выписаны ${wvOut} за ${n} суток, в среднем ${wvOut ? (sum(all, 'wvDays') / wvOut).toFixed(1) : '—'} суток в стационаре`,
       );
-      console.log(`  инфекционное отделение главной болезнью: пришли ${avg('infArr')} в сутки, нужна койка ${avg('infBed')}, из них мест нет ${avg('infFull')}`);
+      console.log(`  инфекционное отделение главной болезнью: пришли ${avg('infArr')} в сутки, нужна койка ${avg('infBed')}, из них отказ ${avg('infFull')}`);
       const zero = SEEDS.map((_, k) => all.slice(k * DAYS, (k + 1) * DAYS).filter(r => r.full === 0).length);
-      console.log(`  суток без отправленных, потому что мест нет: ${zero.join(', ')} из ${DAYS} по зёрнам`);
+      console.log(`  суток без отказов «мест нет»: ${zero.join(', ')} из ${DAYS} по зёрнам`);
       const top = [...refused.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
-      console.log(`  мест нет — с чем (за ${n} суток): ${top.map(([c, k]) => `${db.conditions[c]?.name.ru ?? c} ${k}`).join(', ')}`);
+      console.log(`  отказы — с чем (за ${n} суток): ${top.map(([c, k]) => `${db.conditions[c]?.name.ru ?? c} ${k}`).join(', ')}`);
     }
   }
 }
