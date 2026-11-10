@@ -2562,10 +2562,43 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient, at = s.t): 
     delete p.bay;
     seatAtDoor(db, s);
   }
-  journey.closed(s, p, wanted, () => ({ ward: [wardBeds(db, s).length, freeBeds(db, s).length], icu: [icuBeds(db, s).length, freeIcuBeds(db, s).length], ricu: [ricuBeds(db, s).length, freeRicuBeds(db, s).length], box: [boxBeds(db, s).length, freeBoxBeds(db, s).length] }));
+  journey.closed(s, p, wanted, () => placesOf(db, s));
+  // отказ в госпитализации (spec docs/specs/2026-11-scenario-5.md, часть 1): поток для ПК — отправлен в другую больницу, а по базе
+  // ему нужна койка
+  if (s.flow && !STAYS.includes(closed.plan.setting) && closed.plan.setting !== 'home') refusal(db, s, p, closed);
   // поток для ПК (решение владельца 16.10.2026): приём нанятого врача — сразу строкой журнала, его разбор не досчитывается
   if (s.flow && p.by) evict(s, p);
   return closed;
+}
+
+/** Свои места каждого вида — сколько всего и сколько свободно: палаты, ПИТ, реанимация, боксы. */
+function placesOf(db: ContentDb, s: ShiftState): Record<journey.Place, [number, number]> {
+  return {
+    ward: [wardBeds(db, s).length, freeBeds(db, s).length], icu: [icuBeds(db, s).length, freeIcuBeds(db, s).length],
+    ricu: [ricuBeds(db, s).length, freeRicuBeds(db, s).length], box: [boxBeds(db, s).length, freeBoxBeds(db, s).length],
+  };
+}
+
+/** Какая койка нужна больному по месту из базы: палата (и после операции), ПИТ, реанимация, бокс; дома и в кабинете — никакой. */
+const NEEDS: Partial<Record<Setting, journey.Place>> = { admit: 'ward', surgery: 'ward', icu: 'icu', ricu: 'ricu', box: 'box' };
+
+/**
+ * Отказ в госпитализации (spec docs/specs/2026-11-scenario-5.md, часть 1): больного отправили в другую больницу, а по базе ему
+ * нужна койка — своя такого вида была, но вся занята («мест нет»), или такой у больницы нет. Нужна операция — койка после неё,
+ * и только если операционная работает: нет операционной — это не о койках. Свободная койка была — отправили по выбору врача,
+ * не отказ.
+ */
+function refusal(db: ContentDb, s: ShiftState, p: ShiftPatient, closed: ClosedCase) {
+  const need = recommendedSetting(db, p.patient, p.results.map(r => r.exam), closed.bedside, closed.rooms);
+  const place = NEEDS[need];
+  if (!place || (need === 'surgery' && orBlock(db, s) !== null)) return;
+  const [all, free] = placesOf(db, s)[place];
+  if (all > 0 && free > 0) return;
+  const r = (s.summary.refused ??= { full: {}, none: {}, by: {} });
+  const by = all > 0 ? r.full : r.none;
+  by[place] = (by[place] ?? 0) + 1;
+  const main = primaryOf(p.patient).id;
+  r.by[main] = (r.by[main] ?? 0) + 1;
 }
 
 /** Строка итогов нанятого врача за день (spec 2026-09-hired-doctors) — с его должностью (spec 2026-10-chapter-4, часть 60а). */
