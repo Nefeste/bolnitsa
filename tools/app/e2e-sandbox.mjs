@@ -60,9 +60,12 @@ export async function sandboxPart({ page, port, out, ok, fail, q, shots }) {
   });
 
   // ---------------------------------------------------------------- встреченные: сценарий 2, нанятые врачи закрывают случаи
+  // хранилище чистят на экране начала, без игры: окно игры помнит встреченные с начала страницы
+  await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&backdrop=0`);
+  await page.waitForSelector('#start-empty', { timeout: 120000 });
+  await page.evaluate(() => localStorage.removeItem('bolnitsa.met'));
   await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&scenario=scenario.emergency&backdrop=0`);
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
-  await page.evaluate(() => localStorage.removeItem('bolnitsa.met'));
   // ×12; автопауза по просьбе нанятого врача — снова ×12
   await until(() => {
     const g = window.__game;
