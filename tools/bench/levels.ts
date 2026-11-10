@@ -8,7 +8,7 @@
 //
 // В 14:00 и в 02:00 третьих суток — что работает (`hospitalCtx` на этот час): помещения по видам, отделения, которые
 // больница принимает (`departmentsOf`), койки палат, ПИТ, реанимации и боксов; за все сутки — приёмы, верные диагнозы (ваши
-// и нанятых врачей), отправленные, потому что мест нет (как в tools/bench/infections.ts), умершие в стационаре.
+// и нанятых врачей), отказы в госпитализации (`refusalOf`, tools/bench/refused.ts: «мест нет» и «нет своих»), умершие в стационаре.
 // Уровень по предложенным требованиям — в конце строки; требования — `LEVELS` ниже, игровые числа спецификации.
 //
 // bun tools/bench/levels.ts [--days 7] [--seeds 1,2] [--hospital poly,ambulatory,emergency,surgery,vascular,district,vpreset,city]
@@ -19,7 +19,8 @@ import { siteOfPlan } from '../../src/engine/hospital/site-plan';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
 import { presetStaff, type StaffMember, withNightShift } from '../../src/engine/hospital/staff';
 import { apply, boxBeds, departmentsOf, hospitalCtx, icuBeds, newFlowShift, ricuBeds, wardBeds } from '../../src/engine/shift/engine';
-import type { ShiftState } from '../../src/engine/shift/types';
+import type { ShiftPatient, ShiftState } from '../../src/engine/shift/types';
+import { refusalOf } from './refused';
 
 const arg = (name: string, def: string) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -105,6 +106,8 @@ function run(name: string, seed: number) {
   let beds = { ward: 0, icu: 0, ricu: 0, box: 0 };
   const ended = new Set<string>();
   let full = 0;
+  let none = 0;
+  const patient = (id: string): ShiftPatient | undefined => s.patients[id] ?? s.past?.find(x => x.p.id === id)?.p;
   const end = (DAYS * 24 + 8) * H;
   const at14 = (2 * 24 + 14) * H;
   const at02 = (3 * 24 + 2) * H;
@@ -120,10 +123,14 @@ function run(name: string, seed: number) {
       if (!e || ended.has(id)) continue;
       ended.add(id);
       const d = Math.floor((e.t - 8 * H) / DAY);
-      if (d >= 0 && d < DAYS && e.how === 'away' && ((e.full?.length ?? 0) > 0 || e.wanted !== undefined)) full++;
+      const p = patient(id);
+      const no = d >= 0 && d < DAYS && p ? refusalOf(db, s, p, e) : undefined;
+      if (no?.full) full++;
+      else if (no) none++;
     }
   }
-  const days = (s.history ?? []).filter(h => h.day >= 2 && h.day <= DAYS + 1);
+  // сутки N — с 08:00 суток N до 08:00 следующих
+  const days = (s.history ?? []).filter(h => h.day >= 1 && h.day <= DAYS);
   let seen = 0;
   let correct = 0;
   let died = 0;
@@ -142,7 +149,7 @@ function run(name: string, seed: number) {
     }
     died += h.ward?.died ?? 0;
   }
-  return { day: day!, night: night!, beds, seen, correct, died, full, days: days.length, arrived, left, rep };
+  return { day: day!, night: night!, beds, seen, correct, died, full, none, days: days.length, arrived, left, rep };
 }
 
 const short = (id: Id) => db.rooms[id]?.name.ru ?? id;
@@ -170,7 +177,7 @@ for (const name of HOSPITALS) {
       `${name.padEnd(10)} зерно ${seed}: помещений днём ${Object.values(r.day.rooms).reduce((a, b) => a + b, 0)}, ночью ${Object.values(r.night.rooms).reduce((a, b) => a + b, 0)}; ` +
         `отделения ${r.day.depts.map(deptName).join(', ')}; койки: палаты ${r.beds.ward}, ПИТ ${r.beds.icu}, реанимация ${r.beds.ricu}, боксы ${r.beds.box}; ` +
         `диагностика ночью: ${nightDiag.map(short).join(', ') || 'нет'}; приёмов ${r.seen} за ${r.days} суток, верных ${accuracy} %; ` +
-        `ушли, не дождавшись, ${r.arrived ? Math.round((100 * r.left) / r.arrived) : 0} % пришедших; мест нет ${(r.full / DAYS).toFixed(1)} в сутки; умерли ${r.died}; ` +
+        `ушли, не дождавшись, ${r.arrived ? Math.round((100 * r.left) / r.arrived) : 0} % пришедших; отказы: мест нет ${(r.full / DAYS).toFixed(1)} в сутки, нет своих ${(r.none / DAYS).toFixed(1)}; умерли ${r.died}; ` +
         `репутация по утрам ${r.rep.join(', ')}`,
     );
     console.log(`    уровень по предложенным требованиям: ${level}; ${missing.join('; ')}`);
