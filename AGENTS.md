@@ -254,6 +254,9 @@ bun tools/bench/challenges.ts                  # challenges (spec docs/specs/202
                                                # `--only engine` — the records of content/challenges/ through the engine and their result
                                                # (`--plan` — the reasonable chief: two offices and a staff room at 08:00; `--play
                                                # rational,careful,urgent`; `--why` — the night's reds and who the doctor was with)
+bun tools/bench/repairs.ts                     # technicians (spec docs/specs/2026-11-technicians.md): the devices that break in each
+                                               # ready hospital, how often by the catalog's reliability, exams per day on each, repair cost
+                                               # (`--hospital poly,district,city`, `--days`, `--seeds`)
 bun tools/bench/solo.ts                        # the doctor's shift (spec docs/specs/2026-11-doctor-shift.md): a day shift 08:00–20:00 in
                                                # the ready city and polyclinic with one doctor receiving — who came, how many he saw,
                                                # who left, minutes per case, the wait (`--hospital city,poly`, `--manage calm,normal,hard`;
