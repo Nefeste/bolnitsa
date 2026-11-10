@@ -2562,10 +2562,13 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient, at = s.t): 
     delete p.bay;
     seatAtDoor(db, s);
   }
-  journey.closed(s, p, wanted, () => placesOf(db, s));
+  // свои места — один раз на закрытие: их берут и путь отправленного, и отказ в госпитализации
+  let places: Record<journey.Place, [number, number]> | undefined;
+  const placesNow = () => (places ??= placesOf(db, s));
+  journey.closed(s, p, wanted, placesNow);
   // отказ в госпитализации (spec docs/specs/2026-11-scenario-5.md, часть 1): поток для ПК — отправлен в другую больницу, а по базе
   // ему нужна койка
-  if (s.flow && !STAYS.includes(closed.plan.setting) && closed.plan.setting !== 'home') refusal(db, s, p, closed);
+  if (s.flow && !STAYS.includes(closed.plan.setting) && closed.plan.setting !== 'home') refusal(db, s, p, closed, placesNow);
   // поток для ПК (решение владельца 16.10.2026): приём нанятого врача — сразу строкой журнала, его разбор не досчитывается
   if (s.flow && p.by) evict(s, p);
   return closed;
@@ -2593,11 +2596,11 @@ const NEEDS: Partial<Record<Setting, journey.Place[]>> = {
  * нет»: первый годный вид). Нужна операция — койка после неё, и только если операционная работает: нет операционной — это не о
  * койках. Свободная годная койка была — отправили по выбору врача, не отказ.
  */
-function refusal(db: ContentDb, s: ShiftState, p: ShiftPatient, closed: ClosedCase) {
+function refusal(db: ContentDb, s: ShiftState, p: ShiftPatient, closed: ClosedCase, placesNow: () => Record<journey.Place, [number, number]>) {
   const need = recommendedSetting(db, p.patient, p.results.map(r => r.exam), closed.bedside, closed.rooms);
   const kinds = NEEDS[need];
   if (!kinds || (need === 'surgery' && orBlock(db, s) !== null)) return;
-  const places = placesOf(db, s);
+  const places = placesNow();
   if (kinds.some(k => places[k][1] > 0)) return;
   const have = kinds.find(k => places[k][0] > 0);
   const r = (s.summary.refused ??= { full: {}, none: {}, by: {} });
