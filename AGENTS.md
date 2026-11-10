@@ -290,6 +290,10 @@ bun tools/bench/levels.ts                      # the sandbox (spec docs/specs/20
                                                # playing — departments, beds, what works at 14:00 and 02:00, correct diagnoses, the
                                                # left, refusals «мест нет», reputation by morning, and the hospital level by the
                                                # proposed requirements (`LEVELS`; `--hospital poly,…,city`, `--days`, `--seeds`)
+bun tools/bench/diagnostics.ts                 # scenario 6 (spec docs/specs/2026-11-scenario-6.md): the ready city and the vascular district
+                                               # in winter, nobody playing — ultrasound, endoscopy, CT and MRI: exams, income and costs a day
+                                               # by room money, payback by the ready room's price; the insurer's cuts by kind and the
+                                               # unconfirmed diagnoses by where they are confirmed (`--hospital city,vpreset`, `--days`, `--seeds`)
 bun tools/bench/solo.ts                        # the doctor's shift (spec docs/specs/2026-11-doctor-shift.md): a day shift 08:00–20:00 in
                                                # the ready city and polyclinic with one doctor receiving — who came, how many he saw,
                                                # who left, minutes per case, the wait (`--hospital city,poly`, `--manage calm,normal,hard`;
