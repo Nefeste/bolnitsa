@@ -2,9 +2,10 @@
 // кредит»): касса сейчас, изменение с 08:00 и репутация — из упакованного среза; планёрка в 08:00 — из извещения `morning`:
 // данные для экрана (названия из базы — здесь, слова — при отрисовке), автопауза и «Продолжить»; часы приёма и кредит —
 // командами движка. Пока открыта карта пациента, планёрка ждёт её закрытия.
-import type { Id } from '../content/types';
+import type { ContentDb, Id } from '../content/types';
 import { REPAIR_PCT } from '../engine/shift/engine';
-import type { DayLoad, DaySummary, Notice, StaffNews } from '../engine/shift/types';
+import type { DayLoad, DaySummary, Notice, Refused, StaffNews } from '../engine/shift/types';
+import type { Place } from '../engine/shift/journey';
 import { named } from '../i18n';
 import { H, NO_CASH } from '../sim/pack';
 import type { Slice } from '../sim/client';
@@ -86,6 +87,29 @@ export interface MeetingView {
    */
   deadlines?: { name: string; onTime: number; total: number }[];
   routes?: { rows: { name: string; n: number }[]; rub: number };
+  /**
+   * отказы в госпитализации за сутки (spec docs/specs/2026-11-scenario-5.md, часть 1): сколько, по виду места — «мест нет» и «своих
+   * нет», и с чем — восемь болезней чаще всех; никому не отказали — нет
+   */
+  refused?: { n: number; full: { place: Place; n: number }[]; none: { place: Place; n: number }[]; by: { name: string; n: number }[] };
+}
+
+/** Виды мест в строке отказов — по порядку. */
+const PLACES: readonly Place[] = ['ward', 'icu', 'ricu', 'box'];
+
+/** Отказы в госпитализации суток — для строки планёрки (spec docs/specs/2026-11-scenario-5.md, часть 1). */
+export function refusedOf(db: ContentDb, r: Refused | undefined): MeetingView['refused'] {
+  if (!r) return undefined;
+  const rows = (of: Refused['full']) => PLACES.flatMap(place => ((of[place] ?? 0) > 0 ? [{ place, n: of[place]! }] : []));
+  const full = rows(r.full);
+  const none = rows(r.none);
+  const n = [...full, ...none].reduce((a, x) => a + x.n, 0);
+  if (n === 0) return undefined;
+  const by = Object.entries(r.by)
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+    .slice(0, 8)
+    .map(([c, k]) => ({ name: named(db.conditions[c]?.name, c), n: k }));
+  return { n, full, none, by };
 }
 
 /** «Поднять зарплату» прямо в строке планёрки: с какой и до какой, ₽ за смену. */
@@ -247,12 +271,15 @@ export class Money {
     const scenario = this.g.scenario.meetingOf(summary.campaign);
     // сроки и маршруты (spec docs/specs/2026-11-scenario-4.md, часть 2а): по порядку записей
     const deadlines = Object.keys(db.targets).flatMap(id => (summary.allTargets?.[id] ? [{ name: named(db.targets[id].name, id), ...summary.allTargets[id] }] : []));
+    // отказы в госпитализации (spec docs/specs/2026-11-scenario-5.md, часть 1)
+    const refused = refusedOf(db, summary.refused);
     const routed = Object.values(db.routes ?? {}).flatMap(r => (summary.routes?.[r.id] ? [{ name: named(db.exams[r.exam]?.name, r.exam), n: summary.routes[r.id].n, rub: summary.routes[r.id].rub }] : []));
     return {
       summary, doctors, rooms, broken: out, worse, tip: tipOf(summary, rooms, worse.length > 0, doctors.some(d => d.idle), this.hud.limit),
       ...(people ? { staff: people } : {}), ...(errors.total > 0 ? { errors } : {}), ...(miss ? { sortMiss: miss } : {}), ...(route ? { routeMiss: route } : {}), ...(scenario ? { scenario } : {}),
       ...(deadlines.length ? { deadlines } : {}),
       ...(routed.length ? { routes: { rows: routed.map(({ name, n }) => ({ name, n })), rub: routed.reduce((a, r) => a + r.rub, 0) } } : {}),
+      ...(refused ? { refused } : {}),
     };
   }
 
