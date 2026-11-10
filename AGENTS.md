@@ -99,7 +99,7 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # then staff shifts: at 20:00 the day shift walks out and the night shift in, the night
                                    # rows of a room card, hiring a night registrar, «Сейчас в смене»; then fatigue: a tired
                                    # doctor walks to the staff room, his card and fatigue bar, «Персонал», «врач на перерыве»
-                                   # in a waiting patient's path; then the encyclopedia: the start screen button, search,
+                                   # in a waiting patient's path; then the encyclopedia: the start screen button, search, «встречалось»,
                                    # links, «Назад», F1 over a name, «Подробнее» in «Что это?»; then door benches: someone
                                    # sits on a bench by an office door, «на скамье у кабинета» in a path, the «Скамья» tool,
                                    # its ghost, Ctrl+Z, demolishing a bench; then the city's free land: a ready ward in the
@@ -374,7 +374,7 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   list — byte for byte as before. The met list is the main diseases of closed cases of a PC campaign scenario, yours and hired
   doctors': the sim sends new ones with the slice (`met`, `src/sim/met.ts`), the window keeps them in page storage
   (`bolnitsa.met`, `src/app/met.ts`); the empty start's second step offers «Только встреченные» when there are any (`met=1`,
-  `Game.met`, the `start` message's `only`). The whole 24-hour day of the PC flow is ours as well: `shift/day.ts` (outpatient hours,
+  `Game.met`, the `start` message's `only`), and the encyclopedia marks them «встречалось» (read at each open). The whole 24-hour day of the PC flow is ours as well: `shift/day.ts` (outpatient hours,
   arrivals by hour of day), the 08:00 meeting and the morning round in `engine.ts`, shapes in `content/hospital/day.yaml`
   — `docs/specs/2026-10-day.md`. Who left the state (`evict`) keeps their card in `s.past` for a day, at most 600, like
   their path — read-only, for «Открыть карту» and «Приняты» (`docs/specs/2026-10-discharged-card.md`).
