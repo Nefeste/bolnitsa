@@ -3,8 +3,8 @@
 // закрывает только окно. Поликлиника с экрана начала (база — та же, что прочитала энциклопедия): карточка лаборатории,
 // курсор над названием и F1 — статья помещения; Esc закрывает окно, карточка остаётся; F1 над планом — окно и снова F1 —
 // закрыто; часы идут, пока окно открыто. Карта для чтения больного нанятого врача: жалоба — «Что это?» — «Подробнее в
-// энциклопедии» — статья признака поверх карты; Esc — окно, карта остаётся. По-английски — разделы по-английски. Снимки —
-// `e2e-enc-*.jpg`.
+// энциклопедии» — статья признака поверх карты; Esc — окно, карта остаётся. По-английски — разделы по-английски. Встреченная в
+// кампании болезнь (spec docs/specs/2026-11-sandbox.md, части 2б и 3) — «встречалось» в списке и в статье. Снимки — `e2e-enc-*.jpg`.
 import { join } from 'node:path';
 import { headOk, windowHead } from './e2e-lib.mjs';
 
@@ -21,6 +21,8 @@ export async function encyclopediaPart({ page, port, out, ok, fail, q }) {
   // она грузится, и загрузчик моделей пишет в консоль об оборванной загрузке
   await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&backdrop=0`);
   await page.waitForSelector('#start-enc', { timeout: 60000 });
+  // встречалась в кампании — пневмония (хранилище этого компьютера: окно читает его, когда открывается)
+  await page.evaluate(() => localStorage.setItem('bolnitsa.met', JSON.stringify(['cond.pneumonia_cap'])));
   await page.click('#start-enc');
   await page.waitForSelector('#enc #enc-sec-conditions', { timeout: 30000 });
   const head = await page.evaluate(() => ({
@@ -38,6 +40,15 @@ export async function encyclopediaPart({ page, port, out, ok, fail, q }) {
   const blocks = await page.$$eval('#enc-article .enc-block', els => els.map(e => e.id.replace('enc-b-', '')));
   if (item.startsWith(pneumonia) && ['signs', 'confirm', 'similar', 'treatment', 'where', 'sources'].every(b => blocks.includes(b))) ok(`поиск «пневм» — «${pneumonia}»: ${blocks.join(', ')}`);
   else fail(`статья пневмонии: ${JSON.stringify({ item, pneumonia, blocks })}`);
+  // «встречалось»: в списке — у пневмонии, в её статье — строкой; у других болезней — нет
+  const met = await page.evaluate(() => ({
+    item: document.querySelector('#enc-item-cond-pneumonia_cap .enc-met')?.textContent ?? '',
+    article: document.getElementById('enc-met')?.textContent ?? '',
+    others: document.querySelectorAll('#enc-list .enc-met').length,
+  }));
+  if (met.item.includes('встречалось') && met.article.startsWith('Встречалось в кампании') && met.others === 1) ok(`встреченная в кампании: в списке «${flat(met.item)}», в статье «${flat(met.article)}»`);
+  else fail(`«встречалось»: ${JSON.stringify(met)}`);
+  await page.evaluate(() => localStorage.removeItem('bolnitsa.met'));
   const link = await page.$('#enc-b-signs .enc-ref');
   const linked = link ? flat(await link.textContent()) : '';
   await link?.click();

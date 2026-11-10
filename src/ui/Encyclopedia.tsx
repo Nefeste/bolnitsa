@@ -4,6 +4,7 @@
 // «Что это?»; кнопка экрана начала.
 import { type RefObject, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { loadContent } from '../app/content';
+import { readMet } from '../app/met';
 import { article, type Article, type Block, type Ref, search, type Section, sectionOf, sectionsOf, sectionView } from '../app/encyclopedia';
 import type { ContentDb, Id } from '../content/types';
 import { lang, T } from '../i18n';
@@ -19,12 +20,17 @@ interface View {
   /** прежние статьи — «Назад» */
   back: Id[];
   db?: ContentDb;
+  /**
+   * встреченные болезни (spec docs/specs/2026-11-sandbox.md, части 2б и 3): главные болезни закрытых случаев кампании на этом
+   * компьютере — отметка «встречалось»; читаются при каждом открытии окна
+   */
+  met: ReadonlySet<Id>;
 }
 
 /** Сколько статей помнит «Назад». */
 const BACK = 50;
 
-let view: View = { open: false, section: 'conditions', query: '', back: [] };
+let view: View = { open: false, section: 'conditions', query: '', back: [], met: new Set() };
 const subs = new Set<() => void>();
 
 function set(patch: Partial<View>) {
@@ -65,7 +71,7 @@ function back() {
  * читается при первом открытии.
  */
 export function openEncyclopedia(id?: Id) {
-  set({ open: true });
+  set({ open: true, met: new Set(readMet()) });
   loadContent()
     .then(db => {
       if (!view.db) set({ db });
@@ -179,7 +185,7 @@ function Body({ db, v, scroll }: { db: ContentDb; v: View; scroll: RefObject<HTM
               {found.length > 0 ? e.ui.found(found.length) : e.nothing}
             </div>
             {found.map(r => (
-              <Item key={r.id} r={r} on={r.id === v.id} note={e.sections[r.section]} />
+              <Item key={r.id} r={r} on={r.id === v.id} note={e.sections[r.section]} met={v.met.has(r.id)} />
             ))}
           </>
         ) : (
@@ -187,20 +193,20 @@ function Body({ db, v, scroll }: { db: ContentDb; v: View; scroll: RefObject<HTM
             <div key={g.key} className="enc-group">
               <h3>{g.title}</h3>
               {g.items.map(r => (
-                <Item key={r.id} r={r} on={r.id === v.id} />
+                <Item key={r.id} r={r} on={r.id === v.id} met={v.met.has(r.id)} />
               ))}
             </div>
           ))
         )}
       </div>
       <div className="enc-article" id="enc-article" ref={scroll}>
-        {a ? <ArticleView a={a} /> : <p className="muted">{e.ui.choose}</p>}
+        {a ? <ArticleView a={a} met={!!v.id && v.met.has(v.id)} /> : <p className="muted">{e.ui.choose}</p>}
       </div>
     </div>
   );
 }
 
-function Item({ r, on, note }: { r: Ref; on: boolean; note?: string }) {
+function Item({ r, on, note, met }: { r: Ref; on: boolean; note?: string; met?: boolean }) {
   const ref = useRef<HTMLButtonElement>(null);
   // открытая статья в длинном списке раздела — на виду
   useEffect(() => {
@@ -210,17 +216,23 @@ function Item({ r, on, note }: { r: Ref; on: boolean; note?: string }) {
     <button ref={ref} type="button" className={on ? 'enc-item on' : 'enc-item'} id={`enc-item-${dom(r.id)}`} data-enc={r.id} onClick={() => go(r.id)}>
       {r.title}
       {note ? <small className="muted"> · {note}</small> : null}
+      {met ? <small className="muted enc-met"> · {T.encyclopedia.ui.met}</small> : null}
     </button>
   );
 }
 
-function ArticleView({ a }: { a: Article }) {
+function ArticleView({ a, met }: { a: Article; met: boolean }) {
   return (
     <article>
       <h2 id="enc-title">{a.title}</h2>
       <div className="muted" id="enc-subtitle">
         {a.subtitle}
       </div>
+      {met ? (
+        <p className="small" id="enc-met">
+          {T.encyclopedia.ui.metArticle}
+        </p>
+      ) : null}
       {a.blocks.map(b => (
         <BlockView key={b.key} b={b} />
       ))}

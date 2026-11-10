@@ -267,6 +267,8 @@ export const encyclopediaEn: EncyclopediaStrings = {
       choose: 'Pick a section on the left and an article in it — or find one by search.',
       found: (n: number) => `Found: ${n}`,
       hint: 'F1 — the article about what is under the cursor',
+      met: 'met',
+      metArticle: 'Met in the campaign: the main disease of a case closed on this computer by you or your hired doctors.',
     },
   },
 };
