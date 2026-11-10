@@ -5,8 +5,8 @@ import type { Cell, ContentDb, Id, ObjectKind, RoomSizeId, Rot } from '../conten
 import { deptWhy } from '../engine/hospital/departments';
 import { DOCTOR, standInOf } from '../engine/hospital/requirements';
 import {
-  autoRot, cellsOf, checkBench, checkDoor, checkItem, checkReady, checkRoom, demolishRefund, DOOR_PRICE, FACE, isInterior, markDept, priceOf, type ReadyDraft, readyCorner,
-  readyTurn, refundOf, rulesOf, sideOf, type Site, type SiteCommand, type SiteError, type SiteResult, targetAt,
+  autoRot, cellsOf, checkBench, checkDoor, checkEntrance, checkItem, checkReady, checkRoom, checkShell, checkUnshell, demolishRefund, DOOR_PRICE, FACE, isInterior, mapOf,
+  markDept, priceOf, type ReadyDraft, readyCorner, readyTurn, refundOf, rulesOf, shellRect, sideOf, type Site, type SiteCommand, type SiteError, type SiteResult, targetAt,
 } from '../engine/hospital/site';
 import { nightHospital, payOf, salaryOf, type Shift } from '../engine/hospital/staff';
 import { money, named, T } from '../i18n';
@@ -116,6 +116,9 @@ export class Builder {
   item?: { kind: ObjectKind; eq?: Id };
   /** «Отделение» (spec docs/specs/2026-10-departments.md, часть 2): в какое переводить; null — снять отметку; нет — не выбрано */
   dept?: Id | null;
+  /** песочница (spec docs/specs/2026-11-sandbox.md, часть 2): «Корпус» — пристроить или снести; «Вход» — какой переносить */
+  shell: 'add' | 'remove' = 'add';
+  door: 'main' | 'ambulance' = 'main';
   /** переставляют: помещение и номер предмета */
   moving?: { room: string; id: number };
   rot: Rot = 0;
@@ -147,6 +150,7 @@ export class Builder {
     return {
       on: this.on, ...(this.tool ? { tool: this.tool } : {}), ...(this.roomType ? { roomType: this.roomType } : {}), ...(this.ready ? { ready: this.ready } : {}),
       withStaff: this.withStaff, ...(this.item ? { item: this.item } : {}), ...(this.dept !== undefined ? { dept: this.dept } : {}),
+      ...(this.tool === 'shell' ? { shell: this.shell } : {}), ...(this.tool === 'entrance' ? { door: this.door } : {}),
       moving: !!this.moving, ...(this.ghost ? { ghost: this.ghost } : {}), ...(this.result ? { result: this.result } : {}),
       spent: this.g.works.spent, undo: this.g.works.undo,
     };
@@ -190,6 +194,20 @@ export class Builder {
   pickDept(dept: Id | null) {
     this.setTool('dept');
     this.dept = dept;
+    this.update();
+  }
+
+  /** «Корпус» песочницы: пристраивать или сносить. */
+  pickShell(mode: 'add' | 'remove') {
+    this.setTool('shell');
+    this.shell = mode;
+    this.update();
+  }
+
+  /** «Вход» песочницы: главный или вход скорой. */
+  pickEntrance(which: 'main' | 'ambulance') {
+    this.setTool('entrance');
+    this.door = which;
     this.update();
   }
 
@@ -270,6 +288,15 @@ export class Builder {
       case 'room':
         if (this.roomType) this.drag = cell;
         break;
+      // корпус песочницы (spec docs/specs/2026-11-sandbox.md, часть 2): прямоугольник протягивают, как помещение
+      case 'shell':
+        this.drag = cell;
+        break;
+      case 'entrance': {
+        const e = this.entranceAt(cell);
+        if (e?.ok) this.g.command({ kind: 'entrance', which: this.door, cells: e.cells });
+        break;
+      }
       case 'item': {
         if (this.item) {
           const spec = this.itemSpec(cell);
@@ -335,8 +362,37 @@ export class Builder {
     const end = cell ?? this.hover ?? this.drag;
     const r = rectOf(this.drag, end);
     this.drag = undefined;
-    if (this.roomType && (r.w > 1 || r.h > 1) && checkRoom(this.db, this.site!, this.roomType, r).ok) this.g.command({ kind: 'room', type: this.roomType, ...r });
+    if (this.tool === 'shell') {
+      const site = this.site!;
+      const ok = this.shell === 'add' ? checkShell(this.db, site, r).ok : checkUnshell(this.db, site, r).ok;
+      if (ok) this.g.command({ kind: 'shell', ...r, ...(this.shell === 'remove' ? { remove: true as const } : {}) });
+    } else if (this.roomType && (r.w > 1 || r.h > 1) && checkRoom(this.db, this.site!, this.roomType, r).ok) this.g.command({ kind: 'room', type: this.roomType, ...r });
     this.update();
+  }
+
+  /**
+   * «Вход» под курсором (spec docs/specs/2026-11-sandbox.md, часть 2): клетка наружной стены и соседняя вдоль неё — первая пара,
+   * куда можно перенести; нельзя ни одну — первая и почему. Не на наружной стене — ничего.
+   */
+  private entranceAt(cell: Cell): { cells: Cell[]; ok: boolean; why?: SiteError; cost: number } | undefined {
+    const site = this.site;
+    if (!site) return undefined;
+    const m = mapOf(site);
+    const [x, y] = cell;
+    if (x < 0 || y < 0 || x >= m.w || y >= m.h || !m.outline[y * m.w + x]) return undefined;
+    const pairs: Cell[][] = [
+      [[x, y], [x + 1, y]],
+      [[x - 1, y], [x, y]],
+      [[x, y], [x, y + 1]],
+      [[x, y - 1], [x, y]],
+    ];
+    let first: { cells: Cell[]; ok: boolean; why?: SiteError; cost: number } | undefined;
+    for (const cells of pairs) {
+      const c = checkEntrance(this.db, site, this.door, cells);
+      if (c.ok) return { cells, ok: true, cost: c.cost };
+      first ??= { cells, ok: false, why: c.error, cost: 0 };
+    }
+    return first;
   }
 
   /** Ответ движка. */
@@ -640,6 +696,40 @@ export class Builder {
           gh.cells(cells, GHOST_BAD);
           this.ghost = { ok: true, text: T.build.ghostDemolish(named(db.rooms[r.type]?.name, r.type), money(demolishRefund(db, r))) };
         }
+        break;
+      }
+      // корпус песочницы (spec docs/specs/2026-11-sandbox.md, часть 2): новые клетки пристройки или клетки, что снесут
+      case 'shell': {
+        const add = this.shell === 'add';
+        if (!this.drag || !hover) {
+          if (hover) gh.cells([hover], GHOST_OK);
+          this.ghost = { ok: true, text: add ? T.build.hintShell : T.build.hintUnshell };
+          break;
+        }
+        const r = rectOf(this.drag, hover);
+        const m = mapOf(site);
+        const cells: Cell[] = [];
+        const g = add ? shellRect(site, r) : r;
+        for (let y = Math.max(0, g.y); y < Math.min(m.h, g.y + g.h); y++) for (let x = Math.max(0, g.x); x < Math.min(m.w, g.x + g.w); x++) if (!m.inside[y * m.w + x] === add) cells.push([x, y]);
+        const c = add ? checkShell(db, site, r) : checkUnshell(db, site, r);
+        const need = c.ok ? this.short(c.cost) : 0;
+        gh.cells(cells.length ? cells : [hover], c.ok && need === 0 ? (add ? GHOST_OK : GHOST_BAD) : GHOST_BAD);
+        const what = add ? T.build.ghostShell(g.w, g.h, cells.length, money(c.ok ? c.cost : 0)) : T.build.ghostUnshell(cells.length, c.ok && c.cost < 0 ? money(-c.cost) : '');
+        this.ghost = need > 0 ? { ok: false, text: T.build.ghostBad(what, T.money.short(money(need))) }
+          : c.ok ? { ok: true, text: what } : { ok: false, text: T.build.ghostBad(add ? T.build.shell : T.build.unshell, whyText(db, site, c.error)) };
+        break;
+      }
+      case 'entrance': {
+        const e = hover ? this.entranceAt(hover) : undefined;
+        if (!e) {
+          this.ghost = { ok: true, text: this.door === 'main' ? T.build.hintEntranceMain : T.build.hintEntranceAmb };
+          break;
+        }
+        const need = e.ok ? this.short(e.cost) : 0;
+        gh.cells(e.cells, e.ok && need === 0 ? GHOST_DOOR : GHOST_BAD);
+        const what = T.build.ghostEntrance(this.door === 'main', money(e.ok ? e.cost : 0));
+        this.ghost = need > 0 ? { ok: false, text: T.build.ghostBad(what, T.money.short(money(need))) }
+          : e.ok ? { ok: true, text: what } : { ok: false, text: T.build.ghostBad(what, whyText(db, site, e.why ?? { kind: 'unknown' })) };
         break;
       }
       default:

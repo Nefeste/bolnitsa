@@ -12,6 +12,7 @@ import type { EconomyHud, MoneyAction } from '../app/money';
 import type { HintKey } from '../app/hints';
 import type { SaveRow } from '../app/saves';
 import type { Role } from '../app/roles';
+import type { LotSize } from '../engine/hospital/site';
 import type { NoticeRow } from '../app/toasts';
 import type { QualityMode, TextScale } from '../app/settings';
 import type { ScenarioAction, ScenarioHud } from '../app/scenario';
@@ -34,7 +35,7 @@ export type Tab = 'patients' | 'staff' | 'asks' | 'journal' | 'reports' | 'goals
  * Инструменты стройки (spec docs/specs/2026-10-build.md, «Экран и управление»; готовое — docs/specs/2026-10-ready-rooms.md;
  * «Отделение» — docs/specs/2026-10-departments.md, часть 2).
  */
-export type Tool = 'ready' | 'room' | 'item' | 'door' | 'door2' | 'bench' | 'demolish' | 'dept';
+export type Tool = 'ready' | 'room' | 'item' | 'door' | 'door2' | 'bench' | 'demolish' | 'dept' | 'shell' | 'entrance';
 
 export interface BuildHud {
   on: boolean;
@@ -47,6 +48,9 @@ export interface BuildHud {
   item?: { kind: ObjectKind; eq?: Id };
   /** «Отделение»: в какое переводить; null — снять отметку (отделение снова по тем, кто работает) */
   dept?: Id | null;
+  /** песочница (spec docs/specs/2026-11-sandbox.md, часть 2): «Корпус» — пристроить или снести; «Вход» — главный или скорой */
+  shell?: 'add' | 'remove';
+  door?: 'main' | 'ambulance';
   /** переставляют поставленный предмет */
   moving: boolean;
   /** строка призрака: что, размер, цена — или почему нельзя */
@@ -254,6 +258,8 @@ export interface Hud {
   demo?: DemoHud;
   /** смена врача (spec docs/specs/2026-11-doctor-shift.md): принимаете только вы — ни стройки, ни кассы, ни роли */
   solo?: boolean;
+  /** песочница (spec docs/specs/2026-11-sandbox.md, часть 2): не сценарий, не испытание, не смена врача — «Корпус» и «Вход» есть */
+  sandbox?: boolean;
   /** экран начала: рекорды смены врача по больнице и уровню (`recordKey`) */
   startRecords?: Records;
   /** окно «Итог смены» — смена кончилась в 20:00 */
@@ -444,6 +450,9 @@ export interface Actions {
   pickItem(kind: ObjectKind, eq?: Id): void;
   /** «Отделение» (spec docs/specs/2026-10-departments.md, часть 2): какое — инструменту; помещению — из его карточки */
   pickDept(dept: Id | null): void;
+  /** песочница (spec docs/specs/2026-11-sandbox.md, часть 2): «Корпус» — пристроить или снести; «Вход» — главный или скорой */
+  pickShell(mode: 'add' | 'remove'): void;
+  pickEntrance(which: 'main' | 'ambulance'): void;
   markDept(room: string, dept: Id | null): void;
   /** маршруты для срочного (spec docs/specs/2026-11-scenario-4.md, часть 2а): какие включены — все разом */
   routes(on: Id[]): void;
@@ -468,7 +477,7 @@ export interface Actions {
    * начало игры: пустое здание, готовая больница или поликлиника и роль (spec docs/specs/2026-10-two-ways.md, F4); `{ load }`
    * — сохранение (spec 2026-10-saves); `level` — сложность новой игры (spec docs/specs/2026-10-difficulty.md, часть 2)
    */
-  startGame(kind: 'empty' | 'preset' | 'poly' | { load: string } | { scenario: Id } | { solo: 'preset' | 'poly' } | { daily: string } | { challenge: Id }, role?: Role, level?: Level): void;
+  startGame(kind: 'empty' | 'preset' | 'poly' | { load: string } | { scenario: Id } | { solo: 'preset' | 'poly' } | { daily: string } | { challenge: Id }, role?: Role, level?: Level, lot?: LotSize): void;
   /** сложность в игре (spec docs/specs/2026-10-difficulty.md, часть 2; решение владельца #136): в любой момент — с этой минуты */
   setManage(level: Manage): void;
   setSoft(on: boolean): void;

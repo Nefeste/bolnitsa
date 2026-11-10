@@ -100,6 +100,7 @@ import { challengesPart } from './e2e-challenges.mjs';
 import { techniciansPart } from './e2e-technicians.mjs';
 import { routesPart } from './e2e-routes.mjs';
 import { vascularPart } from './e2e-vascular.mjs';
+import { sandboxPart } from './e2e-sandbox.mjs';
 import { serve } from './serve.mjs';
 
 const arg = (k, d) => {
@@ -245,6 +246,8 @@ try {
   if (run(44)) await routesPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   // часть 45 — сценарий 4 «Сердце и мозг» (spec docs/specs/2026-11-scenario-4.md, части 2б и 3): tools/app/e2e-vascular.mjs
   if (run(45)) await vascularPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
+  // часть 46 — песочница: участок, «Корпус» и «Вход» (spec docs/specs/2026-11-sandbox.md, часть 2): tools/app/e2e-sandbox.mjs
+  if (run(46)) await sandboxPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);

@@ -9,7 +9,7 @@ import type { Cell, ContentDb, Id, Manage, Season } from '../content/types';
 import { type HospitalState, type Plan, planOf } from '../engine/hospital/build';
 import { deptsOf, deptWhy, paintsOf } from '../engine/hospital/departments';
 import { type Block, DOCTOR, doctorRoom, openBlocks, type Problem, problemsOf, standInOf, standInsOf, type Staffing, workingRooms } from '../engine/hospital/requirements';
-import { demolishRefund, emptySite, furnishOf, hospitalOf, priceOf, readyCost, rulesOf, type Site, type SiteCommand, type SiteResult } from '../engine/hospital/site';
+import { demolishRefund, emptySite, furnishOf, hospitalOf, LOTS, type LotSize, priceOf, readyCost, rulesOf, type Site, type SiteCommand, type SiteResult } from '../engine/hospital/site';
 import { siteOfPlan } from '../engine/hospital/site-plan';
 import { siteOfPreset } from '../engine/hospital/site-preset';
 import { dutyOf, fitsPost, onDuty, ORDERLY, payOf, presetStaff, salaryOf, type Shift, shiftAt, type StaffMember, staffingOf, wageOf, withNightShift } from '../engine/hospital/staff';
@@ -109,13 +109,14 @@ export type Start = 'empty' | 'preset' | 'poly';
  * Больница начала и её люди: поликлиника — по записи базы, той же функцией, что команда стройки `ready`. Со сменами (spec
  * docs/specs/2026-10-staff-shifts.md): все — дневная смена; городская работает и ночью — и с ночной сменой.
  */
-function hospitalAt(db: ContentDb, start: Start, role: Role, scenario?: Id, challenge?: Id): { site: Site; staff: StaffMember[] } {
+function hospitalAt(db: ContentDb, start: Start, role: Role, scenario?: Id, challenge?: Id, lot: LotSize = 'M'): { site: Site; staff: StaffMember[] } {
   // испытание (spec docs/specs/2026-11-challenges.md, часть 2): готовая больница его записи; у испытания врача кабинет — ваш
   const c = challenge ? db.challenges?.[challenge] : undefined;
   if (c) return challengeStart(db, c, (site, staff) => startFor(db, site, staff, c.kind === 'doctor' ? DEFAULT_ROLE : role));
   // сценарий кампании (spec docs/specs/2026-10-scenario-1.md): пустое здание или готовая больница его записи
   const from = scenario ? db.scenarios?.[scenario]?.start : undefined;
-  if (start === 'empty' && (!from || from === 'empty')) return { site: emptySite(), staff: [] };
+  // участок песочницы (spec docs/specs/2026-11-sandbox.md, часть 2): S, M — пустое здание, как прежде, — или L
+  if (start === 'empty' && (!from || from === 'empty')) return { site: emptySite(LOTS[lot]), staff: [] };
   if (start === 'poly' || from) {
     const id = from ?? SCENE.poly;
     const p = siteOfPlan(db, db.sites![id]);
@@ -335,6 +336,12 @@ export class Game {
   /** смена врача (spec docs/specs/2026-11-doctor-shift.md): принимаете только вы — ни стройки, ни кассы, ни роли */
   solo = false;
   /**
+   * песочница (spec docs/specs/2026-11-sandbox.md, часть 2): участок пустого здания новой игры (у сохранения — в его больнице) и
+   * есть ли «Корпус» и «Вход»: не у сценария, испытания, смены врача и случая дня
+   */
+  lot: LotSize = 'M';
+  sandbox = false;
+  /**
    * смена врача кончилась в 20:00 или приём больного дня закрыт (часть 3): часы стоят — ни кнопки, ни закрытая карта их не
    * пускают; окно «Итог смены» или «Итог дня»
    */
@@ -485,7 +492,7 @@ export class Game {
   /** `loaded` — открыть сохранение (spec docs/specs/2026-10-saves.md): больница, поток и вид — из него, часы на паузе. */
   static async create(
     host: HTMLElement, store: Store, version: string, quality: Quality, start: Start = 'preset', flow: Flow = AUTO, loaded?: SaveFile, role: Role = DEFAULT_ROLE,
-    scenario?: Id, opts: { backdrop?: boolean; manage?: Manage; soft?: boolean; solo?: boolean; daily?: string; challenge?: string } = {},
+    scenario?: Id, opts: { backdrop?: boolean; manage?: Manage; soft?: boolean; solo?: boolean; daily?: string; challenge?: string; lot?: LotSize } = {},
   ): Promise<Game> {
     const t0 = performance.now();
     store.set({ status: T.app.loading, version });
@@ -519,8 +526,12 @@ export class Game {
     g.solo = loaded ? loaded.state.meta.solo === true : (opts.solo === true && start !== 'empty') || challenge?.kind === 'doctor';
     // случай дня (часть 3): сохранений у него нет — только из адреса
     if (!loaded && opts.daily) g.daily = opts.daily;
+    // песочница (spec docs/specs/2026-11-sandbox.md, часть 2): участок новой игры — из адреса; «Корпус» и «Вход» — не у
+    // сценария, испытания, смены врача и случая дня
+    if (opts.lot) g.lot = opts.lot;
+    g.sandbox = !g.backdrop && g.scenarioId === undefined && g.challenge === undefined && !g.solo && g.daily === undefined;
     store.set({
-      manage: g.manage, soft: g.soft, solo: g.solo, ...(g.daily ? { daily: g.daily } : {}),
+      manage: g.manage, soft: g.soft, solo: g.solo, sandbox: g.sandbox, ...(g.daily ? { daily: g.daily } : {}),
       ...(challenge ? { challenge: { id: challenge.id, name: named(challenge.name), kind: challenge.kind } } : {}),
     });
     g.loaded = loaded;
@@ -590,7 +601,7 @@ export class Game {
       this.staff = saved.staff ?? [];
       this.hospital = saved.hospital;
     } else {
-      const { site, staff } = hospitalAt(db, this.start, this.role, this.scenarioId, this.challenge);
+      const { site, staff } = hospitalAt(db, this.start, this.role, this.scenarioId, this.challenge, this.lot);
       // свой кабинет «Врачу» сценария — первый построенный: в готовой больнице он уже отмечен
       this.officeAuto = site.mine !== undefined;
       this.staff = staff;
@@ -2173,6 +2184,15 @@ export class Game {
     // «Отделение» (spec docs/specs/2026-10-departments.md, часть 2): инструмент — какое; карточка помещения — сразу командой
     pickDept: dept => {
       this.builder.pickDept(dept);
+      this.hud();
+    },
+    // песочница (spec docs/specs/2026-11-sandbox.md, часть 2): «Корпус» и «Вход»
+    pickShell: mode => {
+      this.builder.pickShell(mode);
+      this.hud();
+    },
+    pickEntrance: which => {
+      this.builder.pickEntrance(which);
       this.hud();
     },
     markDept: (room, dept) => this.command({ kind: 'dept', room, ...(dept ? { dept } : {}) }),

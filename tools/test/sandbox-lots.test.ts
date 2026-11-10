@@ -7,6 +7,7 @@ import {
   addRoom, addShell, checkEntrance, checkShell, checkUnshell, EMPTY_LOT, emptySite, ENTRANCE_PRICE, hospitalOf, LOTS, mapOf, moveEntrance, removeShell,
   SHELL_CELL, shellRect, type Site, subtractRect,
 } from '../../src/engine/hospital/site';
+import { onlyDeptsChanged } from '../../src/engine/hospital/departments';
 import { apply, newFlowShift } from '../../src/engine/shift/engine';
 import { cashNow } from '../../src/engine/shift/money';
 import type { Notice, ShiftState } from '../../src/engine/shift/types';
@@ -155,6 +156,19 @@ describe('«Вход»', () => {
     const office = addRoom(db, site, 'room.office', { x: b.x, y: b.y, w: 8, h: 7 });
     if (!office.ok) throw new Error('кабинет');
     expect(kind(office.site, 'main', [[b.x + 3, b.y], [b.x + 4, b.y]])).toBe('overlap');
+  });
+});
+
+describe('окно', () => {
+  test('пристройка и перенесённый вход — другая сцена, не «только отметки отделений»', () => {
+    const site = emptySite(LOTS.L);
+    const b = LOTS.L.building;
+    const wing = addShell(db, site, { x: b.x + 2, y: b.y - 8, w: 20, h: 8 });
+    const moved = moveEntrance(db, site, 'ambulance', [[b.x + b.w - 1, b.y + 4], [b.x + b.w - 1, b.y + 5]]);
+    if (!wing.ok || !moved.ok) throw new Error('стройка');
+    expect(onlyDeptsChanged(site, wing.site)).toBe(false);
+    expect(onlyDeptsChanged(site, moved.site)).toBe(false);
+    expect(onlyDeptsChanged(site, { ...site })).toBe(true);
   });
 });
 

@@ -8,6 +8,7 @@ import { clock, factor, type Lang, lang, money, T } from '../i18n';
 import { lowerFirst } from '../i18n/case';
 import type { PersonInfo } from '../render/population';
 import type { WallMode } from '../render/world';
+import type { LotSize } from '../engine/hospital/site';
 import { Card } from './doctor/Card';
 import { Encyclopedia, openEncyclopedia } from './Encyclopedia';
 import { Asks, Dock, OfficeRow, TakeCase } from './doctor/Dock';
@@ -362,6 +363,13 @@ function LeftTools({ hud, actions }: P) {
     ['door2', 'door2', T.build.door2],
     ['bench', 'bench', T.build.bench],
     ['demolish', 'demolish', T.build.demolish],
+    // песочница (spec docs/specs/2026-11-sandbox.md, часть 2): корпус и входы — не у сценария (у сохранения сценария — его вид)
+    ...(hud.sandbox && !hud.scenario
+      ? ([
+          ['shell', 'shell', T.build.shell],
+          ['entrance', 'entrance', T.build.entrance],
+        ] as [Tool, IconName, string][])
+      : []),
   ];
   let body: ReactNode = null;
   // порядок стройки сценария (решение владельца #114): шаги — первыми, с номером; у следующего — зачем он
@@ -430,6 +438,35 @@ function LeftTools({ hud, actions }: P) {
       </ul>
     );
   // отделение (spec docs/specs/2026-10-departments.md, часть 2): в какое переводить; «Без отметки» — снять отметку
+  // песочница (spec docs/specs/2026-11-sandbox.md, часть 2): «Корпус» — пристроить или снести, «Вход» — главный или скорой
+  else if (b.tool === 'shell')
+    body = (
+      <>
+        <div className="sizes" id="shell-modes">
+          <button type="button" id="shell-add" className={`small${b.shell !== 'remove' ? ' on' : ''}`} onClick={() => actions.pickShell('add')}>
+            {T.build.shellAdd}
+          </button>
+          <button type="button" id="shell-remove" className={`small${b.shell === 'remove' ? ' on' : ''}`} onClick={() => actions.pickShell('remove')}>
+            {T.build.shellRemove}
+          </button>
+        </div>
+        <p className="muted small">{T.build.shellHint}</p>
+      </>
+    );
+  else if (b.tool === 'entrance')
+    body = (
+      <>
+        <div className="sizes" id="entrance-which">
+          <button type="button" id="entrance-main" className={`small${b.door !== 'ambulance' ? ' on' : ''}`} onClick={() => actions.pickEntrance('main')}>
+            {T.build.entranceMain}
+          </button>
+          <button type="button" id="entrance-amb" className={`small${b.door === 'ambulance' ? ' on' : ''}`} onClick={() => actions.pickEntrance('ambulance')}>
+            {T.build.entranceAmb}
+          </button>
+        </div>
+        <p className="muted small">{T.build.entranceHint}</p>
+      </>
+    );
   else if (b.tool === 'dept')
     body = (
       <ul className="list" id="dept-list">
@@ -1243,17 +1280,34 @@ const NORMAL: Level = { manage: 'normal', soft: false };
 function RoleChooser({ start, hud, actions, back }: { start: 'empty' | 'preset' | 'poly'; hud: Hud; actions: Actions; back: () => void }) {
   const t = T.doctor.role;
   const [level, setLevel] = useState<Level>(NORMAL);
+  // участок пустого здания (spec docs/specs/2026-11-sandbox.md, часть 2): S, M — как прежде, L
+  const [lot, setLot] = useState<LotSize>('M');
   const row = hud.startLevels?.[level.manage];
   return (
     <div className="start panel" id="start-roles">
       <div className="game">{T.app.title}</div>
+      {start === 'empty' ? (
+        <>
+          <h2>{T.start.lotTitle}</h2>
+          <div className="sizes" id="start-lots">
+            {(['S', 'M', 'L'] as const).map(z => (
+              <button key={z} type="button" id={`start-lot-${z}`} className={`small${lot === z ? ' on' : ''}`} onClick={() => setLot(z)} title={T.start.lots[z]}>
+                {z}
+              </button>
+            ))}
+          </div>
+          <p className="muted small" id="start-lot-hint">
+            {T.start.lots[lot]}
+          </p>
+        </>
+      ) : null}
       <h2>{T.manage.title}</h2>
       <Difficulty level={level} set={setLevel} row={row} cash={row?.cash[start]} />
       <p className="muted small">{T.manage.medicine}</p>
       <h2>{T.start.roleTitle}</h2>
       <p className="intro">{T.start.roleIntro}</p>
       {ROLES.map(r => (
-        <button key={r} type="button" id={`start-role-${r}`} onClick={() => actions.startGame(start, r, level)}>
+        <button key={r} type="button" id={`start-role-${r}`} onClick={() => actions.startGame(start, r, level, start === 'empty' ? lot : undefined)}>
           <b>{t.name[r]}</b>
           <span>{t.line[r]}</span>
         </button>

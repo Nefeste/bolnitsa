@@ -50,6 +50,9 @@ const ICONS = {
   finish: 'flag',
   result: 'analytics',
   info: 'information',
+  // песочница (docs/specs/2026-11-sandbox.md, часть 2): инструменты стройки «Корпус» и «Вход»
+  shell: 'building',
+  entrance: 'login',
 };
 
 /**
