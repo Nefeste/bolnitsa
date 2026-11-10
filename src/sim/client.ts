@@ -53,6 +53,8 @@ export interface Slice extends DoctorOut {
   challenge?: ChallengeEnd;
   /** «Только по показаниям»: обследований без показаний у ваших приёмов и сколько можно — когда изменилось */
   audit?: { n: number; max: number };
+  /** встреченные болезни (spec docs/specs/2026-11-sandbox.md, часть 2б): главные болезни закрытых случаев сценария — новые */
+  met?: string[];
 }
 
 export class SimClient {

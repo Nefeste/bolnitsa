@@ -1282,6 +1282,9 @@ function RoleChooser({ start, hud, actions, back }: { start: 'empty' | 'preset' 
   const [level, setLevel] = useState<Level>(NORMAL);
   // участок пустого здания (spec docs/specs/2026-11-sandbox.md, часть 2): S, M — как прежде, L
   const [lot, setLot] = useState<LotSize>('M');
+  // болезни песочницы (часть 2б): все или только встреченные в кампании; встреченных нет — выбора нет
+  const [met, setMet] = useState(false);
+  const metN = hud.startMet ?? 0;
   const row = hud.startLevels?.[level.manage];
   return (
     <div className="start panel" id="start-roles">
@@ -1299,6 +1302,14 @@ function RoleChooser({ start, hud, actions, back }: { start: 'empty' | 'preset' 
           <p className="muted small" id="start-lot-hint">
             {T.start.lots[lot]}
           </p>
+          <h2>{T.start.metTitle}</h2>
+          <label className="check" title={T.start.metHint}>
+            <input type="checkbox" id="start-met" checked={met && metN > 0} disabled={metN === 0} onChange={e => setMet(e.target.checked)} />
+            {T.start.met(metN)}
+          </label>
+          <p className="muted small" id="start-met-hint">
+            {metN > 0 ? T.start.metHint : T.start.metNone}
+          </p>
         </>
       ) : null}
       <h2>{T.manage.title}</h2>
@@ -1307,7 +1318,7 @@ function RoleChooser({ start, hud, actions, back }: { start: 'empty' | 'preset' 
       <h2>{T.start.roleTitle}</h2>
       <p className="intro">{T.start.roleIntro}</p>
       {ROLES.map(r => (
-        <button key={r} type="button" id={`start-role-${r}`} onClick={() => actions.startGame(start, r, level, start === 'empty' ? lot : undefined)}>
+        <button key={r} type="button" id={`start-role-${r}`} onClick={() => actions.startGame(start, r, level, start === 'empty' ? lot : undefined, start === 'empty' && met && metN > 0)}>
           <b>{t.name[r]}</b>
           <span>{t.line[r]}</span>
         </button>

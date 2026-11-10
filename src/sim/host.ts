@@ -19,6 +19,7 @@ import { challengeEnd, type ChallengeEnd, challengeEndAt, unindicatedOf } from '
 import { dailyCaseSeed, type DailyEnd } from './daily';
 import { type DeviceView, repairsView } from './repairs';
 import { seasonOfDay } from './days';
+import { MetDesk } from './met';
 import { shiftEnd, type ShiftEnd, shiftEndOf } from './shift';
 import { type DoctorOut, type FromSim, LEGS_EVERY, type PathView, ROOMS_DAYS, type RoomsMoney, type ToSim, type World } from './protocol';
 
@@ -92,6 +93,8 @@ export function createSim(db: ContentDb): SimHost {
   let staff = new Map<string, number>();
   // режим врача (spec docs/specs/2026-10-doctor-mode.md): что окно уже получило — состояние врача и вид карты
   const desk = new DoctorDesk(db);
+  /** встреченные болезни (spec docs/specs/2026-11-sandbox.md, часть 2б): какие уже ушли окну */
+  const metDesk = new MetDesk();
   const endOf = (x: ShiftState) => endOfIn(db, x);
   const slice = (notices: Notice[], refused?: DoctorOut['refused']): FromSim => {
     let world: World | undefined;
@@ -254,9 +257,11 @@ export function createSim(db: ContentDb): SimHost {
         legs = now;
       }
     }
+    // встреченные болезни (spec docs/specs/2026-11-sandbox.md, часть 2б): у сценария кампании — новые главные болезни закрытых
+    const met = metDesk.out(db, s!);
     const lag = owed + (s!.until !== undefined ? s!.until - s!.t : 0);
     const { buf, names } = packSlice(s!, sliceOf(s!, officeOf(db, s!)), lag, handles, rooms, staff, patientName);
-    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...(late ? { late } : {}), ...(crew ? { crew } : {}), ...(moods ? { moods } : {}), ...(rides ? { rides } : {}), ...(rounds ? { rounds } : {}), ...(repairs ? { repairs } : {}), ...(scenario ? { scenario } : {}), ...(money ? { money } : {}), ...(legs ? { legs } : {}), ...(shift ? { shift } : {}), ...(daily ? { daily } : {}), ...(challenge ? { challenge } : {}), ...(audit ? { audit } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
+    return { kind: 'slice', buf, names, notices, lag, ...(world ? { world } : {}), ...(path ? { path } : {}), ...(broken ? { broken } : {}), ...(late ? { late } : {}), ...(crew ? { crew } : {}), ...(moods ? { moods } : {}), ...(rides ? { rides } : {}), ...(rounds ? { rounds } : {}), ...(repairs ? { repairs } : {}), ...(scenario ? { scenario } : {}), ...(money ? { money } : {}), ...(legs ? { legs } : {}), ...(shift ? { shift } : {}), ...(daily ? { daily } : {}), ...(challenge ? { challenge } : {}), ...(audit ? { audit } : {}), ...(met ? { met } : {}), ...desk.out(s!), ...(refused ? { refused } : {}) };
   };
   const fresh = () => {
     owed = 0;
@@ -282,6 +287,7 @@ export function createSim(db: ContentDb): SimHost {
     legsAt = -Infinity;
     sentLegs = '';
     desk.reset();
+    metDesk.reset();
   };
   /** Дожить время, которое часы игры уже прошли: команда видит больницу такой, как игрок. */
   const settle = (): Notice[] => {
@@ -306,6 +312,8 @@ export function createSim(db: ContentDb): SimHost {
               ...(msg.daily ? { daily: dailyCaseSeed(db, msg.daily), solo: true, season: seasonOfDay(msg.daily) } : {}),
               // испытание (spec docs/specs/2026-11-challenges.md, часть 2): поток, касса и «вы один» — из записи
               ...(msg.challenge ? { challenge: msg.challenge } : {}),
+              // песочница «только встреченные в кампании» (spec docs/specs/2026-11-sandbox.md, часть 2б)
+              ...(msg.only && msg.only.length > 0 ? { only: msg.only } : {}),
             });
             fresh();
             // начало испытания позже 08:00 — «Одна ночь» с 20:00: часы сразу идут до него, больных до него нет

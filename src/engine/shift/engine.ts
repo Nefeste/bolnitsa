@@ -251,7 +251,7 @@ export function newFlowShift(
   db: ContentDb,
   opts: {
     seed: number; season: Season; difficulty?: Difficulty; hospital: HospitalState; staff: StaffMember[]; flow: Flow; economy?: { cash: number }; scenario?: Id; manage?: Manage;
-    soft?: boolean; sorts?: boolean; solo?: boolean; daily?: number; challenge?: Id;
+    soft?: boolean; sorts?: boolean; solo?: boolean; daily?: number; challenge?: Id; only?: readonly Id[];
   } & Variety,
 ): ShiftState {
   // испытание (spec docs/specs/2026-11-challenges.md, часть 1): сезон, поток, касса, «вы один» и сортировка — из его записи
@@ -270,6 +270,10 @@ export function newFlowShift(
   // случай дня (spec docs/specs/2026-11-doctor-shift.md, часть 3): больной дня — первым пришедшим сам, с первой минуты
   if (opts.daily !== undefined) s.meta.daily = opts.daily;
   if (ch) s.meta.challenge = ch.id;
+  // песочница «только встреченные в кампании» (spec docs/specs/2026-11-sandbox.md, часть 2б): болезни базы, по алфавиту, без
+  // повторов; пустой список — как без него
+  const only = [...new Set(opts.only ?? [])].filter(id => db.conditions[id] !== undefined).sort();
+  if (only.length > 0) s.meta.only = only;
   s.flow = { ...opts.flow };
   // уровень «Управления» и мягкий режим (spec 2026-10-difficulty) — с начала: по ним поток, терпение и касса
   if (opts.manage && opts.manage !== 'normal') s.meta.manage = opts.manage;
@@ -1081,12 +1085,20 @@ function flowArrive(db: ContentDb, s: ShiftState, ev: Extract<ShiftEvent, { kind
   const daily = ev.stream === 'walk' && s.meta.daily !== undefined && !Object.values(s.patients).some(p => p.daily) ? s.meta.daily : undefined;
   // волна испытания (spec docs/specs/2026-11-challenges.md): у доли пришедших сами — болезнь волны, если она у них бывает
   const wave = ev.stream === 'walk' ? waveOf(ch, x => branch(s, `wave:${d}:${ev.n}`).chance(x)) : undefined;
-  // записанный к специалисту болен болезнью его профиля, которую больница принимает (как запись «Анамнеза», часть 59)
+  // записанный к специалисту болен болезнью его профиля, которую больница принимает (как запись «Анамнеза», часть 59); в песочнице
+  // «только встреченные» (spec docs/specs/2026-11-sandbox.md, часть 2б) у пришедших сами, записанных и привезённых — встреченные
+  const met = s.meta.only;
   const patient = ret ? returningPatient(db, s, ret)
     : daily !== undefined ? generatePatient(db, daily, { department: DAILY_DEPARTMENT, season: s.meta.season })
     : teach ? taughtPatient(db, s, d, key, teach, gen)
-      : ev.stream === 'amb' ? ambulancePatient(db, s, d, key, admits, varied)
-        : generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${key}`), { ...gen, walkIn: true, ...(to ? { only: profileHere(db, to, admits) } : wave ? { only: wave } : {}) });
+      : ev.stream === 'amb' ? (met ? metPatient(db, met, admits, false, key, (k, list) => ambulancePatient(db, s, d, k, admits, varied, list)) : ambulancePatient(db, s, d, key, admits, varied))
+        : walkInPatient(db, s, d, key, gen, to ? profileHere(db, to, admits) : wave);
+  // песочница «только встреченные» (spec docs/specs/2026-11-sandbox.md, часть 2б): ни одной встреченной болезни у него не бывает —
+  // этот не пришёл, следующий — в свой час
+  if (!patient) {
+    if (ev.stream !== 'ret') scheduleFlow(db, s, ev.stream, ev.n + 1, s.t, ev.to);
+    return;
+  }
   const own = ret ? [...new Set([...(s.patients[ret.of]?.departments ?? []), ...admits])] : admits;
   s.patients[id] = {
     id, patient, arriveT: s.t, kind, triage: 'green', status: 'coming', queuedT: 0, wait: 0, patience: 0,
@@ -1305,12 +1317,43 @@ function tutorialDay(db: ContentDb, s: ShiftState): number | undefined {
  * него (возраст, привычки, камни — часть 30) и по тяжести: лёгкое не везут. У болезни с тяжестью
  * — чаще тяжёлая, жребий ветви машины.
  */
-function ambulancePatient(db: ContentDb, s: ShiftState, d: number, key: string, departments: readonly Id[], variety: boolean) {
+function ambulancePatient(db: ContentDb, s: ShiftState, d: number, key: string, departments: readonly Id[], variety: boolean, only?: readonly Id[]) {
   const a = db.economy.ambulance;
   const severe = branch(s, `ambulance:${d}:${key}`).fork('severe').chance(a.severe * 100);
   return generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${key}`), {
     department: s.meta.department, departments, season: s.meta.season, carried: a.weight, ...(severe ? { params: { severity: 'severe' } } : {}), ...(variety ? { variety: true } : {}),
+    ...(only ? { only } : {}),
   });
+}
+
+/** Сколько раз переиграть человека, чтобы главная болезнь была из «встреченных» (spec docs/specs/2026-11-sandbox.md, часть 2б). */
+const MET_TRIES = 8;
+
+/**
+ * Песочница «только встреченные в кампании» (spec docs/specs/2026-11-sandbox.md, часть 2б): главная болезнь — из `list`, части
+ * `meta.only`. Генератор (копия «Анамнеза») берёт из всех, если ни одна из списка этому человеку не бывает, — тогда другой
+ * человек: ключ с номером попытки, до `MET_TRIES`; не вышло или в списке нет ни одной болезни отделений, которые больница
+ * принимает (пришедшему сам — и не только со скорой), — никто не пришёл (`undefined`).
+ */
+function metPatient(db: ContentDb, list: readonly Id[], departments: readonly Id[], walkIn: boolean, key: string, make: (key: string, only: readonly Id[]) => Patient): Patient | undefined {
+  const can = list.filter(id => departments.includes(db.conditions[id].department) && !(walkIn && db.conditions[id].arrival === 'ambulance'));
+  if (can.length === 0) return undefined;
+  for (let k = 0; k < MET_TRIES; k++) {
+    const p = make(k === 0 ? key : `${key}:met${k}`, can);
+    if (can.includes(primaryOf(p).id)) return p;
+  }
+  return undefined;
+}
+
+/**
+ * Пришедший сам или записанный: `only` — болезни записи к специалисту или волны испытания. В песочнице «только встреченные» — из
+ * них встреченные (`metPatient`); ни одной — никто не пришёл. Без «встреченных» — тот же вызов генератора, что прежде, до байта.
+ */
+function walkInPatient(db: ContentDb, s: ShiftState, d: number, key: string, gen: GenContext & { departments: readonly Id[] }, only?: readonly Id[]): Patient | undefined {
+  const make = (k: string, list?: readonly Id[]) => generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${k}`), { ...gen, walkIn: true, ...(list ? { only: list } : {}) });
+  const met = s.meta.only;
+  if (!met) return make(key, only);
+  return metPatient(db, only ? only.filter(id => met.includes(id)) : met, gen.departments, true, key, make);
 }
 
 /**
