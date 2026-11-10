@@ -22,15 +22,15 @@
 //
 // bun tools/bench/infections.ts [--days 7] [--seeds 1,2,3] [--hospital start,city] [--wave 0,20,40] [--cond cond.influenza]
 //   [--add -,ward:M:48:16:0]
-import type { Challenge, ContentDb, Id, Setting } from '../../src/content/types';
+import type { Challenge, ContentDb, Id } from '../../src/content/types';
 import { db as bundle } from '../../src/content';
 import { hospitalOf, type SiteCommand } from '../../src/engine/hospital/site';
 import { siteOfPlan } from '../../src/engine/hospital/site-plan';
 import { siteOfPreset } from '../../src/engine/hospital/site-preset';
-import { primaryOf, recommendedSetting } from '../../src/engine/med/plan';
+import { primaryOf } from '../../src/engine/med/plan';
 import { presetStaff, type StaffMember, withNightShift } from '../../src/engine/hospital/staff';
-import { apply, boxBeds, icuBeds, newFlowShift, orBlock, ricuBeds, wardBeds } from '../../src/engine/shift/engine';
-import type { End, Place } from '../../src/engine/shift/journey';
+import { apply, newFlowShift } from '../../src/engine/shift/engine';
+import { refusalOf } from './refused';
 import type { ShiftPatient, ShiftState } from '../../src/engine/shift/types';
 
 const arg = (name: string, def: string) => {
@@ -117,23 +117,6 @@ interface Row {
 const has = (p: ShiftPatient, id: Id) => p.patient.truth.conditions.some(c => c.id === id);
 /** отказы в госпитализации — по главной болезни, за все прогоны варианта */
 const refused = new Map<Id, number>();
-
-/** Какая койка нужна по месту из базы: палата (и после операции), ПИТ, реанимация, бокс. */
-const NEEDS: Partial<Record<Setting, Place>> = { admit: 'ward', surgery: 'ward', icu: 'icu', ricu: 'ricu', box: 'box' };
-const BEDS = { ward: wardBeds, icu: icuBeds, ricu: ricuBeds, box: boxBeds };
-
-/**
- * Отказ в госпитализации: отправлен в другую больницу, а по базе нужна койка — своя такого вида была вся занята в минуту решения
- * («мест нет»: вид в `full` конца пути) или таких у больницы нет. Операция — койка после неё, если операционная работает.
- */
-function refusalOf(db: ContentDb, s: ShiftState, p: ShiftPatient, e: End): { place: Place; full: boolean } | undefined {
-  if (e.how !== 'away' || !p.closed) return undefined;
-  const need = recommendedSetting(db, p.patient, p.results.map(r => r.exam), p.closed.bedside, p.closed.rooms);
-  const place = NEEDS[need];
-  if (!place || (need === 'surgery' && orBlock(db, s) !== null)) return undefined;
-  if (e.full?.includes(place)) return { place, full: true };
-  return BEDS[place](db, s).length === 0 ? { place, full: false } : undefined;
-}
 
 function run(db: ContentDb, name: string, seed: number, add: Add, challenge?: Id): Row[] {
   const s = start(db, name, seed, add, challenge);
