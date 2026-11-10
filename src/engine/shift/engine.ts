@@ -53,6 +53,8 @@ import { backMorning, growMorning, sickMorning, tenure } from './growth';
 import { caseIncomeRooms, caseRoom, COMMON as ROOMS_COMMON, roomExpense, roomIncome } from './rooms';
 import { cover } from './reserve';
 import { manageOf, scaled, scaledInt } from './manage';
+import { recordAudit, weekAudit } from './audit';
+import { harmCheck, knownOf } from '../med/rules';
 import { challengeFlow, challengeOf, walkInsOf, waveOf } from './challenge';
 import { breaks, devicesOf, nextJob, repairOf, TECHNICIAN, wearPct } from './repair';
 import { priorOf, referTo } from './refer';
@@ -685,6 +687,11 @@ function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
     case 'soft':
       if (cmd.on) s.meta.soft = true;
       else delete s.meta.soft;
+      return [];
+    // правило главврача «Подтверждать диагноз» (spec docs/specs/2026-11-scenario-6.md, часть 1а): поток для ПК
+    case 'confirms':
+      if (cmd.on && s.flow) s.meta.confirms = true;
+      else delete s.meta.confirms;
       return [];
     // ось «Управление» (spec 2026-10-difficulty): с этой минуты — зарплаты и содержание до неё записаны по прежнему уровню; тот
     // же уровень — ничего не меняется
@@ -1527,7 +1534,10 @@ function morning(db: ContentDb, s: ShiftState, notices: Notice[]) {
   if (s.flow?.auto) summary.inflow = inflowDay(db, s);
   prune(s);
   // «Сломалось с утра» — у поломок с утра (FR-EQ-3); поломки в работе — днём, сами (spec docs/specs/2026-11-technicians.md)
-  notices.push({ kind: 'morning', summary, ...(broken.length > 0 && !repair ? { broken } : {}), ...(news ? { staff: news } : {}) });
+  // акт страховой (spec docs/specs/2026-11-scenario-6.md, часть 1а): поток для ПК с кассой — на планёрке после седьмых, четырнадцатых…
+  // суток; итоги экспертизы за неделю
+  const act = s.flow && s.economy ? weekAudit(s.history, summary.day) : undefined;
+  notices.push({ kind: 'morning', summary, ...(broken.length > 0 && !repair ? { broken } : {}), ...(news ? { staff: news } : {}), ...(act ? { act } : {}) });
   // «стало хуже» (spec 2026-10-economy, «Обход»): ваши лежащие — для автопаузы
   for (const id of meeting.turnedWorse(s)) notices.push({ kind: 'worse', id });
 }
@@ -2563,6 +2573,8 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient, at = s.t): 
     if (x.unconfirmed) ledger.audit.unconfirmed++;
     ledger.audit.unindicated += x.unindicated.length;
     p.paid = x;
+    // экспертиза по видам (spec docs/specs/2026-11-scenario-6.md, часть 1а): к акту страховой — поток для ПК
+    if (s.flow) recordAudit(db, s, p, payer, closed.diagnosis, closed.grades.defensibility, x, pay);
   }
   const sum = s.summary;
   // кампания (spec 2026-10-chapter-4, часть 60а): заразный, которому нужен бокс, — у всех приёмов больницы; положен ли он в
@@ -4953,7 +4965,7 @@ function colleagueStep(db: ContentDb, s: ShiftState, p: ShiftPatient, ev?: Shift
   const r = job && job.event === ev ? (job.result ?? whole(job.parts)) : whole(colleagueParts(db, s, p, m));
   colleagueJobs.delete(s);
   // выбрал диагноз уставшим (spec 2026-10-staff-shifts, часть 2): порог был ниже — карта и итоги дня это помнят
-  if (s.flow && r.phase.diagnosis !== undefined && p.phase?.diagnosis === undefined && !hurried(db, s, p)) {
+  if (s.flow && r.phase.diagnosis !== undefined && p.phase?.diagnosis === undefined && !hurried(db, s, p) && p.confirming === undefined) {
     const tired = tiredOf(db, s, m);
     if (tired !== undefined) {
       p.tired = tired;
@@ -4985,6 +4997,16 @@ function colleagueStep(db: ContentDb, s: ShiftState, p: ShiftPatient, ev?: Shift
   }
   p.phase = r.phase;
   if (r.step.kind === 'exam') return examStep(db, s, p, m, r.step.exam, pct);
+  // правило главврача «Подтверждать диагноз» (spec docs/specs/2026-11-scenario-6.md, часть 1а): база подтверждает его диагноз
+  // обследованием, его делают в больнице, а сделано не было — врач назначает его прежде, чем решить, и решает заново, уже с
+  // результатом; один раз на больного
+  const confirm = confirmExam(db, s, p, r.step.diagnosis);
+  if (confirm) {
+    p.confirming = confirm;
+    p.phase = {};
+    s.summary.confirms = (s.summary.confirms ?? 0) + 1;
+    return examStep(db, s, p, m, confirm, pct);
+  }
   const plan = { diagnosis: r.step.diagnosis, treatments: [...r.step.plan.treatments], setting: r.step.plan.setting };
   // поток для ПК (spec 2026-10-two-ways, F3): главврач просил утверждать такие решения — врач пишет план и зовёт следующего,
   // а больной ждёт ответа у двери кабинета
@@ -5042,6 +5064,21 @@ function longCase(db: ContentDb, s: ShiftState, p: ShiftPatient): boolean {
  */
 const hurried = (db: ContentDb, s: ShiftState, p: ShiftPatient): boolean =>
   s.flow !== undefined && (p.asked === true || !asksOf(s).includes('long')) && longCase(db, s, p);
+
+/**
+ * Подтверждающее обследование по правилу «Подтверждать диагноз» (spec docs/specs/2026-11-scenario-6.md, часть 1а): поток для ПК,
+ * правило включено, этому больному по нему ещё не назначали; диагноз база подтверждает обследованием (`confirm`), ни одно из них не
+ * сделано и не ждёт результата, а одно из них в больнице сейчас делают, больному оно подходит и не вредит; больной не срочный — не
+ * красный и не долгий случай. Первое такое по порядку записи болезни.
+ */
+function confirmExam(db: ContentDb, s: ShiftState, p: ShiftPatient, diagnosis: Id): Id | undefined {
+  if (!s.flow || !s.meta.confirms || p.confirming !== undefined || p.triage === 'red' || hurried(db, s, p)) return undefined;
+  const c = db.conditions[diagnosis]?.confirm;
+  if (!c || c === 'clinical' || c.some(id => p.done.includes(id) || p.pending.some(x => x.exam === id))) return undefined;
+  const here = examsHere(db, s);
+  const known = knownOf(observationsOf(p));
+  return c.find(id => here.includes(id) && db.exams[id] !== undefined && examFits(db.exams[id], p.patient) && harmCheck(db, id, known).verdict !== 'yes');
+}
 
 /**
  * Попросит ли нанятый врач `m` посмотреть больного, выбрав диагноз `dx`, — по тому, что знает сам: тот же вывод, что у его

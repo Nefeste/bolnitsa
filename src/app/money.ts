@@ -4,9 +4,10 @@
 // командами движка. Пока открыта карта пациента, планёрка ждёт её закрытия.
 import type { ContentDb, Id } from '../content/types';
 import { REPAIR_PCT } from '../engine/shift/engine';
-import type { DayLoad, DaySummary, Notice, Refused, StaffNews } from '../engine/shift/types';
+import type { AuditDay, AuditWeek, DayLoad, DaySummary, Notice, Refused, StaffNews } from '../engine/shift/types';
+import type { Grade } from '../engine/med/score';
 import type { Place } from '../engine/shift/journey';
-import { named } from '../i18n';
+import { named, T } from '../i18n';
 import { H, NO_CASH } from '../sim/pack';
 import type { Slice } from '../sim/client';
 import type { Speed } from '../ui/store';
@@ -92,6 +93,48 @@ export interface MeetingView {
    * нет», и с чем — восемь болезней чаще всех; никому не отказали — нет
    */
   refused?: { n: number; full: { place: Place; n: number }[]; none: { place: Place; n: number }[]; by: { name: string; n: number }[] };
+  /** экспертиза страховой за сутки по видам (spec docs/specs/2026-11-scenario-6.md, часть 1а) — «почему?» у строки «Страховая не оплатила» */
+  audit?: AuditView;
+  /** акт страховой за неделю (там же) — на планёрке после седьмых, четырнадцатых… суток */
+  act?: AuditView & { from: number; to: number; cut: number; confirms: number };
+}
+
+/** Экспертиза словами окна: снятое по видам, ₽, и строки — чаще всего первыми. */
+export interface AuditView {
+  rub: AuditDay['rub'];
+  /** приёмов со снятым */
+  cases: number;
+  unconfirmed: { name: string; n: number; by: string }[];
+  weak: { grade: Grade; n: number }[];
+  unindicated: { name: string; n: number }[];
+  who: { who: string; n: number }[];
+}
+
+const top = (r: Record<string, number>, k: number): [string, number][] => Object.entries(r).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, k);
+
+/**
+ * Экспертиза страховой словами (spec docs/specs/2026-11-scenario-6.md, часть 1а): диагнозы без подтверждения — шесть чаще всех и чем
+ * их подтверждают (первые два обследования записи болезни); обоснованность — по оценке B, C, D; обследования без показаний — шесть
+ * чаще всех; врачи — четверо, у кого больше приёмов со снятым (`whoOf` — имя по номеру человека, ваши — `''`).
+ */
+export function auditViewOf(db: ContentDb, a: AuditDay, whoOf: (id: string) => string): AuditView {
+  const by = (id: Id) => {
+    const c = db.conditions[id]?.confirm;
+    return c && c !== 'clinical' ? c.slice(0, 2).map(e => named(db.exams[e]?.name, e)).join(', ') : '';
+  };
+  return {
+    rub: { ...a.rub },
+    cases: Object.values(a.who).reduce((n, k) => n + k, 0),
+    unconfirmed: top(a.unconfirmed, 6).map(([id, n]) => ({ name: named(db.conditions[id]?.name, id), n, by: by(id) })),
+    weak: (['B', 'C', 'D'] as const).flatMap(grade => ((a.weak[grade] ?? 0) > 0 ? [{ grade, n: a.weak[grade]! }] : [])),
+    unindicated: top(a.unindicated, 6).map(([id, n]) => ({ name: named(db.exams[id]?.name, id), n })),
+    who: top(a.who, 4).map(([id, n]) => ({ who: whoOf(id), n })),
+  };
+}
+
+/** Акт страховой словами (там же): неделя `from`–`to`, снято всего и назначено по правилу «Подтверждать диагноз». */
+export function actViewOf(db: ContentDb, a: AuditWeek, whoOf: (id: string) => string): NonNullable<MeetingView['act']> {
+  return { ...auditViewOf(db, a, whoOf), from: a.from, to: a.to, cut: a.cut, confirms: a.confirms };
 }
 
 /** Виды мест в строке отказов — по порядку. */
@@ -198,14 +241,14 @@ export class Money {
     const morning = s.notices.find((n): n is Extract<Notice, { kind: 'morning' }> => n.kind === 'morning');
     if (!morning) return;
     const worse = s.notices.filter((n): n is Extract<Notice, { kind: 'worse' }> => n.kind === 'worse').map(n => n.id);
-    this.hud.meeting = this.viewOf(morning.summary, morning.broken ?? [], worse, morning.staff);
+    this.hud.meeting = this.viewOf(morning.summary, morning.broken ?? [], worse, morning.staff, morning.act);
     // «собирается уйти» и «уходит» (spec docs/specs/2026-10-staff-mood.md) — решение игрока: планёрка открывается и без
     // автопаузы
     if (this.hud.autopause || morning.staff?.quit || morning.staff?.leave) this.show(was);
   }
 
   /** Планёрка для экрана: врачи, кабинеты узких мест, сломанное с ценой ремонта, кому хуже, подсказка. */
-  private viewOf(summary: DaySummary, broken: readonly string[], worseIds: readonly string[], news?: StaffNews): MeetingView {
+  private viewOf(summary: DaySummary, broken: readonly string[], worseIds: readonly string[], news?: StaffNews, week?: AuditWeek): MeetingView {
     const { db, plan, staff } = this.g;
     const doctors: DoctorDay[] = Object.entries(summary.colleagues ?? {}).map(([id, c]) => {
       const m = staff.find(x => x.id === id);
@@ -273,6 +316,10 @@ export class Money {
     const deadlines = Object.keys(db.targets).flatMap(id => (summary.allTargets?.[id] ? [{ name: named(db.targets[id].name, id), ...summary.allTargets[id] }] : []));
     // отказы в госпитализации (spec docs/specs/2026-11-scenario-5.md, часть 1)
     const refused = refusedOf(db, summary.refused);
+    // экспертиза страховой по видам и акт недели (spec docs/specs/2026-11-scenario-6.md, часть 1а): врач — должностью и именем
+    const whoOf = (id: string) => (id === '' ? T.meeting.why.auditYou : member(id) ? who(member(id)!) : '—');
+    const audit = summary.audit ? auditViewOf(db, summary.audit, whoOf) : undefined;
+    const act = week ? actViewOf(db, week, whoOf) : undefined;
     const routed = Object.values(db.routes ?? {}).flatMap(r => (summary.routes?.[r.id] ? [{ name: named(db.exams[r.exam]?.name, r.exam), n: summary.routes[r.id].n, rub: summary.routes[r.id].rub }] : []));
     return {
       summary, doctors, rooms, broken: out, worse, tip: tipOf(summary, rooms, worse.length > 0, doctors.some(d => d.idle), this.hud.limit),
@@ -280,6 +327,8 @@ export class Money {
       ...(deadlines.length ? { deadlines } : {}),
       ...(routed.length ? { routes: { rows: routed.map(({ name, n }) => ({ name, n })), rub: routed.reduce((a, r) => a + r.rub, 0) } } : {}),
       ...(refused ? { refused } : {}),
+      ...(audit ? { audit } : {}),
+      ...(act ? { act } : {}),
     };
   }
 
