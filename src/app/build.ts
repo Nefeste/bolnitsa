@@ -46,7 +46,10 @@ export function whyText(db: ContentDb, site: Site | undefined, e: SiteError): st
     case 'noCorridor':
       return T.site.noCorridor;
     case 'cutsOff':
-      return e.ambulance ? T.site.cutsOffAmbulance : T.site.cutsOff(room(e.room));
+      return e.ambulance ? T.site.cutsOffAmbulance : e.room ? T.site.cutsOff(room(e.room)) : T.site.splits;
+    // корпус песочницы (spec docs/specs/2026-11-sandbox.md, часть 2): пристройка — к стоящему
+    case 'apart':
+      return T.site.apart;
     case 'notInRoom':
       return T.site.notInRoom;
     case 'notHere':

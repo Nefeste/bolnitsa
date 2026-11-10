@@ -148,6 +148,8 @@ export const en: Strings = {
     noFit: 'no catalog template fits here',
     nothing: 'nothing to change',
     doorTo: 'the door does not open to a corridor: R turns it',
+    apart: 'the building grows only from what stands: the rectangle must touch the building',
+    splits: 'the building would fall apart into pieces',
     inUse: 'in use',
     busy: 'is seeing a patient',
     leaving: 'is already leaving',

@@ -12,8 +12,9 @@ import { scenarioOf } from '../campaign/campaign';
 import { Rng } from '../core/rng';
 import { DOCTOR, standInOf } from '../hospital/requirements';
 import {
-  addBench, addItem, addReady, addRoom, bedOrder, demolish, type Done, FREE_CHECK, furnish, hospitalOf, markDept, type MoodStep, moveItem, removeDecor, removeDoor,
-  removedBetween, removeItem, removeRoom, setDoor, setOffice, type Site, type SiteCommand, type SiteError, type SiteRoom, SITE_UNDO, type Works,
+  addBench, addItem, addReady, addRoom, addShell, bedOrder, demolish, type Done, FREE_CHECK, furnish, hospitalOf, markDept, type MoodStep, moveEntrance, moveItem,
+  removeDecor, removeDoor, removedBetween, removeItem, removeRoom, removeShell, setDoor, setOffice, type Site, type SiteCommand, type SiteError, type SiteRoom,
+  SITE_UNDO, type Works,
 } from '../hospital/site';
 import { covers, fitsPost, nightHospital, salaryOf, type Shift, type StaffMember, wageOf } from '../hospital/staff';
 import { growthNumbers, studyUntil } from './growth';
@@ -148,7 +149,7 @@ function commit(db: ContentDb, s: ShiftState, before: Site, after: Site) {
 }
 
 /** Действия, которые помещение не перестраивают: их отмена оставляет перестройку, какая есть (`WorksStep.keep`). */
-const KEEPS = new Set<SiteCommand['kind']>(['dept', 'bench', 'undecor']);
+const KEEPS = new Set<SiteCommand['kind']>(['dept', 'bench', 'undecor', 'shell', 'entrance']);
 
 /**
  * Снимок для отмены: до действия. С людьми (spec docs/specs/2026-10-staff-mood.md) — и выплата уволенному (`paid`), и что
@@ -224,6 +225,8 @@ function siteCommandOf(db: ContentDb, s: ShiftState, cmd: SiteCommand): Notice[]
   // сценарий ПК (spec docs/specs/2026-10-scenario-1.md): строят только помещения из его списка
   const sc = scenarioOf(db, s.campaign);
   if (sc && (cmd.kind === 'room' || cmd.kind === 'ready') && !sc.build.includes(cmd.type)) return no(cmd.kind, { kind: 'scenario' });
+  // корпус и входы (spec docs/specs/2026-11-sandbox.md, часть 2) — только в песочнице: у сценария и испытания здание задано
+  if ((cmd.kind === 'shell' || cmd.kind === 'entrance') && (sc || s.meta.challenge)) return no(cmd.kind, { kind: 'scenario' });
   const busy = occupied(db, s);
   let later = false;
   let r: Done;
@@ -266,6 +269,13 @@ function siteCommandOf(db: ContentDb, s: ShiftState, cmd: SiteCommand): Notice[]
     // инструмент «Отделение» (spec docs/specs/2026-10-departments.md, часть 1): бесплатно, в отмене — как стройка
     case 'dept':
       r = markDept(db, site, cmd.room, cmd.dept);
+      break;
+    // корпус и входы песочницы (spec docs/specs/2026-11-sandbox.md, часть 2): помещения не перестраивают — в отмене как скамья
+    case 'shell':
+      r = cmd.remove ? removeShell(db, site, cmd) : addShell(db, site, cmd);
+      break;
+    case 'entrance':
+      r = moveEntrance(db, site, cmd.which, cmd.cells);
       break;
   }
   if (!r.ok) return no(cmd.kind, r.error);
