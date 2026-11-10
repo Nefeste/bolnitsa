@@ -300,6 +300,12 @@ export function MeetingBody({ m, e, actions, screen = false }: { m: MeetingView;
             {t.surgery(d.surgery.done, d.surgery.onTime, d.surgery.late, d.surgery.complications, d.surgery.night ?? 0)}
           </p>
         ) : null}
+        {/* поломки в работе (spec docs/specs/2026-11-technicians.md, часть 2): сколько, кем починено, что стоил ремонт */}
+        {d.repairs ? (
+          <p id="meet-repairs" title={t.repairsHint}>
+            {t.repairs(d.repairs.broke, d.repairs.tech, d.repairs.service, money(d.economy?.ledger.expenses.repairs ?? 0))}
+          </p>
+        ) : null}
       </Section>
       {m.doctors.length > 0 || d.seen > 0 ? (
         <Section title={t.hired} id="meet-doctors">

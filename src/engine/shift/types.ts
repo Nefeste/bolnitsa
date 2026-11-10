@@ -626,6 +626,13 @@ export interface Leaver {
   why: MoodWhy[];
 }
 
+/** Поломки суток (spec docs/specs/2026-11-technicians.md, часть 2): строка планёрки «Поломки: N — техник починил M, сервис K». */
+export interface RepairsDay {
+  broke: number;
+  tech: number;
+  service: number;
+}
+
 export interface DaySummary {
   day: number;
   arrived: number;
@@ -662,6 +669,11 @@ export interface DaySummary {
   routing?: RoutingDay;
   /** операционная за день (часть 28): операций, из них в срок `window` и позже; осложнений после операции */
   surgery?: SurgeryDay;
+  /**
+   * поломки в работе за сутки (spec docs/specs/2026-11-technicians.md, часть 2): сломалось, техник починил, ждало сервиса к утру
+   * — только когда что-то сломалось или ждало сервиса
+   */
+  repairs?: RepairsDay;
   /** сроки за день (часть 37): у скольких ваших приёмов срок был и у скольких выполнен */
   targets?: Record<Id, { onTime: number; total: number }>;
   /**
@@ -968,8 +980,11 @@ export interface ShiftState {
    * он. Нет — поломки с утра на сутки, как в «Анамнезе»
    */
   wear?: Record<string, number>;
-  fixing?: Record<string, { by: string; done: number; kind: 'repair' | 'maintain' }>;
+  /** работа техника (часть 2 — для окна): `since` — вышел, `reach` — дошёл до аппарата, `done` — кончит */
+  fixing?: Record<string, { by: string; done: number; kind: 'repair' | 'maintain'; since?: number; reach?: number }>;
   techs?: Record<string, { free: number; at: string }>;
+  /** когда сломался аппарат в работе (часть 2 — «сломан с 10:40» в окне); сломанный с утра (FR-EQ-3) — без часа */
+  brokeAt?: Record<string, number>;
   /**
    * где врач (FR-HOS-4): смотровая приёмного, где он был у последнего больного; к следующему он идёт оттуда; нет — в своём
    * кабинете

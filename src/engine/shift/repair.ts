@@ -55,7 +55,9 @@ export interface TechJob {
   kind: 'repair' | 'maintain';
   key: string;
   room: string;
-  /** когда кончит: дорога от того места, где он, и работа */
+  /** когда дойдёт до аппарата — от того места, где он */
+  reach: number;
+  /** когда кончит: дорога и работа */
   done: number;
 }
 
@@ -77,7 +79,7 @@ export function nextJob(plan: Plan, s: ShiftState, m: StaffMember, at: string, d
       bestWalk = w;
     }
   }
-  if (best) return { kind: 'repair', key: best.key, room: best.room, done: s.t + bestWalk + repairMinutes(r, m.skill) * 60 };
+  if (best) return { kind: 'repair', key: best.key, room: best.room, reach: s.t + bestWalk, done: s.t + bestWalk + repairMinutes(r, m.skill) * 60 };
   let wear = 0;
   for (const d of devices) {
     if (broken.has(d.key) || taken[d.key]) continue;
@@ -90,5 +92,5 @@ export function nextJob(plan: Plan, s: ShiftState, m: StaffMember, at: string, d
       bestWalk = w;
     }
   }
-  return best ? { kind: 'maintain', key: best.key, room: best.room, done: s.t + bestWalk + r.maintain * 60 } : undefined;
+  return best ? { kind: 'maintain', key: best.key, room: best.room, reach: s.t + bestWalk, done: s.t + bestWalk + r.maintain * 60 } : undefined;
 }

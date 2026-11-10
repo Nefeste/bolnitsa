@@ -419,6 +419,18 @@ export const ru = {
     worn: { slow: 'работает медленнее', blur: 'ставит диагноз при меньшей уверенности' } as Record<string, string>,
     restShort: (until: string) => `перерыв до ${until}`,
     roundShort: (until: string) => `на обходе до ${until}`,
+    // техник (spec docs/specs/2026-11-technicians.md, часть 2): работа у аппарата — в карточке человека и в «Персонале»; аппарат
+    // — в родительном падеже: слова без рода, у аппаратов он разный
+    fix: (kind: 'repair' | 'maintain', eq: string, room: string, until: string, go: boolean) =>
+      kind === 'repair' ? `${go ? 'идёт на ремонт' : 'ремонт'} ${eq} (${room}), закончит к ${until}` : `${go ? 'идёт на обслуживание' : 'обслуживание'} ${eq} (${room}), до ${until}`,
+    fixShort: (until: string) => `ремонт до ${until}`,
+    maintainShort: (until: string) => `обслуживание до ${until}`,
+    // аппараты помещения (там же): поломка, кто чинит и к какому часу; сколько без обслуживания
+    devices: 'Аппараты',
+    deviceOk: (wear?: number) => (wear === undefined ? 'работает' : wear === 0 ? 'работает · обслуживали сегодня' : `работает · без обслуживания ${wear} ${pluralRu(wear, 'сутки', 'суток', 'суток')}`),
+    deviceMaintain: (until: string) => `работает · техник обслуживает, до ${until}`,
+    deviceTech: (since: string | undefined, until: string) => `поломка ${since ? `в ${since}` : 'с утра'} — чинит техник, закончит к ${until}`,
+    deviceService: (since: string | undefined) => `поломка ${since ? `в ${since}` : 'с утра'} — ждёт сервис, к утру`,
     wcShort: 'в туалете',
     fatigueShort: (n: number) => `усталость ${n}`,
     /** санитар и каталка (spec docs/specs/2026-10-orderlies.md, «Что видно»): что делает тот, кто везёт, и что с тем, кого везут */
@@ -748,6 +760,8 @@ export const ru = {
       tired: (f: number) => `устал — ошибается чаще (усталость ${f})`,
       lying: 'Лежачие',
       gurney: (n: number, d: string) => `${n} ${pluralRu(n, 'ждёт', 'ждут', 'ждут')} каталку · дольше всех ${d}`,
+      // поломка в работе (spec docs/specs/2026-11-technicians.md, часть 2): чинит техник — к часу; нет — сервис к утру
+      device: (eq: string, until: string | undefined) => (until ? `${eq}: поломка — чинит техник, к ${until}` : `${eq}: поломка — ждёт сервис, к утру`),
       cash: 'Касса',
       minus: (sum: string, left: string) => `в минусе: ${sum} · строить можно ещё на ${left}`,
       minusNoLimit: (sum: string) => `в минусе: ${sum}`,

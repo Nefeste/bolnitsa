@@ -81,6 +81,7 @@ import { startCash } from '../engine/shift/money';
 import { levelOf, scaledInt } from '../engine/shift/manage';
 import { GAME_PER_REAL } from '../engine/shift/walking';
 import { TECHNICIAN } from '../engine/shift/repair';
+import type { DeviceView } from '../sim/repairs';
 import type { Flow } from '../engine/shift/types';
 import type { SaveFile, SaveMeta } from '../sim/packing';
 import { type Disk, listSlots, nextManual, pageDisk, removeSlot, type ShellSaves, writeAuto, writeSlot } from './saves';
@@ -303,6 +304,10 @@ export class Game {
   private riding = '';
   /** кто на утреннем обходе (spec docs/specs/2026-10-staff-motion.md, часть 2): «Персонал» заново, когда другие */
   private rounding = '';
+  /** кто из техников в работе — строкой (spec docs/specs/2026-11-technicians.md, часть 2): «Персонал» заново, когда другая */
+  private fixing = '';
+  /** аппараты, что ломаются, и работа техников — из потока расчёта (там же); пусто — поломки с утра или их нет */
+  private repairs: DeviceView[] = [];
   readonly builder = new Builder(this);
   /** режим врача (spec docs/specs/2026-10-doctor-mode.md): карта пациента, окно врача, фигура */
   readonly doctor = new Doctor(this);
@@ -1007,6 +1012,8 @@ export class Game {
       const ride = this.pop.rideOf(m.id);
       // утренний обход (spec docs/specs/2026-10-staff-motion.md, часть 2): до какого часа
       const round = this.pop.roundNow(m.id);
+      // техник у аппарата (spec docs/specs/2026-11-technicians.md, часть 2): чинит или обходит — до какого часа
+      const fix = m.role === TECHNICIAN ? this.pop.fixNow(m.id)?.job : undefined;
       return {
         key: `s:${m.id}`,
         text: [
@@ -1014,6 +1021,7 @@ export class Game {
           ...(c ? [T.card.fatigueShort(c.f)] : []), ...(rest ? [rest] : []),
           ...(ride ? [T.card.rideShort(clock(ride.home))] : []),
           ...(round ? [T.card.roundShort(clock(round.until))] : []),
+          ...(fix ? [(fix.kind === 'repair' ? T.card.fixShort : T.card.maintainShort)(clock(fix.done))] : []),
         ].join(' · '),
         ...(onDuty(db, m, this.t) ? { on: true as const } : {}),
         ...(mood && (mood.quit !== undefined || mood.go !== undefined) ? { bad: true as const } : {}),
@@ -1084,6 +1092,17 @@ export class Game {
       ...(sub ? { coveredBy: this.staffWho(sub) } : {}),
       ...(said ? { said } : {}),
     };
+  }
+
+  /**
+   * Что с аппаратом (spec docs/specs/2026-11-technicians.md, часть 2): поломка — с какого часа, чинит техник и к какому часу или
+   * ждёт сервиса к утру; техник обслуживает — до какого часа; работает — сколько без обслуживания.
+   */
+  private deviceState(d: DeviceView): string {
+    const at = d.broken?.since !== undefined ? clock(d.broken.since) : undefined;
+    if (d.broken) return d.job?.kind === 'repair' ? T.card.deviceTech(at, clock(d.job.done)) : T.card.deviceService(at);
+    if (d.job?.kind === 'maintain' && this.t >= d.job.reach) return T.card.deviceMaintain(clock(d.job.done));
+    return T.card.deviceOk(d.wear);
   }
 
   /** Ответ движка на действие с человеком из его карточки (spec 2026-10-staff-mood). */
@@ -1338,6 +1357,11 @@ export class Game {
     if (s.rides) this.pop.setRides(s.rides);
     // утренний обход (spec docs/specs/2026-10-staff-motion.md, часть 2): врач и клиническая медсестра идут по его часам
     if (s.rounds) this.pop.setRounds(s.rounds);
+    // техники и поломки в работе (spec docs/specs/2026-11-technicians.md, часть 2): аппараты и кто у них работает
+    if (s.repairs) {
+      this.repairs = s.repairs;
+      this.pop.setRepairs(s.repairs);
+    }
     // переходы за сутки (слой «Пути пациентов»): поток шлёт их, пока слой включён
     if (s.legs) {
       this.legs = s.legs;
@@ -1346,9 +1370,11 @@ export class Game {
     this.pop.sync(s.buf, s.names);
     const riding = this.pop.ridingNow;
     const rounding = this.pop.roundingNow;
-    if (s.crew || s.moods || riding !== this.riding || rounding !== this.rounding) this.store.set({ staffList: this.staffRows() });
+    const fixing = this.pop.fixingNow;
+    if (s.crew || s.moods || riding !== this.riding || rounding !== this.rounding || fixing !== this.fixing) this.store.set({ staffList: this.staffRows() });
     this.riding = riding;
     this.rounding = rounding;
+    this.fixing = fixing;
     for (const n of s.notices) {
       if (n.kind === 'site' && n.cmd === 'office') this.doctor.onOffice(n);
       else if (n.kind === 'site') {
@@ -1776,6 +1802,13 @@ export class Game {
       }),
       ...(fatigue ? { tired: fatigue.tired } : {}),
       gurney: people.flatMap(([key, p]) => (p.doing === 'gurney' ? [{ key, since: p.since }] : [])),
+      // сломанные в работе аппараты (spec docs/specs/2026-11-technicians.md, часть 2): кто чинит и к какому часу
+      devices: this.repairs.flatMap(d => {
+        if (!d.broken) return [];
+        const r = plan.rooms.find(x => x.id === d.room);
+        const until = d.job?.kind === 'repair' ? clock(d.job.done) : undefined;
+        return [{ room: d.room, name: r ? named(db.rooms[r.type]?.name, r.type) : d.room, what: T.flow.problems.device(named(db.equipment[d.eq]?.name, d.eq), until) }];
+      }),
       ...(this.money.hud.cash !== undefined ? { cash: this.money.hud.cash } : {}),
       limit: this.money.hud.limit,
       t,
@@ -2339,6 +2372,7 @@ export class Game {
     if (!site || !room || !rules) return base;
     const t = db.rooms[r.type];
     const why = problemsOf(db, plan, r, this.staffed);
+    const broke = why.length === 0 && this.problems[n]?.kind === 'broken';
     const live = room.items.filter(i => !i.leaving);
     const needs = rules.needs.map(x => ({ name: objectName(db, x.kind, r.type), need: x.n, have: live.filter(i => i.kind === x.kind && !i.eq).length }));
     if (t.needsEquipment) needs.push({ name: T.objects.machine, need: 1, have: live.filter(i => i.eq).length });
@@ -2377,6 +2411,8 @@ export class Game {
       });
     });
     const f = furnishOf(db, site, id);
+    // аппараты помещения (spec docs/specs/2026-11-technicians.md, часть 2): поломка, кто чинит и к какому часу, обслуживание
+    const devices = this.repairs.filter(d => d.room === id).map(d => ({ key: d.key, name: named(db.equipment[d.eq]?.name, d.eq), state: this.deviceState(d), ...(d.broken ? { bad: true as const } : {}) }));
     // отделение (spec docs/specs/2026-10-departments.md, часть 2): какое и откуда; палату и кабинет можно перевести отсюда же
     const dw = db.departments ? deptWhy(db, room, this.staff) : undefined;
     const dept: RoomCard['dept'] = !db.departments ? undefined : {
@@ -2389,8 +2425,9 @@ export class Game {
     // люди, а санитара — ни одного во всей больнице: лежачих повезут медсёстры
     const night = t.staff.includes(ORDERLY) && this.staff.some(m => m.shift === 'night') && !this.staff.some(m => m.role === ORDERLY && m.shift !== 'day');
     return {
-      ...base, size: `${r.w} × ${r.h}`, ok: why.length === 0, state: why.length ? T.problem.down(this.problemText(why[0])) : T.problem.works,
-      problems: why.map(p => this.problemText(p)), needs, posts, ...(night ? { note: T.card.nightCarrier } : {}), ...(dept ? { dept } : {}),
+      // сломан аппарат, без которого помещение не работает (FR-EQ-3 и поломки в работе) — как на значке над картой
+      ...base, size: `${r.w} × ${r.h}`, ok: why.length === 0 && !broke, state: why.length ? T.problem.down(this.problemText(why[0])) : broke ? T.problem.down(T.flow.room.broken) : T.problem.works,
+      problems: why.map(p => this.problemText(p)), needs, posts, ...(night ? { note: T.card.nightCarrier } : {}), ...(dept ? { dept } : {}), ...(devices.length ? { devices } : {}),
       // деньги по суткам (spec docs/specs/2026-10-metrics-layer.md, часть 2): прошедшие и сегодня — графиком
       money: [...this.roomsMoney.days.map(d => ({ day: d.day as number | null, r: d.rooms[id] })), { day: null, r: this.roomsMoney.now[id] }].map(x => ({
         day: x.day, income: x.r?.income ?? 0, expenses: x.r?.expenses ?? 0,
@@ -2646,6 +2683,7 @@ export class Game {
       role: (id: string | undefined) => (id ? named(db.roles[id]?.name, id) : '—'),
       finding: (id: string | undefined) => (id ? named(db.findings[id]?.name, id) : '—'),
       dat: (id: string | undefined) => (id ? T.card.dat(named(db.roles[id]?.dat, ''), named(db.roles[id]?.name, id)) : '—'),
+      eqGen: (id: string | undefined) => (id ? genitive(db.equipment[id], id) : '—'),
     };
   }
 

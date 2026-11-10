@@ -182,7 +182,10 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # the list; then the challenges: «Испытания» and the five, «Сто пациентов» as «Главврач» — the
                                    # record's flow and cash, no «Сложность», «До утра» to 20:00 — «Итог испытания» and the record,
                                    # «Ещё раз», the best result in the list, «Одна ночь» at 20:00 alone, «Без показаний: 0 из 2»;
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|42` for one part, `-- --only 7,10,11` —
+                                   # then technicians: «Техник» in the staff room card, hired by day, the X-ray breaks at 10:41 of
+                                   # day 2 (seed 447), the room card's «Аппараты» and «не работает», «Проблемы», «Персонал», the
+                                   # technician standing at the machine, fixed by his hour, «Поломки» at the next meeting;
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|43` for one part, `-- --only 7,10,11` —
                                    # several in a row on one page, as in the full run
 node tools/app/soak.mjs --days 3   # after build: a long run in headless Chromium — the ready city at ×12 for three game days,
                                    # the meeting closed each morning; window memory after GC, DOM nodes, people, sim lag and
@@ -589,7 +592,12 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   `parts` % of its price (`payRepair`), and both zero the wear. The service fixes the rest by morning for `REPAIR_PCT`
   (`repairsOf`). A repairing technician is busy (`occupied`); a dismissed, departed or away one drops his work (`dropGone`).
   Exams booked on a device before it broke are done (bookings carry their times); new ones go to another such device or wait
-  for the repair. `s.broken` is a new array on every change: the host sends it by identity.
+  for the repair. `s.broken` is a new array on every change: the host sends it by identity. Part 2, the window: a job keeps
+  `since` and `reach`, a breakdown its hour (`s.brokeAt`), a day `DaySummary.repairs` (broke, by the technician, left for the
+  service); the sim sends `repairs` (`src/sim/repairs.ts`, `DeviceView`: broken since, the job, wear) when it changed; the room
+  card's «Аппараты» (`deviceState` in `src/app/game.ts`) and its head «не работает: аппарат сломан», «Проблемы» rows (`devices` of
+  `ProblemsInput`), the meeting's `#meet-repairs`, «Персонал» and the person card's job line (`fix`); the technician walks to the
+  machine by the engine's times and stands by it (`techStep`, `deviceStop` in `src/render/population.ts`).
 - `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`), Web Worker
   (`worker.ts`) and its client in the window (`client.ts`: a slice reaches the window whole, every field the sim sent but
   `kind`). The window never runs the engine. The doctor mode

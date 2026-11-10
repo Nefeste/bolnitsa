@@ -13,6 +13,7 @@ import type { SaveMeta } from './packing';
 import type { DoctorAct, DoctorOut, FromSim, PathView, RoomsMoney, ToSim, World } from './protocol';
 import type { DailyEnd } from './daily';
 import type { ChallengeEnd } from './challenge';
+import type { DeviceView } from './repairs';
 import type { ShiftEnd } from './shift';
 
 /** Срез и, если изменились, режим врача (spec docs/specs/2026-10-doctor-mode.md). */
@@ -36,6 +37,8 @@ export interface Slice extends DoctorOut {
   rides?: Ride[];
   /** утренние обходы (spec 2026-10-staff-motion, часть 2); когда изменились */
   rounds?: Round[];
+  /** аппараты, что ломаются: поломки и работа техников (spec docs/specs/2026-11-technicians.md, часть 2); когда изменились */
+  repairs?: DeviceView[];
   /** ход сценария (spec docs/specs/2026-10-scenario-1.md): письма, цели и отметки; когда изменились */
   scenario?: ScenarioView;
   /** деньги по помещениям (spec docs/specs/2026-10-metrics-layer.md, часть 2); когда изменились */

@@ -97,6 +97,7 @@ import { shiftPart } from './e2e-shift.mjs';
 import { surgeryPart } from './e2e-surgery.mjs';
 import { dailyPart } from './e2e-daily.mjs';
 import { challengesPart } from './e2e-challenges.mjs';
+import { techniciansPart } from './e2e-technicians.mjs';
 import { serve } from './serve.mjs';
 
 const arg = (k, d) => {
@@ -236,6 +237,8 @@ try {
   if (run(41)) await dailyPart({ page, port, out, ok, fail, q: arg('q', 'low') });
   // часть 42 — испытания (spec docs/specs/2026-11-challenges.md, часть 2): tools/app/e2e-challenges.mjs
   if (run(42)) await challengesPart({ page, port, out, ok, fail, q: arg('q', 'low') });
+  // часть 43 — техники и поломки в работе (spec docs/specs/2026-11-technicians.md, часть 2): tools/app/e2e-technicians.mjs
+  if (run(43)) await techniciansPart({ page, port, out, ok, fail, q: arg('q', 'low'), shots: arg('shots', '') });
   if (errors.length) fail(`ошибки в консоли: ${errors.length}\n    ${errors.slice(0, 5).join('\n    ')}`);
   else ok('ошибок в консоли нет');
   if (requests.length) fail(`запросы наружу: ${requests.join(', ')}`);

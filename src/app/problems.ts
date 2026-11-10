@@ -74,6 +74,11 @@ export interface ProblemsInput {
   tired?: number;
   /** лежачие ждут каталку: кто и с какого часа */
   gurney: { key: string; since: number }[];
+  /**
+   * сломанные в работе аппараты (spec docs/specs/2026-11-technicians.md, часть 2): помещение, слова поломки — кто чинит и к какому
+   * часу; помещение без другого такого аппарата и так «не работает» — тогда слова встают в его строку
+   */
+  devices?: { room: string; name: string; what: string }[];
   /** касса, ₽; нет — игра без денег */
   cash?: number;
   /** предел минуса уровня «Управления», ₽; 0 — не задан */
@@ -99,7 +104,14 @@ export function problemList(x: ProblemsInput): ProblemList {
         : c.tone === 'rest' || (r.kind === 'offShift' && c.tone !== 'bad' && c.tone !== 'queue')
           ? t.offShift(r.why ?? c.text)
           : c.icon === 'bed' && r.load.beds ? t.bedsFull(r.load.beds[0], r.load.beds[1]) : (c.long ?? c.text);
-    all.push({ key: `r:${r.id}`, level: level!, where: r.name, what, go: { room: r.id } });
+    // не работает из-за поломки — кто чинит и к какому часу (spec docs/specs/2026-11-technicians.md, часть 2)
+    const broke = r.kind === 'broken' ? x.devices?.find(d => d.room === r.id) : undefined;
+    all.push({ key: `r:${r.id}`, level: level!, where: r.name, what: broke?.what ?? what, go: { room: r.id } });
+  }
+  // сломанный аппарат в помещении, что работает другим таким же, — жёлтая строка
+  for (const d of x.devices ?? []) {
+    if (x.rooms.find(r => r.id === d.room)?.kind === 'broken') continue;
+    all.push({ key: `d:${d.room}:${d.what}`, level: 'warn', where: d.name, what: d.what, go: { room: d.room } });
   }
   for (const m of x.staff) {
     if (m.quit || m.go) all.push({ key: m.key, level: 'bad', where: m.who, what: m.go ? t.leaving : t.quit, go: { person: m.key } });
