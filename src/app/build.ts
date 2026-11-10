@@ -395,7 +395,8 @@ export class Builder {
     for (const shift of shifts) {
       for (const post of db.rooms[type]?.staff ?? []) {
         const role = post === DOCTOR ? standInOf(db, DOCTOR) : post;
-        if (!role || !db.roles[role]?.hire) continue;
+        // техник (`ready: false`) — выбор игрока: «С персоналом» его не нанимает, как и движок (`site.ts`)
+        if (!role || !db.roles[role]?.hire || db.roles[role]?.ready === false) continue;
         const i = free.findIndex(m => m.role === role);
         // как платят на уровне «Управления» (spec docs/specs/2026-10-difficulty.md)
         salary += this.g.paid(payOf(db, i >= 0 ? free.splice(i, 1)[0].salary : salaryOf(db, role, 3), shift));

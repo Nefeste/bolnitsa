@@ -393,6 +393,7 @@ export const en: Strings = {
     medicWaits: (who: string) => `waiting at the door with the patient — no free emergency bay: ${who}`,
     medicLeaving: 'handed the patient over — going back to the ambulance',
     optional: 'the room works without one, but patients who lie wait',
+    optionalTech: 'the room works without one, and a broken machine is fixed by the service — by morning and at a higher price',
     nightCarrier: 'no orderly on the night shift — nurses will wheel patients who lie',
     dismiss: 'Dismiss',
     name: 'Name',

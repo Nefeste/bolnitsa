@@ -255,8 +255,10 @@ bun tools/bench/challenges.ts                  # challenges (spec docs/specs/202
                                                # (`--plan` — the reasonable chief: two offices and a staff room at 08:00; `--play
                                                # rational,careful,urgent`; `--why` — the night's reds and who the doctor was with)
 bun tools/bench/repairs.ts                     # technicians (spec docs/specs/2026-11-technicians.md): the devices that break in each
-                                               # ready hospital, how often by the catalog's reliability, exams per day on each, repair cost
-                                               # (`--hospital poly,district,city`, `--days`, `--seeds`)
+                                               # ready hospital, how often by the catalog's reliability, exams per day on each; then the
+                                               # engine's breakdowns in work for `--days` (14) without a technician and with one on the
+                                               # day shift — who repaired them, hours of the working day the devices stood, the repair
+                                               # and the technician's wages (`--tech 0,1`, `--hospital poly,district,city`, `--seeds`)
 bun tools/bench/solo.ts                        # the doctor's shift (spec docs/specs/2026-11-doctor-shift.md): a day shift 08:00–20:00 in
                                                # the ready city and polyclinic with one doctor receiving — who came, how many he saw,
                                                # who left, minutes per case, the wait (`--hospital city,poly`, `--manage calm,normal,hard`;
@@ -576,6 +578,18 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   for good, writes the record (`src/app/challenges.ts`: `bolnitsa.challenges` in page storage, best by grade then by the
   measure, «пройдено» kept) and opens «Итог испытания» (`ChallengeSummary`: «Ещё раз» — `challengeAgain`, «В меню»); no
   «Сложность» in «Настройки» during a challenge.
+- Technicians and breakdowns in work (`docs/specs/2026-11-technicians.md`, part 1): `shift/repair.ts` — `repairOf` (only the
+  PC flow with shift staff and `staff.repair` in `economy.yaml`; otherwise the FR-EQ-3 morning breakdowns, Anamnez's modes
+  byte for byte), `wearPct`, `repairMinutes`, `devicesOf`, `nextJob`. In `engine.ts` each morning `planRepairs` adds a day of
+  wear to every device (`s.wear`), rolls its day from the morning breakdown's seed branch with the wear's chance and schedules
+  a `breakdown` event at a random minute 08:00–20:00 (`breakAt` puts one at any hour — tests, the «Рентген сломался»
+  challenge); a free technician of the shift (`role.technician`: a staff-room post, `optional`, `ready: false` — no ready site
+  has one, `siteOfPlan`, and a ready room «С персоналом» hires none) goes to the nearest broken device nobody repairs, else
+  maintains the longest unserviced one (`techDispatch`, the `fixed` event; `s.fixing`, `s.techs`): a repair puts it back, pays
+  `parts` % of its price (`payRepair`), and both zero the wear. The service fixes the rest by morning for `REPAIR_PCT`
+  (`repairsOf`). A repairing technician is busy (`occupied`); a dismissed, departed or away one drops his work (`dropGone`).
+  Exams booked on a device before it broke are done (bookings carry their times); new ones go to another such device or wait
+  for the repair. `s.broken` is a new array on every change: the host sends it by identity.
 - `src/sim/` — the calculation thread: protocol, host (`createSim`), packed slice (`pack.ts`), Web Worker
   (`worker.ts`) and its client in the window (`client.ts`: a slice reaches the window whole, every field the sim sent but
   `kind`). The window never runs the engine. The doctor mode

@@ -727,6 +727,11 @@ export const roleSchema = z.strictObject({
    */
   optional: z.boolean().optional(),
   /**
+   * `false` — в готовой больнице его места нет: нанимает только игрок (техник — выбор между ним и сервисом, spec
+   * docs/specs/2026-11-technicians.md)
+   */
+  ready: z.boolean().optional(),
+  /**
    * нанятый врач со специальностью (spec 2026-10-chapter-4, часть 59): с какими болезнями к нему записываются — у его
    * кабинета своя запись из них, и принимает он только записанных к нему
    */
@@ -879,6 +884,14 @@ export const economySchema = z.strictObject({
     gurney: z.strictObject({ load: z.number().int().min(1).max(30), unload: z.number().int().min(1).max(30) }).optional(),
     /** утренний обход (spec docs/specs/2026-10-staff-motion.md, часть 2): минут у койки, очков усталости за койку */
     round: z.strictObject({ bed: z.number().int().min(1).max(30), fatigue: z.number().int().min(0).max(50) }).optional(),
+    /**
+     * техник и поломки в работе (spec docs/specs/2026-11-technicians.md): минут ремонта по навыку 1–5, детали — % цены, минут
+     * обхода у аппарата, суток износа до +100 % и предел износа, %
+     */
+    repair: z.strictObject({
+      minutes: z.tuple([z.number().int().min(10).max(600), z.number().int().min(10).max(600), z.number().int().min(10).max(600), z.number().int().min(10).max(600), z.number().int().min(10).max(600)]),
+      parts: z.number().int().min(0).max(100), maintain: z.number().int().min(1).max(120), wear: z.number().int().min(1).max(100), max: z.number().int().min(100).max(1000),
+    }).optional(),
     /**
      * рост, наставник, учёба, болезнь нанятых в смене (spec 2026-10-staff-mood, разделы 3–5): насколько быстрее растут с
      * наставником, %; учёба — суток, цена в сменах, прибавка настроения; болеет — раз в столько смен в среднем

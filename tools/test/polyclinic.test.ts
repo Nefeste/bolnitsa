@@ -49,7 +49,7 @@ describe('поликлиника — план из базы', () => {
     expect(posts(s.staff ?? [])).toEqual(posts(staff));
   });
 
-  test('всё работает, больница открыта; ваш кабинет — первый, в остальных — терапевты; на каждой должности по человеку', () => {
+  test('всё работает, больница открыта; ваш кабинет — первый, в остальных — терапевты; на каждой должности по человеку, кроме техника', () => {
     const staffed = staffingOf(db, plan, staff);
     const ctx = hospitalCtx(db, shift(1));
     expect([...ctx.working].sort()).toEqual(plan.rooms.map(r => r.id).sort());
@@ -58,7 +58,8 @@ describe('поликлиника — план из базы', () => {
     expect(offices.length).toBe(4);
     expect(doctorRoom(plan)).toBe(offices[0]);
     expect(staff.filter(m => m.role === 'role.therapist').map(m => m.room).sort()).toEqual(offices.slice(1).sort());
-    const want = plan.rooms.flatMap(r => db.rooms[r.type].staff.filter(p => !(r.id === offices[0] && p === 'role.doctor')).map(p => `${r.id}:${p}`)).sort();
+    // техник (`ready: false`, spec docs/specs/2026-11-technicians.md) — выбор игрока: в готовой больнице его места пусты
+    const want = plan.rooms.flatMap(r => db.rooms[r.type].staff.filter(p => !(r.id === offices[0] && p === 'role.doctor') && db.roles[p]?.ready !== false).map(p => `${r.id}:${p}`)).sort();
     expect(staff.map(m => `${m.room}:${db.roles[m.role].stands ?? m.role}`).sort()).toEqual(want);
   });
 

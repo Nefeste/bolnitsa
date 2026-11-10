@@ -1,4 +1,4 @@
-// из anamnez: src/engine/shift/engine.ts @ 96503ac, изменено: разбор приёма нанятого врача — по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults); стройка ПК — команда `site`, событие `siteFree`, приход в закрытую больницу, аппараты коек ПИТ из плана (spec 2026-10-build); сутки целиком в потоке для ПК — часы приёма, поток по часам, планёрка в 08:00, обход нанятых врачей, ночь по часам (spec 2026-10-day); путь пациента — однострочные вызовы `journey.*` (spec 2026-10-flow-ui); фибрилляция желудочков после полуночи — в ночь суток поступления и в сменах «Анамнеза» (`hospitalDay`; так же в anamnez 0.6.4, Nefeste/anamnez#152); касса и поток от больницы, планёрка с узкими местами, «стало хуже», долгий случай нанятого врача (spec 2026-10-economy); ходьба в потоке для ПК — свой врач, свой зал, следующие у двери, приём, когда дошёл (spec 2026-10-walk); приём вашего — когда он дошёл, `meet` и событие `reach` (spec 2026-10-owner-play-2); карты ушедших — `s.past` (spec 2026-10-discharged-card); скамьи у дверей кабинетов — `bench` (spec 2026-10-door-benches); настроение нанятых на планёрке и уход сам в пересменку (spec 2026-10-staff-mood); рост, учёба и болезнь нанятых (spec 2026-10-staff-mood, части 3–5); каталка — перевозки лежачих, операция и снимки на каталке (spec 2026-10-orderlies); главврач утверждает — галочки «О чём спрашивать», решение на утверждении, «Ещё обследование», выписка через утверждение (spec 2026-10-two-ways, часть 2); направление к специалисту — правило нанятого терапевта, команда `refer`, поправка профиля направленных (spec 2026-10-specialists, часть 2)
+// из anamnez: src/engine/shift/engine.ts @ 96503ac, изменено: разбор приёма нанятого врача — по требованию (spec 2026-10-engine-speed); «Просят посмотреть» (spec 2026-10-consults); стройка ПК — команда `site`, событие `siteFree`, приход в закрытую больницу, аппараты коек ПИТ из плана (spec 2026-10-build); сутки целиком в потоке для ПК — часы приёма, поток по часам, планёрка в 08:00, обход нанятых врачей, ночь по часам (spec 2026-10-day); путь пациента — однострочные вызовы `journey.*` (spec 2026-10-flow-ui); фибрилляция желудочков после полуночи — в ночь суток поступления и в сменах «Анамнеза» (`hospitalDay`; так же в anamnez 0.6.4, Nefeste/anamnez#152); касса и поток от больницы, планёрка с узкими местами, «стало хуже», долгий случай нанятого врача (spec 2026-10-economy); ходьба в потоке для ПК — свой врач, свой зал, следующие у двери, приём, когда дошёл (spec 2026-10-walk); приём вашего — когда он дошёл, `meet` и событие `reach` (spec 2026-10-owner-play-2); карты ушедших — `s.past` (spec 2026-10-discharged-card); скамьи у дверей кабинетов — `bench` (spec 2026-10-door-benches); настроение нанятых на планёрке и уход сам в пересменку (spec 2026-10-staff-mood); рост, учёба и болезнь нанятых (spec 2026-10-staff-mood, части 3–5); каталка — перевозки лежачих, операция и снимки на каталке (spec 2026-10-orderlies); главврач утверждает — галочки «О чём спрашивать», решение на утверждении, «Ещё обследование», выписка через утверждение (spec 2026-10-two-ways, часть 2); направление к специалисту — правило нанятого терапевта, команда `refer`, поправка профиля направленных (spec 2026-10-specialists, часть 2); поломки в работе, износ и техники (spec 2026-11-technicians, часть 1)
 // Движок смены: приход пациентов, сортировка, очередь, терпение, обследования со своими
 // сроками, закрытие случая и дня (spec 2026-09-first-shift, «Движок»; ADR 0005).
 //
@@ -45,7 +45,7 @@ import { dueIn, type TargetPlace, targetResults } from './targets';
 import { occupied, siteCommand, siteFree } from './site';
 import { arrivalAfter, dayOf, hospitalDay, hoursOf, returnWindow, roundsAt, validHours } from './day';
 import { type Bed, daysIn, type StayEnd, stayNorm, wardCourse, wardState } from './ward';
-import { accrue, offerOf, openEconomy, payWorks, repay, shortOf, takeLoan, unpaidShift } from './money';
+import { accrue, offerOf, openEconomy, payRepair, payWorks, repay, shortOf, takeLoan, unpaidShift } from './money';
 import { ambulancePerHour, bookedPerHour, type Capacity, reputationPct, walkPerHour } from './inflow';
 import * as meeting from './meeting';
 import { depart, leaversDue, moodMorning } from './mood';
@@ -54,6 +54,7 @@ import { caseIncomeRooms, caseRoom, COMMON as ROOMS_COMMON, roomExpense, roomInc
 import { cover } from './reserve';
 import { manageOf, scaled, scaledInt } from './manage';
 import { challengeFlow, challengeOf, walkInsOf, waveOf } from './challenge';
+import { breaks, devicesOf, nextJob, repairOf, TECHNICIAN, wearPct } from './repair';
 import { priorOf, referTo } from './refer';
 import { book, carriersOf, gurneyOf, lying, planRide, rideHome, ridesUntil } from './gurney';
 import { CLINICAL, roundLeft, roundMinutes, roundOf, roundsDue } from './rounds';
@@ -715,6 +716,8 @@ function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       crewAll(db, s);
       // каталка (spec docs/specs/2026-10-orderlies.md): наняли санитара или медсестру — лежачие, кого некому было везти
       retryRides(db, s);
+      // техники (spec docs/specs/2026-11-technicians.md): наняли — к сломанному или в обход
+      techDispatch(db, s);
       return out;
     }
     // касса ПК (spec 2026-10-economy): кредит, который банк предложил на планёрке
@@ -992,6 +995,8 @@ function duty(db: ContentDb, s: ShiftState) {
   crewAll(db, s);
   // каталка (spec 2026-10-orderlies): пришли санитары и медсёстры — лежачие, кого некому было везти
   retryRides(db, s);
+  // техники (spec docs/specs/2026-11-technicians.md): пришедшие в смену — к сломанному или в обход
+  techDispatch(db, s);
 }
 
 /**
@@ -1451,8 +1456,10 @@ function morning(db: ContentDb, s: ShiftState, notices: Notice[]) {
   // резерв (spec 2026-10-staff-mood, часть 5; решение владельца #97): на место заболевшего — из резерва; вернувшийся — на своё
   const cov = cover(db, s, () => occupied(db, s).staff);
   const news = mood || grew || back || sick || cov ? { ...mood, ...(grew ? { grew } : {}), ...(back ? { back } : {}), ...(sick ? { sick } : {}), ...cov } : undefined;
-  // аппараты, сломавшиеся с утра (FR-EQ-3): до следующего утра их нет
-  const broken = breakdowns(db, s);
+  // аппараты, сломавшиеся с утра (FR-EQ-3): до следующего утра их нет; со сменами и техниками (spec
+  // docs/specs/2026-11-technicians.md) — поломки в работе, по износу
+  const repair = repairOf(db, s);
+  const broken = repair ? (planRepairs(db, s, repair), s.broken ?? []) : breakdowns(db, s);
   if (broken.length > 0) s.broken = broken;
   else delete s.broken;
   // потоки — с 08:00 заново, ветвями новых суток: кто по вчерашнему счёту пришёл бы позже, не придёт — у показательного
@@ -1462,7 +1469,8 @@ function morning(db: ContentDb, s: ShiftState, notices: Notice[]) {
   // «Почему?» у цифр планёрки (spec 2026-10-why): от чего поток наступивших суток и сколько придёт
   if (s.flow?.auto) summary.inflow = inflowDay(db, s);
   prune(s);
-  notices.push({ kind: 'morning', summary, ...(broken.length > 0 ? { broken } : {}), ...(news ? { staff: news } : {}) });
+  // «Сломалось с утра» — у поломок с утра (FR-EQ-3); поломки в работе — днём, сами (spec docs/specs/2026-11-technicians.md)
+  notices.push({ kind: 'morning', summary, ...(broken.length > 0 && !repair ? { broken } : {}), ...(news ? { staff: news } : {}) });
   // «стало хуже» (spec 2026-10-economy, «Обход»): ваши лежащие — для автопаузы
   for (const id of meeting.turnedWorse(s)) notices.push({ kind: 'worse', id });
 }
@@ -1638,9 +1646,10 @@ function settle(db: ContentDb, s: ShiftState) {
     ledger.expenses.salaries = salariesOf(s.staff ?? []);
     ledger.expenses.equipment = upkeep.equipment;
   }
-  // ремонт сломанного с утра (FR-EQ-3)
+  // ремонт сломанного с утра (FR-EQ-3); со сменами и техниками — сервис к утру за то, что техник не чинит (spec
+  // docs/specs/2026-11-technicians.md): детали техника — уже в кассе суток
   const repairs = repairsOf(db, s);
-  if (repairs > 0) ledger.expenses.repairs = repairs;
+  if (repairs > 0) ledger.expenses.repairs = (ledger.expenses.repairs ?? 0) + repairs;
   if (upkeep) ledger.expenses.rooms = upkeep.rooms;
   // лежащие ночуют в палате: койко-день у каждого (часть 26), по месту и тому, что с ними делают (`bedDayOf`); и палате
   // (spec docs/specs/2026-10-metrics-layer.md, часть 2)
@@ -1722,11 +1731,8 @@ function nextDay(db: ContentDb, s: ShiftState) {
   startOperations(db, s);
 }
 
-/**
- * Что ломается (FR-EQ-3): аппараты обследований в кабинетах; монитор у постели, наркозный и дыхательный аппараты и
- * стол — нет: у них в больнице есть запасной.
- */
-export const breaks = (eq: Equipment): boolean => eq.exams.length > 0;
+/** Что ломается (FR-EQ-3) — `breaks` в `repair.ts`: аппараты обследований; у остальных есть запасной. */
+export { breaks };
 /** Ремонт за счёт больницы — процент цены аппарата (игровая оценка: выезд сервиса и деталь). */
 export const REPAIR_PCT = 2;
 
@@ -1749,13 +1755,122 @@ export function breakdowns(db: ContentDb, s: ShiftState): string[] {
   return out;
 }
 
+/**
+ * Утро со сменами и техниками (spec docs/specs/2026-11-technicians.md, часть 1): сервис починил к утру всё, что не чинит
+ * техник (оплачено в итогах прошедших суток, `repairsOf`); у каждого аппарата — сутки износа; жребий суток — из той же ветви,
+ * что у поломки с утра (`breakdown:<день>:<место>`), с шансом каталога, уровня «Управления» и износа; выпал — поломка в
+ * минуту 08:00–20:00 (ветвь `breakdown-at`). В учебный день сценария — нет, как у поломок с утра.
+ */
+function planRepairs(db: ContentDb, s: ShiftState, r: NonNullable<ReturnType<typeof repairOf>>) {
+  const devices = devicesOf(db, hospitalCtx(db, s).plan);
+  const keys = new Set(devices.map(d => d.key));
+  const fixing = s.fixing ?? {};
+  s.broken = (s.broken ?? []).filter(k => keys.has(k) && fixing[k]?.kind === 'repair');
+  const wear: Record<string, number> = {};
+  for (const d of devices) wear[d.key] = (s.wear?.[d.key] ?? 0) + 1;
+  s.wear = wear;
+  if (tutorialDay(db, s) !== s.day) {
+    const k = manageOf(db, s).breakdown;
+    const base = (s.day - 1) * DAY;
+    for (const d of devices) {
+      if (s.broken.includes(d.key) || d.eq.breakdown <= 0) continue;
+      const p = Math.round((scaled(d.eq.breakdown, k) * wearPct(r, wear[d.key] - 1)) / 100);
+      if (!branch(s, `breakdown:${s.day}:${d.key}`).chance(p)) continue;
+      const minute = branch(s, `breakdown-at:${s.day}:${d.key}`).range(0, 12 * 60 - 1);
+      schedule(s, base + SHIFT_START + minute * MIN, { kind: 'breakdown', key: d.key });
+    }
+  }
+  // износ — новые сутки: свободные техники смены — в обход
+  techDispatch(db, s);
+}
+
+/**
+ * Поломка аппарата `key` в час `at` (spec docs/specs/2026-11-technicians.md): тем же событием, что жребий утра, — для испытания
+ * «Рентген сломался» и тестов. Без смен и техников (`repairOf`) — ничего.
+ */
+export function breakAt(db: ContentDb, s: ShiftState, key: string, at: number) {
+  if (repairOf(db, s)) schedule(s, Math.max(at, s.t), { kind: 'breakdown', key });
+}
+
+/** Аппарат `key` сломался в работе: встал до ремонта; кто его обходил — бросает обход; свободный техник — к нему. */
+function breakdown(db: ContentDb, s: ShiftState, key: string) {
+  if (!repairOf(db, s) || s.broken?.includes(key) || !devicesOf(db, hospitalCtx(db, s).plan).some(d => d.key === key)) return;
+  // новым списком: окно узнаёт о поломке по тому, что список другой (`sentBroken` в src/sim/host.ts)
+  s.broken = [...(s.broken ?? []), key];
+  const f = s.fixing?.[key];
+  if (f?.kind === 'maintain') {
+    delete s.fixing![key];
+    const t = s.techs?.[f.by];
+    if (t) t.free = s.t;
+  }
+  techDispatch(db, s);
+}
+
+/** Техник кончил работу: ремонт — аппарат снова в строю, детали — в кассу суток; ремонт и обход — износ с нуля. */
+function fixed(db: ContentDb, s: ShiftState, ev: Extract<ShiftEvent, { kind: 'fixed' }>) {
+  dropGone(s);
+  const f = s.fixing?.[ev.key];
+  if (!f || f.by !== ev.by || f.kind !== ev.job || f.done !== s.t) return;
+  delete s.fixing![ev.key];
+  const r = repairOf(db, s);
+  if (ev.job === 'repair') {
+    s.broken = (s.broken ?? []).filter(k => k !== ev.key);
+    if (s.broken.length === 0) delete s.broken;
+    const [room, slot] = ev.key.split(':');
+    const id = hospitalCtx(db, s).plan.rooms.find(x => x.id === room)?.equipment[Number(slot)];
+    if (id && r) payRepair(s, room, Math.round((db.equipment[id].price * r.parts) / 100));
+  }
+  (s.wear ??= {})[ev.key] = 0;
+  techDispatch(db, s);
+}
+
+/**
+ * Уволенный, ушедший сам и отправленный учиться техник бросает свою работу: сломанное — другому технику или сервису к утру. У
+ * кого кончилась смена — доделывает.
+ */
+function dropGone(s: ShiftState) {
+  for (const [key, f] of Object.entries(s.fixing ?? {})) {
+    const m = s.staff?.find(x => x.id === f.by);
+    if (m && !m.away) continue;
+    delete s.fixing![key];
+    delete s.techs?.[f.by];
+  }
+}
+
+/** Свободные техники смены — каждый к своей следующей работе (`nextJob`): к сломанному или в обход. */
+function techDispatch(db: ContentDb, s: ShiftState) {
+  const r = repairOf(db, s);
+  if (!r) return;
+  dropGone(s);
+  const ctx = hospitalCtx(db, s);
+  const devices = devicesOf(db, ctx.plan);
+  // снесли помещение или убрали аппарат — работе у него конец
+  const keys = new Set(devices.map(d => d.key));
+  for (const [key, f] of Object.entries(s.fixing ?? {})) {
+    if (keys.has(key)) continue;
+    delete s.fixing![key];
+    const t = s.techs?.[f.by];
+    if (t) t.free = s.t;
+  }
+  const techs = ctx.staff.filter(m => m.role === TECHNICIAN && m.room !== undefined);
+  for (const m of techs) {
+    const t = s.techs?.[m.id];
+    if (t && t.free > s.t) continue;
+    const job = nextJob(ctx.plan, s, m, t?.at ?? m.room!, devices, r);
+    if (!job) continue;
+    (s.fixing ??= {})[job.key] = { by: m.id, done: job.done, kind: job.kind };
+    (s.techs ??= {})[m.id] = { free: job.done, at: job.room };
+    schedule(s, job.done, { kind: 'fixed', key: job.key, by: m.id, job: job.kind });
+  }
+}
+
 /** Сломанные сегодня аппараты — для `examWhere`. */
 export const brokenOf = (s: ShiftState): ReadonlySet<string> => (s.broken && s.broken.length > 0 ? new Set(s.broken) : NONE_BROKEN);
 
 /** Сколько стоит починить сломанное сегодня, ₽: процент цены каждого аппарата; и помещению, где он стоит (часть 2 слоя «Показатели»). */
 function repairsOf(db: ContentDb, s: ShiftState): number {
   const plan = hospitalCtx(db, s).plan;
-  return (s.broken ?? []).reduce((sum, key) => {
+  return (s.broken ?? []).filter(key => s.fixing?.[key]?.kind !== 'repair').reduce((sum, key) => {
     const [room, slot] = key.split(':');
     const id = plan.rooms.find(r => r.id === room)?.equipment[Number(slot)];
     const rub = id ? Math.round((db.equipment[id].price * REPAIR_PCT) / 100) : 0;
@@ -3756,6 +3871,11 @@ function handle(db: ContentDb, s: ShiftState, ev: ShiftEvent, notices: Notice[])
       return crewStep(db, s, ev.id);
     case 'ride':
       return rideStep(db, s, ev);
+    // техники и поломки в работе (spec docs/specs/2026-11-technicians.md, часть 1)
+    case 'breakdown':
+      return breakdown(db, s, ev.key);
+    case 'fixed':
+      return fixed(db, s, ev);
     case 'reach': {
       // поток для ПК (spec 2026-10-owner-play-2): ваш пациент дошёл — если он ещё ваш и не ушёл на другое обследование
       const p = s.patients[ev.id];

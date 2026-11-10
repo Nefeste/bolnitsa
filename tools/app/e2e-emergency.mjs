@@ -141,6 +141,21 @@ export async function emergencyPart({ page, port, out, ok, fail, q, shots }) {
   const letters = await page.evaluate(() => (window.__game.scenario.view?.letters ?? []).map(l => l.id));
   if (letters.includes('night')) ok(`«До утра»: привезённых по листу — ${sorted}; к вечеру — письмо «ночь»: врача на ночь нет`);
   else fail(`«До утра»: письма ${JSON.stringify(letters)}, отсортировано ${sorted}`);
+  // часы встали до планёрки (редко: 2 прогона из 15, 09.11.2026) — что держит их, чтобы разобрать: окно врача, лист, окна
+  if (!(await page.evaluate(() => window.__game.store.get().economy?.open ?? false))) {
+    const why = await page.evaluate(() => {
+      const g = window.__game;
+      const d = g.doctor;
+      return JSON.stringify({
+        clock: document.getElementById('clock')?.textContent ?? '', ff: g.ff, speed: g.speed, still: d.still, holding: d.holding,
+        card: d.hud.card ? { id: d.hud.card.id, active: d.hud.card.active } : null, current: d.hud.state?.current ?? null,
+        handover: (d.hud.state?.handover ?? []).map(r => r.id), sheet: !!document.getElementById('dsheet'),
+        windows: [...document.querySelectorAll('[role=dialog]')].map(x => x.id || x.className), hint: document.getElementById('hint-text')?.textContent ?? '',
+      });
+    });
+    fail(`«До утра» не дошло до планёрки за 5 минут (снимок ${await shot('e2e-emergency-stuck.jpg')} КБ): ${why}`);
+    return;
+  }
 
   // ---------------------------------------------------------------- планёрка: «Письма» и сортировка
   await page.waitForSelector('#meeting', { timeout: 10000 });

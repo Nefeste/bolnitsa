@@ -92,6 +92,8 @@ export function occupied(db: ContentDb, s: ShiftState): { rooms: Set<string>; it
       if (office && p.status === 'inRoom') rooms.add(office);
     }
   }
+  // техник чинит (spec docs/specs/2026-11-technicians.md): занят до конца ремонта, как врач с приёмом; обход бросает
+  for (const f of Object.values(s.fixing ?? {})) if (f.kind === 'repair') staff.add(f.by);
   // у вас в кабинете пациент (spec 2026-10-doctor-mode): ваш кабинет занят, как кабинет нанятого врача с приёмом
   const yours = s.current ? s.patients[s.current] : undefined;
   if (yours && site.mine && !yours.bay) rooms.add(site.mine);
@@ -278,7 +280,8 @@ function siteCommandOf(db: ContentDb, s: ShiftState, cmd: SiteCommand): Notice[]
   if (cmd.kind === 'ready' && cmd.staff && r.room) {
     hired = 0;
     const shifts: Shift[] = db.rooms[cmd.type].night && nightHospital(db, r.site.rooms) ? ['day', 'night'] : ['day'];
-    for (const shift of shifts) for (const role of db.rooms[cmd.type].staff) if (staffPost(db, s, r.site, r.room, role, undefined, shift)) hired++;
+    // техник (`ready: false`, spec docs/specs/2026-11-technicians.md) — выбор игрока: «С персоналом» его не нанимает
+    for (const shift of shifts) for (const role of db.rooms[cmd.type].staff) if (db.roles[role]?.ready !== false && staffPost(db, s, r.site, r.room, role, undefined, shift)) hired++;
   }
   commit(db, s, site, r.site);
   works.spent += r.cost;

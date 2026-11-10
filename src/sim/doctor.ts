@@ -19,6 +19,7 @@ import {
 } from '../engine/shift/engine';
 import { inBox, inIcu, inRicu, orQueueOf, stayEquipment } from '../engine/shift/engine';
 import { asksOf } from '../engine/shift/approve';
+import { repairOf } from '../engine/shift/repair';
 import { KEEP } from '../engine/shift/journey';
 import { minutesTo, targetStart, targetsFor } from '../engine/shift/targets';
 import { type ApproveWhy, type AskRule, type ClosedCase, type Command, type ConsultWhy, DAY, type Difficulty, type ShiftPatient, type ShiftState, type Triage } from '../engine/shift/types';
@@ -776,14 +777,38 @@ function problemWords(db: ContentDb, p: Problem): string {
   }
 }
 
-/** Почему обследование здесь не сделать (sandboxView.ts «Анамнеза», examBlockText). */
-function examBlockText(db: ContentDb, b: Block): string {
+/**
+ * Почему обследование здесь не сделать (sandboxView.ts «Анамнеза», examBlockText). Сломанное в работе (spec
+ * docs/specs/2026-11-technicians.md) — кто чинит: техник — к часу, когда кончит, нет его — сервис к утру.
+ */
+function examBlockText(db: ContentDb, s: ShiftState, b: Block): string {
   const t = T.case.examBlock;
   const room = db.rooms[b.room];
   if (b.kind === 'noRoom') return t.none(room ? genitive(room) : b.room);
   if (b.kind === 'down') return t.down(named(room?.name, b.room), problemWords(db, b.problem));
-  if (b.kind === 'broken') return t.broken(named(db.equipment[b.equipment[0]]?.name, b.equipment[0]));
+  if (b.kind === 'broken') {
+    const name = named(db.equipment[b.equipment[0]]?.name, b.equipment[0]);
+    if (!repairOf(db, s)) return t.broken(name);
+    const done = repairDone(db, s, b);
+    return done !== undefined ? t.brokenTech(name, hhmm(minuteOfDay(done))) : t.brokenService(name);
+  }
   return t.none(db.equipment[b.equipment[0]] ? genitive(db.equipment[b.equipment[0]]) : b.equipment[0]);
+}
+
+/** Когда техник раньше всех починит сломанный аппарат этого обследования; никто не чинит — undefined. */
+function repairDone(db: ContentDb, s: ShiftState, b: Extract<Block, { kind: 'broken' }>): number | undefined {
+  const plan = hospitalCtx(db, s).plan;
+  let done: number | undefined;
+  for (const key of s.broken ?? []) {
+    const f = s.fixing?.[key];
+    if (f?.kind !== 'repair') continue;
+    const [room, slot] = key.split(':');
+    const r = plan.rooms.find(x => x.id === room);
+    const eq = r?.equipment[Number(slot)];
+    if (!r || r.type !== b.room || !eq || !b.equipment.includes(eq)) continue;
+    if (done === undefined || f.done < done) done = f.done;
+  }
+  return done;
 }
 
 const blocked = new WeakMap<HospitalCtx, Map<string, Record<Id, string>>>();
@@ -791,7 +816,8 @@ const blocked = new WeakMap<HospitalCtx, Map<string, Record<Id, string>>>();
 /** Обследования, которых в этой больнице не сделать, и почему — один раз на больницу, сломанное и язык. */
 function unavailableOf(db: ContentDb, s: ShiftState): Record<Id, string> {
   const ctx = hospitalCtx(db, s);
-  const key = `${(s.broken ?? []).join(',')}|${currentLang}`;
+  // и кто чинит сломанное — к какому часу (spec docs/specs/2026-11-technicians.md)
+  const key = `${(s.broken ?? []).map(k => (s.fixing?.[k]?.kind === 'repair' ? `${k}@${s.fixing[k].done}` : k)).join(',')}|${currentLang}`;
   let byKey = blocked.get(ctx);
   if (!byKey) blocked.set(ctx, (byKey = new Map()));
   let out = byKey.get(key);
@@ -800,7 +826,7 @@ function unavailableOf(db: ContentDb, s: ShiftState): Record<Id, string> {
     const broken = brokenOf(s);
     for (const id of Object.keys(db.exams)) {
       const w = examWhere(db, ctx.plan, ctx.working, ctx.staffed, id, broken);
-      if ('block' in w) out[id] = examBlockText(db, w.block);
+      if ('block' in w) out[id] = examBlockText(db, s, w.block);
     }
     byKey.set(key, out);
   }

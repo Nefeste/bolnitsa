@@ -405,6 +405,9 @@ export const doctorRu = {
       none: (gen: string) => `нет ${gen}`,
       down: (name: string, why: string) => `${lowerFirst(name)} не работает: ${why}`,
       broken: (name: string) => `${lowerFirst(name)} в ремонте — починят к завтра`,
+      // поломки в работе (spec docs/specs/2026-11-technicians.md): чинит техник — к его часу, нет техника — сервис к утру
+      brokenTech: (name: string, at: string) => `${lowerFirst(name)} в ремонте — чинит техник, к ${at}`,
+      brokenService: (name: string) => `${lowerFirst(name)} в ремонте — сервис починит к утру`,
     },
     /** условия по скрытым параметрам болезни — медицинский текст, по-русски и в английском интерфейсе (when.ts) */
     when: WHEN,

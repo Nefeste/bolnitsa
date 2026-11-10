@@ -336,6 +336,12 @@ export type ShiftEvent =
    */
   | { kind: 'ride'; id: string; at: 'off' | 'home'; by: string }
   /**
+   * поломка в работе (spec docs/specs/2026-11-technicians.md, часть 1): аппарат `key` («помещение:место») встаёт сейчас; техник
+   * `by` кончил ремонт (`repair`) или обход (`maintain`) аппарата `key` — отменённая работа не в счёт
+   */
+  | { kind: 'breakdown'; key: string }
+  | { kind: 'fixed'; key: string; by: string; job: 'repair' | 'maintain' }
+  /**
    * утренний обход (spec docs/specs/2026-10-staff-motion.md, часть 2): `by` кончил свои минуты у койки больного `id` — врач
    * решает о нём; клиническая медсестра (`nurse`) только смотрит: кому нужно решение, врач узнал от неё в час обхода
    */
@@ -956,6 +962,14 @@ export interface ShiftState {
    * завтра починят; нет — всё работает
    */
   broken?: string[];
+  /**
+   * техники и поломки в работе (spec docs/specs/2026-11-technicians.md, часть 1), поток для ПК со сменами: износ — суток без
+   * обслуживания у аппарата («помещение:место»); кто чинит или обходит аппарат и к какому часу; техник — когда свободен и где
+   * он. Нет — поломки с утра на сутки, как в «Анамнезе»
+   */
+  wear?: Record<string, number>;
+  fixing?: Record<string, { by: string; done: number; kind: 'repair' | 'maintain' }>;
+  techs?: Record<string, { free: number; at: string }>;
   /**
    * где врач (FR-HOS-4): смотровая приёмного, где он был у последнего больного; к следующему он идёт оттуда; нет — в своём
    * кабинете

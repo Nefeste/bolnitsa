@@ -80,6 +80,7 @@ import { staffName } from './people';
 import { startCash } from '../engine/shift/money';
 import { levelOf, scaledInt } from '../engine/shift/manage';
 import { GAME_PER_REAL } from '../engine/shift/walking';
+import { TECHNICIAN } from '../engine/shift/repair';
 import type { Flow } from '../engine/shift/types';
 import type { SaveFile, SaveMeta } from '../sim/packing';
 import { type Disk, listSlots, nextManual, pageDisk, removeSlot, type ShellSaves, writeAuto, writeSlot } from './saves';
@@ -2362,7 +2363,7 @@ export class Game {
         // койками днём — и клиническая медсестра (spec docs/specs/2026-10-staff-motion.md, часть 2б; решение владельца #183)
         const options = role === DOCTOR ? doctors : [role, ...standInsOf(db, role)].filter(x => db.roles[x]?.hire && fitsPost(db, x, r.type, shift === 'night' ? 'night' : 'day'));
         return {
-          role, shift, name, salary: pay(hire), ...(db.roles[role]?.optional ? { optional: T.card.optional } : {}),
+          role, shift, name, salary: pay(hire), ...(db.roles[role]?.optional ? { optional: role === TECHNICIAN ? T.card.optionalTech : T.card.optional } : {}),
           ...(m
             ? {
                 who: `${named(db.roles[m.role]?.name, m.role)} · ${m.skill}${m.away ? ` · ${m.away.why === 'study' ? T.card.studyShort : T.card.sickShort}` : ''}${sub ? ` · ${T.card.coveredByShort(staffName(sub))}` : ''}`,

@@ -36,6 +36,8 @@ export function siteOfPlan(db: ContentDb, p: SitePlan): Planned {
   for (const [i, r] of p.rooms.entries()) {
     for (const post of db.rooms[r.type].staff) {
       if (post === DOCTOR && i === mine) continue;
+      // техник (spec docs/specs/2026-11-technicians.md) — выбор игрока: в готовой больнице его нет
+      if (db.roles[post]?.ready === false) continue;
       // нанятый врач встаёт на место врача; `as` — кто именно (spec docs/specs/2026-11-scenario-3.md: амбулаторный хирург)
       const role = post === DOCTOR ? (r.as ?? standInOf(db, DOCTOR)) : post;
       if (!role) continue;
