@@ -151,7 +151,19 @@ export async function economyPart({ page, port, out, ok, fail, q, shots }) {
     if (n === sum.left && rows.length === Object.values(sum.leftBy.why).filter(x => x > 0).length && gone.includes('Кто ушёл')) ok(`«почему?» у ушедших (${sum.left}): «${gone.slice(0, 260)}»`);
     else fail(`«почему?» у ушедших: «${gone}», итог ${JSON.stringify(sum.leftBy)}, ушли ${sum.left}`);
   } else ok('ушедших за сутки нет — «почему?» у них не показан');
-  // открытый разбор — кнопка «почему?» подсвечена (класс `on`, aria-expanded), у обеих
+  // отказы в госпитализации (spec docs/specs/2026-11-scenario-5.md, часть 1): строка — по итогу суток, «почему?» — с чем отказали
+  const refused = sum.refused ? [...Object.values(sum.refused.full), ...Object.values(sum.refused.none)].reduce((a, b) => a + b, 0) : 0;
+  if (refused > 0) {
+    const line = await text('#meeting #meet-refused');
+    await page.click('#meeting #meet-why-refused');
+    const box = await text('#meeting #meet-why-refused-box');
+    const rows = await page.$$eval('#meeting #meet-why-refused-box li', els => els.length);
+    const diseases = Object.keys(sum.refused.by).length;
+    if (line.includes(`отказы в госпитализации: ${refused}`) && rows === Math.min(8, diseases) && box.includes('С чем отказали')) ok(`отказы в госпитализации: «${line}»; «почему?»: «${box.slice(0, 200)}»`);
+    else fail(`отказы: строка «${line}», «почему?» «${box}», строк ${rows}, итог ${JSON.stringify(sum.refused)}`);
+  } else if (await page.$('#meeting #meet-refused')) fail('отказов за сутки нет, а строка отказов есть');
+  else ok('отказов в госпитализации за сутки нет — строки нет');
+  // открытый разбор — кнопка «почему?» подсвечена (класс `on`, aria-expanded), у всех
   const marks = await page.$$eval('#meeting button.why', els => els.map(e => `${e.id}:${e.className}:${e.getAttribute('aria-expanded')}`));
   if (marks.length > 0 && marks.every(m => m.endsWith(':why on:true'))) ok(`кнопки «почему?» открытых разборов подсвечены: ${marks.join(', ')}`);
   else fail(`кнопки «почему?»: ${marks.join(', ')}`);
