@@ -5,7 +5,7 @@
 // Две точки входа, как в `02-architecture.md` §2: `apply(state, command)` — действие врача,
 // которое двигает часы на свою цену, и команда `advance` — время на карте. Состояние
 // меняется на месте; случайность — только из именованных ветвей зерна смены (ADR 0004).
-import { type BodySystem, type Chapter, type ContentDb, type Equipment, type Exam, type Id, type Manage, type Preset, type Season, type Setting, SYSTEMS, type TutorialPatient } from '../../content/types';
+import { type BodySystem, type Chapter, type ContentDb, type Equipment, type Exam, type Id, type Manage, type Preset, type Scenario, type Season, type Setting, SYSTEMS, type TutorialPatient } from '../../content/types';
 import { fnv1a } from '../core/hash';
 import {
   caseIncome, consumablesOf, emptyLedger, expensesOf, flowOf, incomeOf, interestOf, type Ledger, levelOf, payerOf, reputationAfter, salariesOf, upkeepOf,
@@ -295,6 +295,8 @@ export function newFlowShift(
   // касса (spec 2026-10-economy): с ней — плательщики, оплата случаев, расходы и репутация «Анамнеза»; до плана суток
   const cash = sc ? sc.budget : opts.economy?.cash;
   if (cash !== undefined) s.economy = openEconomy(db, cash, s.t);
+  // больница в кризисе (spec docs/specs/2026-11-scenario-7.md, часть 1а): до плана суток — износ решает и сегодняшние поломки
+  if (sc?.crisis && s.economy) crisisStart(db, s, sc.crisis);
   planDay(db, s);
   if (opts.daily !== undefined) schedule(s, s.t, { kind: 'flow', stream: 'walk', n: 1 });
   // усталость (spec 2026-10-staff-shifts, часть 2): у врачей в смене перерывы и туалет — с первой минуты, даже если звать
@@ -306,6 +308,19 @@ export function newFlowShift(
   // поломки испытания (spec docs/specs/2026-11-technicians.md, часть 3): каждый аппарат этого вида — в свой час
   for (const b of ch?.breaks ?? []) for (const d of devicesOf(db, hospitalCtx(db, s).plan)) if (d.eq.id === b.eq) breakAt(db, s, d.key, b.at * HOUR);
   return s;
+}
+
+/**
+ * Больница в кризисе с первой минуты (spec docs/specs/2026-11-scenario-7.md, часть 1а): долг — кредит банка на его срок равными
+ * долями, как взятый на планёрке (`takeLoan`); репутация; настроение всех нанятых со сменой; сутки без обслуживания у каждого
+ * аппарата, что ломается.
+ */
+function crisisStart(db: ContentDb, s: ShiftState, c: NonNullable<Scenario['crisis']>) {
+  const e = s.economy!;
+  if (c.loan) e.loan = { left: c.loan, perDay: Math.ceil(c.loan / (db.money?.loan.days ?? 30)) };
+  if (c.reputation !== undefined) e.reputation = c.reputation;
+  if (c.mood !== undefined) for (const m of s.staff ?? []) if (m.shift !== undefined) (s.moods ??= {})[m.id] = { v: c.mood };
+  if (c.wear !== undefined && s.hospital) for (const d of devicesOf(db, hospitalCtx(db, s).plan)) (s.wear ??= {})[d.key] = c.wear;
 }
 
 /**
