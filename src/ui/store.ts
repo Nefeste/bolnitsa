@@ -281,7 +281,7 @@ export interface ChallengeRow {
   about: string;
   kind: 'chief' | 'doctor';
   /** по чему итог — для строки рекорда */
-  by: 'unseen' | 'seen' | 'cash' | 'shift';
+  by: 'unseen' | 'seen' | 'cash' | 'xrays' | 'shift';
   record?: ChallengeRecord;
 }
 

@@ -179,9 +179,10 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # with no night team, the meeting's «Операции» line; then the case of the day: «Случай дня» and 30
                                    # days, the city with no flow, building, cash, fast-forward or «Сохранить», the day's patient at
                                    # 08:00, your case — «Итог дня», «Разбор», «Сыграть снова» — the same patient, the day's grade in
-                                   # the list; then the challenges: «Испытания» and the five, «Сто пациентов» as «Главврач» — the
+                                   # the list; then the challenges: «Испытания» and the six, «Сто пациентов» as «Главврач» — the
                                    # record's flow and cash, no «Сложность», «До утра» to 20:00 — «Итог испытания» and the record,
-                                   # «Ещё раз», the best result in the list, «Одна ночь» at 20:00 alone, «Без показаний: 0 из 2»;
+                                   # «Ещё раз», the best result in the list, «Одна ночь» at 20:00 alone, «Без показаний: 0 из 2»,
+                                   # «Рентген сломался» — the X-ray broken at 09:00, «Рентгеновских снимков за смену» at 20:00;
                                    # then technicians: «Техник» in the staff room card, hired by day, the X-ray breaks at 10:41 of
                                    # day 2 (seed 447), the room card's «Аппараты» and «не работает», «Проблемы», «Персонал», the
                                    # technician standing at the machine, fixed by his hour, «Поломки» at the next meeting;
@@ -565,7 +566,9 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   card's release goes through it.
 - Challenges (`docs/specs/2026-11-challenges.md`, part 1): a record of `content/challenges/` — the start hospital, the hours
   `from`/`to` from 00:00 of day 1, the flow, `walkIns`, the flu `wave`, cash, `loan: false`, its own `overdraft`, `sorts`,
-  `unindicated` and the `grade` thresholds; `meta.challenge`, `src/engine/shift/challenge.ts`. `newFlowShift(…, { challenge })`
+  `unindicated`, `breaks` (a device of that kind breaks in work at that hour — `breakAt`; «Рентген сломался», technicians part 3)
+  and the `grade` thresholds (`xrays` — X-ray exams of the challenge, `xraysOf`); `meta.challenge`,
+  `src/engine/shift/challenge.ts`. `newFlowShift(…, { challenge })`
   takes the season, flow, cash, solo and sorting from the record; `planFlow` starts day 1's streams at `from` (the night at
   20:00); `flowArrive` stops the walk-ins at `walkIns` and gives a wave share of walk-ins the wave's disease through the
   generator's `only` (the copied generator untouched); `offerOf` offers no loan and `limitOf` (money.ts) is the record's limit;

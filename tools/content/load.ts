@@ -1803,6 +1803,14 @@ function checkChallenges(db: ContentDb, errors: string[]) {
     if (c.sorts && !er) at('привезённых сортирует игрок, а смотровой приёмного нет');
     if (c.reds !== undefined && !er) at('красные по шкале — у привезённых, а смотровой приёмного нет');
     if (c.grade.by === 'shift' && c.kind !== 'doctor') at('итог смены врача — у испытания врача');
+    // поломки в работе (spec docs/specs/2026-11-technicians.md, часть 3): чинить, ждать сервиса или строить — выбор главврача
+    for (const b of c.breaks ?? []) {
+      const eq = db.equipment[b.eq];
+      if (!eq || eq.exams.length === 0) at(`поломка: ${b.eq} — не аппарат обследований`);
+      if (b.at < c.from || b.at >= c.to) at(`поломка в ${b.at} — не во время испытания`);
+      if (rooms && !rooms.some(t => db.rooms[t]?.equipment.includes(b.eq))) at(`поломка: ${b.eq} нет в больнице ${c.start}`);
+      if (c.kind !== 'chief') at('поломка — у испытания главврача: техника нанимает он');
+    }
     if (c.grade.by !== 'shift') {
       const { a, b, c: low } = c.grade;
       if (!(c.grade.by === 'unseen' ? a < b && b < low : a > b && b > low)) at(`пороги итога ${a}, ${b}, ${low} не по порядку`);

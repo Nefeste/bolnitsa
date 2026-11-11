@@ -82,7 +82,12 @@ const PLANS: Record<string, SiteCommand[]> = {
     { kind: 'ready', type: 'room.office', size: 'M', x: 62, y: 6, rot: 0, staff: true },
     { kind: 'ready', type: 'room.staff', size: 'S', x: 70, y: 6, rot: 0, staff: false },
   ],
+  // «Рентген сломался» (spec docs/specs/2026-11-technicians.md, часть 3): техник на дневную смену в ординаторской городской
+  'challenge.xray': [{ kind: 'hire', room: 'r6', role: 'role.technician', shift: 'day' }],
+  // `--alt`: второй рентген на свободной земле востока, с персоналом
+  'challenge.xray:alt': [{ kind: 'ready', type: 'room.xray', size: 'M', x: 55, y: 6, rot: 0, staff: true }],
 };
+const ALT = process.argv.includes('--alt');
 const db: ContentDb = bundle;
 const H = 3600;
 const START = 8 * H;
@@ -397,14 +402,17 @@ if (ONLY.includes('hundred')) {
 
 // ---------------------------------------------------------------- испытания по записям — движок (часть 1)
 if (ONLY.includes('engine')) {
+  // `--challenge xray`: только это испытание
+  const pick = arg('challenge', '');
   for (const c of Object.values(db.challenges ?? {})) {
+    if (pick && c.id !== `challenge.${pick}`) continue;
     for (const play of c.kind === 'doctor' ? PLAYS : ['никто']) {
       console.log(`\n## ${c.id} — ${c.name.ru}: ${c.start}, с ${c.from} до ${c.to} ч, ${c.kind === 'doctor' ? `играет ${play}` : PLAN ? 'разумный главврач (`--plan`), дальше никто' : 'никто не играет'}; зёрна ${SEEDS.join(', ')}`);
       for (const seed of SEEDS) {
         const h = challengeStart(db, c, c.kind === 'chief' ? (site, staff) => startFor(db, site, staff, 'manager') : undefined);
         const s = newFlowShift(db, { seed, season: c.season, hospital: hospitalOf(db, h.site), staff: h.staff, flow: { perHour: 0 }, challenge: c.id });
         const built: string[] = [];
-        for (const cmd of PLAN ? (PLANS[c.id] ?? []) : []) {
+        for (const cmd of PLAN ? ((ALT ? PLANS[`${c.id}:alt`] : undefined) ?? PLANS[c.id] ?? []) : []) {
           const n = apply(db, s, { kind: 'site', cmd }).find(x => x.kind === 'site');
           built.push(n && n.kind === 'site' && n.ok ? `${cmd.kind === 'ready' ? cmd.type.slice(5) : cmd.kind} ✓` : `${cmd.kind === 'ready' ? cmd.type.slice(5) : cmd.kind} ✗ ${JSON.stringify(n)}`);
         }

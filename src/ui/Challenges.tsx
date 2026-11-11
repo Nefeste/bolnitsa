@@ -53,6 +53,7 @@ export function ChallengeSummary({ s, actions }: { s: ChallengeHud | undefined; 
     s.by === 'unseen' ? t.value.unseen(e.value, e.seen, e.arrived)
     : s.by === 'seen' ? t.value.seen(e.value, e.arrived)
       : s.by === 'cash' ? t.value.cash(e.value)
+        : s.by === 'xrays' ? t.value.xrays(e.value)
         : e.shift ? t.value.shift(e.value)
           : t.nobody;
   const passed = e.passed ? t.passedYes : s.unindicated !== undefined ? t.passedNoRule(s.unindicated) : t.passedNo;

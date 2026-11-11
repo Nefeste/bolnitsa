@@ -297,6 +297,8 @@ export function newFlowShift(
     staffDesks(db, s);
     crewAll(db, s);
   }
+  // поломки испытания (spec docs/specs/2026-11-technicians.md, часть 3): каждый аппарат этого вида — в свой час
+  for (const b of ch?.breaks ?? []) for (const d of devicesOf(db, hospitalCtx(db, s).plan)) if (d.eq.id === b.eq) breakAt(db, s, d.key, b.at * HOUR);
   return s;
 }
 
