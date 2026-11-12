@@ -26,15 +26,17 @@ export async function polyPart({ page, port, out, ok, fail, q, shots }) {
   // карточки новой игры; «Продолжить» и список сохранений (spec 2026-10-saves) — от прошлых частей сценария, не в счёт;
   // «Энциклопедия» (spec 2026-10-encyclopedia) — не больница
   const cards = (await page.$$eval('#start button', els => els.map(e => [e.id, e.querySelector('b')?.textContent ?? '']))).filter(([id]) => !id.startsWith('start-continue') && !id.startsWith('start-save') && id !== 'start-enc');
-  // первой — «Кампания»: сценарии 1–3 (spec docs/specs/2026-10-scenario-1.md, docs/specs/2026-11-scenario-2.md,
-  // docs/specs/2026-11-scenario-3.md), под ней — песочница, под ней — «Испытания» (spec docs/specs/2026-11-challenges.md, часть
-  // 2), под ними — «Для врача»: смена врача и случай дня (spec docs/specs/2026-11-doctor-shift.md, части 2 и 3)
+  // первой — «Кампания»: сценарии 1–4 (spec docs/specs/2026-10-scenario-1.md, docs/specs/2026-11-scenario-2.md,
+  // docs/specs/2026-11-scenario-3.md, docs/specs/2026-11-scenario-4.md), под ней — песочница, под ней — «Испытания» (spec
+  // docs/specs/2026-11-challenges.md, часть 2), под ними — «Для врача»: смена врача и случай дня (spec
+  // docs/specs/2026-11-doctor-shift.md, части 2 и 3)
   const want = [
     ['start-scenario-ambulatory', 'Сценарий 1. Амбулатория'], ['start-scenario-emergency', 'Сценарий 2. Приёмное'], ['start-scenario-surgery', 'Сценарий 3. Хирургия'],
+    ['start-scenario-vascular', 'Сценарий 4. Сердце и мозг'],
     ['start-empty', 'Пустое здание'], ['start-poly', 'Поликлиника'], ['start-preset', 'Городская больница'], ['start-challenges', 'Выбрать испытание'],
     ['start-shift', 'Смена врача'], ['start-daily', 'Случай дня'],
   ];
-  if (JSON.stringify(cards) === JSON.stringify(want)) ok(`экран начала — «Кампания», три карточки песочницы, «Испытания» и «Для врача» — две: ${cards.map(c => `«${c[1]}»`).join(', ')}`);
+  if (JSON.stringify(cards) === JSON.stringify(want)) ok(`экран начала — «Кампания» — четыре сценария, три карточки песочницы, «Испытания» и «Для врача» — две: ${cards.map(c => `«${c[1]}»`).join(', ')}`);
   else fail(`карточки начала: ${JSON.stringify(cards)}`);
   // живая сцена за экраном начала: проявилась к приёму, часы идут, камера едет по кругу; игрой она не считается
   await page.waitForSelector('#view.shown', { timeout: 120000 });

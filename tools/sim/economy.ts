@@ -27,6 +27,12 @@
 //              днём и ночью ведёт нанятый терапевт, как в сценарии 2; заданных больных нет. Не меньше 10 суток; под каждыми
 //              сутками — операции: сделано, срочные в срок и поздно, в срок ночью, осложнения, — и сколько переведено;
 //              критерий — основные цели к 8-м суткам.
+//   vascular — сценарий 4 «Сердце и мозг» (spec docs/specs/2026-11-scenario-4.md, часть 2б): касса сценария, больница начала —
+//              его больница из сценария 3 со свободной землёй у входа скорой (`site.surgery`); разумный игрок в 08:00 первых
+//              суток ставит кабинет КТ у смотровой приёмного и палату интенсивной терапии «С персоналом» (на день и на ночь) и
+//              включает оба маршрута для срочного; ваш кабинет днём и ночью ведёт нанятый терапевт; заданных больных нет. Не
+//              меньше 10 суток; под каждыми сутками — сроки по всей больнице (в срок из всех) и сколько прошло по маршрутам;
+//              критерий — основные цели к 8-м суткам.
 // Критерии: касса ни разу не ниже предела минуса (кредит не нужен); за 7 суток больница не окупается целиком — не богатеет
 // нелепо; поток за сутки — в ориентирах геймдизайна §5. Персонал (spec docs/specs/2026-10-staff-mood.md): кто собирался уйти
 // и кто ушёл сам, настроение в конце, кто вырос и сколько смен пропущено по болезни; с `--days 14` и больше — критерий: игрок
@@ -47,7 +53,7 @@
 // критерии уровней: «Спокойно» — ушли, не дождавшись, не больше 5 % пришедших, касса ни разу не ниже нуля, за 7 суток
 // прибыль больше, чем на «Обычно»; «Обычно» — как выше; «Трудно» — ушли 10–20 %, касса не ниже предела минуса уровня, за
 // 7 суток не окупается. Касса сценария 1 — его, на любом уровне; его цель к 10-м суткам — критерий только «Обычно».
-//   bun tools/sim/economy.ts [--days 7] [--seeds 1,2,3] [--only clinic,district,city,poly,polyspec,ambulatory,emergency,surgery] [--hall N] [--bench N] [--raise]
+//   bun tools/sim/economy.ts [--days 7] [--seeds 1,2,3] [--only clinic,district,city,poly,polyspec,ambulatory,emergency,surgery,vascular] [--hall N] [--bench N] [--raise]
 //                            [--no-orderly night|all] [--reserve registrar,nurse] [--manage calm,normal,hard] [--clinical [ward,icu]] [--json]
 import type { ContentDb, Id, Manage } from '../../src/content/types';
 import { expensesOf, incomeOf } from '../../src/engine/economy/economy';
@@ -190,8 +196,22 @@ const THEATRE: SiteCommand[] = [
   { kind: 'ready', type: 'room.or', size: 'M', x: 55, y: 6, rot: 0, staff: true },
   { kind: 'ready', type: 'room.ward', size: 'M', x: 64, y: 6, rot: 0, staff: true },
 ];
+/**
+ * Сценарий 4 (spec docs/specs/2026-11-scenario-4.md, часть 2б): кабинет КТ у смотровой приёмного и палата интенсивной терапии —
+ * готовыми помещениями «С персоналом» на свободной земле у входа скорой, на тех же местах, что в tools/test/scenario-4.test.ts;
+ * маршруты для срочного — оба, с первой минуты.
+ */
+const VASCULAR_SC = 'scenario.vascular';
+/** К каким суткам разумный план выполняет основные цели сценария 4. */
+const VASCULAR_DAYS = 8;
+const VASCULAR: SiteCommand[] = [
+  { kind: 'ready', type: 'room.ct', size: 'M', x: 52, y: 26, rot: 2, staff: true },
+  { kind: 'ready', type: 'room.icu', size: 'M', x: 62, y: 26, rot: 2, staff: true },
+];
+/** Сроки сценария 4 в строке суток: ЭКГ, осмотр и КТ при инсульте, тромболизис и перевод при подъёме ST, тест глотания. */
+const VASCULAR_TARGETS: Id[] = ['target.ecg_chest_pain', 'target.stroke_exam', 'target.stroke_ct', 'target.lysis_stemi', 'target.transfer_stemi', 'target.stroke_swallow'];
 /** Сценарии кампании ПК в прогоне — их записи: цели и касса. */
-const SCENARIO_OF: Record<string, string> = { ambulatory: AMBULATORY_SC, emergency: EMERGENCY_SC, surgery: SURGERY_SC };
+const SCENARIO_OF: Record<string, string> = { ambulatory: AMBULATORY_SC, emergency: EMERGENCY_SC, surgery: SURGERY_SC, vascular: VASCULAR_SC };
 
 /** Нужна ли помещению двойная дверь: в его образцах лежат (как в стройке, часть 2б) — палаты, рентген, смотровая. */
 const DOUBLE = new Set(['room.ward', 'room.xray', 'room.emergency', 'room.icu', 'room.ricu', 'room.box', 'room.ct', 'room.mri', 'room.or']);
@@ -260,6 +280,9 @@ interface DayRow {
   ward?: { discharged: number; early: number; stayDays: number; stayNorm: number; transferred: number };
   /** операции за сутки (spec docs/specs/2026-11-scenario-3.md): сделано, срочные в срок и поздно, в срок ночью, осложнения */
   surgery?: { done: number; onTime: number; late: number; night: number; complications: number; waited: number };
+  /** сроки по всей больнице и маршруты за сутки (spec docs/specs/2026-11-scenario-4.md, часть 2б) */
+  deadlines?: Record<Id, { onTime: number; total: number }>;
+  routes?: Record<Id, { n: number; rub: number }>;
 }
 interface Run {
   /** `week` — прибыль за первые 7 суток без стройки: критерий «не окупается за 7 суток» и при `--days` больше 7 */
@@ -363,6 +386,19 @@ function startOf(name: string, seed: number, manage: Manage): ShiftState {
     if (mine) for (const shift of ['day', 'night'] as const) site_(s, { kind: 'hire', room: mine, role: 'role.doctor', shift });
     for (const cmd of THEATRE) site_(s, cmd);
     apply(db, s, { kind: 'site', cmd: { kind: 'done' } });
+    return s;
+  }
+  if (name === 'vascular') {
+    // больница сценария 3 со свободной землёй у входа скорой: ваш кабинет ведёт нанятый терапевт, днём и ночью; смены — как в окне
+    const p = siteOfPlan(db, db.sites!['site.surgery']);
+    if (!p.ok) throw new Error(`больница начала сценария 4: помещение ${p.room} — ${p.error.kind}`);
+    const { mine, ...site } = p.site;
+    const s = newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, site), staff: withNightShift(db, site.rooms, p.staff), flow, scenario: VASCULAR_SC, ...level });
+    s.campaign!.taught = db.scenarios![VASCULAR_SC].tutorial.length;
+    if (mine) for (const shift of ['day', 'night'] as const) site_(s, { kind: 'hire', room: mine, role: 'role.doctor', shift });
+    for (const cmd of VASCULAR) site_(s, cmd);
+    apply(db, s, { kind: 'site', cmd: { kind: 'done' } });
+    apply(db, s, { kind: 'routes', on: Object.keys(db.routes ?? {}) });
     return s;
   }
   const s = newFlowShift(db, { seed, season: 'winter', hospital: hospitalOf(db, emptySite()), staff: [], flow, economy: { cash: startCash(db, 'empty', manage) }, ...level });
@@ -469,6 +505,7 @@ function run(name: string, seed: number, manage: Manage): Run {
       ...(d.routing ? { routing: { ...d.routing } } : {}),
       ...(d.ward ? { ward: { discharged: d.ward.discharged, early: d.ward.early, stayDays: d.ward.stayDays, stayNorm: d.ward.stayNorm, transferred: d.ward.transferred } } : {}),
       ...(d.surgery ? { surgery: { done: d.surgery.done, onTime: d.surgery.onTime, late: d.surgery.late, night: d.surgery.night ?? 0, complications: d.surgery.complications, waited: d.surgery.waited ?? 0 } } : {}),
+      ...(name === 'vascular' ? { deadlines: { ...(d.allTargets ?? {}) }, routes: { ...(d.routes ?? {}) } } : {}),
     };
   });
   // поток от больницы сейчас — в среднем в сутки при часах по умолчанию
@@ -494,7 +531,7 @@ function run(name: string, seed: number, manage: Manage): Run {
 }
 
 const fmt = (n: number) => Math.round(n).toLocaleString('ru-RU');
-const scenarios = ['clinic', 'district', 'city', 'poly', 'polyspec', 'ambulatory', 'emergency', 'surgery'].filter(x => ONLY.length === 0 || ONLY.includes(x));
+const scenarios = ['clinic', 'district', 'city', 'poly', 'polyspec', 'ambulatory', 'emergency', 'surgery', 'vascular'].filter(x => ONLY.length === 0 || ONLY.includes(x));
 const runs: Run[] = [];
 /** Больницы, что на уровне не строятся сразу: касса начала с пределом минуса меньше цены (на «Трудно» — районная). */
 const unbuilt: { name: string; manage: Manage; error: string }[] = [];
@@ -539,6 +576,12 @@ if (asJson) {
         if (d.surgery || d.ward?.transferred) {
           const o = d.surgery;
           console.log(`      операции: ${o ? `сделано ${o.done}, срочные в срок ${o.onTime}, поздно ${o.late}, в срок ночью ${o.night}, осложнения ${o.complications}, осложнилось в ожидании ${o.waited}` : 'нет'} · переведены ${d.ward?.transferred ?? 0}`);
+        }
+        // сценарий 4 (spec docs/specs/2026-11-scenario-4.md, часть 2б): сроки по всей больнице и маршруты
+        if (d.deadlines) {
+          const t = VASCULAR_TARGETS.map(id => `${id.slice('target.'.length)} ${d.deadlines![id]?.onTime ?? 0}/${d.deadlines![id]?.total ?? 0}`).join(', ');
+          const rt = Object.entries(d.routes ?? {}).map(([id, x]) => `${id.slice('route.'.length)} ${x.n} (${fmt(x.rub)} ₽)`).join(', ');
+          console.log(`      сроки в срок/всего: ${t}${rt ? ` · по маршрутам: ${rt}` : ''}`);
         }
       }
       const lines = Object.entries(r.lines).filter(([, v]) => v !== 0).map(([k, v]) => `${k} ${fmt(v)}`).join(', ');
@@ -655,6 +698,15 @@ if (asJson) {
       const late = rs.filter(r => last(r) > SURGERY_DAYS);
       if (late.length) console.log(`  ✗ основные цели — не к ${SURGERY_DAYS}-м суткам: зёрна ${late.map(r => `${r.seed} (${last(r) === Infinity ? 'нет' : last(r)})`).join(', ')}`);
       else console.log(`  ✓ основные цели — к суткам ${rs.map(last).join(' / ')}, не позже ${SURGERY_DAYS}-х`);
+      fails += late.length;
+    }
+    // сценарий 4 (spec docs/specs/2026-11-scenario-4.md, часть 2б): разумный план выполняет основные цели к 8-м суткам
+    if (name === 'vascular' && manage === 'normal') {
+      const main = db.scenarios![VASCULAR_SC].missions.filter(m => m.main);
+      const last = (r: Run) => Math.max(...main.map(m => r.goals?.[m.id] ?? Infinity));
+      const late = rs.filter(r => last(r) > VASCULAR_DAYS);
+      if (late.length) console.log(`  ✗ основные цели — не к ${VASCULAR_DAYS}-м суткам: зёрна ${late.map(r => `${r.seed} (${last(r) === Infinity ? 'нет' : last(r)})`).join(', ')}`);
+      else console.log(`  ✓ основные цели — к суткам ${rs.map(last).join(' / ')}, не позже ${VASCULAR_DAYS}-х`);
       fails += late.length;
     }
     // персонал (spec 2026-10-staff-mood): игрок ничего не делает — за первые две недели уходят сами не больше двух (дальше

@@ -188,8 +188,13 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # technician standing at the machine, fixed by his hour, «Поломки» at the next meeting;
                                    # then routes for the urgent: «Маршруты для срочного» in the emergency room card, both ticked,
                                    # at ×12 the nurse's request — an ECG by the route shows ST elevation, first in «Ждут вас»
-                                   # with the lysis deadline, the urgent line; the meeting's «Сроки» and «по маршрутам»;
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|44` for one part, `-- --only 7,10,11` —
+                                   # with the lysis deadline, the urgent line; the meeting's «Сроки» and «по маршрутам»; then
+                                   # scenario 4: its card fourth in «Кампания», scenario 3's hospital and 2 500 000 ₽, the
+                                   # letters, the CT and the ICU by the ambulance entrance, the first tutorial patient lying with
+                                   # routes off — the «маршруты» hint and letter, both routes ticked — the nurse's ECG shows ST
+                                   # elevation: the urgent line, the autopause, the «alert» letter, first in «Ждут вас»;
+                                   # «Позвать» — the ECG already in the card and «Инфаркт и минуты», the meeting's «Сроки»;
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|45` for one part, `-- --only 7,10,11` —
                                    # several in a row on one page, as in the full run
 node tools/app/soak.mjs --days 3   # after build: a long run in headless Chromium — the ready city at ×12 for three game days,
                                    # the meeting closed each morning; window memory after GC, DOM nodes, people, sim lag and
@@ -549,6 +554,12 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   line in the window, «До утра» stops (`ffStop`), an autopause for a role with an office; while nobody has called him he is first
   in «Ждут вас» (`routeAlertOf` in `src/sim/doctor.ts`, `why: 'alert'`, `PatientRow.alert`); the meeting's `#meet-deadlines` —
   `DaySummary.allTargets` and `routes` by name (`MeetingView.deadlines`, `routes`).
+  Part 2б (0.85.0): the record `content/campaign/scenarios/vascular.yaml` (`scenario.vascular`, start `site.surgery`,
+  `tutorialRoom: room.ct`, the three tutorial patients of Anamnez's chapter 3) and its new character `char.head_neurologist`;
+  the hint states `alert` (a nurse's request, `alert` of `HintInput`) and `routes` (routes off while a lying arrival with a
+  route's complaint waits — `DoctorState.routable`); a route runs before the nurse sorts the arrival, so before a free doctor
+  calls him, and its gurney is called at once (`orderExam(…, route)` with no `ORDER_MINUTES`); the economy simulator's `--only
+  vascular` (the CT and the ICU with staff at 08:00 by the ambulance entrance, both routes on, the main goals by day 8).
 - The demo for Next Fest (`docs/specs/2026-11-demo.md`, #176): the key `?demo=1` (Electron `--demo`, `main.tsx`) — only
   «Кампания» on the start screen, and after the first meeting closes the «Итог» window (`Game.afterMeeting`): what was built
   in the build order, the day's patients and how many left waiting for you, your receptions, cash, real time played, the

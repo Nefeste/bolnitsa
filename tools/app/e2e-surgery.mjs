@@ -49,7 +49,8 @@ export async function surgeryPart({ page, port, out, ok, fail, q, shots }) {
   await page.waitForSelector('#start-scenario-surgery', { timeout: 60000 });
   const cards = await page.$$eval('#start [id^="start-scenario-"]', els => els.map(e => e.id));
   const cardText = flat(await page.innerText('#start-scenario-surgery'));
-  if (cards.join() === 'start-scenario-ambulatory,start-scenario-emergency,start-scenario-surgery' && cardText.startsWith('Сценарий 3. Хирургия')) {
+  // за ним — сценарий 4 (spec docs/specs/2026-11-scenario-4.md, часть 2б)
+  if (cards.join() === 'start-scenario-ambulatory,start-scenario-emergency,start-scenario-surgery,start-scenario-vascular' && cardText.startsWith('Сценарий 3. Хирургия')) {
     ok(`экран начала: третья карточка «Кампании» — «${cardText.slice(0, 140)}» (снимок ${await shot('e2e-surgery-1-start.jpg')} КБ)`);
   } else fail(`экран начала: карточки ${JSON.stringify(cards)}, «${cardText}»`);
   await page.click('#start-scenario-surgery');
