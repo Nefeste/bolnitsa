@@ -25,7 +25,7 @@ import {
   type TipSrc, tipSchema, type TreatmentSrc, treatmentSchema, versionSchema, type AchievementSrc, achievementSchema, type ScoreSrc, scoreSchema,
   type RuleSrc, ruleSchema, type TargetSrc, targetSchema, type SkillSrc, skillSchema,
   type ConsultsSrc, consultsSchema, type DaySrc, daySchema, type InflowSrc, inflowSchema, type MoneySrc, moneySchema,
-  type DepartmentsSrc, departmentsSchema,
+  type DepartmentsSrc, departmentsSchema, type RoutesSrc, routesSchema,
   type DifficultySrc, difficultySchema,
 } from './schema';
 
@@ -236,6 +236,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   let inflow: InflowSrc | undefined;
   let money: MoneySrc | undefined;
   let departments: DepartmentsSrc | undefined;
+  let routes: RoutesSrc | undefined;
   let difficulty: DifficultySrc | undefined;
   let contentVersion = 0;
 
@@ -311,6 +312,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       money = check(moneySchema);
     } else if (rel === 'hospital/departments.yaml') {
       departments = check(departmentsSchema);
+    } else if (rel === 'hospital/routes.yaml') {
+      routes = check(routesSchema);
     } else if (rel === 'hospital/difficulty.yaml') {
       difficulty = check(difficultySchema);
     } else if (top === 'campaign' && rel.split('/')[1] === 'characters') {
@@ -344,7 +347,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       const x = check(skillSchema);
       if (x) { expectId(x.id, 'skill'); put(skills, x); }
     } else {
-      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, people/professions, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/sites, hospital/economy.yaml, hospital/consults.yaml, hospital/day.yaml, hospital/inflow.yaml, hospital/money.yaml, hospital/departments.yaml, hospital/difficulty.yaml, campaign/characters, campaign/chapters, campaign/scenarios, campaign/tips, challenges, achievements, scores, rules, targets, career/skills)`);
+      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, people/professions, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/sites, hospital/economy.yaml, hospital/consults.yaml, hospital/day.yaml, hospital/inflow.yaml, hospital/money.yaml, hospital/departments.yaml, hospital/routes.yaml, hospital/difficulty.yaml, campaign/characters, campaign/chapters, campaign/scenarios, campaign/tips, challenges, achievements, scores, rules, targets, career/skills)`);
     }
   }
   if (!contentVersion) errors.push('version.yaml: нет contentVersion');
@@ -1016,10 +1019,13 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     ...(money ? { money } : {}),
     // отделения ПК (spec docs/specs/2026-10-departments.md): по порядку записи — так их показывает окно
     ...(departments ? { departments: Object.fromEntries(departments.departments.map(d => [d.id, { id: d.id, name: d.name, paint: d.paint, ...(d.takes ? { takes: d.takes } : {}) }])) } : {}),
+    // маршруты для срочного (spec docs/specs/2026-11-scenario-4.md): по порядку записи
+    ...(routes ? { routes: Object.fromEntries(routes.routes.map(r => [r.id, { id: r.id, target: r.target, exam: r.exam, name: r.name }])) } : {}),
     // ось «Управление» (spec 2026-10-difficulty): без файла — ошибка сборки выше
     ...(difficulty ? { manage: difficulty } : {}),
     // готовые больницы из готовых помещений (spec 2026-10-real-hospital); проверка — checkSites ниже. Основа (`base`, spec
-    // docs/specs/2026-11-scenario-3.md) — её помещения и скамьи первыми, без вложения: у основы своей основы нет
+    // docs/specs/2026-11-scenario-3.md) — её помещения и скамьи первыми; у основы может быть своя (сценарий 4 строится на
+    // больнице сценария 3, та — на сценарии 2) — тогда её ещё раньше
     ...(Object.keys(sites).length ? { sites: Object.fromEntries(Object.values(sites).sort((a, b) => (a.id < b.id ? -1 : 1)).map(p => [p.id, sitePlanOf(p, sites)])) } : {}),
     revealedBy,
   };
@@ -1235,6 +1241,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     checkCampaign(db, errors);
     checkScenarios(db, errors);
     checkChallenges(db, errors);
+    checkRoutes(db, errors);
     checkAchievements(db, errors);
     checkSkills(db, errors);
     checkDepartments(db, errors);
@@ -1517,20 +1524,34 @@ function checkPresets(db: ContentDb, errors: string[]) {
  * что игрок не поставил бы, в базу не попадёт. Ваш кабинет — один, и это кабинет врача; работает каждое помещение, и
  * больница открыта.
  */
-/** Запись готовой больницы — в план базы: помещения и скамьи основы первыми, свои — за ними; `wider` — свой. */
+/** Запись готовой больницы — в план базы: помещения и скамьи основ первыми (основа основы — раньше), свои — за ними; `wider` — свой. */
 function sitePlanOf(p: SiteSrc, sites: Record<string, SiteSrc>): SitePlan {
-  const base = p.base ? sites[p.base] : undefined;
-  const rooms = [...(base?.rooms ?? []), ...p.rooms].map(r => ({ ...r }));
-  const benches = [...(base?.benches ?? []), ...p.benches].map(([x, y]) => [x, y] as [number, number]);
+  const chain = baseChain(p, sites);
+  const rooms = chain.flatMap(x => x.rooms).map(r => ({ ...r }));
+  const benches = chain.flatMap(x => x.benches).map(([x, y]) => [x, y] as [number, number]);
   return { id: p.id, rooms, ...(benches.length ? { benches } : {}), ...(p.wider !== undefined ? { wider: p.wider } : {}) };
 }
 
-/** Основа записи готовой больницы: есть и сама без основы. */
+/** Основы записи по порядку стройки: самая первая — первой, сама запись — последней; по кругу — до повтора. */
+function baseChain(p: SiteSrc, sites: Record<string, SiteSrc>): SiteSrc[] {
+  const out: SiteSrc[] = [];
+  for (let x: SiteSrc | undefined = p; x && !out.includes(x); x = x.base ? sites[x.base] : undefined) out.unshift(x);
+  return out;
+}
+
+/** Основа записи готовой больницы: есть, не по кругу, и корпус записи не уже, чем у основы, — иначе её помещения не встанут. */
 function checkSiteBases(sites: Record<string, SiteSrc>, errors: string[]) {
   for (const p of Object.values(sites)) {
     if (!p.base) continue;
-    if (!sites[p.base]) errors.push(`${p.id}: основы ${p.base} нет`);
-    else if (sites[p.base].base) errors.push(`${p.id}: у основы ${p.base} своя основа — так нельзя`);
+    const base = sites[p.base];
+    if (!base) {
+      errors.push(`${p.id}: основы ${p.base} нет`);
+      continue;
+    }
+    const chain = baseChain(p, sites);
+    const last = chain[0];
+    if (last.base && sites[last.base]) errors.push(`${p.id}: основы по кругу — ${chain.map(x => x.id).join(' → ')}`);
+    if ((base.wider ?? 0) > (p.wider ?? 0)) errors.push(`${p.id}: корпус уже, чем у основы ${p.base} (шире на ${p.wider ?? 0}, а у основы — на ${base.wider})`);
   }
 }
 
@@ -1784,6 +1805,22 @@ function checkHospital(c: {
  * главврача она есть; сортировка игрока и красные по шкале — где есть смотровая приёмного; пороги итога — по порядку: у доли
  * не принятых A меньше B и C, у принятых и кассы — больше.
  */
+/**
+ * Маршруты для срочного (spec docs/specs/2026-11-scenario-4.md): номер не повторяется; срок есть, у него есть жалобы при
+ * поступлении (кому маршрут) и среди его обследований — обследование маршрута, а оно бывает у постели в смотровой приёмного или
+ * в своём кабинете.
+ */
+function checkRoutes(db: ContentDb, errors: string[]) {
+  for (const r of Object.values(db.routes ?? {})) {
+    const at = (what: string) => errors.push(`${r.id}: ${what}`);
+    const t = db.targets[r.target];
+    if (!t) at(`срок ${r.target} не найден`);
+    else if (t.complaints.length === 0) at(`у срока ${r.target} нет жалоб при поступлении — кому маршрут, не узнать`);
+    else if (!t.exams.includes(r.exam)) at(`обследования ${r.exam} нет среди обследований срока ${r.target}`);
+    if (!db.exams[r.exam]) at(`обследование ${r.exam} не найдено`);
+  }
+}
+
 function checkChallenges(db: ContentDb, errors: string[]) {
   const orders = new Set<number>();
   for (const c of Object.values(db.challenges ?? {})) {
@@ -1857,7 +1894,8 @@ function checkScenarios(db: ContentDb, errors: string[]) {
       missions.add(m.id);
       if (m.kind === 'roomWorks' && !c.build.includes(m.room)) at(`задание ${m.id}: ${m.room} нельзя построить в сценарии`);
       if (m.kind === 'roomWorks' && m.role !== undefined && !standsIn(m.role, m.room)) at(`задание ${m.id}: ${m.role} не встаёт на место в ${m.room}`);
-      if (!['seen', 'roomWorks', 'streak', 'days', 'stay', 'sorting', 'nights', 'routing', 'operations', 'onTime', 'nightOps'].includes(m.kind)) at(`задание ${m.id}: вид ${m.kind} в сценарии ПК не считается`);
+      // сроки и тромболизисы — по всей больнице (spec docs/specs/2026-11-scenario-4.md, часть 1)
+      if (!['seen', 'roomWorks', 'streak', 'days', 'stay', 'sorting', 'nights', 'routing', 'operations', 'onTime', 'nightOps', 'deadline', 'thrombolysis'].includes(m.kind)) at(`задание ${m.id}: вид ${m.kind} в сценарии ПК не считается`);
       // операции (spec docs/specs/2026-11-scenario-3.md) — где можно построить операционную или она уже есть
       if ((m.kind === 'operations' || m.kind === 'onTime' || m.kind === 'nightOps') && !c.build.includes('room.or')) at(`задание ${m.id}: в сценарии не построить операционную`);
       // направление по жалобе (spec docs/specs/2026-10-departments.md, часть 4) — где можно нанять врача, который берёт

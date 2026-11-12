@@ -139,9 +139,9 @@ function mortalityOf(history: readonly DaySummary[], days: readonly DaySummary[]
  * днях главы; выполнен — «A». Опоздание видно в разборе и счёт не обнуляет: серия ждала редких больных, и одно опоздание
  * отбрасывало главу на недели.
  */
-function deadlineCount(days: readonly DaySummary[], target: Id): number {
+function deadlineCount(days: readonly DaySummary[], target: Id, all = false): number {
   let n = 0;
-  for (const h of days) for (const g of h.targetSeq?.[target] ?? '') if (g === 'A') n++;
+  for (const h of days) for (const g of (all ? h.allSeq : h.targetSeq)?.[target] ?? '') if (g === 'A') n++;
   return n;
 }
 
@@ -164,6 +164,9 @@ export function roomWorks(db: ContentDb, v: { hospital?: HospitalState; staff?: 
 }
 
 /** Ход задания сейчас; выполненное раньше — выполнено, что бы ни было потом. */
+/** Ход — сценария ПК, а не главы «Анамнеза»: его сроки и тромболизисы — по всей больнице. */
+const pcOf = (db: ContentDb, v: CampaignView): boolean => db.scenarios?.[v.campaign.chapter] !== undefined;
+
 export function missionProgress(db: ContentDb, v: CampaignView, m: Mission): MissionProgress {
   const was = v.campaign.done[m.id] !== undefined;
   const days = chapterDays(v);
@@ -199,13 +202,15 @@ export function missionProgress(db: ContentDb, v: CampaignView, m: Mission): Mis
     }
     // глава 3 (spec 2026-10-chapter-3, часть 45а): срок выполнен у N ваших больных — с 0.5.15 без «подряд»
     // (spec 2026-10-rules); тромболизисы в окне и без противопоказаний за главу
+    // сценарий ПК (spec docs/specs/2026-11-scenario-4.md, часть 1; решение владельца #219) — по всей больнице
     case 'deadline': {
-      const n = deadlineCount(days, m.target);
+      const n = deadlineCount(days, m.target, pcOf(db, v));
       const done = was || n >= m.count;
       return { value: done ? m.count : n, target: m.count, done };
     }
     case 'thrombolysis': {
-      const n = days.reduce((a, h) => a + (h.lysis?.good ?? 0), 0);
+      const all = pcOf(db, v);
+      const n = days.reduce((a, h) => a + ((all ? h.allLysis : h.lysis)?.good ?? 0), 0);
       return { value: Math.min(n, m.count), target: m.count, done: was || n >= m.count };
     }
     // выписанные подряд — от последнего дня назад; день с выпиской раньше срока рвёт серию: так

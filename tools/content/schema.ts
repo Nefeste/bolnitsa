@@ -804,8 +804,8 @@ export const presetSchema = z.strictObject({
  * сторона, как у готовой больницы). `mine` — ваш кабинет, он один. Люди — на всех должностях, кроме вашей; `as` — кто встаёт
  * на место врача (spec docs/specs/2026-11-scenario-3.md: амбулаторный хирург в кабинете хирурга), нет — нанятый терапевт.
  * `benches` — скамьи коридора, клетки (x, y): ставятся, как ставит игрок (spec 2026-10-door-benches). `base` — сначала
- * помещения и скамьи этой больницы, потом свои (сценарий 3 — больница сценария 2); `wider` — корпус шире на столько клеток
- * к востоку, свободная земля, а вход скорой — в новой восточной стене.
+ * помещения и скамьи этой больницы (и её основы, если есть), потом свои (сценарий 3 — больница сценария 2, сценарий 4 —
+ * сценария 3); `wider` — корпус шире на столько клеток к востоку, свободная земля, а вход скорой — в новой восточной стене.
  */
 export const siteSchema = z.strictObject({
   id: z.string().regex(/^site\.[a-z0-9_]+$/),
@@ -1050,6 +1050,23 @@ export const difficultySchema = z.strictObject({ calm: manageLevel, hard: manage
  * «Отделение» палату или кабинет, и чьих больных оно берёт ещё (`takes` — отделения болезней, у которых своего нет:
  * травму лечит хирургия, геймдизайн §4). Порядок — порядок в окне.
  */
+/**
+ * Маршруты для срочного (spec docs/specs/2026-11-scenario-4.md; решение владельца #219): что медсестра смотровой приёмного
+ * делает до врача — обследование срока тем, у кого его жалоба при поступлении
+ */
+export const routesSchema = z.strictObject({
+  routes: z
+    .array(
+      z.strictObject({
+        id: z.string().regex(/^route\.[a-z0-9_]+$/),
+        target: z.string().regex(/^target\.[a-z0-9_]+$/),
+        exam: z.string().regex(/^exam\.[a-z0-9_]+$/),
+        name: text,
+      }),
+    )
+    .min(1),
+});
+
 export const departmentsSchema = z.strictObject({
   departments: z.array(z.strictObject({ id: deptId, name: text, paint: z.boolean().default(false), takes: z.array(deptId).min(1).optional() })).min(1),
 });
@@ -1506,6 +1523,7 @@ export type EconomySrc = z.infer<typeof economySchema>;
 export type ConsultsSrc = z.infer<typeof consultsSchema>;
 export type DaySrc = z.infer<typeof daySchema>;
 export type DepartmentsSrc = z.infer<typeof departmentsSchema>;
+export type RoutesSrc = z.infer<typeof routesSchema>;
 export type InflowSrc = z.infer<typeof inflowSchema>;
 export type MoneySrc = z.infer<typeof moneySchema>;
 export type DifficultySrc = z.infer<typeof difficultySchema>;

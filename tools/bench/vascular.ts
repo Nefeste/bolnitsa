@@ -10,9 +10,12 @@
 // - сроки (`content/targets/`): у скольких закрытых был срок и у скольких он выполнен (оценка «A») — ЭКГ при боли в груди за
 //   10 минут, осмотр и КТ при подозрении на инсульт, тромболизис и перевод при подъёме ST;
 // - пришли с болью в груди и с признаками инсульта — по жалобам сроков; сами и по скорой;
-// - кого положили в палату интенсивной терапии; сколько раз нанятые врачи просили посмотреть.
+// - кого положили в палату интенсивной терапии; сколько раз нанятые врачи просили посмотреть;
+// - с `--routes` (часть 1 сценария, решение владельца #219): маршруты для срочного включены с первой минуты — медсестра
+//   смотровой снимает ЭКГ при боли в груди и везёт на КТ при признаках инсульта до врача; сколько прошло по каждому за сутки
+//   и во что обошлись расходники.
 //
-// bun tools/bench/vascular.ts [--days 7] [--seeds 1,2,3] [--hospital vascular,city]
+// bun tools/bench/vascular.ts [--days 7] [--seeds 1,2,3] [--hospital vascular,city] [--routes]
 import type { ContentDb, Id } from '../../src/content/types';
 import { db as bundle } from '../../src/content';
 import { hospitalOf } from '../../src/engine/hospital/site';
@@ -29,6 +32,7 @@ const arg = (name: string, def: string) => {
 const DAYS = Number(arg('days', '7'));
 const SEEDS = arg('seeds', '1,2,3').split(',').map(Number);
 const HOSPITALS = arg('hospital', 'vascular,city').split(',');
+const ROUTES = process.argv.includes('--routes') ? Object.keys(bundle.routes ?? {}) : [];
 const db: ContentDb = bundle;
 const H = 3600;
 /** Сроки сценария: боль в груди и инсульт. */
@@ -50,6 +54,7 @@ function start(name: string, seed: number): ShiftState {
     }
   }
   apply(db, s, { kind: 'site', cmd: { kind: 'done' } });
+  if (ROUTES.length > 0) apply(db, s, { kind: 'routes', on: ROUTES });
   return s;
 }
 
@@ -66,6 +71,7 @@ interface DayRow {
   targets: Record<Id, { onTime: number; total: number }>;
   icu: number;
   asks: number;
+  routes: Record<Id, { n: number; rub: number }>;
 }
 
 function run(name: string, seed: number): DayRow[] {
@@ -95,7 +101,7 @@ function run(name: string, seed: number): DayRow[] {
       }
     }
     const kinds = (set: Set<Id>) => ({ walk: ps.filter(p => has(p, set) && p.kind !== 'ambulance').length, amb: ps.filter(p => has(p, set) && p.kind === 'ambulance').length });
-    rows.push({ day: h.day, chest: kinds(CHEST), stroke: kinds(STROKE), targets, icu: closed.filter(p => p.closed!.plan.setting === 'icu').length, asks });
+    rows.push({ day: h.day, chest: kinds(CHEST), stroke: kinds(STROKE), targets, icu: closed.filter(p => p.closed!.plan.setting === 'icu').length, asks, routes: h.routes ?? {} });
     asks = 0;
     day = s.day;
   }
@@ -119,7 +125,8 @@ for (const name of HOSPITALS) {
     console.log(`  зерно ${seed}`);
     for (const r of rows) {
       const t = TARGETS.map(id => `${short(id)} ${r.targets[id].onTime}/${r.targets[id].total}`).join(', ');
-      console.log(`    сутки ${r.day}: боль в груди — сами ${r.chest.walk}, скорая ${r.chest.amb}; инсульт — сами ${r.stroke.walk}, скорая ${r.stroke.amb}; сроки в срок/всего: ${t}; в ПИТ ${r.icu}; просили посмотреть ${r.asks}`);
+      const rt = ROUTES.length > 0 ? `; по маршрутам: ${ROUTES.map(id => `${id.slice('route.'.length)} ${r.routes[id]?.n ?? 0}`).join(', ')}` : '';
+      console.log(`    сутки ${r.day}: боль в груди — сами ${r.chest.walk}, скорая ${r.chest.amb}; инсульт — сами ${r.stroke.walk}, скорая ${r.stroke.amb}; сроки в срок/всего: ${t}; в ПИТ ${r.icu}; просили посмотреть ${r.asks}${rt}`);
     }
   }
   const n = all.length;
@@ -129,8 +136,9 @@ for (const name of HOSPITALS) {
     const all_ = all.reduce((a, r) => a + r.targets[id].total, 0);
     return `${short(id)} ${on} из ${all_}`;
   }).join(', ');
+  const rt = ROUTES.map(id => `${id.slice('route.'.length)} ${avg(r => r.routes[id]?.n ?? 0)} (${avg(r => r.routes[id]?.rub ?? 0)} ₽)`).join(', ');
   console.log(
     `  в сутки в среднем: боль в груди ${avg(r => r.chest.walk + r.chest.amb)} (скорая ${avg(r => r.chest.amb)}), инсульт ${avg(r => r.stroke.walk + r.stroke.amb)} (скорая ${avg(r => r.stroke.amb)}); ` +
-      `в ПИТ ${avg(r => r.icu)}; просили посмотреть ${avg(r => r.asks)}; сроки за ${n} суток: ${tot}`,
+      `в ПИТ ${avg(r => r.icu)}; просили посмотреть ${avg(r => r.asks)}; сроки за ${n} суток: ${tot}${rt ? `; по маршрутам: ${rt}` : ''}`,
   );
 }
