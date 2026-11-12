@@ -15,7 +15,7 @@ import { Icon } from '../icons';
 
 function Row({ r, children, hint, find }: { r: PatientRow; children?: ReactNode; hint?: string; find?: (id: string) => void }) {
   return (
-    <li className={`prow t-${r.triage}`} id={`dr-${r.id}`}>
+    <li className={`prow t-${r.triage}${r.why === 'alert' ? ' alert' : ''}`} id={`dr-${r.id}`}>
       <span className="who">
         {r.who}
         <small className="muted">
@@ -161,7 +161,7 @@ export function Dock({ hud, actions }: { hud: Hud; actions: Actions }) {
         {st.yours.length === 0 ? <p className="muted small">{t.nobody}</p> : null}
         <ul>
           {st.yours.map(r => (
-            <Row key={r.id} r={r} hint={r.why ? t.why[r.why] : undefined} find={find}>
+            <Row key={r.id} r={r} hint={r.why === 'alert' && r.alert ? t.alertRow(r.alert.finding, r.alert.target, clock(r.alert.until)) : r.why ? t.why[r.why] : undefined} find={find}>
               <OpenCard id={r.id} open={open} />
               <button type="button" className="small" disabled={!free || !st.office} onClick={() => take(r.id)}>
                 {t.call}

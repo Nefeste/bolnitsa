@@ -7,7 +7,7 @@
 import type { BodySystem } from '../content/types';
 import type { SiteResult } from '../engine/hospital/site';
 import { type Command, type Difficulty, type Notice } from '../engine/shift/types';
-import { lang, named, T } from '../i18n';
+import { clock, lang, named, T } from '../i18n';
 import { useDb } from '../sim/caseView';
 import type { Slice } from '../sim/client';
 import { AGREE_ALL, DEFAULT_LEVEL, LEVELS } from '../sim/doctor';
@@ -186,6 +186,11 @@ export class Doctor {
       // автопауза и окно врача раскрыто: обход — в нём
       this.stop();
       this.hud.folded = false;
+    } else if (n.kind === 'alert' && ROLE_SETS[this.hud.role].office) {
+      // просьба медсестры по маршруту (spec docs/specs/2026-11-scenario-4.md, часть 2а): позвать его — из «Ждут вас»; у кого
+      // кабинета нет (управляющий, главврач), — только срочная строка
+      this.stop();
+      this.hud.folded = false;
     } else if (n.kind === 'ambulance' && this.hud.state?.handover.some(r => r.id === n.id)) {
       // привезённый ждёт вашей сортировки (spec docs/specs/2026-11-scenario-2.md, часть 2а): лист — в окне врача
       this.stop();
@@ -271,9 +276,17 @@ export class Doctor {
         return T.notices.left;
       case 'worse':
         return this.worseText(n.id);
+      case 'alert':
+        return this.alertText(n);
       default:
         return undefined;
     }
+  }
+
+  /** Строка журнала о просьбе медсестры по маршруту (spec docs/specs/2026-11-scenario-4.md, часть 2а): находка и срок от неё. */
+  alertText(n: Extract<Notice, { kind: 'alert' }>): string {
+    const db = this.g.db;
+    return T.doctor.notices.alert(named(db.findings[n.finding]?.name, n.finding), named(db.targets[n.target]?.name, n.target), clock(n.until));
   }
 
   /** Строка журнала о просьбе: кто просит. */

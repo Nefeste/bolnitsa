@@ -79,6 +79,7 @@ const actions: Actions = {
   pickItem: later('pickItem'),
   pickDept: later('pickDept'),
   markDept: later('markDept'),
+  routes: later('routes'),
   undo: later('undo'),
   done: later('done'),
   furnish: later('furnish'),

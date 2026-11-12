@@ -91,6 +91,8 @@ export interface RoomCard {
    * сколько без обслуживания; `bad` — сломан
    */
   devices?: { key: string; name: string; state: string; bad?: true }[];
+  /** маршруты для срочного (spec docs/specs/2026-11-scenario-4.md, часть 2а): у смотровой приёмного — какие и включён ли */
+  routes?: { id: Id; name: string; on: boolean }[];
   furnish?: { ok: boolean; text: string };
   demolish?: string;
   /**
@@ -443,6 +445,8 @@ export interface Actions {
   /** «Отделение» (spec docs/specs/2026-10-departments.md, часть 2): какое — инструменту; помещению — из его карточки */
   pickDept(dept: Id | null): void;
   markDept(room: string, dept: Id | null): void;
+  /** маршруты для срочного (spec docs/specs/2026-11-scenario-4.md, часть 2а): какие включены — все разом */
+  routes(on: Id[]): void;
   undo(): void;
   done(): void;
   furnish(room: string): void;

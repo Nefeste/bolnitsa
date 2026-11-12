@@ -487,7 +487,9 @@ export const doctorRu = {
     },
     nobody: 'никого',
     more: (n: number) => `и ещё ${patients(n)}`,
-    why: { taken: 'взят у врача', own: 'свой больной', back: 'с результатами', yours: 'ваш' } as Record<string, string>,
+    why: { taken: 'взят у врача', own: 'свой больной', back: 'с результатами', yours: 'ваш', alert: 'медсестра просит посмотреть' } as Record<string, string>,
+    /** просьба медсестры по маршруту (spec docs/specs/2026-11-scenario-4.md, часть 2а): находка и срок от неё */
+    alertRow: (finding: string, target: string, until: string) => `медсестра: ${lowerFirst(finding)} — ${lowerFirst(target)} до ${until}`,
     ready: (at: string) => `к ${at}`,
     /** ваш идёт к вам и когда войдёт; на обследовании в другом кабинете и когда вернётся (spec 2026-10-owner-play-2) */
     comingAt: (at: string) => `будет в ${at}`,
@@ -662,6 +664,8 @@ export const doctorRu = {
       /** вошёл к вам или вернулся с обследования — строка в извещениях */
       reached: (name: string) => `${name} у вас в кабинете`,
       reachedSomeone: 'Ваш пациент у вас в кабинете',
+      /** просьба медсестры смотровой по маршруту (spec docs/specs/2026-11-scenario-4.md, часть 2а) */
+      alert: (finding: string, target: string, until: string) => `Медсестра смотровой: ${lowerFirst(finding)}; ${lowerFirst(target)} — до ${until}. Позвать — в «Ждут вас»`,
     },
   },
 };

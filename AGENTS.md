@@ -186,7 +186,10 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # then technicians: «Техник» in the staff room card, hired by day, the X-ray breaks at 10:41 of
                                    # day 2 (seed 447), the room card's «Аппараты» and «не работает», «Проблемы», «Персонал», the
                                    # technician standing at the machine, fixed by his hour, «Поломки» at the next meeting;
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|43` for one part, `-- --only 7,10,11` —
+                                   # then routes for the urgent: «Маршруты для срочного» in the emergency room card, both ticked,
+                                   # at ×12 the nurse's request — an ECG by the route shows ST elevation, first in «Ждут вас»
+                                   # with the lysis deadline, the urgent line; the meeting's «Сроки» and «по маршрутам»;
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|44` for one part, `-- --only 7,10,11` —
                                    # several in a row on one page, as in the full run
 node tools/app/soak.mjs --days 3   # after build: a long run in headless Chromium — the ready city at ×12 for three game days,
                                    # the meeting closed each morning; window memory after GC, DOM nodes, people, sim lag and
@@ -539,6 +542,13 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   `DaySummary.routes` — how many and the consumables); a patient out on the CT is called by nobody until he is back (`isOut` in
   `call` and `colleagueTakes`, a `free` event at his return). The start site `site.surgery` — `site.emergency` with the
   operating room and the post-op ward of the simulator's plan; free land for the CT and the ICU by the ambulance entrance.
+  Part 2а (0.84.0), the window: «Маршруты для срочного» in the emergency room card (`RoomCard.routes`, the `routes` action; which
+  are on comes from the sim, `DoctorState.routes`; none in the doctor's shift); the nurse's request: a lying arrival nobody has
+  called whose route exam shows a finding a deadline counts from (ST elevation — lysis in 10 minutes; `routeFinding` in
+  `engine.ts`) — at the result's hour (the `routed` event `routeExams` schedules) the engine sends the `alert` notice: an urgent
+  line in the window, «До утра» stops (`ffStop`), an autopause for a role with an office; while nobody has called him he is first
+  in «Ждут вас» (`routeAlertOf` in `src/sim/doctor.ts`, `why: 'alert'`, `PatientRow.alert`); the meeting's `#meet-deadlines` —
+  `DaySummary.allTargets` and `routes` by name (`MeetingView.deadlines`, `routes`).
 - The demo for Next Fest (`docs/specs/2026-11-demo.md`, #176): the key `?demo=1` (Electron `--demo`, `main.tsx`) — only
   «Кампания» on the start screen, and after the first meeting closes the «Итог» window (`Game.afterMeeting`): what was built
   in the build order, the day's patients and how many left waiting for you, your receptions, cash, real time played, the

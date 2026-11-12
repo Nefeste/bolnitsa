@@ -378,6 +378,9 @@ export const en: Strings = {
     deviceMaintain: (until: string) => `working · the technician is servicing it, until ${until}`,
     deviceTech: (since: string | undefined, until: string) => `broke down ${since ? `at ${since}` : 'this morning'} — the technician is repairing it, done by ${until}`,
     deviceService: (since: string | undefined) => `broke down ${since ? `at ${since}` : 'this morning'} — waiting for the service, fixed by morning`,
+    routes: 'Routes for the urgent',
+    routesHint:
+      'What the emergency room nurse does before the doctor once an arrival is in a bay: takes the ECG at the bedside, wheels to the CT on a gurney. The exam is done even for those a doctor would not order it for: the consumables are at the meeting',
     wcShort: 'in the toilet',
     fatigueShort: (n: number) => `fatigue ${n}`,
     ride: {
