@@ -611,7 +611,8 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   route's complaint waits — `DoctorState.routable`); a route runs before the nurse sorts the arrival, so before a free doctor
   calls him, and its gurney is called at once (`orderExam(…, route)` with no `ORDER_MINUTES`); the economy simulator's `--only
   vascular` (the CT and the ICU with staff at 08:00 by the ambulance entrance, both routes on, the main goals by day 8).
-  Scenario 7 «Кризис» (`docs/specs/2026-11-scenario-7.md`; the fork — cash below the limit — #231), part 1а (0.91.0): a PC scenario's
+  Scenario 7 «Кризис» (`docs/specs/2026-11-scenario-7.md`; owner's decision #231, variant 1: three mornings below the limit lose the
+  scenario — not built yet), part 1а (0.91.0): a PC scenario's
   `budget` may be below zero and its `crisis` (`loan`, `reputation`, `mood`, `wear`) starts the hospital in trouble (`crisisStart` in
   `engine.ts`, before the day's plan); day kinds `cashAboveZero` (the evening cash not below zero) and `noQuit` (nobody of the staff
   left on their own — `DaySummary.departed`, counted in `depart`).
