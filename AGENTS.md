@@ -366,7 +366,12 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   «Почему?» at the meeting (`docs/specs/2026-10-why.md`): `DaySummary.arrivedBy` (the arrived by kind), `leftBy` (the left
   by reason, named when patience ran out — `leaving` in `engine.ts`: his doctor on a break, waited for you, or whether a
   hired doctor who would take him is on the shift now; also on the path's end, `End.why`) and `inflow` (the new day's flow
-  by the hour with those on shift then — `inflowDay`); the window's «почему?» blocks are in `src/ui/Meeting.tsx`. The
+  by the hour with those on shift then — `inflowDay`); the window's «почему?» blocks are in `src/ui/Meeting.tsx`. Refusals of
+  admission (`docs/specs/2026-11-scenario-5.md`, «Отказы в госпитализации: как сделано»): `refusal` in `engine.ts` at closing — PC
+  flow, sent to another hospital while the database's place (`recommendedSetting`) needs a bed and no fitting one (`choiceFor`'s
+  kinds, `NEEDS`) was free: «мест нет» if the hospital has such beds, «своих нет» if not; `DaySummary.refused` by kind and by main
+  disease, the meeting's `#meet-refused` with its «почему?» (`refusedOf` in `src/app/money.ts`); the probes count them the same way
+  by the patients' paths (`tools/bench/refused.ts`, checked against the engine by `refusals.test.ts`). The
   management axis (`docs/specs/2026-10-difficulty.md`; owner's decisions #135–#137, #151): `meta.manage` — «Спокойно» or
   «Трудно», none — «Обычно», the base numbers byte for byte; `shift/manage.ts` (`manageOf`, `scaled`) scales the flow
   (`flowRate`, and so the meeting's forecast `inflowDay`), an arrival's patience, wages when paid (`wageOf`/`wagesOf` take

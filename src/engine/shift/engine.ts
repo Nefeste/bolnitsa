@@ -2562,10 +2562,52 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient, at = s.t): 
     delete p.bay;
     seatAtDoor(db, s);
   }
-  journey.closed(s, p, wanted, () => ({ ward: [wardBeds(db, s).length, freeBeds(db, s).length], icu: [icuBeds(db, s).length, freeIcuBeds(db, s).length], ricu: [ricuBeds(db, s).length, freeRicuBeds(db, s).length], box: [boxBeds(db, s).length, freeBoxBeds(db, s).length] }));
+  // свои места — один раз на закрытие: их берут и путь отправленного, и отказ в госпитализации
+  let places: Record<journey.Place, [number, number]> | undefined;
+  const placesNow = () => (places ??= placesOf(db, s));
+  journey.closed(s, p, wanted, placesNow);
+  // отказ в госпитализации (spec docs/specs/2026-11-scenario-5.md, часть 1): поток для ПК — отправлен в другую больницу, а по базе
+  // ему нужна койка
+  if (s.flow && !STAYS.includes(closed.plan.setting) && closed.plan.setting !== 'home') refusal(db, s, p, closed, placesNow);
   // поток для ПК (решение владельца 16.10.2026): приём нанятого врача — сразу строкой журнала, его разбор не досчитывается
   if (s.flow && p.by) evict(s, p);
   return closed;
+}
+
+/** Свои места каждого вида — сколько всего и сколько свободно: палаты, ПИТ, реанимация, боксы. */
+function placesOf(db: ContentDb, s: ShiftState): Record<journey.Place, [number, number]> {
+  return {
+    ward: [wardBeds(db, s).length, freeBeds(db, s).length], icu: [icuBeds(db, s).length, freeIcuBeds(db, s).length],
+    ricu: [ricuBeds(db, s).length, freeRicuBeds(db, s).length], box: [boxBeds(db, s).length, freeBoxBeds(db, s).length],
+  };
+}
+
+/**
+ * Какие койки годятся больному по месту из базы — как их берёт решение (`choiceFor`): «в стационар» и «вызвать скорую» — своя
+ * палата, операция — палата после неё, ПИТ — или реанимация вместо неё, реанимация, бокс; дома и «перевести в центр» — никакие.
+ */
+const NEEDS: Partial<Record<Setting, journey.Place[]>> = {
+  ward: ['ward'], ambulance: ['ward'], admit: ['ward'], surgery: ['ward'], icu: ['icu', 'ricu'], ricu: ['ricu'], box: ['box'],
+};
+
+/**
+ * Отказ в госпитализации (spec docs/specs/2026-11-scenario-5.md, часть 1): больного отправили в другую больницу, а по базе ему
+ * нужна койка — свои такие были, но все заняты («мест нет»: первый из годных видов, что есть), или таких у больницы нет («своих
+ * нет»: первый годный вид). Нужна операция — койка после неё, и только если операционная работает: нет операционной — это не о
+ * койках. Свободная годная койка была — отправили по выбору врача, не отказ.
+ */
+function refusal(db: ContentDb, s: ShiftState, p: ShiftPatient, closed: ClosedCase, placesNow: () => Record<journey.Place, [number, number]>) {
+  const need = recommendedSetting(db, p.patient, p.results.map(r => r.exam), closed.bedside, closed.rooms);
+  const kinds = NEEDS[need];
+  if (!kinds || (need === 'surgery' && orBlock(db, s) !== null)) return;
+  const places = placesNow();
+  if (kinds.some(k => places[k][1] > 0)) return;
+  const have = kinds.find(k => places[k][0] > 0);
+  const r = (s.summary.refused ??= { full: {}, none: {}, by: {} });
+  if (have) r.full[have] = (r.full[have] ?? 0) + 1;
+  else r.none[kinds[0]] = (r.none[kinds[0]] ?? 0) + 1;
+  const main = primaryOf(p.patient).id;
+  r.by[main] = (r.by[main] ?? 0) + 1;
 }
 
 /** Строка итогов нанятого врача за день (spec 2026-09-hired-doctors) — с его должностью (spec 2026-10-chapter-4, часть 60а). */

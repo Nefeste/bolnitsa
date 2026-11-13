@@ -14,6 +14,7 @@ import type { CaseIncome, Ledger, Payer, RepChange } from '../economy/economy';
 import type { Mood, MoodWhy, StaffMember } from '../hospital/staff';
 import type { DoctorPhase } from '../med/policy';
 import type { Grade, ScoreNote } from '../med/score';
+import type { Place } from './journey';
 import type { Observation, Patient } from '../med/types';
 import type { Bed, Stay, StayResult } from './ward';
 import type { TargetResult } from './targets';
@@ -706,6 +707,12 @@ export interface DaySummary {
   allLysis?: { good: number; bad: number };
   /** маршруты для срочного за сутки (там же): кому медсестра сделала обследование маршрута и что оно стоило, ₽ */
   routes?: Record<Id, { n: number; rub: number }>;
+  /**
+   * отказы в госпитализации (spec docs/specs/2026-11-scenario-5.md, часть 1): поток для ПК — отправленные в другую больницу, кому
+   * по базе нужна койка; `full` — такие места у больницы есть, но все заняты («мест нет»), `none` — таких мест у неё нет; по виду
+   * места и по главной болезни. Никому не отказали — поля нет
+   */
+  refused?: Refused;
   /** ОКС у ваших приёмов (часть 45а): сколько было и у скольких он пропущен — диагноз не тот */
   acs?: { seen: number; missed: number };
   /**
@@ -727,6 +734,13 @@ export interface DaySummary {
   leftBy?: LeftBy;
   /** «Почему?» (spec 2026-10-why), поток от больницы: от чего он в наступившие сутки и сколько в среднем придёт — к планёрке */
   inflow?: InflowDay;
+}
+
+/** Отказы в госпитализации за сутки (spec docs/specs/2026-11-scenario-5.md, часть 1): по виду места и по главной болезни. */
+export interface Refused {
+  full: Partial<Record<Place, number>>;
+  none: Partial<Record<Place, number>>;
+  by: Record<Id, number>;
 }
 
 /**

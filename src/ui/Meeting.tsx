@@ -168,6 +168,22 @@ function WhyArrived({ d }: { d: DaySummary }) {
   );
 }
 
+/** «Почему?» у отказов в госпитализации (spec docs/specs/2026-11-scenario-5.md, часть 1): с чем отказали — и что делать. */
+function WhyRefused({ r }: { r: NonNullable<MeetingView['refused']> }) {
+  const w = T.meeting.why;
+  return (
+    <div className="mwhy" id="meet-why-refused-box">
+      <p>{w.refused}</p>
+      <ul>
+        {r.by.map((x, i) => (
+          <li key={i}>{w.refusedRow(x.name, x.n)}</li>
+        ))}
+      </ul>
+      <p className="muted">{w.refusedFix}</p>
+    </div>
+  );
+}
+
 /**
  * «Почему?» у числа ушедших (spec docs/specs/2026-10-why.md): причины — больше всего первой — и что с каждой делать; сколько
  * стояли у кабинета; «Кто ушёл» — вкладка «Пациенты», список «Ушли»: с экрана планёрки — закрыв его, часы стоят.
@@ -227,7 +243,7 @@ export function MeetingBody({ m, e, actions, screen = false }: { m: MeetingView;
   const expenses = l ? Object.values(l.expenses).reduce((n: number, v) => n + (v ?? 0), 0) : 0;
   const slow = slowOf(d.load);
   // «Почему?» (spec docs/specs/2026-10-why.md): какие разборы открыты
-  const [why, setWhy] = useState<{ arrived?: boolean; left?: boolean }>({});
+  const [why, setWhy] = useState<{ arrived?: boolean; left?: boolean; refused?: boolean }>({});
   const parts = d.arrivedBy ? partsOf(d.arrivedBy) : '';
   return (
     <div className="mbody">
@@ -264,6 +280,18 @@ export function MeetingBody({ m, e, actions, screen = false }: { m: MeetingView;
         {why.arrived && d.arrivedBy ? <WhyArrived d={d} /> : null}
         {why.left && d.leftBy ? <WhyLeft b={d.leftBy} alone={m.doctors.length === 0} screen={screen} actions={actions} /> : null}
         {d.ward ? <p>{t.ward(d.ward.admitted, d.ward.discharged, d.ward.transferred, d.ward.died ?? 0, d.ward.lying)}</p> : null}
+        {/* отказы в госпитализации (spec docs/specs/2026-11-scenario-5.md, часть 1): по виду места; «почему?» — с чем и что делать */}
+        {m.refused ? (
+          <p id="meet-refused" title={t.refusedHint}>
+            {t.refused(
+              m.refused.n,
+              m.refused.full.map(x => t.refusedPlace(t.places[x.place], x.n)).join(', '),
+              m.refused.none.map(x => t.refusedPlace(t.places[x.place], x.n)).join(', '),
+            )}{' '}
+            <WhyButton id="meet-why-refused" on={!!why.refused} title={t.why.refusedHint} onClick={() => setWhy({ ...why, refused: !why.refused })} />
+          </p>
+        ) : null}
+        {why.refused && m.refused ? <WhyRefused r={m.refused} /> : null}
         {/* ваша сортировка привезённых и ночь (spec docs/specs/2026-11-scenario-2.md, часть 2а) */}
         {d.ambulance?.mine ? (
           <p id="meet-sorting" title={t.sortingHint}>
