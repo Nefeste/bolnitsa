@@ -23,6 +23,7 @@ import type { ContentDb, Manage } from '../content/types';
 import { levelOf } from '../engine/shift/manage';
 import { startCash } from '../engine/shift/money';
 import type { Flow } from '../engine/shift/types';
+import type { LotSize } from '../engine/hospital/site';
 import { SaveError } from '../engine/shift/migrate';
 import type { SaveFile } from '../sim/packing';
 import { AUTO, diskOf, Game, SCENE, type Start } from './game';
@@ -78,6 +79,8 @@ const actions: Actions = {
   toggleReadyStaff: later('toggleReadyStaff'),
   pickItem: later('pickItem'),
   pickDept: later('pickDept'),
+  pickShell: later('pickShell'),
+  pickEntrance: later('pickEntrance'),
   markDept: later('markDept'),
   routes: later('routes'),
   undo: later('undo'),
@@ -121,10 +124,11 @@ const actions: Actions = {
   newGame: later('newGame'),
   // выбор на экране начала — та же страница с его ключами (`go`); сценарий (spec docs/specs/2026-10-scenario-1.md) учит
   // режиму врача — «Врач», роль меняют в окне врача; сложность — ключами `manage` и `soft` (spec 2026-10-difficulty)
-  startGame: (kind, role, level) =>
+  startGame: (kind, role, level, lot) =>
     go(
       typeof kind === 'string'
-        ? { hospital: kind, role: role ?? DEFAULT_ROLE, ...levelKeys(level) }
+        ? // участок песочницы (spec docs/specs/2026-11-sandbox.md, часть 2): M — без ключа, как прежде
+          { hospital: kind, role: role ?? DEFAULT_ROLE, ...levelKeys(level), ...(kind === 'empty' && lot && lot !== 'M' ? { lot } : {}) }
         : 'scenario' in kind
           ? { ...kind, ...levelKeys(level) }
           : 'solo' in kind
@@ -144,7 +148,7 @@ const actions: Actions = {
  * С чего начать: новая больница и кто вы (spec docs/specs/2026-10-two-ways.md, F4), сложность (spec
  * docs/specs/2026-10-difficulty.md, часть 2) — или сохранение (ячейка).
  */
-type Begin = { start: Start; role: Role; scenario?: string; manage?: Manage; soft?: boolean; solo?: boolean; daily?: string; challenge?: string } | { load: string };
+type Begin = { start: Start; role: Role; scenario?: string; manage?: Manage; soft?: boolean; solo?: boolean; daily?: string; challenge?: string; lot?: LotSize } | { load: string };
 
 /**
  * Смена врача (spec docs/specs/2026-11-doctor-shift.md): каждая новая смена — свои больные, зерно — новое; задано в адресе
@@ -198,6 +202,9 @@ async function startOf(): Promise<Begin> {
   if (isDay(daily)) return { start: 'preset', role: DEFAULT_ROLE, solo: true, daily };
   // смена врача (spec docs/specs/2026-11-doctor-shift.md): готовая больница, вы — «Врач»
   if ((val === 'preset' || val === 'poly') && has('solo')) return { start: val, role: DEFAULT_ROLE, ...level, solo: true };
+  // участок песочницы (spec docs/specs/2026-11-sandbox.md, часть 2): S или L — ключом, M — без него
+  const lot = arg('lot');
+  if (val === 'empty' && (lot === 'S' || lot === 'L')) return { start: val, role: roleOf(arg('role')) ?? DEFAULT_ROLE, ...level, lot };
   if (val === 'empty' || val === 'preset' || val === 'poly') return { start: val, role: roleOf(arg('role')) ?? DEFAULT_ROLE, ...level };
   return choose();
 }
@@ -252,7 +259,7 @@ function levelsOf(db: ContentDb): Record<Manage, LevelRow> {
 function go(extra: Record<string, string>) {
   leaving = true;
   const p = new URLSearchParams(location.search);
-  for (const k of ['load', 'hospital', 'role', 'scenario', 'manage', 'soft', 'solo', 'daily', 'challenge']) p.delete(k);
+  for (const k of ['load', 'hospital', 'role', 'scenario', 'manage', 'soft', 'solo', 'daily', 'challenge', 'lot']) p.delete(k);
   for (const [k, v] of Object.entries(extra)) p.set(k, v);
   location.search = p.toString();
 }
@@ -324,7 +331,7 @@ function fly(g: Game) {
  * Что открыть: новая больница — как есть; сохранение — прочитать и пройти миграции. Не открылось — снова экран начала,
  * со словом почему.
  */
-async function begin(): Promise<{ start: Start; role: Role; scenario?: string; manage?: Manage; soft?: boolean; solo?: boolean; daily?: string; challenge?: string; loaded?: SaveFile }> {
+async function begin(): Promise<{ start: Start; role: Role; scenario?: string; manage?: Manage; soft?: boolean; solo?: boolean; daily?: string; challenge?: string; lot?: LotSize; loaded?: SaveFile }> {
   let b = await startOf();
   for (;;) {
     if ('start' in b) return b;
@@ -363,9 +370,9 @@ async function flowOf(): Promise<Flow> {
 }
 
 begin()
-  .then(async ({ start, role, scenario, manage, soft, solo, daily, challenge, loaded }) =>
+  .then(async ({ start, role, scenario, manage, soft, solo, daily, challenge, lot, loaded }) =>
     // случай дня — без потока: больной дня один (spec docs/specs/2026-11-doctor-shift.md, часть 3); у испытания поток — его
-    Game.create(document.getElementById('view')!, store, __VERSION__, quality, start, daily ? { perHour: 0 } : await flowOf(), loaded, role, scenario, { manage, soft, solo, daily, challenge }),
+    Game.create(document.getElementById('view')!, store, __VERSION__, quality, start, daily ? { perHour: 0 } : await flowOf(), loaded, role, scenario, { manage, soft, solo, daily, challenge, lot }),
   )
   .then(async g => {
     game = g;

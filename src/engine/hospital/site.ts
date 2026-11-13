@@ -80,6 +80,11 @@ export interface Site {
   editing?: string;
   /** ваш кабинет; нет — все кабинеты врача — нанятым врачам, пока нет режима врача (spec «Персонал») */
   mine?: string;
+  /**
+   * песочница (spec docs/specs/2026-11-sandbox.md, часть 2): сколько клеток корпуса игрок пристроил и не снёс — за снос назад
+   * половина цены только их, а не корпуса, который был с начала
+   */
+  shell?: number;
 }
 
 /** Счётчики стройки в состоянии смены: потрачено и отмена (spec «Снос и отмена»). */
@@ -129,6 +134,12 @@ export const FURNITURE: Partial<Record<ObjectKind, number>> = {
 };
 /** Дверь в клетку и в две, ₽. */
 export const DOOR_PRICE: Record<number, number> = { 1: 2000, 2: 4000 };
+/**
+ * Песочница (spec docs/specs/2026-11-sandbox.md, часть 2): клетка пристроенного корпуса, ₽ — снести пустую часть того, что
+ * пристроили, — половина назад, как у помещения; перенести вход, ₽. Игровые числа.
+ */
+export const SHELL_CELL = 400;
+export const ENTRANCE_PRICE = 20000;
 /** Аппарат ближе стольких клеток от койки — этой койки (ПИТ, реанимация). */
 export const BED_REACH = 2;
 /** Раз в столько игровых секунд движок убирает освободившееся (spec «Стройка в любой момент»). */
@@ -358,14 +369,34 @@ export function demolishRefund(db: ContentDb, room: SiteRoom): number {
 
 // --- участок ---------------------------------------------------------------------------------------------------------
 
+/** Участок и корпус на нём; `mid` — первая клетка главного входа по x, нет — посередине корпуса пустого здания. */
+export interface Lot {
+  w: number;
+  h: number;
+  building: Rect;
+  mid?: number;
+}
+
 /** Участок пустого начала и здание на нём (spec «Участок и здание»). */
-export const EMPTY_LOT = { w: 60, h: 40, building: { x: 6, y: 6, w: 48, h: 28 } as Rect };
+export const EMPTY_LOT: Lot = { w: 60, h: 40, building: { x: 6, y: 6, w: 48, h: 28 } };
+
+/**
+ * Участок песочницы (spec docs/specs/2026-11-sandbox.md, часть 2; геймдизайн §3: «от 30 × 20 до 90 × 60, в песочнице — на
+ * выбор»): S — 40 × 30 с корпусом 30 × 20, M — пустое здание, как прежде, L — 90 × 60 с тем же корпусом, что у M, у южного края:
+ * земля к северу и востоку — под пристройки инструментом «Корпус».
+ */
+export type LotSize = 'S' | 'M' | 'L';
+export const LOTS: Record<LotSize, Lot> = {
+  S: { w: 40, h: 30, building: { x: 5, y: 5, w: 30, h: 20 }, mid: 19 },
+  M: EMPTY_LOT,
+  L: { w: 90, h: 60, building: { x: 6, y: 26, w: 48, h: 28 } },
+};
 
 /**
  * Участок пустого здания с корпусом шире на `cells` клеток к востоку (spec docs/specs/2026-11-scenario-3.md): свободная земля
  * готовой больницы; главный вход — посередине прежнего корпуса, как был.
  */
-export function widerLot(cells: number): typeof EMPTY_LOT {
+export function widerLot(cells: number): Lot {
   const b = EMPTY_LOT.building;
   return { w: EMPTY_LOT.w + cells, h: EMPTY_LOT.h, building: { ...b, w: b.w + cells } };
 }
@@ -374,9 +405,9 @@ export function widerLot(cells: number): typeof EMPTY_LOT {
  * Пустое здание: стены корпуса, главный вход посередине южной стены, вход скорой — в восточной, ближе к югу. Корпус шире
  * (`widerLot`) — главный вход там же, где у пустого здания, вход скорой — в новой восточной стене.
  */
-export function emptySite(lot = EMPTY_LOT): Site {
+export function emptySite(lot: Lot = EMPTY_LOT): Site {
   const { w, h, building: b } = lot;
-  const mid = b.x + Math.floor(EMPTY_LOT.building.w / 2) - 1;
+  const mid = lot.mid ?? b.x + Math.floor(EMPTY_LOT.building.w / 2) - 1;
   const east = b.x + b.w - 1;
   const south = b.y + b.h - 1;
   return {
@@ -565,7 +596,9 @@ export type SiteError =
   /** сценарий ПК (spec docs/specs/2026-10-scenario-1.md): такого помещения в списке сценария нет */
   | { kind: 'scenario' }
   /** смена врача (spec docs/specs/2026-11-doctor-shift.md): больница готовая — стройки и найма нет */
-  | { kind: 'shift' };
+  | { kind: 'shift' }
+  /** «Корпус» (spec docs/specs/2026-11-sandbox.md, часть 2): пристройка — только к стоящему корпусу */
+  | { kind: 'apart' };
 
 export type Check = { ok: true; cost: number } | { ok: false; error: SiteError };
 const fail = (error: SiteError): { ok: false; error: SiteError } => ({ ok: false, error });
@@ -1063,6 +1096,220 @@ export function removeDecor(db: ContentDb, site: Site, x: number, y: number): Do
 }
 
 
+// --- корпус и входы песочницы (spec docs/specs/2026-11-sandbox.md, часть 2) ------------------------------------------------
+
+/** Прямоугольники `rects` без клеток `r`: каждый пересечённый — на полосы вокруг: сверху, снизу, слева, справа. */
+export function subtractRect(rects: readonly Rect[], r: Rect): Rect[] {
+  const out: Rect[] = [];
+  for (const a of rects) {
+    const x0 = Math.max(a.x, r.x);
+    const y0 = Math.max(a.y, r.y);
+    const x1 = Math.min(a.x + a.w, r.x + r.w);
+    const y1 = Math.min(a.y + a.h, r.y + r.h);
+    if (x0 >= x1 || y0 >= y1) {
+      out.push(a);
+      continue;
+    }
+    if (a.y < y0) out.push({ x: a.x, y: a.y, w: a.w, h: y0 - a.y });
+    if (y1 < a.y + a.h) out.push({ x: a.x, y: y1, w: a.w, h: a.y + a.h - y1 });
+    if (a.x < x0) out.push({ x: a.x, y: y0, w: x0 - a.x, h: y1 - y0 });
+    if (x1 < a.x + a.w) out.push({ x: x1, y: y0, w: a.x + a.w - x1, h: y1 - y0 });
+  }
+  return out;
+}
+
+/** Куда ведёт клетка входа внутрь: соседняя клетка внутри здания, а напротив неё — улица; нет такой — не вход. */
+function entranceDir(m: SiteMap, x: number, y: number): Cell | undefined {
+  if (x < 0 || y < 0 || x >= m.w || y >= m.h) return undefined;
+  const i = y * m.w + x;
+  if (m.inside[i] || !m.outline[i]) return undefined;
+  return N4.find(([dx, dy]) => {
+    const ix = x + dx;
+    const iy = y + dy;
+    const ox = x - dx;
+    const oy = y - dy;
+    if (ix < 0 || iy < 0 || ix >= m.w || iy >= m.h || !m.inside[iy * m.w + ix]) return false;
+    return ox < 0 || oy < 0 || ox >= m.w || oy >= m.h || (!m.inside[oy * m.w + ox] && !m.outline[oy * m.w + ox]);
+  });
+}
+
+/** Вход стоит: каждая клетка — на стене корпуса, с полом внутри и улицей снаружи по одну линию. */
+const entranceOk = (m: SiteMap, cells: readonly Cell[]) => cells.every(([x, y]) => entranceDir(m, x, y) !== undefined);
+
+/** Внутренность здания — одним куском: от любой её клетки до любой — по её клеткам. */
+function connected(m: SiteMap): boolean {
+  let start = -1;
+  let total = 0;
+  for (let i = 0; i < m.inside.length; i++) {
+    if (!m.inside[i]) continue;
+    total++;
+    if (start < 0) start = i;
+  }
+  if (start < 0) return false;
+  const seen = new Uint8Array(m.inside.length);
+  const queue = [start];
+  seen[start] = 1;
+  let n = 0;
+  while (queue.length) {
+    const i = queue.pop()!;
+    n++;
+    const x = i % m.w;
+    const y = (i - x) / m.w;
+    for (const [dx, dy] of N4) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= m.w || ny >= m.h) continue;
+      const j = ny * m.w + nx;
+      if (m.inside[j] && !seen[j]) {
+        seen[j] = 1;
+        queue.push(j);
+      }
+    }
+  }
+  return n === total;
+}
+
+/** После перемены корпуса или входа: двери, до которых доходили от главного входа, и вход скорой — по-прежнему достижимы. */
+function stillReached(site: Site, before: SiteMap, after: SiteMap): SiteError | undefined {
+  for (const other of site.rooms) {
+    if (!other.door) continue;
+    const was = other.door.some(([x, y]) => before.reach[y * before.w + x]);
+    const now = other.door.some(([x, y]) => after.reach[y * after.w + x]);
+    if (was && !now) return { kind: 'cutsOff', room: other.id };
+  }
+  const amb = (mm: SiteMap) => site.ambulance.some(([x, y]) => mm.reach[y * mm.w + x]);
+  if (site.ambulance.length && amb(before) && !amb(after)) return { kind: 'cutsOff', ambulance: true };
+  return undefined;
+}
+
+/**
+ * Прямоугольник пристройки вплотную к стене корпуса — со стеной вместе: та сторона, за которой стена стоящего корпуса, — на клетку
+ * дальше, и пристройка с корпусом — одно здание.
+ */
+export function shellRect(site: Site, r: Rect): Rect {
+  const m = mapOf(site);
+  const wallAt = (x: number, y: number) => {
+    if (x < 0 || y < 0 || x >= m.w || y >= m.h || !m.outline[y * m.w + x]) return false;
+    return N4.some(([dx, dy]) => {
+      const nx = x + dx;
+      const ny = y + dy;
+      return nx >= 0 && ny >= 0 && nx < m.w && ny < m.h && m.inside[ny * m.w + nx] === 1;
+    });
+  };
+  const row = (y: number) => Array.from({ length: r.w }, (_, i) => wallAt(r.x + i, y)).some(Boolean);
+  const col = (x: number) => Array.from({ length: r.h }, (_, i) => wallAt(x, r.y + i)).some(Boolean);
+  const north = row(r.y - 1) ? 1 : 0;
+  const south = row(r.y + r.h) ? 1 : 0;
+  const west = col(r.x - 1) ? 1 : 0;
+  const east = col(r.x + r.w) ? 1 : 0;
+  return { x: r.x - west, y: r.y - north, w: r.w + west + east, h: r.h + north + south };
+}
+
+/**
+ * «Корпус»: прямоугольник внутренности здания — не меньше 3 × 3, на участке со стеной вокруг, к стоящему корпусу (клетка
+ * внутри или рядом; вплотную к стене — вместе со стеной, `shellRect`); входы остаются на стене. Цена — новые клетки по
+ * `SHELL_CELL`.
+ */
+export function checkShell(db: ContentDb, site: Site, r0: Rect): Check {
+  const m = mapOf(site);
+  if (r0.w < 3 || r0.h < 3) return fail({ kind: 'small', min: [3, 3] });
+  const r = shellRect(site, r0);
+  if (r.x < 1 || r.y < 1 || r.x + r.w > m.w - 1 || r.y + r.h > m.h - 1) return fail({ kind: 'outside' });
+  let fresh = 0;
+  let touches = false;
+  for (let y = r.y; y < r.y + r.h; y++) {
+    for (let x = r.x; x < r.x + r.w; x++) {
+      if (m.inside[y * m.w + x]) {
+        touches = true;
+        continue;
+      }
+      fresh++;
+      if (!touches) touches = N4.some(([dx, dy]) => m.inside[(y + dy) * m.w + (x + dx)] === 1);
+    }
+  }
+  if (fresh === 0) return fail({ kind: 'nothing' });
+  if (!touches) return fail({ kind: 'apart' });
+  const after = mapOf({ ...site, inside: [...site.inside, r] });
+  if (!entranceOk(after, site.main) || !entranceOk(after, site.ambulance)) return fail({ kind: 'overlap', what: 'entrance' });
+  return { ok: true, cost: fresh * SHELL_CELL };
+}
+
+export function addShell(db: ContentDb, site: Site, r0: Rect): Done {
+  const c = checkShell(db, site, r0);
+  if (!c.ok) return c;
+  const r = shellRect(site, r0);
+  return { ok: true, site: { ...site, inside: [...site.inside, { x: r.x, y: r.y, w: r.w, h: r.h }], shell: (site.shell ?? 0) + c.cost / SHELL_CELL }, cost: c.cost };
+}
+
+/**
+ * Снести часть корпуса: клетки внутри здания в прямоугольнике — без помещений и предметов коридора; входы на стене, здание одним
+ * куском, двери и вход скорой достижимы. Назад — половина цены пристроенных клеток (`Site.shell`), корпус начала — без денег.
+ */
+function unshellOf(db: ContentDb, site: Site, r: Rect): { ok: true; inside: Rect[]; own: number; cost: number } | { ok: false; error: SiteError } {
+  const m = mapOf(site);
+  if (r.w < 1 || r.h < 1) return fail({ kind: 'small', min: [1, 1] });
+  let removed = 0;
+  for (let y = Math.max(0, r.y); y < Math.min(m.h, r.y + r.h); y++) for (let x = Math.max(0, r.x); x < Math.min(m.w, r.x + r.w); x++) if (m.inside[y * m.w + x]) removed++;
+  if (removed === 0) return fail({ kind: 'nothing' });
+  const hit = (a: Rect) => a.x < r.x + r.w && r.x < a.x + a.w && a.y < r.y + r.h && r.y < a.y + a.h;
+  const room = site.rooms.find(hit);
+  if (room) return fail({ kind: 'overlap', room: room.id });
+  if (site.decor.some(d => hit({ x: d.x, y: d.y, w: 1, h: 1 }))) return fail({ kind: 'overlap', what: 'decor' });
+  const inside = subtractRect(site.inside, r);
+  const after = mapOf({ ...site, inside });
+  if (!entranceOk(after, site.main) || !entranceOk(after, site.ambulance)) return fail({ kind: 'overlap', what: 'entrance' });
+  if (!connected(after)) return fail({ kind: 'cutsOff' });
+  const cut = stillReached(site, m, after);
+  if (cut) return fail(cut);
+  const own = Math.min(removed, site.shell ?? 0);
+  return { ok: true, inside, own, cost: own > 0 ? -refundOf(db, own * SHELL_CELL) : 0 };
+}
+
+export const checkUnshell = (db: ContentDb, site: Site, r: Rect): Check => {
+  const c = unshellOf(db, site, r);
+  return c.ok ? { ok: true, cost: c.cost } : c;
+};
+
+export function removeShell(db: ContentDb, site: Site, r: Rect): Done {
+  const c = unshellOf(db, site, r);
+  if (!c.ok) return c;
+  const next: Site = { ...site, inside: c.inside, shell: (site.shell ?? 0) - c.own };
+  if (!next.shell) delete next.shell;
+  return { ok: true, site: next, cost: c.cost };
+}
+
+/**
+ * «Вход»: главный или вход скорой — на две соседние клетки наружной стены, одной линией: за каждой — коридор внутри, улица снаружи;
+ * не на другом входе; двери и вход скорой по-прежнему достижимы от главного входа. Цена — `ENTRANCE_PRICE`.
+ */
+export function checkEntrance(db: ContentDb, site: Site, which: 'main' | 'ambulance', cells: readonly Cell[]): Check {
+  if (cells.length !== 2) return fail({ kind: 'badWall' });
+  const [[x0, y0], [x1, y1]] = cells;
+  if (Math.abs(x0 - x1) + Math.abs(y0 - y1) !== 1) return fail({ kind: 'badWall' });
+  const m = mapOf(site);
+  const dirs = cells.map(([x, y]) => entranceDir(m, x, y));
+  if (dirs.some(d => !d) || dirs[0]![0] !== dirs[1]![0] || dirs[0]![1] !== dirs[1]![1]) return fail({ kind: 'badWall' });
+  const other = which === 'main' ? site.ambulance : site.main;
+  if (cells.some(([x, y]) => other.some(([a, b]) => a === x && b === y))) return fail({ kind: 'overlap', what: 'entrance' });
+  for (const [x, y] of cells) {
+    const [dx, dy] = dirs[0]!;
+    const j = (y + dy) * m.w + (x + dx);
+    if (m.cells[j] !== CELL.corridor) return fail({ kind: 'overlap', ...(m.room[j] ? { room: site.rooms[m.room[j] - 1].id } : {}) });
+    if (site.decor.some(d => d.x === x + dx && d.y === y + dy)) return fail({ kind: 'overlap', what: 'decor' });
+  }
+  const next: Site = which === 'main' ? { ...site, main: cells.map(([x, y]) => [x, y]) } : { ...site, ambulance: cells.map(([x, y]) => [x, y]) };
+  const cut = stillReached(next, m, mapOf(next));
+  if (cut) return fail(cut);
+  return { ok: true, cost: ENTRANCE_PRICE };
+}
+
+export function moveEntrance(db: ContentDb, site: Site, which: 'main' | 'ambulance', cells: readonly Cell[]): Done {
+  const c = checkEntrance(db, site, which, cells);
+  if (!c.ok) return c;
+  const to: Cell[] = cells.map(([x, y]) => [x, y]);
+  return { ok: true, site: which === 'main' ? { ...site, main: to } : { ...site, ambulance: to }, cost: c.cost };
+}
+
 /**
  * Инструмент «Отделение» (spec docs/specs/2026-10-departments.md, часть 1; решение владельца #142): палату или кабинет — в
  * другое отделение, `dept` нет — снять отметку, и отделение снова по тем, кто работает. Бесплатно и отменяется, как
@@ -1526,7 +1773,13 @@ export type SiteCommand =
   | { kind: 'bench'; x: number; y: number }
   | { kind: 'undecor'; x: number; y: number }
   /** инструмент «Отделение» (spec docs/specs/2026-10-departments.md, часть 1): `dept` нет — снять отметку */
-  | { kind: 'dept'; room: string; dept?: Id };
+  | { kind: 'dept'; room: string; dept?: Id }
+  /**
+   * песочница (spec docs/specs/2026-11-sandbox.md, часть 2): «Корпус» — прямоугольник корпуса к стоящему, `remove` — снести его
+   * пустую часть; «Вход» — главный или вход скорой на две клетки наружной стены
+   */
+  | { kind: 'shell'; x: number; y: number; w: number; h: number; remove?: true }
+  | { kind: 'entrance'; which: 'main' | 'ambulance'; cells: Cell[] };
 
 /** Что вышло: извещение движка `{ kind: 'site', … }`. */
 export interface SiteResult {

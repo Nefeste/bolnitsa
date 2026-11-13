@@ -51,6 +51,8 @@ export const paintsOf = (db: ContentDb): Id[] => Object.values(db.departments ??
 export function onlyDeptsChanged(a: Site, b: Site): boolean {
   if (a === b) return true;
   if (a.rooms.length !== b.rooms.length || a.decor !== b.decor || a.editing !== b.editing || a.mine !== b.mine) return false;
+  // корпус и входы песочницы (spec docs/specs/2026-11-sandbox.md, часть 2): другие стены и пол — другая сцена
+  if (a.inside !== b.inside || a.main !== b.main || a.ambulance !== b.ambulance) return false;
   return a.rooms.every((r, i) => {
     const q = b.rooms[i];
     if (r === q) return true;

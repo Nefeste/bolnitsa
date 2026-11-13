@@ -194,7 +194,9 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # routes off — the «маршруты» hint and letter, both routes ticked — the nurse's ECG shows ST
                                    # elevation: the urgent line, the autopause, the «alert» letter, first in «Ждут вас»;
                                    # «Позвать» — the ECG already in the card and «Инфаркт и минуты», the meeting's «Сроки»;
-                                   # screenshots in tools/app/out/; `-- --only 1|2|…|45` for one part, `-- --only 7,10,11` —
+                                   # then the sandbox: lot L on the start screen's second step, a wing by «Корпус» (its ghost,
+                                   # the cash, Ctrl+Z), a yard demolished, the ambulance entrance moved, none in a scenario;
+                                   # screenshots in tools/app/out/; `-- --only 1|2|…|46` for one part, `-- --only 7,10,11` —
                                    # several in a row on one page, as in the full run
 node tools/app/soak.mjs --days 3   # after build: a long run in headless Chromium — the ready city at ×12 for three game days,
                                    # the meeting closed each morning; window memory after GC, DOM nodes, people, sim lag and
@@ -349,7 +351,12 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   `docs/specs/2026-10-real-hospital.md`) and `shift/site.ts` (the `site` command: deferred removal, undo, hiring) —
   `docs/specs/2026-10-build.md`. Undo reopens the room a rebuilding step changed; a step that rebuilds nothing (hire,
   dismissal, pay, shift, reserve, «Мой кабинет», a corridor bench, a department mark — `keep` in the undo step, `KEEPS`)
-  leaves the rebuild as it is. The whole 24-hour day of the PC flow is ours as well: `shift/day.ts` (outpatient hours,
+  leaves the rebuild as it is. Sandbox lots and the building (`docs/specs/2026-11-sandbox.md`, part 2): `LOTS` (S, M — the old
+  empty building byte for byte, L), the `shell` site command (a building rectangle joined to the standing one — `shellRect` takes
+  the wall in; `remove` — an empty part, half back only for the cells bought, `Site.shell`) and `entrance` (main or ambulance on two
+  outer wall cells); sandbox only — a scenario or a challenge refuses them (`scenario`); the window: the lot on the empty start's
+  second step (`lot` key), «Корпус» and «Вход» in `build.ts`, and `onlyDeptsChanged` compares the building and the entrances, so
+  the scene is rebuilt. The whole 24-hour day of the PC flow is ours as well: `shift/day.ts` (outpatient hours,
   arrivals by hour of day), the 08:00 meeting and the morning round in `engine.ts`, shapes in `content/hospital/day.yaml`
   — `docs/specs/2026-10-day.md`. Who left the state (`evict`) keeps their card in `s.past` for a day, at most 600, like
   their path — read-only, for «Открыть карту» and «Приняты» (`docs/specs/2026-10-discharged-card.md`).
