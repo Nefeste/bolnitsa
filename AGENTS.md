@@ -276,6 +276,12 @@ bun tools/bench/comfort.ts                     # comfort and cleanliness (spec d
                                                # playing — visits per room per day by the engine's paths (the doctor, exams, the hall
                                                # sat in, the reception, lying in a bed), staff rests and toilet visits, minutes the
                                                # orderlies spend on gurneys (`--hospital poly,city,surgery`, `--days`, `--seeds`)
+bun tools/bench/infections.ts                  # scenario 5 (spec docs/specs/2026-11-scenario-5.md): scenario 4's hospital (`start`) or
+                                               # the ready city in winter, nobody playing — a wave as the share of walk-ins with one
+                                               # disease (`--wave 0,20,40`, `--cond cond.pneumonia_cap`); who came, where they ended, who
+                                               # was sent away because the beds were full and with what, the wave's and the infectious
+                                               # department's patients needing a bed, pneumonia discharges on time; `--add` — ready
+                                               # wards and boxes on the free land at 08:00 (`ward:M:48:16:0+box:S:68:16:0`)
 bun tools/bench/solo.ts                        # the doctor's shift (spec docs/specs/2026-11-doctor-shift.md): a day shift 08:00–20:00 in
                                                # the ready city and polyclinic with one doctor receiving — who came, how many he saw,
                                                # who left, minutes per case, the wait (`--hospital city,poly`, `--manage calm,normal,hard`;
