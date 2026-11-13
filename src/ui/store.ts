@@ -262,6 +262,8 @@ export interface Hud {
   sandbox?: boolean;
   /** экран начала: рекорды смены врача по больнице и уровню (`recordKey`) */
   startRecords?: Records;
+  /** экран начала: сколько болезней встречалось в кампании на этом компьютере (spec docs/specs/2026-11-sandbox.md, часть 2б) */
+  startMet?: number;
   /** окно «Итог смены» — смена кончилась в 20:00 */
   shiftEnd?: ShiftHud;
   /**
@@ -475,9 +477,10 @@ export interface Actions {
   reserve(role: Id): void;
   /**
    * начало игры: пустое здание, готовая больница или поликлиника и роль (spec docs/specs/2026-10-two-ways.md, F4); `{ load }`
-   * — сохранение (spec 2026-10-saves); `level` — сложность новой игры (spec docs/specs/2026-10-difficulty.md, часть 2)
+   * — сохранение (spec 2026-10-saves); `level` — сложность новой игры (spec docs/specs/2026-10-difficulty.md, часть 2); у пустого
+   * здания — `lot`, участок, и `met`, «только встреченные в кампании» болезни (spec docs/specs/2026-11-sandbox.md, части 2 и 2б)
    */
-  startGame(kind: 'empty' | 'preset' | 'poly' | { load: string } | { scenario: Id } | { solo: 'preset' | 'poly' } | { daily: string } | { challenge: Id }, role?: Role, level?: Level, lot?: LotSize): void;
+  startGame(kind: 'empty' | 'preset' | 'poly' | { load: string } | { scenario: Id } | { solo: 'preset' | 'poly' } | { daily: string } | { challenge: Id }, role?: Role, level?: Level, lot?: LotSize, met?: boolean): void;
   /** сложность в игре (spec docs/specs/2026-10-difficulty.md, часть 2; решение владельца #136): в любой момент — с этой минуты */
   setManage(level: Manage): void;
   setSoft(on: boolean): void;

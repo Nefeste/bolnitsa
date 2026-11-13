@@ -36,6 +36,7 @@ import { applyStill, applyText, readSettings, stillOf, systemStill } from './set
 import { readRecords } from './records';
 import { dailyRows, readDaily } from './daily';
 import { readChallenges } from './challenges';
+import { readMet } from './met';
 import { isDay } from '../sim/days';
 
 declare const __VERSION__: string;
@@ -124,11 +125,14 @@ const actions: Actions = {
   newGame: later('newGame'),
   // выбор на экране начала — та же страница с его ключами (`go`); сценарий (spec docs/specs/2026-10-scenario-1.md) учит
   // режиму врача — «Врач», роль меняют в окне врача; сложность — ключами `manage` и `soft` (spec 2026-10-difficulty)
-  startGame: (kind, role, level, lot) =>
+  startGame: (kind, role, level, lot, met) =>
     go(
       typeof kind === 'string'
-        ? // участок песочницы (spec docs/specs/2026-11-sandbox.md, часть 2): M — без ключа, как прежде
-          { hospital: kind, role: role ?? DEFAULT_ROLE, ...levelKeys(level), ...(kind === 'empty' && lot && lot !== 'M' ? { lot } : {}) }
+        ? // участок песочницы (spec docs/specs/2026-11-sandbox.md, часть 2): M — без ключа, как прежде; «только встреченные» (часть 2б)
+          {
+            hospital: kind, role: role ?? DEFAULT_ROLE, ...levelKeys(level), ...(kind === 'empty' && lot && lot !== 'M' ? { lot } : {}),
+            ...(kind === 'empty' && met ? { met: '1' } : {}),
+          }
         : 'scenario' in kind
           ? { ...kind, ...levelKeys(level) }
           : 'solo' in kind
@@ -148,7 +152,7 @@ const actions: Actions = {
  * С чего начать: новая больница и кто вы (spec docs/specs/2026-10-two-ways.md, F4), сложность (spec
  * docs/specs/2026-10-difficulty.md, часть 2) — или сохранение (ячейка).
  */
-type Begin = { start: Start; role: Role; scenario?: string; manage?: Manage; soft?: boolean; solo?: boolean; daily?: string; challenge?: string; lot?: LotSize } | { load: string };
+type Begin = { start: Start; role: Role; scenario?: string; manage?: Manage; soft?: boolean; solo?: boolean; daily?: string; challenge?: string; lot?: LotSize; met?: boolean } | { load: string };
 
 /**
  * Смена врача (spec docs/specs/2026-11-doctor-shift.md): каждая новая смена — свои больные, зерно — новое; задано в адресе
@@ -202,10 +206,13 @@ async function startOf(): Promise<Begin> {
   if (isDay(daily)) return { start: 'preset', role: DEFAULT_ROLE, solo: true, daily };
   // смена врача (spec docs/specs/2026-11-doctor-shift.md): готовая больница, вы — «Врач»
   if ((val === 'preset' || val === 'poly') && has('solo')) return { start: val, role: DEFAULT_ROLE, ...level, solo: true };
-  // участок песочницы (spec docs/specs/2026-11-sandbox.md, часть 2): S или L — ключом, M — без него
-  const lot = arg('lot');
-  if (val === 'empty' && (lot === 'S' || lot === 'L')) return { start: val, role: roleOf(arg('role')) ?? DEFAULT_ROLE, ...level, lot };
-  if (val === 'empty' || val === 'preset' || val === 'poly') return { start: val, role: roleOf(arg('role')) ?? DEFAULT_ROLE, ...level };
+  // участок песочницы (spec docs/specs/2026-11-sandbox.md, часть 2): S или L — ключом, M — без него; болезни — «только встреченные
+  // в кампании» (часть 2б) — ключом `met`
+  if (val === 'empty') {
+    const lot = arg('lot');
+    return { start: val, role: roleOf(arg('role')) ?? DEFAULT_ROLE, ...level, ...(lot === 'S' || lot === 'L' ? { lot } : {}), ...(has('met') ? { met: true } : {}) };
+  }
+  if (val === 'preset' || val === 'poly') return { start: val, role: roleOf(arg('role')) ?? DEFAULT_ROLE, ...level };
   return choose();
 }
 
@@ -228,6 +235,8 @@ async function choose(problem?: string): Promise<never> {
     ...(db ? { startLevels: levelsOf(db) } : {}),
     // смена врача (spec docs/specs/2026-11-doctor-shift.md, часть 2): лучшие итоги — карточкам больниц второго шага
     startRecords: readRecords(),
+    // песочница «только встреченные в кампании» (spec docs/specs/2026-11-sandbox.md, часть 2б): сколько их — из базы
+    startMet: readMet().filter(id => db?.conditions[id] !== undefined).length,
     // случай дня (часть 3): последние дни с итогами — по часам компьютера
     startDaily: dailyRows(new Date(), readDaily()),
     // испытания (spec docs/specs/2026-11-challenges.md, часть 2): по порядку записей, с рекордами
@@ -259,7 +268,7 @@ function levelsOf(db: ContentDb): Record<Manage, LevelRow> {
 function go(extra: Record<string, string>) {
   leaving = true;
   const p = new URLSearchParams(location.search);
-  for (const k of ['load', 'hospital', 'role', 'scenario', 'manage', 'soft', 'solo', 'daily', 'challenge', 'lot']) p.delete(k);
+  for (const k of ['load', 'hospital', 'role', 'scenario', 'manage', 'soft', 'solo', 'daily', 'challenge', 'lot', 'met']) p.delete(k);
   for (const [k, v] of Object.entries(extra)) p.set(k, v);
   location.search = p.toString();
 }
@@ -331,7 +340,7 @@ function fly(g: Game) {
  * Что открыть: новая больница — как есть; сохранение — прочитать и пройти миграции. Не открылось — снова экран начала,
  * со словом почему.
  */
-async function begin(): Promise<{ start: Start; role: Role; scenario?: string; manage?: Manage; soft?: boolean; solo?: boolean; daily?: string; challenge?: string; lot?: LotSize; loaded?: SaveFile }> {
+async function begin(): Promise<{ start: Start; role: Role; scenario?: string; manage?: Manage; soft?: boolean; solo?: boolean; daily?: string; challenge?: string; lot?: LotSize; met?: boolean; loaded?: SaveFile }> {
   let b = await startOf();
   for (;;) {
     if ('start' in b) return b;
@@ -370,9 +379,9 @@ async function flowOf(): Promise<Flow> {
 }
 
 begin()
-  .then(async ({ start, role, scenario, manage, soft, solo, daily, challenge, lot, loaded }) =>
+  .then(async ({ start, role, scenario, manage, soft, solo, daily, challenge, lot, met, loaded }) =>
     // случай дня — без потока: больной дня один (spec docs/specs/2026-11-doctor-shift.md, часть 3); у испытания поток — его
-    Game.create(document.getElementById('view')!, store, __VERSION__, quality, start, daily ? { perHour: 0 } : await flowOf(), loaded, role, scenario, { manage, soft, solo, daily, challenge, lot }),
+    Game.create(document.getElementById('view')!, store, __VERSION__, quality, start, daily ? { perHour: 0 } : await flowOf(), loaded, role, scenario, { manage, soft, solo, daily, challenge, lot, met }),
   )
   .then(async g => {
     game = g;

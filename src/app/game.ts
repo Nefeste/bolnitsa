@@ -84,6 +84,7 @@ import { TECHNICIAN } from '../engine/shift/repair';
 import type { DeviceView } from '../sim/repairs';
 import type { Flow } from '../engine/shift/types';
 import type { SaveFile, SaveMeta } from '../sim/packing';
+import { addMet, readMet, writeMet } from './met';
 import { type Disk, listSlots, nextManual, pageDisk, removeSlot, type ShellSaves, writeAuto, writeSlot } from './saves';
 
 /**
@@ -342,6 +343,13 @@ export class Game {
   lot: LotSize = 'M';
   sandbox = false;
   /**
+   * песочница «только встреченные в кампании» (spec docs/specs/2026-11-sandbox.md, часть 2б): новая игра в пустом здании берёт
+   * список из хранилища (`readMet`); у сохранения он — в его состоянии
+   */
+  met = false;
+  /** встреченные на этом компьютере — что окно уже записало (`src/app/met.ts`) */
+  private metList: string[] = readMet();
+  /**
    * смена врача кончилась в 20:00 или приём больного дня закрыт (часть 3): часы стоят — ни кнопки, ни закрытая карта их не
    * пускают; окно «Итог смены» или «Итог дня»
    */
@@ -492,7 +500,7 @@ export class Game {
   /** `loaded` — открыть сохранение (spec docs/specs/2026-10-saves.md): больница, поток и вид — из него, часы на паузе. */
   static async create(
     host: HTMLElement, store: Store, version: string, quality: Quality, start: Start = 'preset', flow: Flow = AUTO, loaded?: SaveFile, role: Role = DEFAULT_ROLE,
-    scenario?: Id, opts: { backdrop?: boolean; manage?: Manage; soft?: boolean; solo?: boolean; daily?: string; challenge?: string; lot?: LotSize } = {},
+    scenario?: Id, opts: { backdrop?: boolean; manage?: Manage; soft?: boolean; solo?: boolean; daily?: string; challenge?: string; lot?: LotSize; met?: boolean } = {},
   ): Promise<Game> {
     const t0 = performance.now();
     store.set({ status: T.app.loading, version });
@@ -530,6 +538,8 @@ export class Game {
     // сценария, испытания, смены врача и случая дня
     if (opts.lot) g.lot = opts.lot;
     g.sandbox = !g.backdrop && g.scenarioId === undefined && g.challenge === undefined && !g.solo && g.daily === undefined;
+    // «только встреченные» (часть 2б) — у новой игры в пустом здании песочницы, если встреченные есть
+    g.met = !loaded && opts.met === true && g.sandbox && start === 'empty' && g.metList.length > 0;
     store.set({
       manage: g.manage, soft: g.soft, solo: g.solo, sandbox: g.sandbox, ...(g.daily ? { daily: g.daily } : {}),
       ...(challenge ? { challenge: { id: challenge.id, name: named(challenge.name), kind: challenge.kind } } : {}),
@@ -630,6 +640,8 @@ export class Game {
         ...(this.scenarioId ? { scenario: this.scenarioId } : {}),
         ...(this.manage !== 'normal' ? { manage: this.manage } : {}),
         ...(this.soft ? { soft: true } : {}),
+        // песочница «только встреченные в кампании» (spec docs/specs/2026-11-sandbox.md, часть 2б)
+        ...(this.met ? { only: [...this.metList] } : {}),
       });
     }
     // сохранение с больницей, где кабинет уже есть, — выбор игрока не трогаем
@@ -1342,6 +1354,15 @@ export class Game {
     // испытание (spec docs/specs/2026-11-challenges.md, часть 2): дошли до его конца — итог и рекорд; «Без показаний» — в окно врача
     if (s.challenge) this.onChallengeEnd(s.challenge);
     if (s.audit && JSON.stringify(s.audit) !== JSON.stringify(this.store.get().audit)) this.store.set({ audit: s.audit });
+    // встреченные болезни (spec docs/specs/2026-11-sandbox.md, часть 2б): новые главные болезни закрытых случаев сценария — в
+    // хранилище этого компьютера; живая сцена экрана начала не пишет
+    if (s.met && !this.backdrop) {
+      const next = addMet(this.metList, s.met);
+      if (next) {
+        this.metList = next;
+        writeMet(next);
+      }
+    }
     // первый пришедший (spec docs/specs/2026-10-scenario-1.md): письмо о его пути — когда он пришёл
     if (this.scenario.view && s.buf[H.arrived] > 0) this.scenario.reach('look');
     if (s.world || s.scenario) this.scenarioOffice();

@@ -1,7 +1,8 @@
-// Сценарий в браузере, часть 46 — песочница, часть 2 (spec docs/specs/2026-11-sandbox.md, «Проверки»): экран начала — «Пустое
-// здание» и участок L; на участке 90 × 60 — пустое здание у южного края. «Корпус»: протянуть пристройку у северной стены —
-// новые клетки и касса, Ctrl+Z — как было; «Снести» — двор в пустом здании. «Вход»: вход скорой — на восточную стену. У
-// сценария «Корпуса» и «Входа» нет. Снимок — `e2e-sandbox-1.jpg`.
+// Сценарий в браузере, часть 46 — песочница, части 2 и 2б (spec docs/specs/2026-11-sandbox.md, «Проверки»): встреченные болезни —
+// сценарий 2 на ×12, пока нанятые врачи не закроют случаи, — в хранилище страницы; без них на втором шаге «Пустого здания»
+// «только встреченные» не выбрать, с ними — выбрать. Экран начала — «Пустое здание» и участок L; на участке 90 × 60 — пустое
+// здание у южного края. «Корпус»: протянуть пристройку у северной стены — новые клетки и касса, Ctrl+Z — как было; «Снести» —
+// двор в пустом здании. «Вход»: вход скорой — на восточную стену. У сценария «Корпуса» и «Входа» нет. Снимок — `e2e-sandbox-1.jpg`.
 import { join } from 'node:path';
 
 /** @param {{ page: import('playwright-core').Page, port: number, out: string, ok: (m: string) => void, fail: (m: string) => void, q: string, shots: string }} x */
@@ -50,10 +51,59 @@ export async function sandboxPart({ page, port, out, ok, fail, q, shots }) {
   });
   const cash = () => page.evaluate(() => window.__game.money.hud.cash);
 
-  // ---------------------------------------------------------------- экран начала: «Пустое здание» и участок L
+  const metOf = () => page.evaluate(() => {
+    try {
+      return JSON.parse(localStorage.getItem('bolnitsa.met') ?? '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  // ---------------------------------------------------------------- встреченные: сценарий 2, нанятые врачи закрывают случаи
+  // хранилище чистят на экране начала, без игры: окно игры помнит встреченные с начала страницы
+  await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&backdrop=0`);
+  await page.waitForSelector('#start-empty', { timeout: 120000 });
+  await page.evaluate(() => localStorage.removeItem('bolnitsa.met'));
+  await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&scenario=scenario.emergency&backdrop=0`);
+  await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
+  // ×12; автопауза по просьбе нанятого врача — снова ×12
+  await until(() => {
+    const g = window.__game;
+    if (g.speed === 0 && !g.doctor.still && !g.money.open) g.actions.setSpeed(12);
+    else if (g.speed !== 12 && g.speed !== 0) g.actions.setSpeed(12);
+    try {
+      return JSON.parse(localStorage.getItem('bolnitsa.met') ?? '[]').length > 0;
+    } catch {
+      return false;
+    }
+  }, null, 240000);
+  await page.evaluate(() => window.__game.actions.setSpeed(0));
+  const met = await metOf();
+  const clock = await page.$eval('#clock', el => el.textContent ?? '').catch(() => '');
+  if (met.length > 0 && met.every(x => typeof x === 'string' && x.startsWith('cond.'))) ok(`встреченные в сценарии 2 к «${clock}»: ${met.join(', ')} — в хранилище страницы`);
+  else fail(`встреченные: ${JSON.stringify(met)}`);
+
+  // ---------------------------------------------------------------- второй шаг «Пустого здания»: без встреченных — не выбрать
+  await page.evaluate(() => localStorage.removeItem('bolnitsa.met'));
   await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&backdrop=0`);
   await page.waitForSelector('#start-empty', { timeout: 120000 });
   await page.click('#start-empty');
+  await page.waitForSelector('#start-met');
+  const none = await page.$eval('#start-met', el => ({ off: el.disabled, hint: document.getElementById('start-met-hint')?.textContent ?? '' }));
+  if (none.off && none.hint.startsWith('Все болезни базы.')) ok(`без встреченных «только встреченные» не выбрать: «${none.hint}»`);
+  else fail(`без встреченных: ${JSON.stringify(none)}`);
+  // с ними — выбрать: число — из хранилища
+  await page.evaluate(m => localStorage.setItem('bolnitsa.met', JSON.stringify(m)), met);
+  await page.goto(`http://127.0.0.1:${port}/index.html?q=${q}&lang=ru&backdrop=0`);
+  await page.waitForSelector('#start-empty', { timeout: 120000 });
+  await page.click('#start-empty');
+  await page.waitForSelector('#start-met');
+  const some = await page.$eval('#start-met', el => ({ off: el.disabled, label: el.parentElement?.textContent ?? '' }));
+  if (!some.off && some.label.includes(`Только встреченные в кампании: ${met.length} `)) ok(`со встреченными — выбрать: «${some.label}»`);
+  else fail(`со встреченными: ${JSON.stringify(some)}`);
+  await page.click('#start-met');
+
+  // ---------------------------------------------------------------- экран начала: «Пустое здание» и участок L
   await page.waitForSelector('#start-lots');
   const lots = await page.$$eval('#start-lots button', els => els.map(e => `${e.id}:${e.className}`));
   if (lots.length === 3 && lots.some(x => x.startsWith('start-lot-M:') && x.includes(' on'))) ok(`второй шаг «Пустого здания»: участки ${lots.map(x => x.split(':')[0].slice(-1)).join(', ')}, выбран M`);
@@ -65,8 +115,8 @@ export async function sandboxPart({ page, port, out, ok, fail, q, shots }) {
   await page.click('#start-roles button[id^="start-role-"]');
   await page.waitForURL(/lot=L/, { timeout: 30000 });
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
-  const lot = await page.evaluate(() => ({ w: window.__game.hospital.site.w, h: window.__game.hospital.site.h, url: location.search }));
-  if (lot.w === 90 && lot.h === 60) ok(`игра на участке ${lot.w} × ${lot.h} (${lot.url})`);
+  const lot = await page.evaluate(() => ({ w: window.__game.hospital.site.w, h: window.__game.hospital.site.h, url: location.search, met: window.__game.met }));
+  if (lot.w === 90 && lot.h === 60 && lot.met === true && /met=1/.test(lot.url)) ok(`игра на участке ${lot.w} × ${lot.h}, только встреченные (${lot.url})`);
   else fail(`участок игры: ${JSON.stringify(lot)}`);
 
   // ---------------------------------------------------------------- «Корпус»: пристройка у северной стены
