@@ -353,7 +353,8 @@ async function partOne() {
     else fail(`клик по человеку: карточка «${title}»`);
   } else fail('не нашёл человека в кадре');
   // выделение (spec docs/specs/2026-10-aaa-polish.md): у выбранного человека — кольцо; наведение на другого — тонкое кольцо
-  // и подпись «кто · что делает»
+  // и подпись «кто · что делает». Кольцо ставит цикл кадров: в начале прогона кадры редки — ждать кадра, а не время
+  await page.waitForFunction(() => window.__game.stage.highlight.dump().ring, null, { timeout: 5000 }).catch(() => {});
   const hl = await page.evaluate(() => window.__game.stage.highlight.dump());
   if (hl.ring) ok('у выбранного человека — кольцо выделения');
   else fail(`кольца у выбранного нет: ${JSON.stringify(hl)}`);

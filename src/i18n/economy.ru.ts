@@ -77,7 +77,28 @@ export const economyRu = {
       refused: 'С чем отказали в госпитализации:',
       refusedRow: (name: string, n: number) => `${name} — ${n}`,
       refusedFix: 'Мест нет — ещё палата, ПИТ, реанимация или бокс того вида; своих нет — постройте такое помещение. Выписка в срок освобождает койки.',
+      /** экспертиза страховой (spec docs/specs/2026-11-scenario-6.md, часть 1а): за что не заплатили и что с этим делать */
+      auditHint: 'За что страховая не заплатила и что с этим делать',
+      auditKinds: (weak: string, unconfirmed: string, unindicated: string) =>
+        [unconfirmed ? `за диагноз без подтверждения — ${unconfirmed}` : '', weak ? `за обоснованность ниже A — ${weak}` : '', unindicated ? `за обследования без показаний — ${unindicated}` : '']
+          .filter(Boolean)
+          .join('; '),
+      auditUnconfirmed: 'Диагноз без подтверждения — обращение оплачено наполовину:',
+      auditUnconfirmedRow: (name: string, n: number, by: string) => `${name} — ${n}${by ? `: подтверждают — ${lowerFirst(by)}` : ''}`,
+      auditWeak: (rows: string) => `Обоснованность ниже A — доля тарифа: ${rows}.`,
+      auditGrade: (grade: string, n: number) => `${grade} — ${n}`,
+      auditUnindicated: 'Обследования без показаний — не оплачены:',
+      auditRow: (name: string, n: number) => `${name} — ${n}`,
+      auditWho: (rows: string) => `Чаще всего — ${rows}.`,
+      auditYou: 'ваши приёмы',
+      auditConfirms: (n: number) => `По правилу «Подтверждать диагноз» назначено ${n} ${pluralRu(n, 'обследование', 'обследования', 'обследований')}.`,
+      auditFix:
+        'Правило главврача «Подтверждать диагноз» — во вкладке «Просят посмотреть»: врачи назначат подтверждающее обследование, если его делают в больнице. Обоснованность — от навыка врачей и наставника.',
     },
+    /** акт страховой раз в неделю (spec docs/specs/2026-11-scenario-6.md, часть 1а) */
+    act: (from: number, to: number) => `Акт страховой: сутки ${from}–${to}`,
+    actCut: (rub: string, n: number) => `Не оплачено ${rub} — ${n} ${pluralRu(n, 'приём', 'приёма', 'приёмов')}`,
+    actNone: 'Страховая всё оплатила.',
     ward: (admitted: number, discharged: number, transferred: number, died: number, lying: number) =>
       `стационар: поступили ${admitted}, выписаны ${discharged}, переведены ${transferred}${died > 0 ? `, умерли ${died}` : ''}, лежат ${lying}`,
     /**

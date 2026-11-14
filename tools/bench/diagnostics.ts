@@ -8,7 +8,10 @@
 // Больницы: готовая городская (УЗИ, КТ, эндоскопия, МРТ) и районная с сосудистым отделением (УЗИ и КТ). Зима, никто не играет:
 // кабинеты врача ведут нанятые терапевты днём и ночью. Сутки 1 — вход в поток, в среднем — со вторых.
 //
-// bun tools/bench/diagnostics.ts [--days 7] [--seeds 1,2] [--hospital city,vpreset]
+// С `--confirms` — с правилом главврача «Подтверждать диагноз» (spec docs/specs/2026-11-scenario-6.md, часть 1а) с первой минуты:
+// сколько подтверждающих обследований назначили, сколько снято и верных диагнозов.
+//
+// bun tools/bench/diagnostics.ts [--days 7] [--seeds 1,2] [--hospital city,vpreset] [--confirms]
 import type { ContentDb, Id } from '../../src/content/types';
 import { db as bundle } from '../../src/content';
 import { hospitalOf, readyCost, type SiteCommand } from '../../src/engine/hospital/site';
@@ -24,6 +27,7 @@ const arg = (name: string, def: string) => {
 const DAYS = Number(arg('days', '7'));
 const SEEDS = arg('seeds', '1,2').split(',').map(Number);
 const HOSPITALS = arg('hospital', 'city,vpreset').split(',');
+const CONFIRMS = process.argv.includes('--confirms');
 const db: ContentDb = bundle;
 const H = 3600;
 const DAY = 24 * H;
@@ -43,6 +47,7 @@ function start(name: string, seed: number): ShiftState {
     }
   }
   cmd({ kind: 'done' });
+  if (CONFIRMS) apply(db, s, { kind: 'confirms', on: true });
   return s;
 }
 
@@ -110,6 +115,19 @@ for (const name of HOSPITALS) {
     const weak = avg(days.map(h => h.economy?.ledger.audit.weak ?? 0));
     const unconfirmed = avg(days.map(h => h.economy?.ledger.audit.unconfirmed ?? 0));
     const income = avg(days.map(h => { const l = h.economy?.ledger; return l ? l.income.oms + l.income.dms + l.income.self : 0; }));
+    const confirms = avg(days.map(h => h.confirms ?? 0));
+    // приёмы нанятых врачей: верные — по разбору у их итогов суток
+    const col = (h: DaySummary) => Object.values(h.colleagues ?? {});
+    const seenAll = avg(days.map(h => col(h).reduce((a, c) => a + c.correct + c.partly + c.wrong, 0)));
+    const correct = avg(days.map(h => col(h).reduce((a, c) => a + c.correct, 0)));
+    const money = avg(days.map(h => {
+      const l = h.economy?.ledger;
+      if (!l) return 0;
+      const out = Object.values(l.expenses).reduce((a: number, v) => a + (v ?? 0), 0);
+      return l.income.oms + l.income.dms + l.income.self + (l.ward?.income ?? 0) - out;
+    }));
+    const left = avg(days.map(h => h.left));
+    console.log(`  верных диагнозов ${fmt((100 * correct) / Math.max(1, seenAll), 1)} % из ${fmt(seenAll)} в сутки, ушли не дождавшись — ${fmt(left, 1)}; касса за сутки ${money >= 0 ? '+' : ''}${fmt(money)} ₽${CONFIRMS ? `; по правилу «Подтверждать диагноз» назначено ${fmt(confirms, 1)} в сутки` : ''}`);
     console.log(`  без подтверждения чаще всего: ${top(unc, 8)}; где подтверждают: ${top(uncRoom, 8)}`);
     console.log(`  экспертиза страховой: снято ${fmt(rub)} ₽ в сутки при доходе по приёмам ${fmt(income)} ₽; обоснованность ниже A — ${fmt(weak, 1)} приёмов, диагноз без подтверждения — ${fmt(unconfirmed, 1)}, обследований без показаний — ${fmt(cut, 1)}; в диагностике — ${perDay || 'нет'}`);
   }

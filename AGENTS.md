@@ -87,8 +87,8 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # by mouse in the empty building; people and flow at 13:00 — icons, «Пациенты», the
                                    # patient's path, the queues overlay, the camera gliding after a right-button drag; then
                                    # the doctor mode: a consult, a whole case, «Take the case», «My office»; then money:
-                                   # building from cash, «Until morning» to the 08:00 meeting, «почему?» of the arrived and
-                                   # the left, «Кто ушёл», the «Обход» list; then ready rooms: four clicks open the empty
+                                   # building from cash, «Until morning» to the 08:00 meeting, «почему?» of the arrived, the
+                                   # left and the insurer's cut, «Кто ушёл», the «Обход» list; then ready rooms: four clicks open the empty
                                    # building (the last one's furniture grows from the floor), R, one undo; then the start screen on the live scene (the ready city behind
                                    # the glass panel, the camera on its circle, the choice reopens the page with its keys),
                                    # its three cards and the polyclinic; then specialists: hire a gastroenterologist in the
@@ -110,7 +110,7 @@ npm run e2e                        # after build: the game in headless Chromium,
                                    # meeting, «Нанять в резерв», «замещает: …», the reserve card's «Уволить»; then orderlies:
                                    # a patient on the gurney in front of the orderly, their cards, «Следить», the path,
                                    # «Персонал», paramedics; then the
-                                   # chief approves: rule checkboxes, a decision in the list and on the map, its card with the
+                                   # chief approves: rule checkboxes and «Подтверждать диагноз», a decision in the list and on the map, its card with the
                                    # «Ещё обследование» form, the path, Enter — «Согласен»; then roles: «Кто вы» on the start
                                    # screen, «Управляющий» sees no medicine for three hours, «Врач» and «Главврач» in the doctor
                                    # window, hints by role, the chief's line and the doctors' errors at the meeting, «Итог» in
@@ -293,7 +293,8 @@ bun tools/bench/levels.ts                      # the sandbox (spec docs/specs/20
 bun tools/bench/diagnostics.ts                 # scenario 6 (spec docs/specs/2026-11-scenario-6.md): the ready city and the vascular district
                                                # in winter, nobody playing — ultrasound, endoscopy, CT and MRI: exams, income and costs a day
                                                # by room money, payback by the ready room's price; the insurer's cuts by kind and the
-                                               # unconfirmed diagnoses by where they are confirmed (`--hospital city,vpreset`, `--days`, `--seeds`)
+                                               # unconfirmed diagnoses by where they are confirmed (`--hospital city,vpreset`, `--days`, `--seeds`;
+                                               # `--confirms` — with the chief's rule «Подтверждать диагноз» from the first minute)
 bun tools/bench/solo.ts                        # the doctor's shift (spec docs/specs/2026-11-doctor-shift.md): a day shift 08:00–20:00 in
                                                # the ready city and polyclinic with one doctor receiving — who came, how many he saw,
                                                # who left, minutes per case, the wait (`--hospital city,poly`, `--manage calm,normal,hard`;
@@ -390,7 +391,14 @@ Never write Three.js, Electron, React or esbuild code from memory: read the docs
   flow, sent to another hospital while the database's place (`recommendedSetting`) needs a bed and no fitting one (`choiceFor`'s
   kinds, `NEEDS`) was free: «мест нет» if the hospital has such beds, «своих нет» if not; `DaySummary.refused` by kind and by main
   disease, the meeting's `#meet-refused` with its «почему?» (`refusedOf` in `src/app/money.ts`); the probes count them the same way
-  by the patients' paths (`tools/bench/refused.ts`, checked against the engine by `refusals.test.ts`). The
+  by the patients' paths (`tools/bench/refused.ts`, checked against the engine by `refusals.test.ts`). The insurer's audit by kind
+  and the weekly act (`docs/specs/2026-11-scenario-6.md`, part 1а): `shift/audit.ts` — `cutParts` splits a closed case's cut the
+  way `caseIncome` counted it (defensibility, unconfirmed diagnosis, exams without indication; the level's pay rounding goes to the
+  biggest part, so the parts sum to `ledger.audit.cut`), `recordAudit` writes `DaySummary.audit` (PC flow), `weekAudit` gives the
+  morning notice of day 7, 14… its `act`; the chief's rule «Подтверждать диагноз» — the `confirms` command, `meta.confirms`,
+  `confirmExam` in `engine.ts`: a hired doctor who chose a diagnosis orders the base's confirming exam first if the hospital does it
+  (`ShiftPatient.confirming`, once; `DaySummary.confirms`), then decides again; without it — byte for byte. The window:
+  `auditViewOf`/`actViewOf` in `src/app/money.ts`, `AuditRows`/`Act` in `src/ui/Meeting.tsx`, `Confirms` in `src/ui/doctor/Dock.tsx`. The
   management axis (`docs/specs/2026-10-difficulty.md`; owner's decisions #135–#137, #151): `meta.manage` — «Спокойно» or
   «Трудно», none — «Обычно», the base numbers byte for byte; `shift/manage.ts` (`manageOf`, `scaled`) scales the flow
   (`flowRate`, and so the meeting's forecast `inflowDay`), an arrival's patience, wages when paid (`wageOf`/`wagesOf` take

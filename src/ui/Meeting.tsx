@@ -10,7 +10,7 @@ import type { RepChange } from '../engine/economy/economy';
 import type { ChiefDay, DaySummary, LeftBy, LeftWhy, VisitKind } from '../engine/shift/types';
 import type { ErrorList, ErrorRow } from '../sim/doctor';
 import { money, T } from '../i18n';
-import { type EconomyHud, type MeetingView, type Raise, slowOf, type Tip } from '../app/money';
+import { type AuditView, type EconomyHud, type MeetingView, type Raise, slowOf, type Tip } from '../app/money';
 import { Letter } from './Scenario';
 import type { Actions } from './store';
 import { WindowHead } from './WindowHead';
@@ -185,6 +185,60 @@ function WhyRefused({ r }: { r: NonNullable<MeetingView['refused']> }) {
 }
 
 /**
+ * Экспертиза страховой (spec docs/specs/2026-11-scenario-6.md, часть 1а): за что не заплатили — диагнозы без подтверждения и чем
+ * их подтверждают, обоснованность по оценкам, обследования без показаний, у кого чаще; что делать. Одна и та же — у «почему?»
+ * строки «Страховая не оплатила» и в акте недели.
+ */
+function AuditRows({ a, id }: { a: AuditView; id: string }) {
+  const w = T.meeting.why;
+  return (
+    <div className="mwhy" id={id}>
+      {a.unconfirmed.length > 0 ? (
+        <>
+          <p>{w.auditUnconfirmed}</p>
+          <ul>
+            {a.unconfirmed.map((x, i) => (
+              <li key={i}>{w.auditUnconfirmedRow(x.name, x.n, x.by)}</li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {a.weak.length > 0 ? <p>{w.auditWeak(a.weak.map(x => w.auditGrade(x.grade, x.n)).join(', '))}</p> : null}
+      {a.unindicated.length > 0 ? (
+        <>
+          <p>{w.auditUnindicated}</p>
+          <ul>
+            {a.unindicated.map((x, i) => (
+              <li key={i}>{w.auditRow(x.name, x.n)}</li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {a.who.length > 0 ? <p>{w.auditWho(a.who.map(x => w.auditRow(x.who, x.n)).join(', '))}</p> : null}
+      <p className="muted">{w.auditFix}</p>
+    </div>
+  );
+}
+
+/** Акт страховой раз в неделю (там же): сколько не оплачено за неделю и за что; назначено по правилу «Подтверждать диагноз». */
+function Act({ a }: { a: NonNullable<MeetingView['act']> }) {
+  const t = T.meeting;
+  return (
+    <Section title={t.act(a.from, a.to)} id="meet-act">
+      {a.cut > 0 ? (
+        <p>
+          <b>{t.actCut(money(a.cut), a.cases)}</b>: {t.why.auditKinds(a.rub.weak > 0 ? money(a.rub.weak) : '', a.rub.unconfirmed > 0 ? money(a.rub.unconfirmed) : '', a.rub.unindicated > 0 ? money(a.rub.unindicated) : '')}
+        </p>
+      ) : (
+        <p className="ok">{t.actNone}</p>
+      )}
+      {a.confirms > 0 ? <p className="muted">{t.why.auditConfirms(a.confirms)}</p> : null}
+      {a.cut > 0 ? <AuditRows a={a} id="meet-act-rows" /> : null}
+    </Section>
+  );
+}
+
+/**
  * «Почему?» у числа ушедших (spec docs/specs/2026-10-why.md): причины — больше всего первой — и что с каждой делать; сколько
  * стояли у кабинета; «Кто ушёл» — вкладка «Пациенты», список «Ушли»: с экрана планёрки — закрыв его, часы стоят.
  */
@@ -243,7 +297,7 @@ export function MeetingBody({ m, e, actions, screen = false }: { m: MeetingView;
   const expenses = l ? Object.values(l.expenses).reduce((n: number, v) => n + (v ?? 0), 0) : 0;
   const slow = slowOf(d.load);
   // «Почему?» (spec docs/specs/2026-10-why.md): какие разборы открыты
-  const [why, setWhy] = useState<{ arrived?: boolean; left?: boolean; refused?: boolean }>({});
+  const [why, setWhy] = useState<{ arrived?: boolean; left?: boolean; refused?: boolean; audit?: boolean }>({});
   const parts = d.arrivedBy ? partsOf(d.arrivedBy) : '';
   return (
     <div className="mbody">
@@ -364,6 +418,8 @@ export function MeetingBody({ m, e, actions, screen = false }: { m: MeetingView;
       {/* итог главврача и ошибки нанятых врачей (spec docs/specs/2026-10-two-ways.md, F5; решение владельца #66) */}
       {d.chief ? <Chief c={d.chief} /> : null}
       {m.errors ? <Errors x={m.errors} actions={actions} /> : null}
+      {/* акт страховой за неделю (spec docs/specs/2026-11-scenario-6.md, часть 1а) — перед кассой суток */}
+      {m.act ? <Act a={m.act} /> : null}
       {ec && l ? (
         <Section title={t.cash} id="meet-cash">
           <p>
@@ -376,7 +432,19 @@ export function MeetingBody({ m, e, actions, screen = false }: { m: MeetingView;
             {l.ward && l.ward.cases > 0 ? <li>{t.wardLine(l.ward.cases, money(wardIncome))}</li> : null}
             <li className="muted">{t.level(ec.level.level)}</li>
           </ul>
-          {l.audit.cut > 0 ? <p className="muted">{t.audit(money(l.audit.cut), t.auditWhy(l.audit.weak, l.audit.unconfirmed, l.audit.unindicated))}</p> : null}
+          {l.audit.cut > 0 ? (
+            <p className="muted" id="meet-audit">
+              {t.audit(money(l.audit.cut), t.auditWhy(l.audit.weak, l.audit.unconfirmed, l.audit.unindicated))}
+              {/* за что не заплатили (spec docs/specs/2026-11-scenario-6.md, часть 1а) */}
+              {m.audit ? (
+                <>
+                  {' '}
+                  <WhyButton id="meet-why-audit" on={!!why.audit} title={t.why.auditHint} onClick={() => setWhy({ ...why, audit: !why.audit })} />
+                </>
+              ) : null}
+            </p>
+          ) : null}
+          {why.audit && m.audit && l.audit.cut > 0 ? <AuditRows a={m.audit} id="meet-why-audit-box" /> : null}
           <p>
             <b>{t.expenses(money(expenses))}</b>
           </p>

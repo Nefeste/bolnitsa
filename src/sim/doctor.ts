@@ -194,6 +194,8 @@ export interface DoctorState {
   er?: true;
   sorts?: true;
   handover: HandoverRow[];
+  /** правило главврача «Подтверждать диагноз» (spec docs/specs/2026-11-scenario-6.md, часть 1а): включено — галочка во вкладке */
+  confirms?: true;
   /** маршруты для срочного (spec docs/specs/2026-11-scenario-4.md, часть 2а): какие включены — галочки в карточке смотровой */
   routes?: Id[];
   /**
@@ -501,6 +503,7 @@ export function doctorState(db: ContentDb, s: ShiftState, level: Difficulty = DE
     ...(s.flow && ctx.plan.rooms.some(r => db.rooms[r.type]?.emergency) ? { er: true as const } : {}),
     ...(s.meta.sorts ? { sorts: true as const } : {}),
     handover: handoverRows(db, s, level),
+    ...(s.flow && s.meta.confirms ? { confirms: true as const } : {}),
     ...(s.flow && s.meta.routes ? { routes: [...s.meta.routes] } : {}),
     ...(routable > 0 ? { routable } : {}),
     // мест в смотровой нет — сколько привезённых ждут у входа (часть 2б, подсказка «мест нет»)

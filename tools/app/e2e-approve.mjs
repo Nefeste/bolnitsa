@@ -3,7 +3,8 @@
 // уверен» и «долгий случай»; «каждое решение» — галочкой. ×12 до первого решения: строка «… — N из 10 · … · …», счётчик в
 // названии вкладки, над больным — значок, в его карточке — «ждёт вашего решения по плану врача — до …». «Карта» — решение
 // врача, срок и бланк: отметили обследование — назначит врач, строка ушла, в пути — «вы назначили ещё обследование», а
-// потом «назначил главврач». Enter — «Согласен» на верхнем решении. «Ни о чём» — галочки сняты. Снимки — `e2e-approve-*.jpg`.
+// потом «назначил главврач». Enter — «Согласен» на верхнем решении. «Ни о чём» — галочки сняты. Галочка «Подтверждать диагноз»
+// (spec docs/specs/2026-11-scenario-6.md, часть 1а) — выключена, отмечается и снимается. Снимки — `e2e-approve-*.jpg`.
 import { join } from 'node:path';
 
 /** @param {{ page: import('playwright-core').Page, port: number, out: string, ok: (m: string) => void, fail: (m: string) => void, q: string, shots: string }} x */
@@ -41,6 +42,16 @@ export async function approvePart({ page, port, out, ok, fail, q, shots }) {
   await page.click('#rule-every');
   await until(() => window.__game.doctor.hud.state.rules.includes('every'));
   ok('«каждое решение» — отмечено, движок спрашивает');
+  // правило главврача «Подтверждать диагноз» (spec docs/specs/2026-11-scenario-6.md, часть 1а): галочка под правилами, выключена;
+  // отмечено — движок его держит, снято — как прежде
+  const conf = await page.$eval('#rule-confirms', e => ({ on: e.checked, hint: e.parentElement?.getAttribute('title') ?? '' })).catch(() => null);
+  if (conf && !conf.on && conf.hint.includes('подтверждают их диагноз')) ok('«Подтверждать диагноз» — галочка под правилами, выключена');
+  else fail(`«Подтверждать диагноз»: ${JSON.stringify(conf)}`);
+  await page.click('#rule-confirms');
+  await until(() => window.__game.doctor.hud.state.confirms === true);
+  await page.click('#rule-confirms');
+  await until(() => window.__game.doctor.hud.state.confirms === undefined);
+  ok('«Подтверждать диагноз»: отмечено — правило в движке, снято — врачи как прежде');
 
   // ---------------------------------------------------------------- первое решение на утверждении
   await speed(12);

@@ -163,6 +163,19 @@ export async function economyPart({ page, port, out, ok, fail, q, shots }) {
     else fail(`отказы: строка «${line}», «почему?» «${box}», строк ${rows}, итог ${JSON.stringify(sum.refused)}`);
   } else if (await page.$('#meeting #meet-refused')) fail('отказов за сутки нет, а строка отказов есть');
   else ok('отказов в госпитализации за сутки нет — строки нет');
+  // экспертиза страховой по видам (spec docs/specs/2026-11-scenario-6.md, часть 1а): «почему?» у строки «Страховая не оплатила» —
+  // диагнозы без подтверждения и чем их подтверждают, что делать
+  const audit = sum.economy?.ledger.audit;
+  if (audit && audit.cut > 0) {
+    const line = await text('#meeting #meet-audit');
+    await page.click('#meeting #meet-why-audit');
+    const box = await text('#meeting #meet-why-audit-box');
+    const a = sum.audit;
+    const kinds = a ? a.rub.weak + a.rub.unconfirmed + a.rub.unindicated : -1;
+    const unc = Object.keys(a?.unconfirmed ?? {}).length;
+    if (kinds === audit.cut && (unc === 0 || box.includes('Диагноз без подтверждения')) && box.includes('Подтверждать диагноз')) ok(`экспертиза: «${line}»; «почему?»: «${box.slice(0, 240)}»`);
+    else fail(`экспертиза: строка «${line}», «почему?» «${box}», итог ${JSON.stringify({ audit, by: a })}`);
+  } else ok('страховая за сутки всё оплатила — «почему?» у её строки нет');
   // открытый разбор — кнопка «почему?» подсвечена (класс `on`, aria-expanded), у всех
   const marks = await page.$$eval('#meeting button.why', els => els.map(e => `${e.id}:${e.className}:${e.getAttribute('aria-expanded')}`));
   if (marks.length > 0 && marks.every(m => m.endsWith(':why on:true'))) ok(`кнопки «почему?» открытых разборов подсвечены: ${marks.join(', ')}`);

@@ -77,6 +77,8 @@ export type DoctorAction =
    */
   | { kind: 'sheet'; id: string | null }
   | { kind: 'sort'; id: string; triage: Triage }
-  | { kind: 'sorts'; on: boolean };
+  | { kind: 'sorts'; on: boolean }
+  /** правило главврача «Подтверждать диагноз» (spec docs/specs/2026-11-scenario-6.md, часть 1а) */
+  | { kind: 'confirms'; on: boolean };
 
 export const initialDoctor: DoctorHud = { level: 'student', autopause: true, meanwhile: [], mineOpen: false, folded: false, role: DEFAULT_ROLE };

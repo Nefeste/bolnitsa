@@ -70,7 +70,26 @@ export const economyEn: EconomyStrings = {
       refused: 'Refused admission with:',
       refusedRow: (name: string, n: number) => `${name} — ${n}`,
       refusedFix: 'No beds free — another ward, intensive care unit, reanimation or isolation box of that kind; none of your own — build such a room. Discharging on time frees beds.',
+      auditHint: 'What the insurer did not pay for and what to do about it',
+      auditKinds: (weak: string, unconfirmed: string, unindicated: string) =>
+        [unconfirmed ? `for an unconfirmed diagnosis — ${unconfirmed}` : '', weak ? `for defensibility below A — ${weak}` : '', unindicated ? `for exams without indication — ${unindicated}` : '']
+          .filter(Boolean)
+          .join('; '),
+      auditUnconfirmed: 'Diagnosis not confirmed — the visit paid by half:',
+      auditUnconfirmedRow: (name: string, n: number, by: string) => `${name} — ${n}${by ? `: confirmed by ${lowerFirst(by)}` : ''}`,
+      auditWeak: (rows: string) => `Defensibility below A — a share of the tariff: ${rows}.`,
+      auditGrade: (grade: string, n: number) => `${grade} — ${n}`,
+      auditUnindicated: 'Exams without indication — not paid:',
+      auditRow: (name: string, n: number) => `${name} — ${n}`,
+      auditWho: (rows: string) => `Most often — ${rows}.`,
+      auditYou: 'your visits',
+      auditConfirms: (n: number) => `By the «Confirm the diagnosis» rule ${n} ${n === 1 ? 'exam was' : 'exams were'} ordered.`,
+      auditFix:
+        "The chief doctor's rule «Confirm the diagnosis» is in the «Asking for a look» tab: doctors will order the confirming exam if the hospital does it. Defensibility comes with the doctors' skill and a mentor.",
     },
+    act: (from: number, to: number) => `Insurer's report: days ${from}–${to}`,
+    actCut: (rub: string, n: number) => `Not paid ${rub} — ${n} ${n === 1 ? 'visit' : 'visits'}`,
+    actNone: 'The insurer paid for everything.',
     ward: (admitted: number, discharged: number, transferred: number, died: number, lying: number) =>
       `inpatients: admitted ${admitted}, discharged ${discharged}, transferred ${transferred}${died > 0 ? `, died ${died}` : ''}, in beds ${lying}`,
     refused: (n: number, full: string, none: string) =>

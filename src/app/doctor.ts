@@ -582,6 +582,10 @@ export class Doctor {
         client.command({ kind: 'sorts', on: a.on });
         if (!a.on) this.closeSheet();
         break;
+      // правило главврача «Подтверждать диагноз» (spec docs/specs/2026-11-scenario-6.md, часть 1а)
+      case 'confirms':
+        client.command({ kind: 'confirms', on: a.on });
+        break;
     }
     this.g.refresh();
   }

@@ -377,7 +377,21 @@ export function Asks({ hud, actions }: { hud: Hud; actions: Actions }) {
         ))}
       </ul>
       <Rules rules={st.rules} actions={actions} />
+      {st.colleagues.length > 0 ? <Confirms on={st.confirms === true} actions={actions} /> : null}
     </div>
+  );
+}
+
+/**
+ * Правило главврача «Подтверждать диагноз» (spec docs/specs/2026-11-scenario-6.md, часть 1а): нанятые врачи перед решением назначают
+ * подтверждающее обследование — одной галочкой под «О чём спрашивать главврача».
+ */
+function Confirms({ on, actions }: { on: boolean; actions: Actions }) {
+  const t = T.doctor.asks;
+  return (
+    <label className="small" id="rule-confirms-row" title={t.confirmsHint}>
+      <input type="checkbox" id="rule-confirms" checked={on} onChange={() => actions.doctor({ kind: 'confirms', on: !on })} /> {t.confirms}
+    </label>
   );
 }
 

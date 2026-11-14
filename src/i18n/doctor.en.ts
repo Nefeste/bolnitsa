@@ -511,6 +511,9 @@ export const doctorEn: DoctorStrings = {
       autopause: 'Autopause: requests, results and worsening of your patients',
       rules: 'What to ask the chief doctor about',
       rulesHint: 'Doctors bring you what is ticked and decide the rest themselves. Autopause — only on «unsure»',
+      confirms: 'Confirm the diagnosis',
+      confirmsHint:
+        'Before deciding, hired doctors order the exam that confirms their diagnosis if the hospital does it: the insurer pays the visit in full. A longer visit — the others wait longer.',
       rule: {
         unsure: 'unsure',
         long: 'long case: 4 h without a diagnosis',
