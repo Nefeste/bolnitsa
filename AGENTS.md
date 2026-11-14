@@ -295,6 +295,11 @@ bun tools/bench/diagnostics.ts                 # scenario 6 (spec docs/specs/202
                                                # by room money, payback by the ready room's price; the insurer's cuts by kind and the
                                                # unconfirmed diagnoses by where they are confirmed (`--hospital city,vpreset`, `--days`, `--seeds`;
                                                # `--confirms` — with the chief's rule «Подтверждать диагноз» from the first minute)
+bun tools/bench/crisis.ts                      # scenario 7 (spec docs/specs/2026-11-scenario-7.md): a ready hospital in crisis — a bank loan
+                                               # (`--loan`), cash below zero (`--cash`), reputation (`--rep`), everyone's mood below the
+                                               # quitting line (`--mood`), devices long unserviced (`--wear`); `--play none,quit,all,tech`:
+                                               # nobody, a chief who answers «собирается уйти» (+ «Подтверждать диагноз»), raises everyone
+                                               # below the line, hires a technician; cash, loan, reputation, who left, by day (`--days 30`)
 bun tools/bench/solo.ts                        # the doctor's shift (spec docs/specs/2026-11-doctor-shift.md): a day shift 08:00–20:00 in
                                                # the ready city and polyclinic with one doctor receiving — who came, how many he saw,
                                                # who left, minutes per case, the wait (`--hospital city,poly`, `--manage calm,normal,hard`;
