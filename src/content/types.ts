@@ -1085,9 +1085,11 @@ export interface Character {
 
 /**
  * Условие дня для заданий «N дней»; с главой 3 — были ОКС, и ни один не пропущен (`noMissedMI`); с главой 4 — были
- * заразные, которым нужен бокс, и ни один не лёг в общую палату (`noInfectiousInWard`).
+ * заразные, которым нужен бокс, и ни один не лёг в общую палату (`noInfectiousInWard`). Сценарий 7 ПК (spec
+ * docs/specs/2026-11-scenario-7.md, часть 1а): касса вечером не в минусе (`cashAboveZero`; `cashPositive` — доход суток не меньше
+ * расходов) и никто из штата не ушёл сам (`noQuit`).
  */
-export type DayKind = 'noNeedlessAntibiotic' | 'noLeft' | 'cashPositive' | 'noWaitComplication' | 'noMissedMI' | 'noInfectiousInWard';
+export type DayKind = 'noNeedlessAntibiotic' | 'noLeft' | 'cashPositive' | 'noWaitComplication' | 'noMissedMI' | 'noInfectiousInWard' | 'cashAboveZero' | 'noQuit';
 
 export type Mission = { id: string; main: boolean; text: Text } & (
   | { kind: 'seen'; count: number; accuracy: number }
@@ -1246,7 +1248,14 @@ export interface Scenario {
    * нет — медсестра приёмного по шкале
    */
   sorts?: true;
+  /** касса начала, ₽; в минусе — у сценария в кризисе (spec docs/specs/2026-11-scenario-7.md, часть 1а) */
   budget: number;
+  /**
+   * больница в кризисе с первой минуты (spec docs/specs/2026-11-scenario-7.md, часть 1а): долг — кредит банка на срок банка,
+   * равными долями (`loan`, ₽ к возврату); репутация; настроение всех нанятых со сменой; сутки без обслуживания у каждого
+   * аппарата, что ломается; нет поля — как прежде
+   */
+  crisis?: { loan?: number; reputation?: number; mood?: number; wear?: number };
   department: Id;
   build: Id[];
   tutorial: TutorialPatient[];

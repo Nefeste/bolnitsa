@@ -108,6 +108,11 @@ export function dayOk(kind: DayKind, h: DaySummary): boolean {
     // глава 4 (spec 2026-10-chapter-4, часть 60а): были заразные, которым нужен бокс, и ни один не лёг в общую палату
     case 'noInfectiousInWard':
       return (h.isolation?.seen ?? 0) > 0 && !h.isolation?.ward;
+    // сценарий 7 ПК (spec docs/specs/2026-11-scenario-7.md, часть 1а): касса вечером не в минусе; никто из штата не ушёл сам
+    case 'cashAboveZero':
+      return !!h.economy && h.economy.cash >= 0;
+    case 'noQuit':
+      return !h.departed;
   }
 }
 

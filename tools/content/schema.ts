@@ -1102,7 +1102,8 @@ export const characterSchema = z.strictObject({
 // осложнилась, пока он ждал в больнице
 // noMissedMI (spec 2026-10-chapter-3, часть 45а): были ваши больные с ОКС, и ни у одного он не пропущен
 // noInfectiousInWard (spec 2026-10-chapter-4, часть 60а): были заразные, которым нужен бокс, и ни один не лёг в общую палату
-const dayKind = z.enum(['noNeedlessAntibiotic', 'noLeft', 'cashPositive', 'noWaitComplication', 'noMissedMI', 'noInfectiousInWard']);
+// cashAboveZero и noQuit (spec docs/specs/2026-11-scenario-7.md, часть 1а): касса вечером не в минусе; никто из штата не ушёл сам
+const dayKind = z.enum(['noNeedlessAntibiotic', 'noLeft', 'cashPositive', 'noWaitComplication', 'noMissedMI', 'noInfectiousInWard', 'cashAboveZero', 'noQuit']);
 
 /** Задание главы: вид — в движке, числа и текст — здесь. */
 const missionSchema = z.discriminatedUnion('kind', [
@@ -1236,7 +1237,17 @@ export const scenarioSchema = z.strictObject({
   start: z.union([z.literal('empty'), z.string().regex(/^site\.[a-z0-9_]+$/)]),
   /** привезённых скорой сортирует игрок, по листу передачи (spec docs/specs/2026-11-scenario-2.md, решение владельца #196) */
   sorts: z.literal(true).optional(),
-  budget: int,
+  /** касса начала; в минусе — у сценария в кризисе (spec docs/specs/2026-11-scenario-7.md, часть 1а) */
+  budget: z.number().int().min(-5_000_000),
+  /** больница в кризисе с первой минуты (там же): долг банку, репутация, настроение нанятых со сменой, износ аппаратов */
+  crisis: z
+    .strictObject({
+      loan: z.number().int().min(1).optional(),
+      reputation: z.number().int().min(0).max(100).optional(),
+      mood: z.number().int().min(0).max(100).optional(),
+      wear: z.number().int().min(0).max(365).optional(),
+    })
+    .optional(),
   department: z.string().regex(/^dept\.[a-z0-9_]+$/),
   build: z.array(roomId).min(1),
   tutorial: tutorialSchema,

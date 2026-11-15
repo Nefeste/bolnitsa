@@ -240,6 +240,8 @@ export function depart(s: ShiftState, busy: ReadonlySet<string>): string[] {
   const ids = new Set(s.staff.filter(m => moods[m.id]?.go !== undefined && moods[m.id].go! <= s.t && !busy.has(m.id)).map(m => m.id));
   if (ids.size === 0) return [];
   s.staff = s.staff.filter(m => !ids.has(m.id));
+  // итоги суток (spec docs/specs/2026-11-scenario-7.md, часть 1а): сколько ушли сами — цель «неделя без ухода сотрудников»
+  s.summary.departed = (s.summary.departed ?? 0) + ids.size;
   for (const id of ids) delete moods[id];
   if (Object.keys(moods).length === 0) delete s.moods;
   for (const step of s.works?.undo ?? []) if (step.staff.some(m => ids.has(m.id))) step.staff = step.staff.filter(m => !ids.has(m.id));
